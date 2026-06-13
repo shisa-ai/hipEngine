@@ -298,6 +298,43 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     ]
 
 
+def test_completions_endpoint_plumbs_sampling_parameters() -> None:
+    fake = FakeLLM(outputs=["sampled"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "one",
+            "max_tokens": 2,
+            "temperature": 0.8,
+            "top_p": 0.9,
+            "top_k": 40,
+            "min_p": 0.05,
+            "repetition_penalty": 1.1,
+            "presence_penalty": 0.2,
+            "frequency_penalty": 0.3,
+            "logit_bias": {"12": -1.5},
+            "seed": 123,
+        },
+    )
+
+    assert response.status_code == 200
+    sampling = fake.calls[0][1]
+    assert sampling.temperature == 0.8
+    assert sampling.top_p == 0.9
+    assert sampling.top_k == 40
+    assert sampling.min_p == 0.05
+    assert sampling.repetition_penalty == 1.1
+    assert sampling.presence_penalty == 0.2
+    assert sampling.frequency_penalty == 0.3
+    assert sampling.logit_bias == ((12, -1.5),)
+    assert sampling.seed == 123
+
+
+
 def test_chat_completion_renders_messages_to_prompt() -> None:
     fake = FakeLLM(outputs=["assistant reply"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -643,6 +680,14 @@ def test_server_rejects_wrong_model_and_unsupported_options() -> None:
     )
     assert unsupported_logprobs.status_code == 400
     assert unsupported_logprobs.json()["error"]["param"] == "logprobs"
+
+    unsupported_extra = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "typical_p": 0.9},
+    )
+    assert unsupported_extra.status_code == 400
+    assert unsupported_extra.json()["error"]["code"] == "unsupported_parameter"
+    assert unsupported_extra.json()["error"]["param"] == "typical_p"
 
 
 def test_completions_endpoint_lowers_n_to_distinct_seeded_rows() -> None:

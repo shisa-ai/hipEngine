@@ -14,17 +14,45 @@ from typing import Any
 
 @dataclass(frozen=True)
 class SamplingParams:
-    """Minimal sampling parameter container for the public API surface."""
+    """Sampling parameter container for the public API surface."""
 
     max_tokens: int = 16
     temperature: float = 0.0
     top_p: float = 1.0
+    top_k: int = 0
+    min_p: float = 0.0
+    repetition_penalty: float = 1.0
+    presence_penalty: float = 0.0
+    frequency_penalty: float = 0.0
+    logit_bias: Any = ()
+    stop_token_ids: tuple[int, ...] = ()
     ignore_eos: bool = False
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
     seed: int | None = None
     row_seeds: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        from hipengine.generation.sampling import normalize_logit_bias_pairs, validate_sampling_params
+
+        object.__setattr__(self, "max_tokens", int(self.max_tokens))
+        object.__setattr__(self, "temperature", float(self.temperature))
+        object.__setattr__(self, "top_p", float(self.top_p))
+        object.__setattr__(self, "top_k", int(self.top_k))
+        object.__setattr__(self, "min_p", float(self.min_p))
+        object.__setattr__(self, "repetition_penalty", float(self.repetition_penalty))
+        object.__setattr__(self, "presence_penalty", float(self.presence_penalty))
+        object.__setattr__(self, "frequency_penalty", float(self.frequency_penalty))
+        object.__setattr__(self, "logit_bias", normalize_logit_bias_pairs(self.logit_bias))
+        object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
+        object.__setattr__(self, "ignore_eos", bool(self.ignore_eos))
+        object.__setattr__(self, "kv_storage", str(self.kv_storage))
+        object.__setattr__(self, "kv_scale_dtype", str(self.kv_scale_dtype))
+        object.__setattr__(self, "kv_scale_granularity", str(self.kv_scale_granularity))
+        object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
+        object.__setattr__(self, "row_seeds", tuple(int(seed) for seed in self.row_seeds))
+        validate_sampling_params(self)
 
 
 class LLM:
@@ -166,6 +194,13 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         max_tokens=params.max_tokens,
         temperature=params.temperature,
         top_p=params.top_p,
+        top_k=params.top_k,
+        min_p=params.min_p,
+        repetition_penalty=params.repetition_penalty,
+        presence_penalty=params.presence_penalty,
+        frequency_penalty=params.frequency_penalty,
+        logit_bias=params.logit_bias,
+        stop_token_ids=params.stop_token_ids,
         ignore_eos=params.ignore_eos,
         kv_storage=params.kv_storage,
         kv_scale_dtype=params.kv_scale_dtype,

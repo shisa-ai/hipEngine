@@ -41,6 +41,19 @@ from hipengine.generation.registry import (
     registered_text_generators,
     resolve_text_generator,
 )
+from hipengine.generation.sampling import (
+    RowSamplingState,
+    SampleResult,
+    SamplerPlan,
+    SamplingMode,
+    active_processor_names,
+    derive_row_seed,
+    normalize_logit_bias_pairs,
+    plan_sampler,
+    row_seed_for_index,
+    select_token,
+    validate_sampling_params,
+)
 
 _BUILTINS_REGISTERED = False
 
@@ -81,7 +94,11 @@ __all__ = [
     "PerRowSamplingParams",
     "RequestObservability",
     "ResidentBatchScheduler",
+    "RowSamplingState",
+    "SampleResult",
     "SamplerParamsBlock",
+    "SamplerPlan",
+    "SamplingMode",
     "ResidentEngineLoop",
     "SubmitPollTextGenerator",
     "SpeculativeCommitPlan",
@@ -90,12 +107,19 @@ __all__ = [
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
     "TextGenerator",
+    "active_processor_names",
     "add_engine_loop_config_args",
     "clear_generation_registry_for_tests",
+    "derive_row_seed",
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
+    "normalize_logit_bias_pairs",
+    "plan_sampler",
     "register_builtin_generators",
     "register_text_generator",
     "registered_text_generators",
     "resolve_text_generator",
+    "row_seed_for_index",
+    "select_token",
+    "validate_sampling_params",
 ]

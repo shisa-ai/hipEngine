@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
-from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, derive_row_seed
 from hipengine.kvcache import resolve_prefix_cache_mode
 
 
@@ -112,6 +112,12 @@ class CompletionRequest(_OpenAIBaseModel):
     max_tokens: int | None = Field(default=16, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
+    top_k: int | None = Field(default=0, ge=0)
+    min_p: float | None = Field(default=0.0, ge=0.0, le=1.0)
+    repetition_penalty: float | None = Field(default=1.0, gt=0.0)
+    presence_penalty: float | None = Field(default=0.0)
+    frequency_penalty: float | None = Field(default=0.0)
+    logit_bias: dict[str, float] | None = None
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stop: str | list[str] | None = None
@@ -136,6 +142,12 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     max_tokens: int | None = Field(default=None, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
+    top_k: int | None = Field(default=0, ge=0)
+    min_p: float | None = Field(default=0.0, ge=0.0, le=1.0)
+    repetition_penalty: float | None = Field(default=1.0, gt=0.0)
+    presence_penalty: float | None = Field(default=0.0)
+    frequency_penalty: float | None = Field(default=0.0)
+    logit_bias: dict[str, float] | None = None
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stop: str | list[str] | None = None
@@ -549,6 +561,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_tokens=_request_max_tokens(request, prompts, engine, effective_max_context_tokens(engine)),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
             top_p=float(request.top_p if request.top_p is not None else 1.0),
+            top_k=int(request.top_k if request.top_k is not None else 0),
+            min_p=float(request.min_p if request.min_p is not None else 0.0),
+            repetition_penalty=float(request.repetition_penalty if request.repetition_penalty is not None else 1.0),
+            presence_penalty=float(request.presence_penalty if request.presence_penalty is not None else 0.0),
+            frequency_penalty=float(request.frequency_penalty if request.frequency_penalty is not None else 0.0),
+            logit_bias=request.logit_bias or (),
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -1172,6 +1190,15 @@ def _request_max_tokens(
 
 def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
     _request_n(request)
+    extra_keys = _request_extra_keys(request)
+    if extra_keys:
+        param = sorted(extra_keys)[0]
+        raise OpenAIHTTPError(
+            400,
+            f"unsupported request parameter {param!r}",
+            code="unsupported_parameter",
+            param=param,
+        )
     if isinstance(request, CompletionRequest) and request.logprobs is not None:
         raise OpenAIHTTPError(
             400,
@@ -1261,6 +1288,19 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
     return n
 
 
+def _request_extra_keys(request: CompletionRequest | ChatCompletionRequest) -> set[str]:
+    extra = getattr(request, "model_extra", None)
+    if isinstance(extra, Mapping):
+        return {str(key) for key in extra}
+    extra = getattr(request, "__pydantic_extra__", None)
+    if isinstance(extra, Mapping):
+        return {str(key) for key in extra}
+    fields = getattr(request, "__fields__", None)
+    if isinstance(fields, Mapping):
+        return {str(key) for key in vars(request) if str(key) not in fields}
+    return set()
+
+
 def _expand_prompts_for_n(prompts: Sequence[str], n: int) -> tuple[str, ...]:
     return tuple(prompt for prompt in prompts for _ in range(int(n)))
 
@@ -1270,15 +1310,7 @@ def _choice_request_id(response_id: str, prompt_index: int, choice_index: int) -
 
 
 def _row_seeds_for_request(seed: int | None, row_count: int) -> tuple[int, ...]:
-    base = 0 if seed is None else int(seed)
-    mask = (1 << 63) - 1
-    values = []
-    for index in range(int(row_count)):
-        value = (base + 0x9E3779B97F4A7C15 + index * 0xBF58476D1CE4E5B9) & ((1 << 64) - 1)
-        value ^= (value >> 30)
-        value = (value * 0x94D049BB133111EB) & ((1 << 64) - 1)
-        values.append(value & mask)
-    return tuple(values)
+    return tuple(derive_row_seed(seed, index) for index in range(int(row_count)))
 
 
 def _message_content_text(content: str | list[Any] | None, message_index: int) -> str:
@@ -1351,6 +1383,13 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         int(sampling.max_tokens),
         float(sampling.temperature),
         float(sampling.top_p),
+        int(sampling.top_k),
+        float(sampling.min_p),
+        float(sampling.repetition_penalty),
+        float(sampling.presence_penalty),
+        float(sampling.frequency_penalty),
+        tuple((int(token), float(bias)) for token, bias in sampling.logit_bias),
+        tuple(int(token) for token in sampling.stop_token_ids),
         bool(sampling.ignore_eos),
         str(sampling.kv_storage),
         str(sampling.kv_scale_dtype),

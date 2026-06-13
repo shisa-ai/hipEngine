@@ -9,36 +9,40 @@ greedy performance path.
 
 ## Current state
 
-The public API and server already expose a small sampling surface, but the
-runnable Qwen3.5 paths only execute greedy argmax:
+The public API and server now expose the functional host-sampling surface for
+PARO while native GPU sampling and GGUF host sampling remain incomplete:
 
-- `hipengine.llm.SamplingParams` carries `max_tokens`, `temperature`, `top_p`,
-  `ignore_eos`, KV policy knobs, `seed`, and `row_seeds`.
-- `hipengine.generation.registry.GenerationRequest` mirrors that narrow shape.
-- `hipengine.server.api` accepts OpenAI-style `temperature`, `top_p`, `seed`,
-  `stop`, `n`, and a few completion-only flags.
-- The server request models currently allow unknown extra fields, so common
-  sampler fields such as `top_k`, `min_p`, `presence_penalty`,
-  `frequency_penalty`, and `logit_bias` can be silently dropped unless the
-  request validator explicitly checks them.
-- `hipengine.generation.qwen35_paro.Qwen35ParoOneTokenGenerator` and
-  `hipengine.generation.qwen35_gguf.Qwen35GGUFBringupGenerator` reject requests
-  unless `temperature == 0.0` and `top_p == 1.0`.
-- `Qwen35ParoResidentSession._sample_device_from_hidden(...)` is final RMSNorm
-  -> BF16 cast -> W8A16 LM-head logits -> `argmax_f32`.
-- `_sample_from_hidden(...)` reads back only the selected token id/logit. It does
-  not expose full logits to a host sampler.
-- c>N sampler dispatch only selects between serial and row-aware LM-head argmax;
-  it is not a stochastic sampler.
-- `PerRowSamplingParams` / `SamplerParamsBlock` already carry some row-oriented
-  sampler metadata (`temperature`, `top_k`, `top_p`, `repetition_penalty`,
-  `seed`, `stop_tokens`) for scheduler/native-sampler shape, but those fields are
-  not wired to public Qwen3.5 generation.
+- `hipengine.llm.SamplingParams` carries the functional sampler fields needed
+  for host sampling: `temperature`, `top_p`, `top_k`, `min_p`, penalties,
+  `logit_bias`, token-level stops, KV policy knobs, `seed`, and `row_seeds`.
+- `hipengine.generation.registry.GenerationRequest` mirrors those canonical
+  fields, and `hipengine.generation.sampling` owns validation, sampler planning,
+  row seed derivation, and CPU/NumPy token selection.
+- `hipengine.server.api` accepts OpenAI-style `temperature`, `top_p`, `top_k`,
+  `min_p`, penalties, `logit_bias`, `seed`, `stop`, and `n`. Unknown top-level
+  request extras are rejected instead of silently ignored.
+- `Qwen35ParoOneTokenGenerator` now keeps greedy-equivalent requests on the
+  graph/argmax fast path and routes non-greedy or processed-argmax requests
+  through a correctness-first host-logits sampler.
+- `Qwen35GGUFBringupGenerator` accepts greedy-equivalent inert filters but still
+  rejects true non-greedy sampling until the shared host sampler is wired into
+  the GGUF session.
+- `Qwen35ParoResidentSession._sample_device_from_hidden(...)` remains the
+  device-resident greedy suffix. It has been split internally into logits
+  projection plus argmax selection so `_sample_from_hidden(...)` can copy FP32
+  logits to host for the functional sampler when configured.
+- c>N public requests can use the host sampler by serializing rows through the
+  c=1 PARO path. Native c>N stochastic sampling is still future work.
+- `PerRowSamplingParams` / `SamplerParamsBlock` still carry only part of the
+  canonical sampler metadata for scheduler/native-sampler shape and need S5
+  expansion before native c>N sampling is complete.
 - `lm_head.hip` has a row-wise top-k helper capped at `k <= 8`, useful for
   drafter/verifier diagnostics but not enough for normal user sampling.
 
-The immediate user-visible failure is therefore correct for the current runtime:
-non-greedy requests reach a guard before generation starts.
+The original user-visible failure for non-greedy Qwen3.5/PARO requests is fixed
+for the host-logits path. Remaining implementation work is GGUF host-sampler
+wiring, tokenizer-lowered stop sequences, native c>N state expansion, GPU sampler
+kernels, exact GPU top-p, and public logprobs responses.
 
 ## Hardware lane for this work
 
@@ -103,19 +107,19 @@ models should either populate these fields or reject unsupported aliases.
 
 | Field | Current state | Target behavior | Initial complexity |
 | --- | --- | --- | --- |
-| `max_tokens` | Public/server/runtime | Already supported. | Low |
-| `ignore_eos` | Public/server/runtime | Already supported for EOS; stop-token rows need integration. | Low |
-| `temperature` | Public/server, guarded in runtime | `<= 0` means deterministic argmax after processors; `> 0` enables multinomial sampling. | Medium |
-| `top_p` | Public/server, guarded in runtime | Nucleus filtering after processors. Inert for plain `temperature <= 0` argmax. | Medium |
-| `top_k` | Scheduler row type only | Keep highest `k` tokens before sampling; `0` means disabled. | Medium |
-| `min_p` | Missing | Optional probability floor relative to max probability. | Medium |
-| `repetition_penalty` | Scheduler row type only | HF-style penalty using prompt + generated history. | Medium |
-| `presence_penalty` | Missing | Subtract once for tokens already present. | Medium |
-| `frequency_penalty` | Missing | Subtract proportional to token count. | Medium |
-| `logit_bias` | Missing | Add per-token bias map before filtering. | Medium |
-| `seed` / `row_seeds` | Public/server, partially plumbed | Stable row RNG seed; `n > 1` rows must diverge deterministically. | Low/Medium |
+| `max_tokens` | Public/server/runtime | Supported. | Low |
+| `ignore_eos` | Public/server/runtime | Supported for EOS; stop-token rows need deeper integration. | Low |
+| `temperature` | Public/server/runtime | `<= 0` means deterministic argmax after processors; `> 0` enables host multinomial sampling for PARO. | Medium |
+| `top_p` | Public/server/runtime | Nucleus filtering after processors; inert for plain `temperature <= 0` argmax. | Medium |
+| `top_k` | Public/server/runtime + scheduler partial | Keep highest `k` tokens before sampling; `0` means disabled. | Medium |
+| `min_p` | Public/server/runtime | Optional probability floor relative to max probability. | Medium |
+| `repetition_penalty` | Public/server/runtime + scheduler partial | HF-style penalty using prompt + generated history. | Medium |
+| `presence_penalty` | Public/server/runtime | Subtract once for tokens already present. | Medium |
+| `frequency_penalty` | Public/server/runtime | Subtract proportional to token count. | Medium |
+| `logit_bias` | Public/server/runtime | Token-id keyed bias map before filtering. | Medium |
+| `seed` / `row_seeds` | Public/server/runtime | Stable row RNG seed; `n > 1` rows diverge deterministically. | Low/Medium |
 | `stop` strings | Server post-trim only | Keep post-trim initially; add token-level early stop when stop-token lowering is available. | Medium |
-| `stop_token_ids` | Scheduler row type only | Public or internal token-level stop list once tokenizer lowering is exposed. | Medium |
+| `stop_token_ids` | Public/runtime + scheduler partial | Single-token stop IDs finish PARO host-sampled rows; tokenizer-lowered stop sequences remain S4/S5 work. | Medium |
 | `logprobs` / `top_logprobs` | Rejected or absent | Later response feature; do not block basic sampling. | High |
 
 Compatibility rule: if `temperature <= 0` and the request has no active logit
@@ -392,9 +396,9 @@ fully vectorized at first:
 
 | Track | Scope | Complexity | Approx. LoC | Dependencies | Exit gate |
 | --- | --- | --- | --- | --- | --- |
-| S0: API/schema cleanup | Extend `SamplingParams`, `GenerationRequest`, server request models, `_sampling_key`, and validation. Reject unsupported fields explicitly. | Low | ~100-200 Python/tests | None | Server no longer silently drops sampler extras. |
-| S1: greedy-compatible unblock | Allow `temperature <= 0` with inert `top_p`/`top_k`; preserve current graph replay and argmax behavior. | Low | ~50-100 Python/tests | S0 | Existing greedy fixtures match exactly; `temperature=0, top_p<1` no longer errors. |
-| S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | Non-greedy server/library requests generate deterministic fixed-seed output. |
+| S0: API/schema cleanup | Extend `SamplingParams`, `GenerationRequest`, server request models, `_sampling_key`, and validation. Reject unsupported fields explicitly. | Low | ~100-200 Python/tests | None | **Done for public/server canonical fields.** |
+| S1: greedy-compatible unblock | Allow `temperature <= 0` with inert `top_p`/`top_k`; preserve current graph replay and argmax behavior. | Low | ~50-100 Python/tests | S0 | **Done for PARO and GGUF greedy-equivalent requests.** |
+| S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO c=1 and serial multi-row host sampling.** |
 | S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | Synthetic-logit processor tests and fixed-seed generator fixtures pass. |
 | S4: token-level stop | Lower stop token IDs where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | Rows finish on EOS/stop-token fixtures without overrun. |
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | c>N fixed-seed rows are deterministic and per-row state is isolated. |

@@ -10,6 +10,12 @@ from typing import Any
 
 from hipengine.generation.batch_scheduler import GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.registry import GenerationRequest, register_text_generator
+from hipengine.generation.sampling import (
+    RowSamplingState,
+    SamplingMode,
+    plan_sampler,
+    row_seed_for_index,
+)
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
 from hipengine.runtime.qwen35_paro_runner import (
@@ -44,10 +50,7 @@ class Qwen35ParoOneTokenGenerator:
     def generate(self, request: GenerationRequest) -> list[str]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
-        if request.temperature != 0.0 or request.top_p != 1.0:
-            raise NotImplementedError(
-                "Qwen3.5/PARO generator currently supports greedy sampling only"
-            )
+        plan = plan_sampler(request)
         if request.max_tokens == 0:
             self.last_batch_generation = None
             return ["" for _ in request.prompts]
@@ -59,14 +62,43 @@ class Qwen35ParoOneTokenGenerator:
         )
         if len(request.prompts) == 1:
             self.last_batch_generation = None
+            if plan.mode is SamplingMode.GREEDY_FAST:
+                return [
+                    self._generate_one(
+                        runner,
+                        request.prompts[0],
+                        request.max_tokens,
+                        ignore_eos=request.ignore_eos,
+                        kv_policy=kv_policy,
+                    )
+                ]
             return [
-                self._generate_one(
+                self._generate_one_sampled(
                     runner,
                     request.prompts[0],
                     request.max_tokens,
+                    request=request,
+                    row_index=0,
                     ignore_eos=request.ignore_eos,
                     kv_policy=kv_policy,
                 )
+            ]
+        if plan.mode is not SamplingMode.GREEDY_FAST:
+            self.last_batch_generation = {
+                "path": "serial_host_logits_sampler",
+                "batch_size": len(request.prompts),
+            }
+            return [
+                self._generate_one_sampled(
+                    runner,
+                    prompt,
+                    request.max_tokens,
+                    request=request,
+                    row_index=index,
+                    ignore_eos=request.ignore_eos,
+                    kv_policy=kv_policy,
+                )
+                for index, prompt in enumerate(request.prompts)
             ]
         return self._generate_batch(
             runner,
@@ -116,10 +148,7 @@ class Qwen35ParoOneTokenGenerator:
             raise ValueError("streaming currently supports exactly one prompt")
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
-        if request.temperature != 0.0 or request.top_p != 1.0:
-            raise NotImplementedError(
-                "Qwen3.5/PARO generator currently supports greedy sampling only"
-            )
+        plan = plan_sampler(request)
         if request.max_tokens == 0:
             return
         runner = self._get_runner()
@@ -128,10 +157,21 @@ class Qwen35ParoOneTokenGenerator:
             scale_dtype=request.kv_scale_dtype,
             scale_granularity=request.kv_scale_granularity,
         )
-        yield from self._stream_one(
+        if plan.mode is SamplingMode.GREEDY_FAST:
+            yield from self._stream_one(
+                runner,
+                request.prompts[0],
+                request.max_tokens,
+                ignore_eos=request.ignore_eos,
+                kv_policy=kv_policy,
+            )
+            return
+        yield from self._stream_one_sampled(
             runner,
             request.prompts[0],
             request.max_tokens,
+            request=request,
+            row_index=0,
             ignore_eos=request.ignore_eos,
             kv_policy=kv_policy,
         )
@@ -178,6 +218,61 @@ class Qwen35ParoOneTokenGenerator:
                 if not ignore_eos and _is_eos(session.tokenizer, token_id):
                     break
         return "".join(generated_text)
+
+    def _generate_one_sampled(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompt: str,
+        max_tokens: int,
+        *,
+        request: GenerationRequest,
+        row_index: int,
+        ignore_eos: bool,
+        kv_policy,
+    ) -> str:
+        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        if not prompt_ids:
+            raise ValueError("prompt produced no tokens")
+        required_sequence_length = len(prompt_ids) + max_tokens + 1
+        session_capacity = _session_capacity_for(required_sequence_length)
+        session = self._get_session(
+            runner,
+            max_sequence_length=session_capacity,
+            kv_policy=kv_policy,
+        )
+        state = _row_sampling_state(request, prompt_ids, row_index=row_index)
+        _configure_host_sampler(session, request, state)
+        generated_text: list[str] = []
+        try:
+            next_result = session.prefill_native(prompt_ids, sample=True)
+            if next_result is None:
+                raise RuntimeError("native prefill did not produce next-token logits")
+            generated_text.append(next_result.token_text)
+            if _is_finished(
+                session.tokenizer,
+                next_result.token_id,
+                ignore_eos=ignore_eos,
+                stop_token_ids=request.stop_token_ids,
+            ):
+                return "".join(generated_text)
+
+            current_token_id = int(next_result.token_id)
+            for position in range(len(prompt_ids), len(prompt_ids) + max_tokens - 1):
+                result = session.step(current_token_id, position=position, sample=True)
+                if result is None:
+                    raise RuntimeError("decode step did not produce next-token logits")
+                generated_text.append(result.token_text)
+                current_token_id = int(result.token_id)
+                if _is_finished(
+                    session.tokenizer,
+                    result.token_id,
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=request.stop_token_ids,
+                ):
+                    break
+            return "".join(generated_text)
+        finally:
+            _configure_host_sampler(session, None, None)
 
     def _generate_batch(
         self,
@@ -381,6 +476,59 @@ class Qwen35ParoOneTokenGenerator:
             if not ignore_eos and _is_eos(session.tokenizer, result.token_id):
                 return
 
+    def _stream_one_sampled(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompt: str,
+        max_tokens: int,
+        *,
+        request: GenerationRequest,
+        row_index: int,
+        ignore_eos: bool,
+        kv_policy,
+    ) -> Iterator[str]:
+        _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        if not prompt_ids:
+            raise ValueError("prompt produced no tokens")
+        required_sequence_length = len(prompt_ids) + max_tokens + 1
+        session_capacity = _session_capacity_for(required_sequence_length)
+        session = self._get_session(
+            runner,
+            max_sequence_length=session_capacity,
+            kv_policy=kv_policy,
+        )
+        state = _row_sampling_state(request, prompt_ids, row_index=row_index)
+        _configure_host_sampler(session, request, state)
+        try:
+            next_result = session.prefill_native(prompt_ids, sample=True)
+            if next_result is None:
+                raise RuntimeError("native prefill did not produce next-token logits")
+            yield next_result.token_text
+            if _is_finished(
+                session.tokenizer,
+                next_result.token_id,
+                ignore_eos=ignore_eos,
+                stop_token_ids=request.stop_token_ids,
+            ):
+                return
+
+            current_token_id = int(next_result.token_id)
+            for position in range(len(prompt_ids), len(prompt_ids) + max_tokens - 1):
+                result = session.step(current_token_id, position=position, sample=True)
+                if result is None:
+                    raise RuntimeError("decode step did not produce next-token logits")
+                yield result.token_text
+                current_token_id = int(result.token_id)
+                if _is_finished(
+                    session.tokenizer,
+                    result.token_id,
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=request.stop_token_ids,
+                ):
+                    return
+        finally:
+            _configure_host_sampler(session, None, None)
+
     def _get_runner(self) -> Qwen35ParoNextTokenRunner:
         if self._runner is None:
             self._runner = Qwen35ParoNextTokenRunner(
@@ -444,6 +592,34 @@ class Qwen35ParoOneTokenGenerator:
         self._session_kv_key = None
 
 
+def _row_sampling_state(
+    request: GenerationRequest,
+    prompt_ids: list[int] | tuple[int, ...],
+    *,
+    row_index: int,
+) -> RowSamplingState:
+    return RowSamplingState(
+        prompt_tokens=tuple(int(token) for token in prompt_ids),
+        seed=row_seed_for_index(request, row_index),
+        row_index=row_index,
+    )
+
+
+def _configure_host_sampler(
+    session: Any,
+    request: GenerationRequest | None,
+    state: RowSamplingState | None,
+) -> None:
+    configure = getattr(session, "configure_host_sampler", None)
+    if not callable(configure):
+        if request is None and state is None:
+            return
+        raise NotImplementedError(
+            "Qwen3.5/PARO host-logits sampling requires resident sampler support"
+        )
+    configure(request, state)
+
+
 def _session_capacity_for(required_sequence_length: int) -> int:
     """Return a reusable session capacity for a request.
 
@@ -481,6 +657,18 @@ def _is_eos(tokenizer: Any | None, token_id: int) -> bool:
     except Exception:
         eos_id = None
     return eos_id is not None and int(token_id) == int(eos_id)
+
+
+def _is_finished(
+    tokenizer: Any | None,
+    token_id: int,
+    *,
+    ignore_eos: bool,
+    stop_token_ids: tuple[int, ...],
+) -> bool:
+    if not ignore_eos and _is_eos(tokenizer, token_id):
+        return True
+    return int(token_id) in {int(stop_id) for stop_id in stop_token_ids}
 
 
 def make_qwen35_paro_one_token_generator(

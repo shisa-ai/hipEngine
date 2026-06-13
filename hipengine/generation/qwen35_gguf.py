@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.registry import GenerationRequest, register_text_generator
+from hipengine.generation.sampling import SamplingMode, plan_sampler
 from hipengine.loading.gguf import GGUFModelInfo
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
@@ -27,7 +28,8 @@ class Qwen35GGUFBringupGenerator:
     def generate(self, request: GenerationRequest) -> list[str]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
-        if request.temperature != 0.0 or request.top_p != 1.0:
+        plan = plan_sampler(request)
+        if plan.mode is not SamplingMode.GREEDY_FAST:
             raise NotImplementedError("Qwen3.5 GGUF generator currently supports greedy sampling only")
         if request.max_tokens == 0:
             return ["" for _ in request.prompts]

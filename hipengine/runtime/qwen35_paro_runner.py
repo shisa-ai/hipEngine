@@ -84,6 +84,7 @@ from hipengine.dispatch import (
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_evidence_payload_blockers,
 )
+from hipengine.generation.sampling import RowSamplingState, select_token
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
 from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
 from hipengine.loading import (
@@ -1458,6 +1459,8 @@ class Qwen35ParoResidentSession:
         self.prefill_linear_scratch: Qwen35ParoLinearAttentionScratch | None = None
         self.prefill_full_scratch: Qwen35ParoAttentionScratch | None = None
         self.prefill_moe_scratch: Qwen35ParoGroupedMoeScratch | Qwen35ParoMoeScratch | None = None
+        self._host_sampling_params: Any | None = None
+        self._host_sampling_state: RowSamplingState | None = None
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
         try:
@@ -8266,7 +8269,13 @@ class Qwen35ParoResidentSession:
             for row in range(rows)
         )
 
-    def _sample_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
+    def configure_host_sampler(self, params: Any | None, state: RowSamplingState | None) -> None:
+        """Configure the correctness-first host sampler for subsequent samples."""
+
+        self._host_sampling_params = params
+        self._host_sampling_state = state
+
+    def _project_logits_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
         paro_rmsnorm_out_fp16(
             hidden.ptr,
             self.norm_weight.tensor.ptr,
@@ -8299,6 +8308,8 @@ class Qwen35ParoResidentSession:
             library=self.libraries["w8a16"],
             runtime=self.runtime,
         )
+
+    def _select_argmax_device_from_logits(self, *, stream: int = 0) -> None:
         argmax_f32(
             self.lm_logits.ptr,
             self.lm_block_values.ptr,
@@ -8312,10 +8323,38 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
 
+    def _sample_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
+        self._project_logits_device_from_hidden(hidden, stream=stream)
+        self._select_argmax_device_from_logits(stream=stream)
+
     def _sample_from_hidden(self, hidden: Tensor) -> Qwen35ParoAutoregressiveStepResult:
+        if self._host_sampling_params is not None and self._host_sampling_state is not None:
+            return self._sample_from_hidden_host(hidden, self._host_sampling_params, self._host_sampling_state)
         self._sample_device_from_hidden(hidden)
         self.runtime.device_synchronize()
         return self._read_sample()
+
+    def _sample_from_hidden_host(
+        self,
+        hidden: Tensor,
+        params: Any,
+        state: RowSamplingState,
+    ) -> Qwen35ParoAutoregressiveStepResult:
+        self._project_logits_device_from_hidden(hidden)
+        self.runtime.device_synchronize()
+        logits_host = np.empty((self.vocab_size,), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(logits_host), self.lm_logits, runtime=self.runtime)
+        sample = select_token(logits_host, params, state)
+        index_host = np.array([sample.token_id], dtype=np.int64)
+        value_host = np.array([sample.logit], dtype=np.float32)
+        copy_host_to_device(self.lm_out_index, host_array_ptr(index_host), runtime=self.runtime)
+        copy_host_to_device(self.lm_out_value, host_array_ptr(value_host), runtime=self.runtime)
+        token_id = int(sample.token_id)
+        return Qwen35ParoAutoregressiveStepResult(
+            token_id=token_id,
+            token_text=_decode_token_cached(self.tokenizer, token_id),
+            logit=float(sample.logit),
+        )
 
     def _read_sample(self) -> Qwen35ParoAutoregressiveStepResult:
         index_host = np.empty((1,), dtype=np.int64)

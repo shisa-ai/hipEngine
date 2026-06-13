@@ -55,6 +55,58 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
     )
 
 
+def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    calls = {}
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            calls["request"] = request
+            return ["ok"]
+
+    fake_index = SimpleNamespace(config={"architectures": ["FakeForCausalLM"]}, model_path="/tmp/fake-model")
+    fake_plugin = SimpleNamespace(name="fake_sampling_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_sampling_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    assert llm.generate(
+        "a",
+        SamplingParams(
+            max_tokens=2,
+            temperature=0.8,
+            top_p=0.9,
+            top_k=40,
+            min_p=0.05,
+            repetition_penalty=1.1,
+            presence_penalty=0.2,
+            frequency_penalty=0.3,
+            logit_bias={"12": -1.5},
+            stop_token_ids=(99,),
+            seed=123,
+        ),
+    ) == ["ok"]
+    assert calls["request"].top_k == 40
+    assert calls["request"].min_p == 0.05
+    assert calls["request"].repetition_penalty == 1.1
+    assert calls["request"].presence_penalty == 0.2
+    assert calls["request"].frequency_penalty == 0.3
+    assert calls["request"].logit_bias == ((12, -1.5),)
+    assert calls["request"].stop_token_ids == (99,)
+    assert calls["request"].seed == 123
+
+
 def test_llm_reuses_generator_across_generate_calls(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading

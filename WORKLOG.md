@@ -86428,3 +86428,44 @@ Validation:
 - Re-read `docs/SAMPLING.md` end to end.
 - `grep -nEi '\\b(day|days|week|weeks|hour|hours|2-4|1-2|1-3|time-based estimate|time estimate)\\b' docs/SAMPLING.md || true` -> no output.
 - `git diff --check`.
+
+## 2026-06-14 - Functional PARO host sampling implementation
+
+Implemented the first functional slice of `docs/SAMPLING.md` (S0-S2 plus PARO
+wiring).  Added `hipengine.generation.sampling` with torch-free sampler planning,
+row seed derivation, CPU/NumPy logits processing, deterministic row RNG, top-k,
+top-p, min-p, repetition/presence/frequency penalties, logit bias, and fixed-seed
+token selection.  Extended `SamplingParams` and `GenerationRequest` with the
+canonical sampler fields and validation.
+
+Server/API plumbing now accepts `top_k`, `min_p`, `repetition_penalty`,
+`presence_penalty`, `frequency_penalty`, and token-id `logit_bias`; all sampler
+fields participate in `_sampling_key`; row seed derivation uses the shared helper;
+and unknown top-level request parameters are rejected instead of silently ignored.
+`docs/API.md` and `docs/SAMPLING.md` were updated to reflect the new functional
+state.
+
+PARO runtime/generation changes:
+- `Qwen35ParoResidentSession` now splits final projection from argmax selection
+  and can be configured with a host sampler that copies the FP32 logits row and
+  selects a token through `select_token`.
+- Greedy-equivalent PARO requests, including inert `temperature=0` filters, stay
+  on the existing graph/argmax path.
+- Non-greedy and processed-argmax PARO requests use the host-logits path and
+  disable graph replay for those sampled tokens.
+- Multi-prompt non-greedy PARO requests are serialized through c=1 host sampling
+  for correctness. Native c>N stochastic sampling remains S5/S6 work.
+- GGUF now accepts greedy-equivalent inert filters but still rejects true
+  non-greedy sampling until GGUF host-sampler wiring lands.
+
+Completion audit status for the full `docs/SAMPLING.md` objective: not complete.
+Implemented S0-S2 for PARO plus single-token `stop_token_ids`; remaining work
+includes GGUF host sampler integration, tokenizer-lowered stop sequences,
+scheduler `SamplerParamsBlock` expansion for all canonical fields, native c>N
+sampling, GPU sampler kernels/top-p, and public logprobs responses.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_llm_gguf_generate_path.py -q` -> `53 passed, 4 skipped`.
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/llm.py hipengine/generation/registry.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py hipengine/generation/qwen35_gguf.py`.
+- `HIP_VISIBLE_DEVICES=1 python3 - <<'PY' ... ctypes.CDLL('libamdhip64.so') ... PY` -> `hip OK HIP_VISIBLE_DEVICES=1`.
+- `git diff --check`.
