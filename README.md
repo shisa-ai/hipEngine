@@ -421,9 +421,9 @@ Supported endpoints: `GET /v1/models`, `POST /v1/completions`, and
 `POST /v1/chat/completions` with token-level SSE streaming. Chat responses
 separate `<think>` reasoning into `reasoning_content` (matching the OpenAI
 reasoning-content convention). The server eagerly warms the model on startup
-by default so the first request does not pay load/compile cost. See
-[`docs/API.md`](docs/API.md) for request examples, bearer-token auth, and
-current limitations.
+by default, logs startup load/warmup timing, and has an explicit `--debug` mode
+for full request/response payload logging. See [`docs/API.md`](docs/API.md) for
+request examples, bearer-token auth, diagnostics, and current limitations.
 
 ## Documentation
 

@@ -48,7 +48,9 @@ Startup fails with a clear error if the requested cap cannot be allocated; lower
 `--max-context-tokens` or use `--kv-storage int8_per_token_head`. Disable eager
 startup with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt and
 token count are configurable via `--eager-load-prompt` and
-`--eager-load-max-tokens`.
+`--eager-load-max-tokens`. Eager startup logs `LOAD_TIMING` rows for resident
+preparation, warmup generation, and total startup so weight/session load cost is
+visible in ordinary server logs.
 
 The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 `int8_per_token_head`), `--kv-scale-dtype`, and `--kv-scale-granularity` at
@@ -73,8 +75,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated health/model probe. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
-| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. Supports `stream=true` (one SSE chunk plus `[DONE]`). |
-| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()`. Supports token-level `stream=true` SSE. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). |
+| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
+| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). |
 
 ## Examples
 
@@ -106,6 +108,27 @@ curl http://127.0.0.1:8000/v1/chat/completions \
     "temperature": 0.0
   }'
 ```
+
+### Streaming usage chunks
+
+Both completion endpoints accept OpenAI-compatible `stream_options`. Set
+`"stream_options": {"include_usage": true}` with `"stream": true` to request a
+final SSE payload with `choices: []` and `usage` before `data: [DONE]`.
+
+## Diagnostics
+
+Unsupported/unknown request fields, validation failures, and generation failures
+log `REQUEST_FAILED` at warning or error level with status, code, parameter, and
+message. To log full HTTP request and response payloads for local debugging, pass
+`--debug` or set `HIPENGINE_DEBUG=1`:
+
+```bash
+HIPENGINE_DEBUG=1 hipengine serve --model /path/to/model
+# or: hipengine serve --model /path/to/model --debug
+```
+
+Debug payload logs include prompts and generated text; do not enable them for
+shared or sensitive deployments.
 
 ## Current limitations
 

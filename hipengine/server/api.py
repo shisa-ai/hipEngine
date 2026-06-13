@@ -60,6 +60,7 @@ class ServerConfig:
     generation_batch_window_ms: float = 0.0
     metrics: str = "off"
     prefix_cache: str = "off"
+    debug: bool = False
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -120,6 +121,7 @@ class CompletionRequest(_OpenAIBaseModel):
     logit_bias: dict[str, float] | None = None
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
+    stream_options: dict[str, Any] | None = None
     stop: str | list[str] | None = None
     seed: int | None = Field(default=None, ge=0)
     echo: bool = False
@@ -150,6 +152,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     logit_bias: dict[str, float] | None = None
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
+    stream_options: dict[str, Any] | None = None
     stop: str | list[str] | None = None
     seed: int | None = Field(default=None, ge=0)
     ignore_eos: bool = False
@@ -186,6 +189,143 @@ class _ServerMetrics:
 
 
 _STREAM_DONE = object()
+
+
+def _next_stream_item(iterator: Iterator[Any]) -> object:
+    try:
+        return next(iterator)
+    except StopIteration:
+        return _STREAM_DONE
+
+
+class _DebugPayloadMiddleware:
+    """ASGI middleware that logs full HTTP payloads when explicitly enabled."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        method = str(scope.get("method", ""))
+        path = str(scope.get("path", ""))
+        query = scope.get("query_string", b"")
+        if isinstance(query, bytes) and query:
+            target = f"{path}?{query.decode('utf-8', 'replace')}"
+        else:
+            target = path
+        request_chunks: list[bytes] = []
+        response_chunks: list[bytes] = []
+        request_logged = False
+        response_status: int | None = None
+
+        def log_request_once() -> None:
+            nonlocal request_logged
+            if request_logged:
+                return
+            request_logged = True
+            _LOGGER.info(
+                "DEBUG_PAYLOAD REQUEST %s %s body=%s",
+                method,
+                target,
+                _debug_payload_text(request_chunks),
+            )
+
+        async def receive_wrapper() -> dict[str, Any]:
+            message = await receive()
+            if message.get("type") == "http.request":
+                body = message.get("body", b"")
+                if body:
+                    request_chunks.append(bytes(body))
+                if not message.get("more_body", False):
+                    log_request_once()
+            return message
+
+        async def send_wrapper(message: dict[str, Any]) -> None:
+            nonlocal response_status
+            if message.get("type") == "http.response.start":
+                response_status = int(message.get("status", 0))
+            elif message.get("type") == "http.response.body":
+                body = message.get("body", b"")
+                if body:
+                    response_chunks.append(bytes(body))
+                await send(message)
+                if not message.get("more_body", False):
+                    log_request_once()
+                    _LOGGER.info(
+                        "DEBUG_PAYLOAD RESPONSE %s %s status=%s body=%s",
+                        method,
+                        target,
+                        "unknown" if response_status is None else str(response_status),
+                        _debug_payload_text(response_chunks),
+                    )
+                return
+            await send(message)
+
+        try:
+            await self.app(scope, receive_wrapper, send_wrapper)
+        except Exception:
+            log_request_once()
+            _LOGGER.exception("DEBUG_PAYLOAD RESPONSE %s %s raised before completion", method, target)
+            raise
+
+
+def _debug_payload_text(chunks: Sequence[bytes]) -> str:
+    data = b"".join(chunks)
+    if not data:
+        return "<empty>"
+    text = data.decode("utf-8", "replace")
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return text
+    return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+
+
+def _request_target(request: Request) -> str:
+    query = request.url.query
+    return request.url.path if not query else f"{request.url.path}?{query}"
+
+
+def _log_request_failure(
+    request: Request,
+    *,
+    status_code: int,
+    code: str | None,
+    param: str | None,
+    message: str,
+) -> None:
+    logger = _LOGGER.error if int(status_code) >= 500 else _LOGGER.warning
+    logger(
+        "REQUEST_FAILED: %s %s status=%d code=%s param=%s message=%s",
+        request.method,
+        _request_target(request),
+        int(status_code),
+        code,
+        param,
+        message,
+    )
+
+
+def _log_stream_failure(
+    endpoint: str,
+    *,
+    status_code: int,
+    code: str | None,
+    param: str | None,
+    message: str,
+) -> None:
+    logger = _LOGGER.error if int(status_code) >= 500 else _LOGGER.warning
+    logger(
+        "REQUEST_FAILED: %s status=%d code=%s param=%s message=%s",
+        endpoint,
+        int(status_code),
+        code,
+        param,
+        message,
+    )
 
 
 @dataclass
@@ -282,6 +422,9 @@ class _GenerationBatcher:
     async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
         if not group:
             return
+        if len(group) == 1 and group[0].stream_queue is not None and len(group[0].prompts) == 1:
+            await self._stream_single(group[0])
+            return
         prompts: list[str] = []
         slices: list[tuple[_QueuedGeneration, int, int]] = []
         for item in group:
@@ -310,6 +453,18 @@ class _GenerationBatcher:
             )
         return outputs
 
+    async def _stream_single(self, item: _QueuedGeneration) -> None:
+        assert item.stream_queue is not None
+        try:
+            async for chunk in _stream_engine_text(self._engine_factory(), item.prompts[0], item.sampling):
+                if _queued_generation_cancelled(item):
+                    break
+                item.stream_queue.put_nowait(str(chunk))
+        except Exception as exc:
+            _finish_queued_generation(item, exception=exc)
+            return
+        _finish_queued_generation(item, outputs=())
+
 
 def _queued_generation_cancelled(item: _QueuedGeneration) -> bool:
     return item.cancelled or (item.future is not None and item.future.cancelled())
@@ -336,6 +491,28 @@ def _finish_queued_generation(
     item.stream_queue.put_nowait(_STREAM_DONE)
 
 
+async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams) -> AsyncIterator[str]:
+    streamer = getattr(engine, "stream", None)
+    if not callable(streamer):
+        for output in await run_in_threadpool(engine.generate, (prompt,), sampling):
+            yield str(output)
+        return
+    iterator = iter(streamer(prompt, sampling))
+    done = False
+    try:
+        while True:
+            item = await run_in_threadpool(_next_stream_item, iterator)
+            if item is _STREAM_DONE:
+                done = True
+                break
+            yield str(item)
+    finally:
+        if not done:
+            closer = getattr(iterator, "close", None)
+            if callable(closer):
+                await run_in_threadpool(closer)
+
+
 @dataclass(frozen=True)
 class _ReasoningSplit:
     content: str
@@ -359,6 +536,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     app.state.hipengine_effective_max_context_tokens = config.max_context_tokens
     app.state.hipengine_prefix_cache_mode = prefix_cache_mode
     app.state.hipengine_server_metrics = _ServerMetrics()
+    if config.debug:
+        app.add_middleware(_DebugPayloadMiddleware)
     session_lock = asyncio.Lock()
 
     def get_llm() -> Any:
@@ -421,6 +600,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         preparer = getattr(engine, "prepare", None)
         if not callable(preparer):
             return effective_max_context_tokens(engine)
+        prepare_started = time.perf_counter()
         try:
             prepared_result = await run_in_threadpool(
                 lambda: preparer(
@@ -450,9 +630,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prepared = _prepared_context_tokens(engine)
             if prepared is not None:
                 app.state.hipengine_effective_max_context_tokens = prepared
-        return effective_max_context_tokens(engine)
+        effective = effective_max_context_tokens(engine)
+        _LOGGER.info(
+            "LOAD_TIMING: phase=%s resident_prepare_s=%.3f max_context_tokens=%s",
+            phase,
+            time.perf_counter() - prepare_started,
+            "unknown" if effective is None else str(effective),
+        )
+        return effective
 
     async def eager_load_model() -> None:
+        startup_started = time.perf_counter()
         max_tokens = max(1, int(config.eager_load_max_tokens))
         if not config.eager_load:
             max_context = configured_max_context_tokens()
@@ -467,6 +655,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.kv_scale_dtype,
                 config.kv_scale_granularity,
             )
+            _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", time.perf_counter() - startup_started)
+            _LOGGER.info("hipEngine is ready (lazy load).")
             return
         sampling = SamplingParams(
             max_tokens=max_tokens,
@@ -478,8 +668,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_scale_granularity=config.kv_scale_granularity,
         )
         async with session_lock:
+            engine_started = time.perf_counter()
             engine = get_llm()
+            engine_create_s = time.perf_counter() - engine_started
+            prepare_started = time.perf_counter()
             max_context = await ensure_resident_context(engine, sampling, phase="startup")
+            resident_prepare_s = time.perf_counter() - prepare_started
             _LOGGER.info(
                 "Config: model=%s served_model=%s max_context_tokens=%s "
                 "chat_default_max_tokens=auto kv_storage=%s kv_scale_dtype=%s "
@@ -498,7 +692,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "unknown" if max_context is None else str(max_context),
             max_tokens,
         )
+        warmup_started = time.perf_counter()
         await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
+        warmup_s = time.perf_counter() - warmup_started
+        _LOGGER.info(
+            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f startup_total_s=%.3f",
+            config.model_id,
+            engine_create_s,
+            resident_prepare_s,
+            warmup_s,
+            time.perf_counter() - startup_started,
+        )
         _LOGGER.info("hipEngine is ready.")
 
     if hasattr(app, "add_event_handler"):
@@ -519,7 +723,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
 
     @app.exception_handler(OpenAIHTTPError)
-    async def openai_error_handler(_request: Request, exc: OpenAIHTTPError) -> JSONResponse:
+    async def openai_error_handler(request: Request, exc: OpenAIHTTPError) -> JSONResponse:
+        _log_request_failure(
+            request,
+            status_code=exc.status_code,
+            code=exc.code,
+            param=exc.param,
+            message=exc.message,
+        )
         headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
         return JSONResponse(
             status_code=exc.status_code,
@@ -536,10 +747,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
-        _request: Request,
+        request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
         message = _format_validation_error(exc)
+        _log_request_failure(
+            request,
+            status_code=422,
+            code="validation_error",
+            param=None,
+            message=message,
+        )
         return JSONResponse(
             status_code=422,
             content={
@@ -622,6 +840,87 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
 
+    async def stream_completion_one(
+        prompt: str,
+        request: CompletionRequest,
+    ) -> AsyncIterator[str]:
+        response_id = f"cmpl-{uuid.uuid4().hex}"
+        created = int(time.time())
+        full_text: list[str] = []
+        try:
+            _validate_generation_request(config, request)
+            async with session_lock:
+                engine = get_llm()
+                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                sampling = sampling_params(request, (prompt,), engine)
+                _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
+            async for token in generation_batcher.stream((prompt,), sampling):
+                text = str(token)
+                if not text:
+                    continue
+                full_text.append(text)
+                yield _completion_stream_delta(response_id, created, config.model_id, text)
+        except OpenAIHTTPError as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                message=exc.message,
+            )
+            yield _completion_stream_error(response_id, created, config.model_id, exc.message)
+            yield "data: [DONE]\n\n"
+            return
+        except NotImplementedError as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=400,
+                code="unsupported_parameter",
+                param=None,
+                message=message,
+            )
+            yield _completion_stream_error(response_id, created, config.model_id, message)
+            yield "data: [DONE]\n\n"
+            return
+        except ValueError as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=400,
+                code="invalid_request",
+                param=None,
+                message=message,
+            )
+            yield _completion_stream_error(response_id, created, config.model_id, message)
+            yield "data: [DONE]\n\n"
+            return
+        except Exception as exc:  # pragma: no cover - real runtime failures
+            app.state.hipengine_server_metrics.record_failure()
+            message = f"generation failed: {exc}"
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=500,
+                code="generation_failed",
+                param=None,
+                message=message,
+            )
+            yield _completion_stream_error(response_id, created, config.model_id, message)
+            yield "data: [DONE]\n\n"
+            return
+
+        raw_text = "".join(full_text)
+        text, finish_reason = _apply_stop(raw_text, request.stop)
+        usage = _usage(engine, (prompt,), [text])
+        app.state.hipengine_server_metrics.record_success(usage)
+        yield _completion_stream_done(response_id, created, config.model_id, finish_reason)
+        if _stream_include_usage(request):
+            yield _completion_stream_usage(response_id, created, config.model_id, usage)
+        yield "data: [DONE]\n\n"
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "model": config.model_id}
@@ -661,6 +960,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts = _normalize_prompts(request.prompt)
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
+        if request.stream and len(expanded_prompts) == 1 and not request.echo:
+            return StreamingResponse(
+                stream_completion_one(expanded_prompts[0], request),
+                media_type="text/event-stream",
+            )
         batch = await generate(expanded_prompts, request)
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
@@ -690,7 +994,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         }
         if request.stream:
             return StreamingResponse(
-                _completion_stream(response_id, created, config.model_id, final_texts, choices),
+                _completion_stream(
+                    response_id,
+                    created,
+                    config.model_id,
+                    final_texts,
+                    choices,
+                    usage=batch.usage if _stream_include_usage(request) else None,
+                ),
                 media_type="text/event-stream",
             )
         return response
@@ -770,10 +1081,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         index=index,
                     )
                 yield _chat_stream_done(response_id, created, config.model_id, finish_reason, index=index)
+            if _stream_include_usage(request):
+                yield _chat_stream_usage(response_id, created, config.model_id, batch.usage)
         except OpenAIHTTPError as exc:
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                message=exc.message,
+            )
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)
         except Exception as exc:  # pragma: no cover - real runtime failures
-            yield _chat_stream_error(response_id, created, config.model_id, f"generation failed: {exc}")
+            app.state.hipengine_server_metrics.record_failure()
+            message = f"generation failed: {exc}"
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=500,
+                code="generation_failed",
+                param=None,
+                message=message,
+            )
+            yield _chat_stream_error(response_id, created, config.model_id, message)
         yield "data: [DONE]\n\n"
 
     async def stream_chat_completion(
@@ -786,6 +1115,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             app.state.hipengine_server_metrics.record_failure()
             response_id = f"chatcmpl-{uuid.uuid4().hex}"
             created = int(time.time())
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                message=exc.message,
+            )
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)
             yield "data: [DONE]\n\n"
             return
@@ -824,21 +1160,54 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 )
         except OpenAIHTTPError as exc:
             app.state.hipengine_server_metrics.record_failure()
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                message=exc.message,
+            )
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)
             yield "data: [DONE]\n\n"
             return
         except NotImplementedError as exc:
             app.state.hipengine_server_metrics.record_failure()
-            yield _chat_stream_error(response_id, created, config.model_id, str(exc))
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=400,
+                code="unsupported_parameter",
+                param=None,
+                message=message,
+            )
+            yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield "data: [DONE]\n\n"
             return
         except ValueError as exc:
             app.state.hipengine_server_metrics.record_failure()
-            yield _chat_stream_error(response_id, created, config.model_id, str(exc))
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=400,
+                code="invalid_request",
+                param=None,
+                message=message,
+            )
+            yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield "data: [DONE]\n\n"
             return
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
             message = f"generation failed: {exc}"
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=500,
+                code="generation_failed",
+                param=None,
+                message=message,
+            )
             yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield "data: [DONE]\n\n"
             return
 
         text, finish_reason = _apply_stop("".join(full_text), request.stop)
@@ -846,8 +1215,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             # Stop strings can split across yielded chunks; current streaming keeps
             # transport simple and reports the stop after generation completes.
             finish_reason = "stop"
-        app.state.hipengine_server_metrics.record_success(_usage(engine, (prompt,), [text]))
+        usage = _usage(engine, (prompt,), [text])
+        app.state.hipengine_server_metrics.record_success(usage)
         yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
+        if _stream_include_usage(request):
+            yield _chat_stream_usage(response_id, created, config.model_id, usage)
         yield "data: [DONE]\n\n"
 
     return app
@@ -1486,47 +1858,97 @@ def _split_reasoning(text: str) -> _ReasoningSplit:
     return _ReasoningSplit(content=content, reasoning_content=reasoning)
 
 
+def _stream_include_usage(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    options = request.stream_options
+    return isinstance(options, Mapping) and bool(options.get("include_usage"))
+
+
+def _completion_stream_delta(response_id: str, created: int, model: str, text: str, *, index: int = 0) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "text_completion",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "text": text,
+                    "index": int(index),
+                    "logprobs": None,
+                    "finish_reason": None,
+                }
+            ],
+        }
+    )
+
+
+def _completion_stream_done(response_id: str, created: int, model: str, finish_reason: str, *, index: int = 0) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "text_completion",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "text": "",
+                    "index": int(index),
+                    "logprobs": None,
+                    "finish_reason": finish_reason,
+                }
+            ],
+        }
+    )
+
+
+def _completion_stream_usage(response_id: str, created: int, model: str, usage: Mapping[str, int]) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "text_completion",
+            "created": created,
+            "model": model,
+            "choices": [],
+            "usage": dict(usage),
+        }
+    )
+
+
+def _completion_stream_error(response_id: str, created: int, model: str, message: str) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "text_completion",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "text": "",
+                    "index": 0,
+                    "logprobs": None,
+                    "finish_reason": "error",
+                }
+            ],
+            "error": {"message": message, "type": "server_error"},
+        }
+    )
+
+
 def _completion_stream(
     response_id: str,
     created: int,
     model: str,
     texts: Sequence[str],
     choices: Sequence[dict[str, Any]],
+    *,
+    usage: Mapping[str, int] | None = None,
 ) -> Iterator[str]:
     for index, text in enumerate(texts):
-        yield _sse(
-            {
-                "id": response_id,
-                "object": "text_completion",
-                "created": created,
-                "model": model,
-                "choices": [
-                    {
-                        "text": text,
-                        "index": index,
-                        "logprobs": None,
-                        "finish_reason": None,
-                    }
-                ],
-            }
-        )
+        yield _completion_stream_delta(response_id, created, model, text, index=index)
     for choice in choices:
-        yield _sse(
-            {
-                "id": response_id,
-                "object": "text_completion",
-                "created": created,
-                "model": model,
-                "choices": [
-                    {
-                        "text": "",
-                        "index": choice["index"],
-                        "logprobs": None,
-                        "finish_reason": choice["finish_reason"],
-                    }
-                ],
-            }
-        )
+        yield _completion_stream_done(response_id, created, model, str(choice["finish_reason"]), index=choice["index"])
+    if usage is not None:
+        yield _completion_stream_usage(response_id, created, model, usage)
     yield "data: [DONE]\n\n"
 
 
@@ -1593,6 +2015,19 @@ def _chat_stream_done(response_id: str, created: int, model: str, finish_reason:
             "created": created,
             "model": model,
             "choices": [{"index": int(index), "delta": {}, "finish_reason": finish_reason}],
+        }
+    )
+
+
+def _chat_stream_usage(response_id: str, created: int, model: str, usage: Mapping[str, int]) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [],
+            "usage": dict(usage),
         }
     )
 

@@ -86541,3 +86541,33 @@ Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_sampling.py tests/test_server_api.py -q` -> `38 passed`.
 - `python3 -m py_compile hipengine/generation/batch_scheduler.py`.
 - `git diff --check`.
+
+## 2026-06-14 - Server streaming diagnostics and debug payload logs
+
+Implemented the server-side compatibility requested while exercising the sampling
+API through OpenAI clients:
+
+- Accepted OpenAI `stream_options` on `/v1/completions` and
+  `/v1/chat/completions`; `stream_options.include_usage=true` now emits a final
+  SSE usage payload before `data: [DONE]`.
+- `/v1/completions` now uses token/chunk streaming for the single-prompt,
+  `n=1`, `echo=false` case through the generation batcher, falling back to the
+  buffered SSE path for multi-prompt, `n>1`, or echo requests.
+- Chat `n=1` streaming now takes the same token/chunk batcher path and still
+  incrementally splits `<think>...</think>` into reasoning/content deltas.
+- Eager server startup logs `LOAD_TIMING` for resident prepare, warmup, and total
+  startup so model/session load cost is visible next to the existing KV summary.
+- Rejected/failed requests log `REQUEST_FAILED` warnings/errors with status,
+  code, parameter, and message; streaming failures emit the same diagnostics.
+- Added `hipengine serve --debug` / `HIPENGINE_DEBUG=1`, which logs full HTTP
+  request and response payloads via ASGI middleware for local debugging.  Docs
+  warn that these payload logs include prompts and generated text.
+
+Updated `docs/API.md`, `docs/SAMPLING.md`, and the README server summary for the
+new streaming, startup timing, and diagnostics behavior.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `26 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q` -> `38 passed`.
+- `git diff --check`.

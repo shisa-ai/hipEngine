@@ -122,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_PREFIX_CACHE", "off"),
         help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
     )
+    parser.add_argument(
+        "--debug",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("HIPENGINE_DEBUG", False),
+        help="Log full HTTP request/response payloads and extra server diagnostics (default: false)",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
@@ -146,6 +152,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         generation_batch_window_ms=args.generation_batch_window_ms,
         metrics=args.metrics,
         prefix_cache=args.prefix_cache,
+        debug=args.debug,
     )
     app = create_app(config)
     try:

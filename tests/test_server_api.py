@@ -132,6 +132,9 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
     assert "KVCache: storage=bf16" in caplog.text
     assert "model_max_context_tokens=262144" in caplog.text
     assert "WARMUP: prompt_tokens<=131072 max_tokens=2" in caplog.text
+    assert "LOAD_TIMING: phase=startup resident_prepare_s=" in caplog.text
+    assert "LOAD_TIMING: model=fake-model engine_create_s=" in caplog.text
+    assert "warmup_s=" in caplog.text
     assert "hipEngine is ready." in caplog.text
     assert fake.prepares == [
         (
@@ -389,10 +392,10 @@ def test_chat_completion_segregates_reasoning_content() -> None:
     }
 
 
-def test_streaming_chat_completion_returns_sse_done_marker() -> None:
+def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:
     fake = FakeLLM(
-        outputs=["<think>scratch pad</think>streamed reply"],
-        stream_chunks=["should-not-use-engine-stream"],
+        outputs=["should-not-buffer"],
+        stream_chunks=["<think>scratch pad</think>streamed ", "reply"],
     )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
@@ -403,6 +406,7 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
             "model": "fake-model",
             "messages": [{"role": "user", "content": "hello"}],
             "stream": True,
+            "stream_options": {"include_usage": True},
         },
     )
 
@@ -410,39 +414,109 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert response.headers["content-type"].startswith("text/event-stream")
     assert '"object":"chat.completion.chunk"' in response.text
     assert "data: [DONE]" in response.text
-    deltas = [payload["choices"][0]["delta"] for payload in _sse_payloads(response.text)]
-    assert deltas[:3] == [
+    payloads = _sse_payloads(response.text)
+    deltas = [payload["choices"][0]["delta"] for payload in payloads if payload.get("choices")]
+    assert deltas[:4] == [
         {"role": "assistant"},
         {"reasoning_content": "scratch pad"},
-        {"content": "streamed reply"},
+        {"content": "streamed "},
+        {"content": "reply"},
     ]
-    assert fake.stream_calls == []
+    assert len(fake.stream_calls) == 1
     prompt = fake.calls[0][0][0]
+    completion_tokens = fake.count_tokens("<think>scratch pad</think>streamed reply")
+    assert payloads[-1]["usage"] == {
+        "prompt_tokens": fake.count_tokens(prompt),
+        "completion_tokens": completion_tokens,
+        "total_tokens": fake.count_tokens(prompt) + completion_tokens,
+    }
     assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
+
+
+def test_streaming_completion_uses_engine_stream_and_usage() -> None:
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["alpha", " beta"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "data: [DONE]" in response.text
+    payloads = _sse_payloads(response.text)
+    text_chunks = [payload["choices"][0]["text"] for payload in payloads if payload.get("choices")]
+    assert text_chunks == ["alpha", " beta", ""]
+    assert payloads[-1]["usage"] == {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+    assert fake.stream_calls == [("hello", SamplingParams(max_tokens=2))]
 
 
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
+    monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
     assert default_args.generation_batch_window_ms == 0.0
+    assert default_args.debug is False
 
     monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
     monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", "radix")
     monkeypatch.setenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", "3.5")
+    monkeypatch.setenv("HIPENGINE_DEBUG", "1")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
     assert env_args.generation_batch_window_ms == 3.5
+    assert env_args.debug is True
 
     cli_args = build_parser().parse_args(
-        ["--model", "fake-path", "--metrics", "off", "--prefix-cache", "off", "--generation-batch-window-ms", "0"]
+        [
+            "--model",
+            "fake-path",
+            "--metrics",
+            "off",
+            "--prefix-cache",
+            "off",
+            "--generation-batch-window-ms",
+            "0",
+            "--no-debug",
+        ]
     )
     assert cli_args.metrics == "off"
     assert cli_args.prefix_cache == "off"
     assert cli_args.generation_batch_window_ms == 0.0
+    assert cli_args.debug is False
 
     app = create_app(ServerConfig(model="fake-path", eager_load=False, prefix_cache="radix"), llm=FakeLLM())
     assert app.state.hipengine_prefix_cache_mode == "radix"
+
+
+def test_debug_mode_logs_full_request_and_response_payloads(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    fake = FakeLLM(outputs=["debug reply"])
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, debug=True),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 1},
+    )
+
+    assert response.status_code == 200
+    assert "DEBUG_PAYLOAD REQUEST POST /v1/completions" in caplog.text
+    assert '"prompt":"hello"' in caplog.text
+    assert "DEBUG_PAYLOAD RESPONSE POST /v1/completions status=200" in caplog.text
+    assert '"text":"debug reply"' in caplog.text
 
 
 def test_metrics_endpoint_is_opt_in_and_additive() -> None:
@@ -663,7 +737,8 @@ def test_server_rejects_request_kv_policy_mismatch() -> None:
     assert response.json()["error"]["code"] == "unsupported_kv_policy"
 
 
-def test_server_rejects_wrong_model_and_unsupported_options() -> None:
+def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger="uvicorn.error")
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=FakeLLM())
     client = TestClient(app)
 
@@ -688,6 +763,9 @@ def test_server_rejects_wrong_model_and_unsupported_options() -> None:
     assert unsupported_extra.status_code == 400
     assert unsupported_extra.json()["error"]["code"] == "unsupported_parameter"
     assert unsupported_extra.json()["error"]["param"] == "typical_p"
+    assert "REQUEST_FAILED: POST /v1/completions status=404 code=model_not_found" in caplog.text
+    assert "REQUEST_FAILED: POST /v1/completions status=400 code=unsupported_parameter" in caplog.text
+    assert "param=typical_p" in caplog.text
 
 
 def test_completions_endpoint_lowers_n_to_distinct_seeded_rows() -> None:

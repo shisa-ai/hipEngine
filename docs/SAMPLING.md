@@ -19,8 +19,10 @@ PARO and GGUF while native GPU sampling remains incomplete:
   fields, and `hipengine.generation.sampling` owns validation, sampler planning,
   row seed derivation, and CPU/NumPy token selection.
 - `hipengine.server.api` accepts OpenAI-style `temperature`, `top_p`, `top_k`,
-  `min_p`, penalties, `logit_bias`, `seed`, `stop`, and `n`. Unknown top-level
-  request extras are rejected instead of silently ignored.
+  `min_p`, penalties, `logit_bias`, `seed`, `stop`, `n`, and streaming
+  `stream_options.include_usage`. Unknown top-level request extras are rejected
+  instead of silently ignored, and rejected/failed requests log `REQUEST_FAILED`
+  diagnostics for local server bring-up.
 - `Qwen35ParoOneTokenGenerator` now keeps greedy-equivalent requests on the
   graph/argmax fast path and routes non-greedy or processed-argmax requests
   through a correctness-first host-logits sampler.
