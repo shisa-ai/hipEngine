@@ -76,7 +76,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /health` | Built in | Unauthenticated health/model probe. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
 | `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
-| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). |
+| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
 
@@ -115,6 +115,42 @@ Both completion endpoints accept OpenAI-compatible `stream_options`. Set
 `"stream_options": {"include_usage": true}` with `"stream": true` to request a
 final SSE payload with `choices: []` and `usage` before `data: [DONE]`.
 
+### Tool calling
+
+`POST /v1/chat/completions` accepts OpenAI-style `tools` and `tool_choice` for
+local-agent clients such as pi. hipEngine injects a Qwen-style tool block into
+the rendered chat prompt and expects the model to emit tool calls as:
+
+```text
+<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>
+```
+
+The server converts those blocks to OpenAI-compatible `message.tool_calls` in
+non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
+`finish_reason: "tool_calls"`. Prior assistant `tool_calls` and `role: "tool"`
+messages are also replayed into the prompt as `<tool_call>` and
+`<tool_response>` blocks so multi-turn tool loops can continue.
+
+### Thinking / no-think controls
+
+Chat requests accept common OpenAI/Qwen thinking controls:
+
+- `reasoning_effort`: `none`/`off`/`disabled` pre-closes Qwen thinking; `low`,
+  `medium`, and `high` add soft instructions to keep `<think>` content bounded
+  and close `</think>` before the final answer or a tool call.
+- `enable_thinking`: `false` pre-fills `<think>\n\n</think>\n\n` after the
+  assistant header, matching Qwen no-think chat-template behavior.
+- `chat_template_kwargs.enable_thinking`: accepted for Qwen-compatible clients;
+  `chat_template_kwargs.reasoning_effort` / `thinking_budget` are mapped to the
+  same soft effort hints.
+- nested `thinking` or `reasoning` objects with `type`, `enabled`, or `effort`
+  are accepted for OpenAI-compatible proxy variants.
+
+For pi, prefer `compat.thinkingFormat: "qwen"` with `reasoning: true` if you want
+pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`
+set to `false` if you only want the Qwen flag and not OpenAI
+`reasoning_effort`.
+
 ## Diagnostics
 
 Unsupported/unknown request fields, validation failures, and generation failures
@@ -139,6 +175,8 @@ shared or sensitive deployments.
   `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
   requests stay on each engine's graph/argmax fast path.
 - `logprobs` and non-text chat content parts are rejected.
+- Tool calling uses Qwen-style prompt markup and output parsing; malformed
+  `<tool_call>` JSON is treated as ordinary assistant text.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 - Token `usage` is exact only if the injected engine exposes `count_tokens`; the
   default public `LLM` path currently reports zero-count placeholders until

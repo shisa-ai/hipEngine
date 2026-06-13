@@ -418,12 +418,13 @@ already present in the local HF cache; hipEngine resolves IDs locally and does
 not download weights during startup.
 
 Supported endpoints: `GET /v1/models`, `POST /v1/completions`, and
-`POST /v1/chat/completions` with token-level SSE streaming. Chat responses
-separate `<think>` reasoning into `reasoning_content` (matching the OpenAI
-reasoning-content convention). The server eagerly warms the model on startup
-by default, logs startup load/warmup timing, and has an explicit `--debug` mode
-for full request/response payload logging. See [`docs/API.md`](docs/API.md) for
-request examples, bearer-token auth, diagnostics, and current limitations.
+`POST /v1/chat/completions` with token-level SSE streaming, OpenAI-style tool
+calling, and Qwen no-think controls. Chat responses separate `<think>` reasoning
+into `reasoning_content` (matching the OpenAI reasoning-content convention). The
+server eagerly warms the model on startup by default, logs startup load/warmup
+timing, and has an explicit `--debug` mode for full request/response payload
+logging. See [`docs/API.md`](docs/API.md) for request examples, bearer-token
+auth, diagnostics, and current limitations.
 
 ## Documentation
 

@@ -392,6 +392,166 @@ def test_chat_completion_segregates_reasoning_content() -> None:
     }
 
 
+def test_chat_completion_accepts_qwen_no_think_controls() -> None:
+    fake = FakeLLM(outputs=["direct answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "answer directly"}],
+            "enable_thinking": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.calls[0][0][0].endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
+
+
+def test_chat_completion_accepts_reasoning_effort_controls() -> None:
+    fake = FakeLLM(outputs=["reasoned answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    low = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think briefly"}],
+            "reasoning_effort": "low",
+        },
+    )
+    assert low.status_code == 200
+    assert "keep it very brief" in fake.calls[-1][0][0]
+    assert not fake.calls[-1][0][0].endswith("<think>\n\n</think>\n\n")
+
+    none = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "do not think"}],
+            "reasoning_effort": "none",
+        },
+    )
+    assert none.status_code == 200
+    assert fake.calls[-1][0][0].endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
+
+
+def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
+    prompt = render_chat_prompt(
+        [
+            {"role": "developer", "content": "Use tools carefully."},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "read", "arguments": '{"path":"README.md"}'},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "file text"},
+        ],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "description": "Read a file",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ],
+        tool_choice={"type": "function", "function": {"name": "read"}},
+    )
+
+    assert "<tools>" in prompt
+    assert '"name":"read"' in prompt
+    assert "You must call the function named 'read'." in prompt
+    assert "<|im_start|>system\nUse tools carefully.<|im_end|>" in prompt
+    assert '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>' in prompt
+    assert "<tool_response>\nfile text\n</tool_response>" in prompt
+
+
+def test_chat_completion_returns_openai_tool_calls() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    message = choice["message"]
+    assert message["content"] == ""
+    tool_call = message["tool_calls"][0]
+    assert tool_call["id"].startswith("call_")
+    assert tool_call["type"] == "function"
+    assert tool_call["function"]["name"] == "read"
+    assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
+    assert "<tools>" in fake.calls[0][0][0]
+
+
+def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=['<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    tool_delta = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
+    tool_call = tool_delta["choices"][0]["delta"]["tool_calls"][0]
+    assert tool_call["index"] == 0
+    assert tool_call["id"].startswith("call_")
+    assert tool_call["function"]["name"] == "bash"
+    assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
 def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],

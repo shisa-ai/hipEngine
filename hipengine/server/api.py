@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 import time
 import uuid
 from collections import deque
@@ -136,6 +137,8 @@ class ChatMessage(_OpenAIBaseModel):
     role: str
     content: str | list[Any] | None = ""
     name: str | None = None
+    tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class ChatCompletionRequest(_OpenAIBaseModel):
@@ -153,6 +156,13 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stream_options: dict[str, Any] | None = None
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
+    reasoning_effort: str | None = None
+    enable_thinking: bool | None = None
+    chat_template_kwargs: dict[str, Any] | None = None
+    thinking: str | dict[str, Any] | None = None
+    reasoning: dict[str, Any] | None = None
     stop: str | list[str] | None = None
     seed: int | None = Field(default=None, ge=0)
     ignore_eos: bool = False
@@ -517,6 +527,25 @@ async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams
 class _ReasoningSplit:
     content: str
     reasoning_content: str
+
+
+@dataclass(frozen=True)
+class _ParsedToolCall:
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass(frozen=True)
+class _ParsedChatOutput:
+    text: str
+    tool_calls: tuple[_ParsedToolCall, ...]
+
+
+@dataclass(frozen=True)
+class _ThinkingControl:
+    enabled: bool | None = None
+    effort: str | None = None
 
 
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
@@ -1012,7 +1041,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
-        prompt = render_chat_prompt(request.messages)
+        thinking = _thinking_control_from_request(request)
+        prompt = render_chat_prompt(
+            request.messages,
+            tools=request.tools,
+            tool_choice=request.tool_choice,
+            thinking=thinking,
+        )
         if request.stream:
             streamer = stream_chat_completion_many if _request_n(request) > 1 else stream_chat_completion
             return StreamingResponse(
@@ -1027,10 +1062,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         choices = []
         for index, output in enumerate(batch.outputs):
             text, finish_reason = _apply_stop(output, request.stop)
-            split = _split_reasoning(text)
-            message: dict[str, Any] = {"role": "assistant", "content": split.content}
-            if split.reasoning_content:
-                message["reasoning_content"] = split.reasoning_content
+            parsed = _parse_chat_tool_calls(text)
+            message, parsed_finish_reason = _chat_message_from_parsed(parsed)
+            if parsed.tool_calls:
+                finish_reason = parsed_finish_reason
             choice = {
                 "index": index,
                 "message": message,
@@ -1060,27 +1095,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             batch = await generate(tuple(prompt for _ in range(n)), request)
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
-                split = _split_reasoning(text)
+                parsed = _parse_chat_tool_calls(text)
                 yield _chat_stream_role(response_id, created, config.model_id, index=index)
-                if split.reasoning_content:
-                    yield _chat_stream_delta(
-                        response_id,
-                        created,
-                        config.model_id,
-                        "reasoning_content",
-                        split.reasoning_content,
-                        index=index,
-                    )
-                if split.content:
-                    yield _chat_stream_delta(
-                        response_id,
-                        created,
-                        config.model_id,
-                        "content",
-                        split.content,
-                        index=index,
-                    )
-                yield _chat_stream_done(response_id, created, config.model_id, finish_reason, index=index)
+                for event in _chat_stream_parsed(
+                    response_id,
+                    created,
+                    config.model_id,
+                    parsed,
+                    finish_reason,
+                    index=index,
+                ):
+                    yield event
             if _stream_include_usage(request):
                 yield _chat_stream_usage(response_id, created, config.model_id, batch.usage)
         except OpenAIHTTPError as exc:
@@ -1129,6 +1154,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
+        buffer_tool_output = bool(request.tools)
 
         try:
             async with session_lock:
@@ -1142,6 +1168,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if not text:
                     continue
                 full_text.append(text)
+                if buffer_tool_output:
+                    continue
                 for field, chunk in splitter.feed(text):
                     yield _chat_stream_delta(
                         response_id,
@@ -1150,14 +1178,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         field,
                         chunk,
                     )
-            for field, chunk in splitter.finish():
-                yield _chat_stream_delta(
-                    response_id,
-                    created,
-                    config.model_id,
-                    field,
-                    chunk,
-                )
+            if not buffer_tool_output:
+                for field, chunk in splitter.finish():
+                    yield _chat_stream_delta(
+                        response_id,
+                        created,
+                        config.model_id,
+                        field,
+                        chunk,
+                    )
         except OpenAIHTTPError as exc:
             app.state.hipengine_server_metrics.record_failure()
             _log_stream_failure(
@@ -1210,14 +1239,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        text, finish_reason = _apply_stop("".join(full_text), request.stop)
-        if text != "".join(full_text):
+        raw_text = "".join(full_text)
+        text, finish_reason = _apply_stop(raw_text, request.stop)
+        if text != raw_text:
             # Stop strings can split across yielded chunks; current streaming keeps
             # transport simple and reports the stop after generation completes.
             finish_reason = "stop"
         usage = _usage(engine, (prompt,), [text])
         app.state.hipengine_server_metrics.record_success(usage)
-        yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
+        if buffer_tool_output:
+            parsed = _parse_chat_tool_calls(text)
+            for event in _chat_stream_parsed(response_id, created, config.model_id, parsed, finish_reason):
+                yield event
+        else:
+            yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
         if _stream_include_usage(request):
             yield _chat_stream_usage(response_id, created, config.model_id, usage)
         yield "data: [DONE]\n\n"
@@ -1431,7 +1466,177 @@ def _format_metric_value(value: float) -> str:
     return repr(numeric)
 
 
-def render_chat_prompt(messages: Sequence[ChatMessage | Mapping[str, Any]]) -> str:
+def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingControl:
+    enabled: bool | None = None
+    effort: str | None = None
+
+    if isinstance(request.chat_template_kwargs, Mapping):
+        enabled = _maybe_bool(request.chat_template_kwargs.get("enable_thinking"), enabled)
+        effort = _maybe_effort(request.chat_template_kwargs.get("reasoning_effort"), effort)
+        effort = _maybe_effort(request.chat_template_kwargs.get("thinking_budget"), effort)
+
+    enabled = _maybe_bool(request.enable_thinking, enabled)
+    effort = _maybe_effort(request.reasoning_effort, effort)
+    if _effort_disables_thinking(effort):
+        enabled = False
+
+    if isinstance(request.thinking, Mapping):
+        thinking_type = str(request.thinking.get("type", "")).strip().lower()
+        if thinking_type in {"disabled", "disable", "off", "none"}:
+            enabled = False
+        elif thinking_type in {"enabled", "enable", "on"}:
+            enabled = True
+        enabled = _maybe_bool(request.thinking.get("enabled"), enabled)
+        effort = _maybe_effort(request.thinking.get("effort"), effort)
+        effort = _maybe_effort(request.thinking.get("budget_tokens"), effort)
+    elif isinstance(request.thinking, str):
+        effort = _maybe_effort(request.thinking, effort)
+        if _effort_disables_thinking(effort):
+            enabled = False
+
+    if isinstance(request.reasoning, Mapping):
+        enabled = _maybe_bool(request.reasoning.get("enabled"), enabled)
+        reasoning_type = str(request.reasoning.get("type", "")).strip().lower()
+        if reasoning_type in {"disabled", "disable", "off", "none"}:
+            enabled = False
+        elif reasoning_type in {"enabled", "enable", "on"}:
+            enabled = True
+        effort = _maybe_effort(request.reasoning.get("effort"), effort)
+
+    if _effort_disables_thinking(effort):
+        enabled = False
+    return _ThinkingControl(enabled=enabled, effort=effort)
+
+
+def _maybe_bool(value: Any, current: bool | None) -> bool | None:
+    if value is None:
+        return current
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on", "enabled", "enable"}:
+            return True
+        if lowered in {"0", "false", "no", "off", "disabled", "disable", "none"}:
+            return False
+    return current
+
+
+def _maybe_effort(value: Any, current: str | None) -> str | None:
+    if value is None:
+        return current
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "low" if float(value) <= 1024 else "medium" if float(value) <= 4096 else "high"
+    text = str(value).strip().lower()
+    return text or current
+
+
+def _effort_disables_thinking(effort: str | None) -> bool:
+    return effort in {"0", "false", "none", "off", "disabled", "disable", "nothink", "no_think"}
+
+
+def _render_thinking_prompt(thinking: _ThinkingControl | None) -> str:
+    if thinking is None:
+        return ""
+    if thinking.enabled is False:
+        return "Do not include hidden reasoning. Answer directly after the pre-closed <think></think> block."
+    effort = thinking.effort
+    if not effort or _effort_disables_thinking(effort):
+        return ""
+    if effort in {"minimal", "low"}:
+        limit = "very brief"
+    elif effort == "medium":
+        limit = "concise"
+    elif effort in {"high", "xhigh", "max"}:
+        limit = "focused but complete"
+    else:
+        limit = "concise"
+    return (
+        f"If you use <think> reasoning, keep it {limit}; when ready, close </think> "
+        "before emitting the final answer or any <tool_call> block."
+    )
+
+
+def _assistant_prefix_for_thinking(thinking: _ThinkingControl | None) -> str:
+    prefix = "<|im_start|>assistant\n"
+    if thinking is not None and thinking.enabled is False:
+        return prefix + "<think>\n\n</think>\n\n"
+    return prefix
+
+
+def _render_tools_prompt(
+    tools: Sequence[Mapping[str, Any]] | None,
+    tool_choice: str | Mapping[str, Any] | None,
+) -> str:
+    if not tools or _tool_choice_name(tool_choice) == "none":
+        if _tool_choice_name(tool_choice) == "none":
+            return "Do not call tools for this response."
+        return ""
+    tool_lines = [json.dumps(dict(tool), ensure_ascii=False, separators=(",", ":")) for tool in tools]
+    directive = _tool_choice_directive(tool_choice)
+    return "\n".join(
+        [
+            "You may call one or more functions to assist with the user request.",
+            "Available functions are provided in JSON schema form inside <tools></tools> tags:",
+            "<tools>",
+            *tool_lines,
+            "</tools>",
+            directive,
+            "For each function call, respond with a JSON object inside <tool_call></tool_call> tags and no extra prose:",
+            '<tool_call>{"name":"function_name","arguments":{"arg":"value"}}</tool_call>',
+        ]
+    )
+
+
+def _tool_choice_name(tool_choice: str | Mapping[str, Any] | None) -> str | None:
+    if tool_choice is None:
+        return None
+    if isinstance(tool_choice, str):
+        return tool_choice.strip().lower()
+    choice_type = str(tool_choice.get("type", "")).strip().lower()
+    if choice_type == "function":
+        function = tool_choice.get("function")
+        if isinstance(function, Mapping):
+            name = function.get("name")
+            return None if name is None else str(name)
+    return choice_type or None
+
+
+def _tool_choice_directive(tool_choice: str | Mapping[str, Any] | None) -> str:
+    name = _tool_choice_name(tool_choice)
+    if name == "required":
+        return "You must call at least one function."
+    if name and name not in {"auto", "none"}:
+        return f"You must call the function named {name!r}."
+    return "Call a function only when it is useful; otherwise answer normally."
+
+
+def _render_tool_call_for_prompt(tool_call: Mapping[str, Any]) -> str:
+    function = tool_call.get("function")
+    if isinstance(function, Mapping):
+        name = str(function.get("name", ""))
+        raw_arguments = function.get("arguments", {})
+    else:
+        name = str(tool_call.get("name", ""))
+        raw_arguments = tool_call.get("arguments", {})
+    if isinstance(raw_arguments, str):
+        try:
+            arguments = json.loads(raw_arguments)
+        except Exception:
+            arguments = raw_arguments
+    else:
+        arguments = raw_arguments
+    payload = {"name": name, "arguments": arguments if arguments is not None else {}}
+    return f"<tool_call>{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}</tool_call>"
+
+
+def render_chat_prompt(
+    messages: Sequence[ChatMessage | Mapping[str, Any]],
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+    tool_choice: str | Mapping[str, Any] | None = None,
+    thinking: _ThinkingControl | None = None,
+) -> str:
     """Render OpenAI chat messages to a Qwen-style text prompt.
 
     This is intentionally tokenizer-independent so the API can stay a thin
@@ -1442,13 +1647,18 @@ def render_chat_prompt(messages: Sequence[ChatMessage | Mapping[str, Any]]) -> s
     if not messages:
         raise OpenAIHTTPError(400, "messages must contain at least one item", param="messages")
     rendered: list[str] = []
+    control_prompts = [item for item in (_render_thinking_prompt(thinking), _render_tools_prompt(tools, tool_choice)) if item]
+    if control_prompts:
+        rendered.append(f"<|im_start|>system\n{'\n\n'.join(control_prompts)}<|im_end|>")
     for index, message in enumerate(messages):
         if isinstance(message, Mapping):
             role_value = message.get("role", "")
             content_value = message.get("content", "")
+            tool_calls = message.get("tool_calls")
         else:
             role_value = message.role
             content_value = message.content
+            tool_calls = message.tool_calls
         role = str(role_value).strip()
         if not role:
             raise OpenAIHTTPError(
@@ -1457,8 +1667,16 @@ def render_chat_prompt(messages: Sequence[ChatMessage | Mapping[str, Any]]) -> s
                 param=f"messages[{index}].role",
             )
         content = _message_content_text(content_value, index)
+        if role == "developer":
+            role = "system"
+        if role == "tool":
+            rendered.append(f"<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>")
+            continue
+        if role == "assistant" and tool_calls:
+            tool_call_text = "\n".join(_render_tool_call_for_prompt(item) for item in tool_calls)
+            content = "\n".join(part for part in (content, tool_call_text) if part)
         rendered.append(f"<|im_start|>{role}\n{content}<|im_end|>")
-    rendered.append("<|im_start|>assistant\n")
+    rendered.append(_assistant_prefix_for_thinking(thinking))
     return "\n".join(rendered)
 
 
@@ -1858,6 +2076,92 @@ def _split_reasoning(text: str) -> _ReasoningSplit:
     return _ReasoningSplit(content=content, reasoning_content=reasoning)
 
 
+_TOOL_CALL_BLOCK_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL | re.IGNORECASE)
+
+
+def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
+    calls: list[_ParsedToolCall] = []
+    text_parts: list[str] = []
+    last_end = 0
+    for match in _TOOL_CALL_BLOCK_RE.finditer(text):
+        text_parts.append(text[last_end : match.start()])
+        parsed = _parsed_tool_call_from_json(match.group(1).strip())
+        if parsed is None:
+            text_parts.append(match.group(0))
+        else:
+            calls.append(parsed)
+        last_end = match.end()
+    text_parts.append(text[last_end:])
+    if not calls:
+        parsed = _parsed_tool_call_from_json(text.strip())
+        if parsed is not None:
+            return _ParsedChatOutput(text="", tool_calls=(parsed,))
+    return _ParsedChatOutput(text="".join(text_parts).strip(), tool_calls=tuple(calls))
+
+
+def _parsed_tool_call_from_json(raw: str) -> _ParsedToolCall | None:
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    return _parsed_tool_call_from_mapping(payload)
+
+
+def _parsed_tool_call_from_mapping(payload: Mapping[str, Any]) -> _ParsedToolCall | None:
+    function = payload.get("function")
+    if isinstance(function, Mapping):
+        name = function.get("name")
+        arguments = function.get("arguments", {})
+    else:
+        name = payload.get("name")
+        arguments = payload.get("arguments", {})
+    if not isinstance(name, str) or not name:
+        return None
+    return _ParsedToolCall(
+        id=f"call_{uuid.uuid4().hex[:24]}",
+        name=name,
+        arguments=_tool_arguments_json(arguments),
+    )
+
+
+def _tool_arguments_json(arguments: Any) -> str:
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except Exception:
+            return json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    if arguments is None:
+        arguments = {}
+    return json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
+
+
+def _chat_message_from_parsed(parsed: _ParsedChatOutput) -> tuple[dict[str, Any], str]:
+    split = _split_reasoning(parsed.text)
+    message: dict[str, Any] = {"role": "assistant", "content": split.content}
+    if split.reasoning_content:
+        message["reasoning_content"] = split.reasoning_content
+    if parsed.tool_calls:
+        message["tool_calls"] = [_openai_tool_call(call) for call in parsed.tool_calls]
+        return message, "tool_calls"
+    return message, "stop"
+
+
+def _openai_tool_call(call: _ParsedToolCall) -> dict[str, Any]:
+    return {
+        "id": call.id,
+        "type": "function",
+        "function": {
+            "name": call.name,
+            "arguments": call.arguments,
+        },
+    }
+
+
 def _stream_include_usage(request: CompletionRequest | ChatCompletionRequest) -> bool:
     options = request.stream_options
     return isinstance(options, Mapping) and bool(options.get("include_usage"))
@@ -2005,6 +2309,60 @@ def _chat_stream_delta(
             "choices": [{"index": int(index), "delta": {field: text}, "finish_reason": None}],
         }
     )
+
+
+def _chat_stream_tool_call(
+    response_id: str,
+    created: int,
+    model: str,
+    call: _ParsedToolCall,
+    *,
+    index: int = 0,
+    tool_index: int = 0,
+) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "index": int(index),
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": int(tool_index),
+                                "id": call.id,
+                                "type": "function",
+                                "function": {"name": call.name, "arguments": call.arguments},
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+    )
+
+
+def _chat_stream_parsed(
+    response_id: str,
+    created: int,
+    model: str,
+    parsed: _ParsedChatOutput,
+    finish_reason: str,
+    *,
+    index: int = 0,
+) -> Iterator[str]:
+    split = _split_reasoning(parsed.text)
+    if split.reasoning_content:
+        yield _chat_stream_delta(response_id, created, model, "reasoning_content", split.reasoning_content, index=index)
+    if split.content:
+        yield _chat_stream_delta(response_id, created, model, "content", split.content, index=index)
+    for tool_index, call in enumerate(parsed.tool_calls):
+        yield _chat_stream_tool_call(response_id, created, model, call, index=index, tool_index=tool_index)
+    yield _chat_stream_done(response_id, created, model, "tool_calls" if parsed.tool_calls else finish_reason, index=index)
 
 
 def _chat_stream_done(response_id: str, created: int, model: str, finish_reason: str, *, index: int = 0) -> str:

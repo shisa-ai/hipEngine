@@ -86571,3 +86571,31 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `26 passed`.
 - `python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q` -> `38 passed`.
 - `git diff --check`.
+
+## 2026-06-14 - Chat tool calling and Qwen no-think controls
+
+Added OpenAI-compatible chat tool-call plumbing for local-agent clients such as
+pi.  `/v1/chat/completions` now accepts `tools` and `tool_choice`, injects a
+Qwen-style `<tools>` instruction block into the rendered prompt, replays prior
+assistant tool calls and `role: "tool"` results as `<tool_call>` /
+`<tool_response>` blocks, and converts model output of the form
+`<tool_call>{"name":"...","arguments":{...}}</tool_call>` into OpenAI
+`message.tool_calls` or streaming `delta.tool_calls` with
+`finish_reason="tool_calls"`.
+
+Also added Qwen thinking/no-think compatibility for pi and other
+OpenAI-compatible clients.  Chat requests now accept `reasoning_effort`,
+`enable_thinking`, `chat_template_kwargs.enable_thinking`, and nested
+`thinking`/`reasoning` objects.  `enable_thinking=false` and
+`reasoning_effort=none/off/disabled` pre-fill the assistant turn with
+`<think>\n\n</think>\n\n`; low/medium/high effort values add a soft prompt to
+keep reasoning bounded and close `</think>` before the final answer or tool call.
+
+Updated `docs/API.md` and the README server summary with tool-calling,
+streaming-tool-call, and thinking-control behavior.  `docs/TODO.md` appeared as
+an unrelated untracked file and was left untouched.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `31 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q` -> `43 passed`.
