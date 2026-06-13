@@ -19,6 +19,7 @@ import numpy as np
 _LOGIT_BIAS_EMPTY: tuple[tuple[int, float], ...] = ()
 _UINT64_MASK = (1 << 64) - 1
 _SEED_MASK = (1 << 63) - 1
+_MAX_NATIVE_GPU_TOP_K = 64
 
 
 class SamplingMode(str, Enum):
@@ -212,6 +213,28 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
     return tuple(names)
 
 
+def supports_native_gpu_sampling(params: Any) -> bool:
+    """Return whether current standalone GPU sampler kernels cover ``params``.
+
+    The native route is intentionally narrower than the host sampler: selected
+    logprobs are available, but top-logprobs summaries and combined bounded
+    top-k + top-p/min-p filtering are not wired yet.
+    """
+
+    validate_sampling_params(params)
+    if float(getattr(params, "temperature", 0.0)) <= 0.0:
+        return False
+    if int(getattr(params, "top_logprobs", 0)) > 0:
+        return False
+    top_k = int(getattr(params, "top_k", 0))
+    if top_k > _MAX_NATIVE_GPU_TOP_K:
+        return False
+    uses_probability_filter = float(getattr(params, "top_p", 1.0)) < 1.0 or float(getattr(params, "min_p", 0.0)) > 0.0
+    if top_k > 0 and uses_probability_filter:
+        return False
+    return True
+
+
 def plan_sampler(
     params: Any,
     *,
@@ -228,7 +251,8 @@ def plan_sampler(
         if processors or needs_logits:
             return SamplerPlan(SamplingMode.PROCESSED_ARGMAX, processors, native_gpu_available)
         return SamplerPlan(SamplingMode.GREEDY_FAST, processors, native_gpu_available)
-    if native_gpu_available:
+    native_ready = native_gpu_available and supports_native_gpu_sampling(params)
+    if native_ready:
         return SamplerPlan(SamplingMode.GPU_SAMPLE, processors, native_gpu_available)
     if native_only:
         raise NotImplementedError("native GPU sampling is not available for this request")
@@ -485,5 +509,6 @@ __all__ = [
     "plan_sampler",
     "row_seed_for_index",
     "select_token",
+    "supports_native_gpu_sampling",
     "validate_sampling_params",
 ]

@@ -87024,3 +87024,26 @@ Validation:
 - `git diff --check -- docs/AGENTIC.md`.
 - `python3 - <<'PY' ... required-section coverage check ... PY` -> `lines=1363`, no missing sections.
 - `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_echo_logprobs_shift_generated_offsets tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_chat_completion_accepts_reasoning_effort_controls tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options tests/test_sampling.py::test_sampler_plan_uses_processed_argmax_for_logprobs tests/test_sampling.py::test_stop_token_sequences_are_active_processors -q` -> `9 passed`.
+
+## 2026-06-14 - S6/S7 c1 PARO native sampler opt-in route
+
+Added a default-off c=1 Qwen3.5/PARO native GPU sampler route behind
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=1`.  The planner now advertises `GPU_SAMPLE`
+only for currently covered temperature-sampling shapes: `top_k=0`, bounded
+`1 <= top_k <= 64`, or exact `top_p`/`min_p` with `top_k=0`; `top_logprobs`,
+c>N PARO, GGUF, and unsupported filter combinations continue to use the
+host-logits sampler.  The resident c=1 route projects FP32 logits on device,
+optionally applies the standalone processor kernel, launches the standalone
+sampler kernels, and reads back only selected id/logprob/logit scalars before
+updating row history.  This is an opt-in correctness/integration slice, not a
+retained performance promotion.
+
+Updated `docs/SAMPLING.md`, `docs/KERNELS.md`, `docs/ENVS.md`, and
+`docs/REFACTOR.md` to document the new flag, remaining c>N/GGUF/top-logprobs
+fallbacks, and the promotion/removal trigger.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q` -> `35 passed`.
+- GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`): `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `7 passed`.
+- `git diff --check` clean.

@@ -14,6 +14,7 @@ from hipengine.generation.sampling import (
     plan_sampler,
     row_seed_for_index,
     select_token,
+    supports_native_gpu_sampling,
 )
 
 
@@ -70,6 +71,23 @@ def test_sampler_plan_uses_host_logits_for_non_greedy_without_gpu_sampler() -> N
     plan = plan_sampler(_params(temperature=0.7, top_p=0.9))
 
     assert plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+
+
+def test_sampler_plan_uses_gpu_sample_for_native_supported_request() -> None:
+    params = _params(temperature=0.7, top_k=64, logprobs=True)
+    plan = plan_sampler(params, native_gpu_available=True)
+
+    assert supports_native_gpu_sampling(params) is True
+    assert plan.mode is SamplingMode.GPU_SAMPLE
+    assert plan.native_gpu_available is True
+
+
+def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
+    assert supports_native_gpu_sampling(_params(temperature=0.0)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=65)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_p=0.9)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, top_logprobs=1)) is False
+    assert plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).mode is SamplingMode.HOST_LOGITS_SAMPLE
 
 
 def test_greedy_tie_break_selects_lower_token_id() -> None:

@@ -54,6 +54,13 @@ from hipengine.kernels.hip_gfx1100.speculative import (
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16, fp16_to_bf16_strided_rows
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
+from hipengine.kernels.hip_gfx1100.sampling import (
+    apply_processors_f32_rows,
+    build_sampler,
+    sample_temperature_f32_rows_i32,
+    sample_top_p_temperature_f32_rows_i32,
+    sample_topk_temperature_f32_rows_i32,
+)
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_bf16_f32_multi_row,
     w8a16_linear_bf16_f32_out,
@@ -84,7 +91,7 @@ from hipengine.dispatch import (
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_evidence_payload_blockers,
 )
-from hipengine.generation.sampling import RowSamplingState, select_token
+from hipengine.generation.sampling import RowSamplingState, normalize_logit_bias_pairs, select_token
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
 from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
 from hipengine.loading import (
@@ -137,6 +144,15 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None or value.strip() == "":
         return bool(default)
     return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _native_sampler_needs_processors(params: Any) -> bool:
+    return (
+        bool(normalize_logit_bias_pairs(getattr(params, "logit_bias", None)))
+        or float(getattr(params, "repetition_penalty", 1.0)) != 1.0
+        or float(getattr(params, "presence_penalty", 0.0)) != 0.0
+        or float(getattr(params, "frequency_penalty", 0.0)) != 0.0
+    )
 
 
 def _env_int_set(name: str) -> set[int]:
@@ -1469,6 +1485,9 @@ class Qwen35ParoResidentSession:
         self.prefill_moe_scratch: Qwen35ParoGroupedMoeScratch | Qwen35ParoMoeScratch | None = None
         self._host_sampling_params: Any | None = None
         self._host_sampling_state: RowSamplingState | None = None
+        self._native_sampling_params: Any | None = None
+        self._native_sampling_state: RowSamplingState | None = None
+        self._native_sampler_library: Any | None = None
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
         try:
@@ -8294,6 +8313,17 @@ class Qwen35ParoResidentSession:
         self._host_sampling_params = params
         self._host_sampling_state = state
         self._host_sampling_states_by_slot = None
+        self._native_sampling_params = None
+        self._native_sampling_state = None
+
+    def configure_native_sampler(self, params: Any | None, state: RowSamplingState | None) -> None:
+        """Configure the default-off native GPU sampler for c=1 samples."""
+
+        self._native_sampling_params = params
+        self._native_sampling_state = state
+        self._host_sampling_params = None
+        self._host_sampling_state = None
+        self._host_sampling_states_by_slot = None
 
     def configure_host_sampler_rows(
         self,
@@ -8304,6 +8334,8 @@ class Qwen35ParoResidentSession:
 
         self._host_sampling_params = params
         self._host_sampling_state = None
+        self._native_sampling_params = None
+        self._native_sampling_state = None
         if params is None or states_by_slot is None:
             self._host_sampling_states_by_slot = None
         else:
@@ -8362,6 +8394,8 @@ class Qwen35ParoResidentSession:
         self._select_argmax_device_from_logits(stream=stream)
 
     def _sample_from_hidden(self, hidden: Tensor) -> Qwen35ParoAutoregressiveStepResult:
+        if self._native_sampling_params is not None and self._native_sampling_state is not None:
+            return self._sample_from_hidden_native(hidden, self._native_sampling_params, self._native_sampling_state)
         if self._host_sampling_params is not None and self._host_sampling_state is not None:
             return self._sample_from_hidden_host(hidden, self._host_sampling_params, self._host_sampling_state)
         self._sample_device_from_hidden(hidden)
@@ -8373,6 +8407,204 @@ class Qwen35ParoResidentSession:
         if not states:
             return None
         return states.get(int(slot))
+
+    def _sample_from_hidden_native(
+        self,
+        hidden: Tensor,
+        params: Any,
+        state: RowSamplingState,
+    ) -> Qwen35ParoAutoregressiveStepResult:
+        self._project_logits_device_from_hidden(hidden)
+        logits_ptr = self._native_sampler_logits_ptr(params, state)
+        library = self._native_sampler_library_handle()
+        temperature_buf = self._native_sampler_upload(
+            "_native_sampler_temperature_buf",
+            np.asarray([float(getattr(params, "temperature", 0.0))], dtype=np.float32),
+        )
+        seed_buf = self._native_sampler_upload(
+            "_native_sampler_seed_buf",
+            np.asarray([int(state.seed) & ((1 << 64) - 1)], dtype=np.uint64),
+        )
+        out_indices = self._native_sampler_buffer("_native_sampler_out_indices_i32", DType.INT32.itemsize)
+        out_logprobs = self._native_sampler_buffer("_native_sampler_out_logprobs_f32", DType.FP32.itemsize)
+        top_k = int(getattr(params, "top_k", 0))
+        top_p = float(getattr(params, "top_p", 1.0))
+        min_p = float(getattr(params, "min_p", 0.0))
+        if top_p < 1.0 or min_p > 0.0:
+            top_p_buf = self._native_sampler_upload("_native_sampler_top_p_buf", np.asarray([top_p], dtype=np.float32))
+            min_p_buf = self._native_sampler_upload("_native_sampler_min_p_buf", np.asarray([min_p], dtype=np.float32))
+            retained_counts = self._native_sampler_buffer("_native_sampler_retained_counts_i32", DType.INT32.itemsize)
+            sample_top_p_temperature_f32_rows_i32(
+                logits_ptr,
+                temperature_buf.ptr,
+                top_p_buf.ptr,
+                min_p_buf.ptr,
+                seed_buf.ptr,
+                out_indices.ptr,
+                out_logprobs.ptr,
+                retained_counts.ptr,
+                1,
+                self.vocab_size,
+                step_index=state.step_index,
+                threads=128,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif top_k > 0:
+            sample_topk_temperature_f32_rows_i32(
+                logits_ptr,
+                temperature_buf.ptr,
+                seed_buf.ptr,
+                out_indices.ptr,
+                out_logprobs.ptr,
+                None,
+                None,
+                1,
+                self.vocab_size,
+                top_k,
+                step_index=state.step_index,
+                threads=128,
+                library=library,
+                runtime=self.runtime,
+            )
+        else:
+            sample_temperature_f32_rows_i32(
+                logits_ptr,
+                temperature_buf.ptr,
+                seed_buf.ptr,
+                out_indices.ptr,
+                out_logprobs.ptr,
+                1,
+                self.vocab_size,
+                step_index=state.step_index,
+                threads=128,
+                library=library,
+                runtime=self.runtime,
+            )
+        self.runtime.device_synchronize()
+        index_i32 = np.empty((1,), dtype=np.int32)
+        logprob_host = np.empty((1,), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(index_i32), out_indices, runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(logprob_host), out_logprobs, runtime=self.runtime)
+        token_id = int(index_i32[0])
+        if token_id < 0 or token_id >= self.vocab_size:
+            raise RuntimeError(f"native sampler selected invalid token id {token_id}")
+        value_host = np.empty((1,), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(value_host),
+            DeviceBuffer(int(logits_ptr) + token_id * DType.FP32.itemsize, DType.FP32.itemsize),
+            runtime=self.runtime,
+        )
+        index_i64 = np.asarray([token_id], dtype=np.int64)
+        copy_host_to_device(self.lm_out_index, host_array_ptr(index_i64), runtime=self.runtime)
+        copy_host_to_device(self.lm_out_value, host_array_ptr(value_host), runtime=self.runtime)
+        state.observe(token_id)
+        return Qwen35ParoAutoregressiveStepResult(
+            token_id=token_id,
+            token_text=_decode_token_cached(self.tokenizer, token_id),
+            logit=float(value_host[0]),
+            logprob=float(logprob_host[0]),
+        )
+
+    def _native_sampler_logits_ptr(self, params: Any, state: RowSamplingState) -> int:
+        if not _native_sampler_needs_processors(params):
+            return int(self.lm_logits.ptr)
+        processed = self._native_sampler_buffer(
+            "_native_sampler_processed_logits",
+            self.vocab_size * DType.FP32.itemsize,
+        )
+        bias_pairs = normalize_logit_bias_pairs(getattr(params, "logit_bias", None))
+        for token_id, _bias in bias_pairs:
+            if int(token_id) >= self.vocab_size:
+                raise ValueError(f"logit_bias token id {token_id} is outside vocab size {self.vocab_size}")
+        history_pairs = tuple(
+            (int(token), int(count))
+            for token, count in sorted(state.history_counts().items())
+            if 0 <= int(token) < self.vocab_size
+        )
+        bias_offsets = self._native_sampler_upload(
+            "_native_sampler_bias_offsets_i32",
+            np.asarray([0, len(bias_pairs)], dtype=np.int32),
+        )
+        history_offsets = self._native_sampler_upload(
+            "_native_sampler_history_offsets_i32",
+            np.asarray([0, len(history_pairs)], dtype=np.int32),
+        )
+        bias_ids = None
+        bias_values = None
+        if bias_pairs:
+            bias_ids = self._native_sampler_upload(
+                "_native_sampler_bias_ids_i32",
+                np.asarray([int(token) for token, _bias in bias_pairs], dtype=np.int32),
+            )
+            bias_values = self._native_sampler_upload(
+                "_native_sampler_bias_values_f32",
+                np.asarray([float(bias) for _token, bias in bias_pairs], dtype=np.float32),
+            )
+        history_ids = None
+        history_counts = None
+        if history_pairs:
+            history_ids = self._native_sampler_upload(
+                "_native_sampler_history_ids_i32",
+                np.asarray([token for token, _count in history_pairs], dtype=np.int32),
+            )
+            history_counts = self._native_sampler_upload(
+                "_native_sampler_history_counts_i32",
+                np.asarray([count for _token, count in history_pairs], dtype=np.int32),
+            )
+        repetition = self._native_sampler_upload(
+            "_native_sampler_repetition_f32",
+            np.asarray([float(getattr(params, "repetition_penalty", 1.0))], dtype=np.float32),
+        )
+        presence = self._native_sampler_upload(
+            "_native_sampler_presence_f32",
+            np.asarray([float(getattr(params, "presence_penalty", 0.0))], dtype=np.float32),
+        )
+        frequency = self._native_sampler_upload(
+            "_native_sampler_frequency_f32",
+            np.asarray([float(getattr(params, "frequency_penalty", 0.0))], dtype=np.float32),
+        )
+        apply_processors_f32_rows(
+            self.lm_logits.ptr,
+            processed.ptr,
+            bias_offsets.ptr,
+            None if bias_ids is None else bias_ids.ptr,
+            None if bias_values is None else bias_values.ptr,
+            history_offsets.ptr,
+            None if history_ids is None else history_ids.ptr,
+            None if history_counts is None else history_counts.ptr,
+            repetition.ptr,
+            presence.ptr,
+            frequency.ptr,
+            1,
+            self.vocab_size,
+            threads=128,
+            library=self._native_sampler_library_handle(),
+            runtime=self.runtime,
+        )
+        return int(processed.ptr)
+
+    def _native_sampler_library_handle(self):
+        library = self._native_sampler_library
+        if library is None:
+            library = build_sampler(load=True)
+            self._native_sampler_library = library
+        return library
+
+    def _native_sampler_buffer(self, name: str, nbytes: int) -> DeviceBuffer:
+        required = max(int(nbytes), 4)
+        current = getattr(self, name, None)
+        if not isinstance(current, DeviceBuffer) or int(current.nbytes) < required:
+            current = malloc(required, runtime=self.runtime)
+            self.buffers.append(current)
+            setattr(self, name, current)
+        return current
+
+    def _native_sampler_upload(self, name: str, array: np.ndarray) -> DeviceBuffer:
+        host = np.ascontiguousarray(array)
+        buffer = self._native_sampler_buffer(name, int(host.nbytes))
+        copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+        return buffer
 
     def _sample_from_hidden_host(
         self,

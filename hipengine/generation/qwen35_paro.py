@@ -15,6 +15,7 @@ from hipengine.generation.sampling import (
     SamplingMode,
     plan_sampler,
     row_seed_for_index,
+    supports_native_gpu_sampling,
 )
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
@@ -56,7 +57,8 @@ class Qwen35ParoOneTokenGenerator:
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
-        plan = plan_sampler(request)
+        native_gpu_available = _native_gpu_sampler_available(request, prompt_count=len(request.prompts))
+        plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
             self.last_batch_generation = None
             self.last_generation_outputs = tuple(GenerationOutput(text="") for _ in request.prompts)
@@ -87,6 +89,7 @@ class Qwen35ParoOneTokenGenerator:
                 row_index=0,
                 ignore_eos=request.ignore_eos,
                 kv_policy=kv_policy,
+                plan=plan,
             )
             self.last_generation_outputs = (output,)
             return [output]
@@ -155,7 +158,8 @@ class Qwen35ParoOneTokenGenerator:
             raise ValueError("streaming currently supports exactly one prompt")
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
-        plan = plan_sampler(request)
+        native_gpu_available = _native_gpu_sampler_available(request, prompt_count=1)
+        plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
             return
         runner = self._get_runner()
@@ -181,6 +185,7 @@ class Qwen35ParoOneTokenGenerator:
             row_index=0,
             ignore_eos=request.ignore_eos,
             kv_policy=kv_policy,
+            plan=plan,
         )
 
     def _generate_one(
@@ -236,6 +241,7 @@ class Qwen35ParoOneTokenGenerator:
         row_index: int,
         ignore_eos: bool,
         kv_policy,
+        plan,
     ) -> GenerationOutput:
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
         if not prompt_ids:
@@ -248,7 +254,7 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy=kv_policy,
         )
         state = _row_sampling_state(request, prompt_ids, row_index=row_index)
-        _configure_host_sampler(session, request, state)
+        _configure_sampled_session(session, request, state, plan=plan)
         generated_text: list[str] = []
         generated_token_ids: list[int] = []
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
@@ -287,7 +293,7 @@ class Qwen35ParoOneTokenGenerator:
                     break
             return _generation_output_from_steps(session.tokenizer, generated_steps)
         finally:
-            _configure_host_sampler(session, None, None)
+            _configure_sampled_session(session, None, None, plan=plan)
 
     def _generate_batch(
         self,
@@ -663,6 +669,7 @@ class Qwen35ParoOneTokenGenerator:
         row_index: int,
         ignore_eos: bool,
         kv_policy,
+        plan,
     ) -> Iterator[str]:
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
         if not prompt_ids:
@@ -675,7 +682,7 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy=kv_policy,
         )
         state = _row_sampling_state(request, prompt_ids, row_index=row_index)
-        _configure_host_sampler(session, request, state)
+        _configure_sampled_session(session, request, state, plan=plan)
         generated_token_ids: list[int] = []
         try:
             next_result = session.prefill_native(prompt_ids, sample=True)
@@ -709,7 +716,7 @@ class Qwen35ParoOneTokenGenerator:
                 ):
                     return
         finally:
-            _configure_host_sampler(session, None, None)
+            _configure_sampled_session(session, None, None, plan=plan)
 
     def _get_runner(self) -> Qwen35ParoNextTokenRunner:
         if self._runner is None:
@@ -844,6 +851,34 @@ def _row_sampling_state(
     )
 
 
+def _configure_sampled_session(
+    session: Any,
+    request: GenerationRequest | None,
+    state: RowSamplingState | None,
+    *,
+    plan,
+) -> None:
+    if plan.mode is SamplingMode.GPU_SAMPLE:
+        _configure_native_sampler(session, request, state)
+    else:
+        _configure_host_sampler(session, request, state)
+
+
+def _configure_native_sampler(
+    session: Any,
+    request: GenerationRequest | None,
+    state: RowSamplingState | None,
+) -> None:
+    configure = getattr(session, "configure_native_sampler", None)
+    if not callable(configure):
+        if request is None and state is None:
+            return
+        raise NotImplementedError(
+            "Qwen3.5/PARO native GPU sampling requires resident sampler support"
+        )
+    configure(request, state)
+
+
 def _configure_host_sampler(
     session: Any,
     request: GenerationRequest | None,
@@ -857,6 +892,14 @@ def _configure_host_sampler(
             "Qwen3.5/PARO host-logits sampling requires resident sampler support"
         )
     configure(request, state)
+
+
+def _native_gpu_sampler_available(request: GenerationRequest, *, prompt_count: int) -> bool:
+    return (
+        int(prompt_count) == 1
+        and _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER")
+        and supports_native_gpu_sampling(request)
+    )
 
 
 def _session_capacity_for(required_sequence_length: int) -> int:
@@ -876,6 +919,13 @@ def _session_capacity_for(required_sequence_length: int) -> int:
     bucket = max(1, _env_int("HIPENGINE_SESSION_BUCKET_TOKENS", 1024))
     capacity = max(required, floor)
     return ((capacity + bucket - 1) // bucket) * bucket
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _env_int(name: str, default: int) -> int:

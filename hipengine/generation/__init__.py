@@ -54,6 +54,7 @@ from hipengine.generation.sampling import (
     plan_sampler,
     row_seed_for_index,
     select_token,
+    supports_native_gpu_sampling,
     validate_sampling_params,
 )
 
@@ -125,5 +126,6 @@ __all__ = [
     "resolve_text_generator",
     "row_seed_for_index",
     "select_token",
+    "supports_native_gpu_sampling",
     "validate_sampling_params",
 ]
