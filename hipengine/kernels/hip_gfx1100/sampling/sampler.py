@@ -1,0 +1,159 @@
+"""Raw-pointer wrappers for native FP32 logits sampler kernels."""
+
+from __future__ import annotations
+
+import ctypes
+from pathlib import Path
+
+from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels.registry import KernelKey, register
+
+_SOURCE = Path(__file__).with_name("sampler.hip")
+_OUTPUT_NAME = "sampler.so"
+_SYMBOL_TOPK_TEMPERATURE = "hipengine_sampler_topk_temperature_f32_rows_i32"
+_ALLOWED_THREADS = {64, 128}
+_MAX_TOPK = 64
+
+
+def plan_sampler_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+) -> BuildArtifact:
+    return plan_hip_build(
+        sources=[_SOURCE],
+        family="sampler",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        output_name=_OUTPUT_NAME,
+    )
+
+
+def build_sampler(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    return build_hip(
+        sources=[_SOURCE],
+        family="sampler",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        output_name=_OUTPUT_NAME,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
+def sample_topk_temperature_f32_rows_i32(
+    logits_f32_ptr: int,
+    temperatures_f32_ptr: int,
+    row_seeds_u64_ptr: int,
+    out_indices_i32_ptr: int,
+    out_logprobs_f32_ptr: int | None,
+    out_top_indices_i32_ptr: int | None,
+    out_top_logprobs_f32_ptr: int | None,
+    rows: int,
+    vocab_size: int,
+    top_k: int,
+    *,
+    step_index: int = 0,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Sample one token per row from a bounded top-k temperature distribution.
+
+    ``logits`` is a row-major FP32 ``[rows, vocab_size]`` device buffer.
+    ``temperatures`` and ``row_seeds`` are device arrays with one entry per row.
+    ``top_k`` is common for the launch and currently limited to ``1 <= k <= 64``;
+    exact full-vocab / top-p sampling remains a separate native sampler track.
+
+    Outputs:
+    - ``out_indices_i32[rows]`` receives selected token ids.
+    - ``out_logprobs_f32[rows]`` receives selected logprobs when non-null.
+    - ``out_top_indices_i32[rows, top_k]`` receives sorted candidate ids when non-null.
+    - ``out_top_logprobs_f32[rows, top_k]`` receives candidate logprobs when non-null.
+    """
+
+    _check_rows_vocab(rows, vocab_size)
+    _check_topk(top_k)
+    _check_threads(threads)
+    if step_index < 0:
+        raise ValueError("step_index must be non-negative")
+    library = library or build_sampler(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TOPK_TEMPERATURE)
+    fn.argtypes = [
+        ctypes.c_void_p,  # logits f32
+        ctypes.c_void_p,  # temperatures f32
+        ctypes.c_void_p,  # row seeds u64
+        ctypes.c_void_p,  # out selected indices i32
+        ctypes.c_void_p,  # out selected logprobs f32 (nullable)
+        ctypes.c_void_p,  # out top indices i32 (nullable)
+        ctypes.c_void_p,  # out top logprobs f32 (nullable)
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # vocab size
+        ctypes.c_int64,   # top k
+        ctypes.c_uint64,  # step index
+        ctypes.c_int64,   # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(temperatures_f32_ptr),
+        ctypes.c_void_p(row_seeds_u64_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_top_indices_i32_ptr) if out_top_indices_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_top_logprobs_f32_ptr) if out_top_logprobs_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(top_k),
+        ctypes.c_uint64(step_index),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def register_sampler_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "sampler", "f32", "topk_temperature_rows_i32"),
+        sample_topk_temperature_f32_rows_i32,
+        replace=replace,
+    )
+
+
+def _check_rows_vocab(rows: int, vocab_size: int) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if vocab_size > 2**31 - 1:
+        raise ValueError("vocab_size must fit int32 row-wise sampler outputs")
+
+
+def _check_topk(top_k: int) -> None:
+    if top_k <= 0 or top_k > _MAX_TOPK:
+        raise ValueError(f"top_k must be in [1, {_MAX_TOPK}]")
+
+
+def _check_threads(threads: int) -> None:
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64 or 128")
+
+
+register_sampler_kernels()

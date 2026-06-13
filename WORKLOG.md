@@ -86892,3 +86892,24 @@ Validation:
 - `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `13 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds tests/test_server_api.py tests/test_sampling.py tests/test_llm_generate.py -q` -> passed (`75 passed`).
+
+## 2026-06-14 - S6 standalone GPU top-k temperature sampler
+
+Added a standalone gfx1100 native sampler kernel under
+`hipengine/kernels/hip_gfx1100/sampling/`.  The S6 slice operates on row-major
+FP32 logits and supports bounded `1 <= top_k <= 64`, per-row temperature,
+per-row `uint64` seed, SplitMix64-derived row/step RNG, selected token id,
+selected logprob, and optional candidate ids/logprobs.  It is registered as
+`KernelKey("hip_gfx1100", "sampler", "f32", "topk_temperature_rows_i32")`
+with gfx1151 alias registration.  The kernel is standalone/default-off: PARO and
+GGUF generation still use the host-logits sampler until GPU logits processors,
+full-vocab `top_k=0`, generation routing, and exact GPU top-p are implemented.
+
+Updated `docs/SAMPLING.md` and `docs/KERNELS.md` to mark S6 partial and keep S7
+exact top-p / remaining native integration work explicit.
+
+Validation on GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`):
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py tests/test_gpu_sampler_kernel.py`.
+- `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `3 passed`.
+- `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed`.
+- Post-doc targeted bundle: `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/kernels/hip_gfx1100/sampling/__init__.py hipengine/kernels/hip_gfx1151/__init__.py tests/test_gpu_sampler_kernel.py && python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q && HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed` + `4 passed`.
