@@ -86777,3 +86777,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_returns_openai_logprobs tests/test_server_api.py::test_completions_endpoint_echo_logprobs_shift_generated_offsets tests/test_server_api.py::test_chat_completion_returns_openai_logprobs tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> `4 passed`.
 - `python3 -m pytest tests/test_server_api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> passed (`76 passed`).
+
+## 2026-06-14 - Buffered streaming logprobs
+
+Completed the remaining host-logits S8 server logprobs gap by supporting
+`stream=true` with completion `logprobs=N` and chat `logprobs=true`.  Logprob
+streams now route through detailed generation and emit buffered SSE chunks with
+logprob metadata; normal streams without logprobs still use the live token/chunk
+stream path.  Updated `docs/API.md` and `docs/SAMPLING.md`; S8 is now marked done
+for host-logits server/library paths.  Remaining `docs/SAMPLING.md` work is
+native c>N stochastic execution, GPU sampler kernels, and exact GPU top-p.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> passed (`78 passed`).

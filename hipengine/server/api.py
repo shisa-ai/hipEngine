@@ -1013,7 +1013,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts = _normalize_prompts(request.prompt)
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
-        if request.stream and len(expanded_prompts) == 1 and not request.echo:
+        if request.stream and len(expanded_prompts) == 1 and not request.echo and not _request_logprobs_enabled(request):
             return StreamingResponse(
                 stream_completion_one(expanded_prompts[0], request),
                 media_type="text/event-stream",
@@ -1077,7 +1077,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             thinking=thinking,
         )
         if request.stream:
-            streamer = stream_chat_completion_many if _request_n(request) > 1 else stream_chat_completion
+            streamer = stream_chat_completion_many if _request_n(request) > 1 or request.logprobs else stream_chat_completion
             return StreamingResponse(
                 streamer(prompt, request),
                 media_type="text/event-stream",
@@ -1126,6 +1126,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
                 parsed = _parse_chat_tool_calls(text)
+                logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
                 yield _chat_stream_role(response_id, created, config.model_id, index=index)
                 for event in _chat_stream_parsed(
                     response_id,
@@ -1134,6 +1135,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     parsed,
                     finish_reason,
                     index=index,
+                    logprobs=logprobs,
                 ):
                     yield event
             if _stream_include_usage(request):
@@ -1884,14 +1886,6 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             code="unsupported_parameter",
             param=param,
         )
-    if _request_logprobs_enabled(request):
-        if request.stream:
-            raise OpenAIHTTPError(
-                400,
-                "streaming logprobs are not currently supported",
-                code="unsupported_parameter",
-                param="logprobs",
-            )
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
@@ -2366,7 +2360,15 @@ def _stream_include_usage(request: CompletionRequest | ChatCompletionRequest) ->
     return isinstance(options, Mapping) and bool(options.get("include_usage"))
 
 
-def _completion_stream_delta(response_id: str, created: int, model: str, text: str, *, index: int = 0) -> str:
+def _completion_stream_delta(
+    response_id: str,
+    created: int,
+    model: str,
+    text: str,
+    *,
+    index: int = 0,
+    logprobs: Mapping[str, Any] | None = None,
+) -> str:
     return _sse(
         {
             "id": response_id,
@@ -2377,7 +2379,7 @@ def _completion_stream_delta(response_id: str, created: int, model: str, text: s
                 {
                     "text": text,
                     "index": int(index),
-                    "logprobs": None,
+                    "logprobs": None if logprobs is None else dict(logprobs),
                     "finish_reason": None,
                 }
             ],
@@ -2446,8 +2448,17 @@ def _completion_stream(
     *,
     usage: Mapping[str, int] | None = None,
 ) -> Iterator[str]:
+    choices_by_index = {int(choice["index"]): choice for choice in choices}
     for index, text in enumerate(texts):
-        yield _completion_stream_delta(response_id, created, model, text, index=index)
+        choice = choices_by_index.get(index, {})
+        yield _completion_stream_delta(
+            response_id,
+            created,
+            model,
+            text,
+            index=index,
+            logprobs=choice.get("logprobs"),
+        )
     for choice in choices:
         yield _completion_stream_done(response_id, created, model, str(choice["finish_reason"]), index=choice["index"])
     if usage is not None:
@@ -2498,14 +2509,18 @@ def _chat_stream_delta(
     text: str,
     *,
     index: int = 0,
+    logprobs: Mapping[str, Any] | None = None,
 ) -> str:
+    choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
+    if logprobs is not None:
+        choice["logprobs"] = dict(logprobs)
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": int(index), "delta": {field: text}, "finish_reason": None}],
+            "choices": [choice],
         }
     )
 
@@ -2553,12 +2568,13 @@ def _chat_stream_parsed(
     finish_reason: str,
     *,
     index: int = 0,
+    logprobs: Mapping[str, Any] | None = None,
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
         yield _chat_stream_delta(response_id, created, model, "reasoning_content", split.reasoning_content, index=index)
     if split.content:
-        yield _chat_stream_delta(response_id, created, model, "content", split.content, index=index)
+        yield _chat_stream_delta(response_id, created, model, "content", split.content, index=index, logprobs=logprobs)
     for tool_index, call in enumerate(parsed.tool_calls):
         yield _chat_stream_tool_call(response_id, created, model, call, index=index, tool_index=tool_index)
     yield _chat_stream_done(response_id, created, model, "tool_calls" if parsed.tool_calls else finish_reason, index=index)

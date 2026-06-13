@@ -495,6 +495,35 @@ def test_completions_endpoint_echo_logprobs_shift_generated_offsets() -> None:
     assert choice["logprobs"]["text_offset"] == [0, 5]
 
 
+def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-stream"],
+        stream_chunks=["wrong"],
+        detailed_outputs=[
+            GenerationOutput(
+                text="alpha",
+                token_logprobs=(
+                    TokenLogprob(token_id=1, token_text="alpha", logprob=-0.25, top_logprobs=((1, "alpha", -0.25),)),
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 1, "stream": True, "logprobs": 1},
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert payloads[0]["choices"][0]["text"] == "alpha"
+    assert payloads[0]["choices"][0]["logprobs"]["token_logprobs"] == [-0.25]
+    assert fake.stream_calls == []
+    assert fake.calls[0][1].logprobs is True
+
+
 def test_chat_completion_returns_openai_logprobs() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -535,6 +564,42 @@ def test_chat_completion_returns_openai_logprobs() -> None:
     ]
     assert fake.calls[0][1].logprobs is True
     assert fake.calls[0][1].top_logprobs == 1
+
+
+def test_streaming_chat_completion_returns_logprobs_from_buffered_path() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-stream"],
+        stream_chunks=["wrong"],
+        detailed_outputs=[
+            GenerationOutput(
+                text="assistant",
+                token_logprobs=(
+                    TokenLogprob(token_id=4, token_text="assistant", logprob=-0.1),
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 1,
+            "stream": True,
+            "logprobs": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content_chunks = [payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content")]
+    assert content_chunks[0]["choices"][0]["delta"] == {"content": "assistant"}
+    assert content_chunks[0]["choices"][0]["logprobs"]["content"][0]["logprob"] == -0.1
+    assert fake.stream_calls == []
+    assert fake.calls[0][1].logprobs is True
 
 
 def test_chat_completion_renders_messages_to_prompt() -> None:
