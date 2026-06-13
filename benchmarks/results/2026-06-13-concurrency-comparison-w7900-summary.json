@@ -1,0 +1,77 @@
+{
+  "kind": "qwen35_concurrency_comparison_w7900",
+  "created_at": "2026-06-13T05:29:26Z",
+  "performance_claim": false,
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "reps": 3
+  },
+  "rows": [
+    {
+      "concurrency": 1,
+      "hipengine_aggregate_decode_tok_s": 116.67793809358791,
+      "hipengine_per_sequence_decode_tok_s": 116.67793809358791,
+      "llamacpp_vulkan_aggregate_decode_tok_s": 106.4689006836468,
+      "llamacpp_vulkan_per_sequence_decode_tok_s": 106.4689006836468,
+      "hipengine_vs_llamacpp_aggregate": 1.0958875065337195,
+      "vllm_status": "blocked"
+    },
+    {
+      "concurrency": 2,
+      "hipengine_aggregate_decode_tok_s": 113.45155750420572,
+      "hipengine_per_sequence_decode_tok_s": 56.72577875210286,
+      "llamacpp_vulkan_aggregate_decode_tok_s": 159.18645770956803,
+      "llamacpp_vulkan_per_sequence_decode_tok_s": 79.59322885478402,
+      "hipengine_vs_llamacpp_aggregate": 0.7126960366892229,
+      "vllm_status": "blocked"
+    },
+    {
+      "concurrency": 4,
+      "hipengine_aggregate_decode_tok_s": 156.02550259522482,
+      "hipengine_per_sequence_decode_tok_s": 39.006375648806205,
+      "llamacpp_vulkan_aggregate_decode_tok_s": 70.44384160537112,
+      "llamacpp_vulkan_per_sequence_decode_tok_s": 17.61096040134278,
+      "hipengine_vs_llamacpp_aggregate": 2.2148920195080386,
+      "vllm_status": "blocked"
+    },
+    {
+      "concurrency": 8,
+      "hipengine_aggregate_decode_tok_s": 188.69000265309452,
+      "hipengine_per_sequence_decode_tok_s": 23.586250331636816,
+      "llamacpp_vulkan_aggregate_decode_tok_s": 26.261533949020972,
+      "llamacpp_vulkan_per_sequence_decode_tok_s": 3.2826917436276215,
+      "hipengine_vs_llamacpp_aggregate": 7.185033555898926,
+      "vllm_status": "blocked"
+    }
+  ],
+  "artifacts": {
+    "hipengine": "benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json",
+    "llamacpp_vulkan": "benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json",
+    "vllm": "benchmarks/results/2026-06-13-vllm-qwen35-concurrency-decode-w7900-blocked.json"
+  },
+  "versions": {
+    "hipengine_git": "3d24ab60dccf45ab25950a5487ab0ef36da34322",
+    "llamacpp_server_version": [
+      "version: 9600 (263cc04a5)",
+      "built with GNU 16.1.1 for Linux x86_64"
+    ]
+  },
+  "commands": {
+    "hipengine": "HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/qwen35_concurrency_decode_sweep.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --concurrencies 1,2,4,8 --reps 3 --work-dir /tmp/hipengine-concurrency-sweep-w7900-20260613 --json benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json",
+    "llamacpp_vulkan": "python3 scripts/llamacpp_vulkan_concurrency_sweep.py --repo /home/lhl/llama.cpp/llama.cpp-vulkan --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --gpu 0 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --concurrencies 1,2,4,8 --reps 3 --work-dir /tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613 --json benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json",
+    "vllm_probe": "see blocked artifact checks"
+  },
+  "notes": [
+    "hipEngine uses PARO W4A16 packed model with BF16 KV.",
+    "llama.cpp uses GGUF UD-Q4_K_S with Vulkan/RADV and f16 KV, so the comparison is cross-quant.",
+    "vLLM was blocked by local ROCm stack/runtime availability, not by a model quality/perf result."
+  ]
+}

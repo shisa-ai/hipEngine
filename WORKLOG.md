@@ -86212,3 +86212,10 @@ Updated the top-level README concurrency table and benchmark rollup to include t
 latest W7900 hipEngine, llama.cpp Vulkan, and local vLLM source-build results.
 The table now keeps the llama.cpp and vLLM comparison columns without a derived
 ratio column, and links the vLLM details to `docs/VLLM_RDNA3.md`.
+
+## 2026-06-13 - local artifact cleanup commit
+
+Added the remaining small benchmark artifacts that were useful to retain plus
+`scripts/llamacpp_vulkan_mtp_token_sweep.py`, the exact-token llama.cpp Vulkan
+MTP sweep helper. Left `.handoff/` untracked because it contains WIP handoff
+patches and diagnostic scratch outputs rather than rollup artifacts.

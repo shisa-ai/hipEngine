@@ -1,0 +1,2088 @@
+{
+  "backend": "hip_gfx1100",
+  "by_budget": {
+    "3": {
+      "aggregate": {
+        "acceptance_rate_mean": 0.4615384615384615,
+        "acceptance_rate_std": 0.0,
+        "accepted_lengths_by_run": [
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ]
+        ],
+        "active_budgets_by_run": [
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ]
+        ],
+        "actual_decode_speedup_vs_ar_mean": 0.646385833722415,
+        "actual_decode_speedup_vs_ar_std": 0.007893211895867431,
+        "all_exact_ar_match": true,
+        "ar_decode_ms_per_token_mean": 9.114135916661326,
+        "ar_decode_ms_per_token_std": 0.047482945300077725,
+        "ar_decode_tok_s_mean": 109.72165388440193,
+        "ar_decode_tok_s_std": 0.5707279413220943,
+        "avg_accepted_per_cycle_mean": 1.3846153846153844,
+        "avg_accepted_per_cycle_std": 0.0,
+        "avg_active_budget_mean": 3.0,
+        "avg_active_budget_std": 0.0,
+        "avg_visible_tokens_per_cycle_mean": 2.3846153846153846,
+        "avg_visible_tokens_per_cycle_std": 0.0,
+        "cycle_cost_ar_tokens_mean": 3.662882188355173,
+        "cycle_cost_ar_tokens_std": 0.04167735265786337,
+        "cycle_wall_ms_per_cycle_mean": 33.38446012820513,
+        "cycle_wall_ms_per_cycle_std": 0.46960134826442607,
+        "llama_like_gap_multiplier_mean": 1.8314410941775865,
+        "llama_like_gap_multiplier_std": 0.020838676328931684,
+        "mtp_decode_tok_s_mean": 70.92373509833142,
+        "mtp_decode_tok_s_std": 1.0681540335324187,
+        "observed_cycle_speedup_vs_ar_mean": 0.6510781112426357,
+        "observed_cycle_speedup_vs_ar_std": 0.007451287392043797,
+        "perfect_accept_speedup_ceiling_vs_ar_mean": 1.0921310253102279,
+        "perfect_accept_speedup_ceiling_vs_ar_std": 0.012498933689879851,
+        "proposal_update_cost_ar_tokens_mean": 0.3987306465854008,
+        "proposal_update_cost_ar_tokens_std": 0.0024907594576559036,
+        "proposal_update_ms_per_cycle_mean": 3.6340064614658982,
+        "proposal_update_ms_per_cycle_std": 0.003805412173029162,
+        "required_acceptance_rate_for_1x_mean": 0.887627396118391,
+        "required_acceptance_rate_for_1x_std": 0.013892450885954444,
+        "required_avg_accepted_for_1x_mean": 2.662882188355173,
+        "required_avg_accepted_for_1x_std": 0.04167735265786337,
+        "required_avg_visible_tokens_for_1x_mean": 3.662882188355173,
+        "required_avg_visible_tokens_for_1x_std": 0.04167735265786337,
+        "runs": 3,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_mean": 1.5897435897435896,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_std": 0.0,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_mean": 2.3846153846153846,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_std": 0.0,
+        "verify_cost_ar_tokens_mean": 2.626155175274804,
+        "verify_cost_ar_tokens_std": 0.04327924758085653,
+        "verify_ms_per_cycle_mean": 23.935735793948435,
+        "verify_ms_per_cycle_std": 0.4635575918026383
+      },
+      "budget": 3,
+      "runs": [
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.6437704923751404,
+          "ar_decode_ms_per_token": 9.072525374904217,
+          "ar_decode_tok_s": 110.22289370125432,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run1.json",
+          "cycle_cost_ar_tokens": 3.6797374665721443,
+          "cycle_wall_ms_per_cycle": 33.38451153846154,
+          "cycle_wall_ms_per_cycle_values": [
+            84.807412,
+            31.912965,
+            29.050137,
+            28.688083,
+            28.42358,
+            28.410398999999998,
+            28.269457000000003,
+            28.104415,
+            31.450299,
+            28.43838,
+            28.771473999999998,
+            28.892345,
+            28.779704
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 1.8398687332860721,
+          "mtp_decode_ms_per_token": 14.092794687485366,
+          "mtp_decode_tok_s": 70.95824654906926,
+          "observed_cycle_speedup_vs_ar": 0.6480395425700765,
+          "perfect_accept_speedup_ceiling_vs_ar": 1.0870340714078703,
+          "proposal_prefill_seconds": 0.24891734400443966,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 1,
+                "replayed": true,
+                "status": "captured_validated_miss",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 2,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 3,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 4,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 5,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 6,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 7,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 8,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 9,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 10,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 11,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 12,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 13,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.4009107213760774,
+          "proposal_update_ms_per_cycle": 3.6372726927556167,
+          "required_acceptance_rate_for_1x": 0.8932458221907148,
+          "required_avg_accepted_for_1x": 2.6797374665721443,
+          "required_avg_visible_tokens_for_1x": 3.6797374665721443,
+          "run_idx": 1,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run1.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run1.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 50.13763402400218,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.638777807162706,
+          "verify_ms_per_cycle": 23.940378614217757,
+          "visible_tokens_from_verify_cycles": 31
+        },
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.6552547732221812,
+          "ar_decode_ms_per_token": 9.104021093662595,
+          "ar_decode_tok_s": 109.84157326877356,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run2.json",
+          "cycle_cost_ar_tokens": 3.6154170490482977,
+          "cycle_wall_ms_per_cycle": 32.914833076923074,
+          "cycle_wall_ms_per_cycle_values": [
+            79.013647,
+            31.899625,
+            29.076627000000002,
+            28.671612999999997,
+            28.383098999999998,
+            28.244747,
+            28.367598,
+            28.259127,
+            31.401908,
+            28.326798,
+            28.617252,
+            28.650402,
+            28.980387
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 1.8077085245241489,
+          "mtp_decode_ms_per_token": 13.893864593910621,
+          "mtp_decode_tok_s": 71.97421518259782,
+          "observed_cycle_speedup_vs_ar": 0.6595685510868234,
+          "perfect_accept_speedup_ceiling_vs_ar": 1.106373053435962,
+          "proposal_prefill_seconds": 0.2501193189964397,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 1,
+                "replayed": true,
+                "status": "captured_validated_miss",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 2,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 3,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 4,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 5,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 6,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 7,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 8,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 9,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 10,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 11,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 12,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 13,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.3992652131744829,
+          "proposal_update_ms_per_cycle": 3.634918922706185,
+          "required_acceptance_rate_for_1x": 0.8718056830160993,
+          "required_avg_accepted_for_1x": 2.6154170490482977,
+          "required_avg_visible_tokens_for_1x": 3.6154170490482977,
+          "run_idx": 2,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run2.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run2.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 49.38127445299324,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.5779679098570565,
+          "verify_ms_per_cycle": 23.469874230123914,
+          "visible_tokens_from_verify_cycles": 31
+        },
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.6401322355699232,
+          "ar_decode_ms_per_token": 9.165861281417165,
+          "ar_decode_tok_s": 109.10049468317794,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run3.json",
+          "cycle_cost_ar_tokens": 3.6934920494450774,
+          "cycle_wall_ms_per_cycle": 33.85403576923077,
+          "cycle_wall_ms_per_cycle_values": [
+            90.798219,
+            32.171507000000005,
+            29.111867999999998,
+            28.648882,
+            28.555111,
+            28.272137,
+            28.238617,
+            28.244767,
+            31.253116,
+            28.48739,
+            28.671102,
+            28.725973,
+            28.923776
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 1.8467460247225387,
+          "mtp_decode_ms_per_token": 14.318699749992447,
+          "mtp_decode_tok_s": 69.83874356332721,
+          "observed_cycle_speedup_vs_ar": 0.6456262400710073,
+          "perfect_accept_speedup_ceiling_vs_ar": 1.0829859510868511,
+          "proposal_prefill_seconds": 0.2501414799990016,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 1,
+                "replayed": true,
+                "status": "captured_validated_miss",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 2,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 3,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 4,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 5,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 6,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 7,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 8,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 9,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 10,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 11,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 12,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "bucket_key": {
+                  "base_slot": 0,
+                  "capture_width": 0,
+                  "chain_attn_mode": "batched",
+                  "linear_attn_mode": "chain_tloop",
+                  "rows": 4
+                },
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "auto",
+                "replay_count": 13,
+                "replayed": true,
+                "status": "replayed",
+                "validation_passed": true
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.3960160052056421,
+          "proposal_update_ms_per_cycle": 3.6298277689358938,
+          "required_acceptance_rate_for_1x": 0.8978306831483591,
+          "required_avg_accepted_for_1x": 2.6934920494450774,
+          "required_avg_visible_tokens_for_1x": 3.6934920494450774,
+          "run_idx": 3,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run3.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12.6b-graphauto/mtp-economics-B3-run3.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 49.05300441100553,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.6617198088046496,
+          "verify_ms_per_cycle": 24.39695453750364,
+          "visible_tokens_from_verify_cycles": 31
+        }
+      ]
+    }
+  },
+  "candidate_budgets": [
+    3
+  ],
+  "chain_attn_mode": "batched",
+  "date": "2026-05-22",
+  "decode_tokens": 32,
+  "go_no_go_rule": {
+    "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
+    "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",
+    "llama_like_ratio": "cycle_cost_ar_tokens <= ~2.0 for B=2/3-class small-depth MTP"
+  },
+  "graph_mode": "auto",
+  "hip_arch": "gfx1100",
+  "llama_target_cycle_cost_ar_tokens": 2.0,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "phase": "M12.0",
+  "prompt_tokens": "727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220",
+  "proposal_impl": "persistent_device",
+  "purpose": "M12 verifier-loop economics: measure speculative cycle cost in AR-token-equivalent units by candidate budget.",
+  "runs_per_budget": 3,
+  "schema": 1,
+  "small_batch_decode_threshold": 7,
+  "status": "diagnostic_retained",
+  "verify_gpu_accept": null
+}
