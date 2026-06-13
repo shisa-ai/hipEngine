@@ -60,6 +60,7 @@ class ServerConfig:
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
     generation_batch_window_ms: float = 0.0
+    request_timeout_ms: float | None = None
     metrics: str = "off"
     prefix_cache: str = "off"
     debug: bool = False
@@ -88,12 +89,14 @@ class OpenAIHTTPError(Exception):
         error_type: str = "invalid_request_error",
         code: str | None = None,
         param: str | None = None,
+        finish_details: Mapping[str, Any] | None = None,
     ):
         self.status_code = status_code
         self.message = message
         self.error_type = error_type
         self.code = code
         self.param = param
+        self.finish_details = None if finish_details is None else dict(finish_details)
         super().__init__(message)
 
 
@@ -124,6 +127,7 @@ class CompletionRequest(_OpenAIBaseModel):
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stream_options: dict[str, Any] | None = None
+    timeout_ms: float | None = Field(default=None, gt=0.0)
     stop: str | list[str] | None = None
     seed: int | None = Field(default=None, ge=0)
     echo: bool = False
@@ -157,6 +161,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stream_options: dict[str, Any] | None = None
+    timeout_ms: float | None = Field(default=None, gt=0.0)
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
     reasoning_effort: str | None = None
@@ -792,16 +797,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             message=exc.message,
         )
         headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+        error_payload: dict[str, Any] = {
+            "message": exc.message,
+            "type": exc.error_type,
+            "param": exc.param,
+            "code": exc.code,
+        }
+        if exc.finish_details is not None:
+            error_payload["finish_details"] = dict(exc.finish_details)
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "error": {
-                    "message": exc.message,
-                    "type": exc.error_type,
-                    "param": exc.param,
-                    "code": exc.code,
-                }
-            },
+            content={"error": error_payload},
             headers=headers,
         )
 
@@ -917,6 +923,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
 
+    async def generate_with_deadline(
+        prompts: Sequence[str],
+        request: CompletionRequest | ChatCompletionRequest,
+    ) -> _GeneratedBatch:
+        try:
+            return await _await_with_deadline(generate(prompts, request), _request_deadline_at(config, request))
+        except OpenAIHTTPError as exc:
+            if exc.code == "deadline_exceeded":
+                app.state.hipengine_server_metrics.record_failure()
+            raise
+
     async def stream_completion_one(
         prompt: str,
         request: CompletionRequest,
@@ -925,15 +942,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
+        deadline_at = _request_deadline_at(config, request)
         full_text: list[str] = []
         try:
             _validate_generation_request(config, request)
-            async with session_lock:
-                engine = get_llm()
-                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
-                sampling = sampling_params(request, (prompt,), engine)
-                _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
-            async for token in generation_batcher.stream((prompt,), sampling):
+
+            async def prepare_stream() -> tuple[Any, SamplingParams]:
+                async with session_lock:
+                    engine = get_llm()
+                    await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                    sampling = sampling_params(request, (prompt,), engine)
+                    _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
+                    return engine, sampling
+
+            engine, sampling = await _await_with_deadline(prepare_stream(), deadline_at)
+            async for token in _iterate_with_deadline(generation_batcher.stream((prompt,), sampling), deadline_at):
                 text = str(token)
                 if not text:
                     continue
@@ -955,7 +978,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 message=exc.message,
             )
-            yield _completion_stream_error(response_id, created, config.model_id, exc.message)
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                exc.message,
+                code=exc.code,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+            )
             yield "data: [DONE]\n\n"
             return
         except NotImplementedError as exc:
@@ -1120,6 +1151,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "top_logprobs_max": 20,
                     "streaming": "buffered",
                 },
+                "request_timeouts": {
+                    "timeout_ms": True,
+                    "default_timeout_ms": config.request_timeout_ms,
+                    "preemptive_decode_cancel": False,
+                },
             },
             "sampling": {
                 "modes": ["greedy", "temperature"],
@@ -1155,7 +1191,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "unsupported_fields": [
                 "continuation_id",
                 "session.commit",
-                "timeout_ms",
                 "response_format",
                 "parallel_tool_calls",
             ],
@@ -1248,7 +1283,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_completion_one(expanded_prompts[0], request),
                 media_type="text/event-stream",
             )
-        batch = await generate(expanded_prompts, request)
+        batch = await generate_with_deadline(expanded_prompts, request)
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
@@ -1324,7 +1359,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         n = _request_n(request)
         prompts = tuple(prompt for _ in range(n))
-        batch = await generate(prompts, request)
+        batch = await generate_with_deadline(prompts, request)
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
@@ -1374,7 +1409,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         include_hipengine = _stream_include_hipengine(request)
         try:
             n = _request_n(request)
-            batch = await generate(tuple(prompt for _ in range(n)), request)
+            batch = await generate_with_deadline(tuple(prompt for _ in range(n)), request)
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
@@ -1429,7 +1464,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 message=exc.message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, exc.message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                exc.message,
+                code=exc.code,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+            )
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
             message = f"generation failed: {exc}"
@@ -1467,16 +1510,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
+        deadline_at = _request_deadline_at(config, request)
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
 
         try:
-            async with session_lock:
-                engine = get_llm()
-                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
-                sampling = sampling_params(request, (prompt,), engine)
-                _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
+            async def prepare_stream() -> tuple[Any, SamplingParams]:
+                async with session_lock:
+                    engine = get_llm()
+                    await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                    sampling = sampling_params(request, (prompt,), engine)
+                    _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
+                    return engine, sampling
+
+            engine, sampling = await _await_with_deadline(prepare_stream(), deadline_at)
             yield _chat_stream_role(
                 response_id,
                 created,
@@ -1484,7 +1532,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
             )
-            async for token in generation_batcher.stream((prompt,), sampling):
+            async for token in _iterate_with_deadline(generation_batcher.stream((prompt,), sampling), deadline_at):
                 text = str(token)
                 if not text:
                     continue
@@ -1521,7 +1569,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 message=exc.message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, exc.message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                exc.message,
+                code=exc.code,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+            )
             yield "data: [DONE]\n\n"
             return
         except NotImplementedError as exc:
@@ -2194,6 +2250,58 @@ def _validate_logprob_details(details: Sequence[GenerationOutput], outputs: Sequ
                 code="missing_logprobs",
                 param="logprobs",
             )
+
+
+def _request_deadline_at(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> float | None:
+    timeout_ms = request.timeout_ms if request.timeout_ms is not None else config.request_timeout_ms
+    if timeout_ms is None or float(timeout_ms) <= 0.0:
+        return None
+    return time.perf_counter() + float(timeout_ms) / 1000.0
+
+
+def _deadline_finish_details() -> dict[str, Any]:
+    return FinishDetails(reason="deadline_exceeded", deadline_exceeded=True).to_json_dict()
+
+
+def _deadline_exceeded_error() -> OpenAIHTTPError:
+    return OpenAIHTTPError(
+        408,
+        "request deadline exceeded",
+        error_type="timeout_error",
+        code="deadline_exceeded",
+        param="timeout_ms",
+        finish_details=_deadline_finish_details(),
+    )
+
+
+async def _await_with_deadline(awaitable, deadline_at: float | None):
+    if deadline_at is None:
+        return await awaitable
+    remaining = float(deadline_at) - time.perf_counter()
+    if remaining <= 0.0:
+        close = getattr(awaitable, "close", None)
+        if callable(close):
+            close()
+        raise _deadline_exceeded_error()
+    try:
+        return await asyncio.wait_for(awaitable, timeout=remaining)
+    except TimeoutError as exc:
+        raise _deadline_exceeded_error() from exc
+
+
+async def _iterate_with_deadline(iterator: AsyncIterator[str], deadline_at: float | None) -> AsyncIterator[str]:
+    async_iterator = iterator.__aiter__()
+    try:
+        while True:
+            try:
+                item = await _await_with_deadline(async_iterator.__anext__(), deadline_at)
+            except StopAsyncIteration:
+                break
+            yield item
+    finally:
+        closer = getattr(async_iterator, "aclose", None)
+        if callable(closer):
+            await closer()
 
 
 def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
@@ -2986,22 +3094,37 @@ def _completion_stream_usage(
     )
 
 
-def _completion_stream_error(response_id: str, created: int, model: str, message: str) -> str:
+def _completion_stream_error(
+    response_id: str,
+    created: int,
+    model: str,
+    message: str,
+    *,
+    code: str | None = None,
+    error_type: str = "server_error",
+    finish_details: Mapping[str, Any] | None = None,
+) -> str:
+    choice: dict[str, Any] = {
+        "text": "",
+        "index": 0,
+        "logprobs": None,
+        "finish_reason": "error",
+    }
+    error: dict[str, Any] = {"message": message, "type": error_type}
+    if code is not None:
+        error["code"] = code
+    if finish_details is not None:
+        details = dict(finish_details)
+        choice["finish_details"] = details
+        error["finish_details"] = details
     return _sse(
         {
             "id": response_id,
             "object": "text_completion",
             "created": created,
             "model": model,
-            "choices": [
-                {
-                    "text": "",
-                    "index": 0,
-                    "logprobs": None,
-                    "finish_reason": "error",
-                }
-            ],
-            "error": {"message": message, "type": "server_error"},
+            "choices": [choice],
+            "error": error,
         }
     )
 
@@ -3302,21 +3425,36 @@ def _chat_stream_usage(
     )
 
 
-def _chat_stream_error(response_id: str, created: int, model: str, message: str) -> str:
+def _chat_stream_error(
+    response_id: str,
+    created: int,
+    model: str,
+    message: str,
+    *,
+    code: str | None = None,
+    error_type: str = "server_error",
+    finish_details: Mapping[str, Any] | None = None,
+) -> str:
+    choice: dict[str, Any] = {
+        "index": 0,
+        "delta": {"content": ""},
+        "finish_reason": "error",
+    }
+    error: dict[str, Any] = {"message": message, "type": error_type}
+    if code is not None:
+        error["code"] = code
+    if finish_details is not None:
+        details = dict(finish_details)
+        choice["finish_details"] = details
+        error["finish_details"] = details
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": ""},
-                    "finish_reason": "error",
-                }
-            ],
-            "error": {"message": message, "type": "server_error"},
+            "choices": [choice],
+            "error": error,
         }
     )
 

@@ -50,6 +50,10 @@ Already available or recently added:
   `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
   while responses still use post-trimming for consistency. Native c>N/GPU paths
   still need to consume the same stop metadata before claiming parity.
+- Request deadlines are exposed as per-request `timeout_ms` and server default
+  `--request-timeout-ms` / `HIPENGINE_REQUEST_TIMEOUT_MS`. Buffered requests
+  return HTTP 408 with structured deadline finish details; live streams emit an
+  SSE error chunk with the same detail and then `[DONE]`.
 - OpenAI-style chat `tools` / `tool_choice` prompt injection and output parsing
   for Qwen-style `<tool_call>{...}</tool_call>` blocks.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
@@ -66,9 +70,11 @@ Known baseline limitations:
 - Server-side reasoning/tool parsing lives above generation; the generation loop
   does not yet expose canonical token-level phase state for reasoning, answer,
   tool-call, or structured-output spans.
-- Public finish metadata is still coarse (`stop`, `length`, `tool_calls`) and
-  does not explain budget pressure, forced tokens, cancellation, cache behavior,
-  or per-phase token counts.
+- Public finish metadata still lacks most backend/runtime reasons: real token
+  stop, length, forced-token, cancellation, cache behavior, sampler fallback,
+  budget pressure, and per-phase token counts still need generation-loop
+  signals. Server request deadlines are the only runtime error finish currently
+  emitted with structured metadata.
 - Streaming logprobs are buffered detailed responses, not live per-token engine
   streams. Completion `echo+logprobs` does not compute real prompt-token
   logprobs yet; the echoed prompt is represented as a prefix entry with `null`
@@ -195,8 +201,9 @@ Current code reality:
   `stop`, `length` maps to public `length`, and parsed tool calls report
   `tool_calls`.
 - Normal backends still need to emit real EOS, token-stop, length, cancellation,
-  deadline, forced-close, budget, cache, and sampler metadata; absent backend
-  detail, the server falls back to `{"reason": finish_reason}`.
+  forced-close, budget, cache, and sampler metadata; absent backend detail, the
+  server falls back to `{"reason": finish_reason}`. Server-side deadline errors
+  already emit `{"reason": "deadline_exceeded", "deadline_exceeded": true}`.
 
 ### Logit processor stack
 
@@ -265,6 +272,16 @@ Current code reality:
   candidate tokens to target `top1`/accept-summary output; it does not currently
   apply `logit_bias`, penalties, dynamic masks, forced tokens, grammar
   constraints, or stochastic RNG state to target verification.
+- The public `LLM.generate()` / OpenAI server path does not expose an MTP
+  speculative route today. Existing MTP code is available through speculative
+  primitives, resident-runner verify helpers, and benchmark/profiling scripts.
+  When that route is promoted into serving, it must gate on the same
+  `plan_sampler()` decision used by PARO/GGUF AR generation.
+- Current `logit_bias` is compatible with normal sampling: it is normalized in
+  `SamplingParams` / `GenerationRequest`, participates in the sampler plan,
+  applies on host logits, flows through scheduler per-row sampler blocks, and is
+  covered by standalone native sampler tests. It is not compatible with MTP
+  verification yet because verify top-1 is raw argmax.
 
 Default rule:
 
@@ -768,11 +785,43 @@ Implement:
 - cleanup that releases active rows/session reservations on cancel/deadline;
 - finish details with `cancelled=true` or `deadline_exceeded=true`.
 
+Current code reality:
+
+- `CompletionRequest` and `ChatCompletionRequest` accept `timeout_ms`.
+- `ServerConfig.request_timeout_ms`, `hipengine serve --request-timeout-ms`,
+  and `HIPENGINE_REQUEST_TIMEOUT_MS` provide a server-wide default. A request
+  field overrides the server default.
+- Server code lowers the relative timeout to a `time.perf_counter()` deadline
+  and applies it to preparation, queued/buffered generation, token-stream
+  iteration, and buffered `n>1` streaming.
+- Buffered deadline expiry returns HTTP 408 with OpenAI-style
+  `error.type="timeout_error"`, `error.code="deadline_exceeded"`, and
+  `error.finish_details.reason="deadline_exceeded"`.
+- Live SSE streams cannot change the already-sent HTTP status; timeout expiry
+  emits a final SSE error payload whose choice and error object both include
+  deadline finish details, then emits `data: [DONE]`.
+- `_GenerationBatcher` marks abandoned stream items cancelled and skips queued
+  futures that were cancelled before dispatch. Already-running blocking
+  generator calls are not preempted inside the backend; the awaiting server task
+  fails fast and later requests can reuse the server once the worker unwinds.
+
+Remaining implementation:
+
+- client-disconnect cancellation needs request-scope cancellation tokens rather
+  than only stream-generator close/cancel behavior;
+- resident decode / GPU loops still need explicit cooperative deadline checks
+  and row/session cleanup hooks for already-running kernels;
+- backend `GenerationOutput.finish_details` still needs native
+  `cancelled=true` / `deadline_exceeded=true` emission when lower layers stop a
+  row themselves.
+
 Exit gates:
 
-- cancel/deadline tests leave no active row/session leak;
-- streaming cancellation emits a final error/done event instead of hanging;
-- follow-up requests can reuse the server after cancellation.
+- deadline tests cover HTTP 408 errors, streaming error+done, and follow-up
+  server reuse;
+- cancellation tests leave no active row/session leak once request-scope
+  cancellation tokens exist;
+- streaming cancellation emits a final error/done event instead of hanging.
 
 ### P1 — Controlled decoding and thinking budgets
 
@@ -1201,11 +1250,12 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
-  parameters, cache/session settings, loaded-model count, and unsupported fields.
-- Continuations, `session.commit`, deadline/cancellation, multi-model routing,
-  and strict tool decoding are advertised as unsupported until their runtime
-  paths exist. Token diagnostics are advertised from current tokenizer/counting
-  callables.
+  parameters, request-timeout support, cache/session settings, loaded-model
+  count, and unsupported fields.
+- Continuations, `session.commit`, multi-model routing, and strict tool decoding
+  are advertised as unsupported until their runtime paths exist. Request
+  timeouts are advertised as supported with `preemptive_decode_cancel=false`;
+  token diagnostics are advertised from current tokenizer/counting callables.
 
 Exit gates:
 

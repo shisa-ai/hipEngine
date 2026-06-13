@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -89,6 +90,34 @@ class DetailedGenerateFakeLLM(FakeLLM):
         return self.generate_detailed(prompts, sampling_params)
 
 
+class DelayedFakeLLM(FakeLLM):
+    def __init__(
+        self,
+        *args,
+        generate_delay_s: float = 0.0,
+        stream_delay_s: float = 0.0,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.generate_delay_s = float(generate_delay_s)
+        self.stream_delay_s = float(stream_delay_s)
+        self.completed_generations = 0
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        if self.generate_delay_s > 0.0:
+            time.sleep(self.generate_delay_s)
+        try:
+            return super().generate_detailed(prompts, sampling_params)
+        finally:
+            self.completed_generations += 1
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        for chunk in super().stream(prompt, sampling_params):
+            if self.stream_delay_s > 0.0:
+                time.sleep(self.stream_delay_s)
+            yield chunk
+
+
 def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
     bytes_per_token = 8192
     rounded_tokens = ((int(max_sequence_length) + 255) // 256) * 256
@@ -143,6 +172,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth() -> None:
             api_key="secret",
             eager_load=False,
             max_context_tokens=2048,
+            request_timeout_ms=250.0,
         ),
         llm=fake,
     )
@@ -179,13 +209,18 @@ def test_capabilities_endpoint_reports_manifest_and_auth() -> None:
         "fit_context": True,
     }
     assert body["features"]["logprobs"]["streaming"] == "buffered"
+    assert body["features"]["request_timeouts"] == {
+        "timeout_ms": True,
+        "default_timeout_ms": 250.0,
+        "preemptive_decode_cancel": False,
+    }
     assert body["sessions"] == {
         "resident_context": True,
         "commit_policy": False,
         "continuations": False,
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
-    assert "timeout_ms" in body["unsupported_fields"]
+    assert "timeout_ms" not in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -630,6 +665,62 @@ def test_completions_endpoint_plumbs_sampling_parameters() -> None:
     assert sampling.logit_bias == ((12, -1.5),)
     assert sampling.seed == 123
 
+
+def test_completion_timeout_returns_deadline_error_and_server_reuses() -> None:
+    fake = DelayedFakeLLM(outputs=["late", "ok"], generate_delay_s=0.03)
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    timed_out = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "slow", "max_tokens": 1, "timeout_ms": 1},
+    )
+
+    assert timed_out.status_code == 408
+    error = timed_out.json()["error"]
+    assert error["type"] == "timeout_error"
+    assert error["code"] == "deadline_exceeded"
+    assert error["param"] == "timeout_ms"
+    assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+
+    deadline = time.perf_counter() + 1.0
+    while fake.completed_generations < 1 and time.perf_counter() < deadline:
+        time.sleep(0.001)
+    assert fake.completed_generations == 1
+    fake.generate_delay_s = 0.0
+    fake.outputs = ["ok"]
+    reused = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "after", "max_tokens": 1},
+    )
+
+    assert reused.status_code == 200
+    assert reused.json()["choices"][0]["text"] == "ok"
+
+
+def test_streaming_completion_timeout_emits_error_and_done() -> None:
+    fake = DelayedFakeLLM(outputs=["ok"], stream_chunks=["late"], stream_delay_s=0.03)
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "slow", "max_tokens": 1, "stream": True, "timeout_ms": 1},
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    payloads = _sse_payloads(response.text)
+    assert len(payloads) == 1
+    payload = payloads[0]
+    assert payload["choices"][0]["finish_reason"] == "error"
+    assert payload["choices"][0]["finish_details"] == {
+        "reason": "deadline_exceeded",
+        "deadline_exceeded": True,
+    }
+    assert payload["error"]["type"] == "timeout_error"
+    assert payload["error"]["code"] == "deadline_exceeded"
+    assert payload["error"]["finish_details"] == payload["choices"][0]["finish_details"]
 
 
 def test_completions_endpoint_returns_openai_logprobs() -> None:
@@ -1169,22 +1260,26 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)
     monkeypatch.delenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", raising=False)
+    monkeypatch.delenv("HIPENGINE_REQUEST_TIMEOUT_MS", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
     assert default_args.chat_default_max_tokens == 4096
+    assert default_args.request_timeout_ms is None
 
     monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
     monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", "radix")
     monkeypatch.setenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", "3.5")
     monkeypatch.setenv("HIPENGINE_DEBUG", "1")
     monkeypatch.setenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", "auto")
+    monkeypatch.setenv("HIPENGINE_REQUEST_TIMEOUT_MS", "250.5")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
     assert env_args.generation_batch_window_ms == 3.5
     assert env_args.debug is True
     assert env_args.chat_default_max_tokens is None
+    assert env_args.request_timeout_ms == 250.5
 
     cli_args = build_parser().parse_args(
         [
@@ -1196,6 +1291,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "off",
             "--generation-batch-window-ms",
             "0",
+            "--request-timeout-ms",
+            "123.5",
             "--chat-default-max-tokens",
             "123",
             "--no-debug",
@@ -1204,6 +1301,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert cli_args.metrics == "off"
     assert cli_args.prefix_cache == "off"
     assert cli_args.generation_batch_window_ms == 0.0
+    assert cli_args.request_timeout_ms == 123.5
     assert cli_args.chat_default_max_tokens == 123
     assert cli_args.debug is False
 

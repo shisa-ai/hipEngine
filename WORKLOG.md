@@ -87152,3 +87152,39 @@ Validation:
 - `python3 -m py_compile hipengine/llm.py hipengine/server/api.py tests/test_server_api.py tests/test_llm_generate.py`.
 - `python3 -m pytest tests/test_llm_generate.py tests/test_server_api.py -q` -> `54 passed`.
 - `git diff --check -- hipengine/llm.py hipengine/server/api.py tests/test_server_api.py tests/test_llm_generate.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC request deadlines and sampler compatibility
+
+Implemented the P0.5 server deadline slice.  Completion/chat requests now accept
+`timeout_ms`, and `ServerConfig.request_timeout_ms` plus
+`hipengine serve --request-timeout-ms` / `HIPENGINE_REQUEST_TIMEOUT_MS` provide a
+server default.  The server lowers deadlines to monotonic timestamps for
+preparation, buffered generation, live stream iteration, and buffered streaming
+paths.  Buffered deadline expiry returns HTTP 408 with
+`deadline_exceeded` finish details; live SSE streams emit a structured error
+chunk with the same finish details followed by `[DONE]`.
+
+Updated `/v1/hipengine/capabilities` to advertise request timeout support while
+marking `preemptive_decode_cancel=false`, because already-running backend calls
+and GPU kernels are not yet cooperatively preempted.  Added tests for HTTP
+deadline errors, streaming error+done, follow-up server reuse, CLI/env defaults,
+and manifest metadata.
+
+Audited the sampler/MTP compatibility question against current code:
+`logit_bias` is compatible with normal AR sampling paths (`SamplingParams` /
+`GenerationRequest` normalization, sampler planning, host-logits processors,
+scheduler per-row sampler params, and standalone native sampler tests).  It is
+not compatible with MTP target verification yet: current MTP verifier selection
+uses raw target top-1/accept-summary output and does not apply `logit_bias`,
+penalties, dynamic masks, forced tokens, grammar constraints, or stochastic RNG
+state.  `docs/AGENTIC.md` now records that speculative/MTP serving must gate to
+`GREEDY_FAST` only until target verification uses the same processed selection
+policy.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> first run exposed a fake-output assertion bug; fixed test setup.
+- `python3 -m pytest tests/test_server_api.py -q` -> `48 passed`.
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py hipengine/generation/sampling.py hipengine/dispatch/sampling.py tests/test_server_api.py tests/test_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `17 passed`.
+- `git diff --check -- hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.

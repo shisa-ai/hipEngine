@@ -58,6 +58,13 @@ def _env_nonnegative_float(name: str, default: float) -> float:
     return _nonnegative_float(raw)
 
 
+def _env_optional_nonnegative_float(name: str) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return None
+    return _nonnegative_float(raw)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the hipEngine OpenAI-compatible server")
     parser.add_argument("--model", required=True, help="Path or model id served by hipEngine")
@@ -134,6 +141,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Milliseconds to opt into cold-path coalescing for compatible requests (default: 0 = off)",
     )
     parser.add_argument(
+        "--request-timeout-ms",
+        type=_nonnegative_float,
+        default=_env_optional_nonnegative_float("HIPENGINE_REQUEST_TIMEOUT_MS"),
+        help="Default request deadline in milliseconds; omitted disables the default (env HIPENGINE_REQUEST_TIMEOUT_MS)",
+    )
+    parser.add_argument(
         "--metrics",
         choices=("off", "prometheus"),
         default=os.environ.get("HIPENGINE_METRICS", "off"),
@@ -174,6 +187,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
         generation_batch_window_ms=args.generation_batch_window_ms,
+        request_timeout_ms=args.request_timeout_ms,
         metrics=args.metrics,
         prefix_cache=args.prefix_cache,
         debug=args.debug,

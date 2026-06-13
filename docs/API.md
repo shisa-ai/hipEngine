@@ -62,6 +62,11 @@ advertised max context. Chat requests that omit `max_tokens` use
 context. Pass `--chat-default-max-tokens auto` to restore the previous behavior
 of using the full remaining context (`max_context_tokens - prompt_tokens - 1`).
 
+Per-request deadlines are opt-in via request `timeout_ms`. Set
+`--request-timeout-ms` or `HIPENGINE_REQUEST_TIMEOUT_MS` to apply a default
+deadline to requests that omit the field. A request-level `timeout_ms` overrides
+the server default.
+
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
 
@@ -76,7 +81,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated health/model probe. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
-| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, cache/session status, and unsupported fields. |
+| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, request-timeout support, cache/session status, and unsupported fields. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, and thinking controls. |
@@ -166,6 +171,31 @@ ordinary delta chunks are unchanged.
 When a backend does not yet provide structured finish metadata, the server emits
 the conservative fallback `{"reason": finish_reason}`.
 
+### Request deadlines
+
+`POST /v1/completions` and `POST /v1/chat/completions` accept `timeout_ms` as a
+positive relative deadline in milliseconds. Buffered requests that exceed the
+deadline return HTTP 408 with:
+
+```json
+{
+  "error": {
+    "type": "timeout_error",
+    "code": "deadline_exceeded",
+    "param": "timeout_ms",
+    "finish_details": {
+      "reason": "deadline_exceeded",
+      "deadline_exceeded": true
+    }
+  }
+}
+```
+
+Streaming requests send HTTP `200 OK` when the SSE stream starts. If a deadline
+expires after that, the stream emits a final error SSE payload with
+`finish_reason: "error"` and the same `finish_details`, then emits
+`data: [DONE]`.
+
 ### Tool calling
 
 `POST /v1/chat/completions` accepts OpenAI-style `tools` and `tool_choice` for
@@ -222,6 +252,9 @@ shared or sensitive deployments.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.
+- Request deadlines are enforced at server await/iteration boundaries. They fail
+  the HTTP/SSE request promptly, but already-running backend calls or GPU kernels
+  are not preempted until those calls return.
 - Request execution is serialized with an in-process lock. Continuous batching,
   concurrent decode, and scheduling fairness are later runtime work.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
