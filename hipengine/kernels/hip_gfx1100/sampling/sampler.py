@@ -11,6 +11,7 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("sampler.hip")
 _OUTPUT_NAME = "sampler.so"
+_SYMBOL_TEMPERATURE = "hipengine_sampler_temperature_f32_rows_i32"
 _SYMBOL_TOPK_TEMPERATURE = "hipengine_sampler_topk_temperature_f32_rows_i32"
 _ALLOWED_THREADS = {64, 128}
 _MAX_TOPK = 64
@@ -52,6 +53,65 @@ def build_sampler(
         load=load,
         require_cached=require_cached,
     )
+
+
+def sample_temperature_f32_rows_i32(
+    logits_f32_ptr: int,
+    temperatures_f32_ptr: int,
+    row_seeds_u64_ptr: int,
+    out_indices_i32_ptr: int,
+    out_logprobs_f32_ptr: int | None,
+    rows: int,
+    vocab_size: int,
+    *,
+    step_index: int = 0,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Sample one token per row from the full-vocab temperature distribution.
+
+    This is the native sampler shape for public ``top_k=0`` when no top-p/min-p
+    filter is active. The cumulative draw scans finite token ids in ascending id
+    order; exact host RNG/order equality is not part of this standalone kernel
+    contract.
+    """
+
+    _check_rows_vocab(rows, vocab_size)
+    _check_threads(threads)
+    if step_index < 0:
+        raise ValueError("step_index must be non-negative")
+    library = library or build_sampler(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TEMPERATURE)
+    fn.argtypes = [
+        ctypes.c_void_p,  # logits f32
+        ctypes.c_void_p,  # temperatures f32
+        ctypes.c_void_p,  # row seeds u64
+        ctypes.c_void_p,  # out selected indices i32
+        ctypes.c_void_p,  # out selected logprobs f32 (nullable)
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # vocab size
+        ctypes.c_uint64,  # step index
+        ctypes.c_int64,   # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(temperatures_f32_ptr),
+        ctypes.c_void_p(row_seeds_u64_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_uint64(step_index),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def sample_topk_temperature_f32_rows_i32(
@@ -130,6 +190,11 @@ def sample_topk_temperature_f32_rows_i32(
 
 
 def register_sampler_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "sampler", "f32", "temperature_rows_i32"),
+        sample_temperature_f32_rows_i32,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "sampler", "f32", "topk_temperature_rows_i32"),
         sample_topk_temperature_f32_rows_i32,

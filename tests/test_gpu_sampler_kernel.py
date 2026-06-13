@@ -9,6 +9,7 @@ import pytest
 from hipengine.kernels.hip_gfx1100.sampling import (
     plan_sampler_build,
     register_sampler_kernels,
+    sample_temperature_f32_rows_i32,
     sample_topk_temperature_f32_rows_i32,
 )
 from hipengine.kernels.registry import resolve
@@ -50,12 +51,24 @@ def test_sampler_registers_for_gfx1151_alias() -> None:
     register_gfx1151_kernels(replace=True)
 
     assert (
+        resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="temperature_rows_i32")
+        is sample_temperature_f32_rows_i32
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="topk_temperature_rows_i32")
         is sample_topk_temperature_f32_rows_i32
     )
 
 
 def test_sampler_wrapper_validates_shapes_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="rows"):
+        sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=0, vocab_size=16)
+    with pytest.raises(ValueError, match="vocab_size"):
+        sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=0)
+    with pytest.raises(ValueError, match="threads"):
+        sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=16, threads=256)
+    with pytest.raises(ValueError, match="step_index"):
+        sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=16, step_index=-1)
     with pytest.raises(ValueError, match="rows"):
         sample_topk_temperature_f32_rows_i32(0, 0, 0, 0, None, None, None, rows=0, vocab_size=16, top_k=4)
     with pytest.raises(ValueError, match="vocab_size"):
@@ -130,6 +143,147 @@ def _cpu_reference(logits: np.ndarray, temperatures: np.ndarray, seeds: np.ndarr
         selected_logprobs[row] = logprobs[selected_pos]
 
     return selected, selected_logprobs, top_indices, top_logprobs
+
+
+def _cpu_full_vocab_reference(logits: np.ndarray, temperatures: np.ndarray, seeds: np.ndarray, *, step_index: int):
+    rows, vocab = logits.shape
+    selected = np.full((rows,), -1, dtype=np.int32)
+    selected_logprobs = np.full((rows,), _NEG_INF, dtype=np.float32)
+
+    for row in range(rows):
+        row_logits = logits[row]
+        finite_ids = np.flatnonzero(np.isfinite(row_logits)).astype(np.int64, copy=False)
+        if finite_ids.size == 0:
+            continue
+        finite_values = row_logits[finite_ids]
+        order = np.lexsort((finite_ids, -finite_values))
+        argmax_id = np.int32(finite_ids[order[0]])
+        max_value = np.float32(row_logits[int(argmax_id)])
+        temp = np.float32(temperatures[row])
+        if not np.isfinite(temp) or not (temp > np.float32(0.0)):
+            selected[row] = argmax_id
+            selected_logprobs[row] = np.float32(0.0)
+            continue
+
+        weights_by_id = np.zeros((vocab,), dtype=np.float32)
+        weight_sum = np.float32(0.0)
+        max_scaled = np.float32(max_value / temp)
+        for token_id in finite_ids:
+            value = np.float32(row_logits[int(token_id)] / temp - max_scaled)
+            weight = np.float32(np.exp(value))
+            weights_by_id[int(token_id)] = weight
+            weight_sum = np.float32(weight_sum + weight)
+        log_denom = np.float32(np.log(weight_sum) + max_scaled)
+        threshold = np.float32(_uniform01(int(seeds[row]), step_index, row) * weight_sum)
+        cumulative = np.float32(0.0)
+        selected_id = argmax_id
+        for token_id in range(vocab):
+            weight = weights_by_id[token_id]
+            if weight == np.float32(0.0):
+                continue
+            cumulative = np.float32(cumulative + weight)
+            if threshold <= cumulative:
+                selected_id = np.int32(token_id)
+                break
+        selected[row] = selected_id
+        selected_logprobs[row] = np.float32(row_logits[int(selected_id)] / temp - log_denom)
+
+    return selected, selected_logprobs
+
+
+@pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
+def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> None:
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.backends import hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.sampling import build_sampler
+
+    rows = 3
+    vocab_size = 257
+    step_index = 11
+    rng = np.random.default_rng(0x7109A11)
+    logits = (rng.standard_normal((rows, vocab_size), dtype=np.float32) * np.float32(0.9)).astype(np.float32)
+    logits[0, 3] = np.float32(8.0)
+    logits[0, 7] = np.float32(8.0)  # Argmax tie: lower id wins for temp<=0 fallback only.
+    logits[1, 20] = np.float32(5.0)
+    logits[1, 21] = np.float32(4.75)
+    logits[2, 4] = np.float32(np.nan)
+    logits[2, 9] = np.float32(-np.inf)
+    temperatures = np.array([0.65, 1.2, 2.0], dtype=np.float32)
+    seeds = np.array([0xAAAA_1111, 0xBBBB_2222, 0xCCCC_3333_4444], dtype=np.uint64)
+    expected = _cpu_full_vocab_reference(logits, temperatures, seeds, step_index=step_index)
+
+    compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
+    with hip_target_arch_environment("gfx1100"):
+        lib = build_sampler(load=True, compiler_version=compiler_version)
+
+    bufs = []
+
+    def upload(array: np.ndarray):
+        arr = np.ascontiguousarray(array)
+        buf = malloc(max(arr.nbytes, 4))
+        bufs.append(buf)
+        copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        return buf
+
+    def alloc(nbytes: int):
+        buf = malloc(max(nbytes, 4))
+        bufs.append(buf)
+        return buf
+
+    def download(buf, shape, dtype):
+        out = np.empty(shape, dtype=dtype)
+        copy_device_to_host(host_array_ptr(out), buf, out.nbytes)
+        return out
+
+    try:
+        logits_d = upload(logits)
+        temperatures_d = upload(temperatures)
+        seeds_d = upload(seeds)
+        selected_d = alloc(rows * np.dtype(np.int32).itemsize)
+        selected_logprobs_d = alloc(rows * np.dtype(np.float32).itemsize)
+
+        sample_temperature_f32_rows_i32(
+            logits_d.ptr,
+            temperatures_d.ptr,
+            seeds_d.ptr,
+            selected_d.ptr,
+            selected_logprobs_d.ptr,
+            rows,
+            vocab_size,
+            step_index=step_index,
+            threads=128,
+            library=lib,
+        )
+        first = (
+            download(selected_d, (rows,), np.int32),
+            download(selected_logprobs_d, (rows,), np.float32),
+        )
+
+        sample_temperature_f32_rows_i32(
+            logits_d.ptr,
+            temperatures_d.ptr,
+            seeds_d.ptr,
+            selected_d.ptr,
+            selected_logprobs_d.ptr,
+            rows,
+            vocab_size,
+            step_index=step_index,
+            threads=128,
+            library=lib,
+        )
+        second = (
+            download(selected_d, (rows,), np.int32),
+            download(selected_logprobs_d, (rows,), np.float32),
+        )
+
+        assert np.array_equal(first[0], expected[0])
+        np.testing.assert_allclose(first[1], expected[1], rtol=0, atol=2e-5)
+        assert np.array_equal(first[0], second[0])
+        np.testing.assert_allclose(first[1], second[1], rtol=0, atol=0)
+    finally:
+        for buf in reversed(bufs):
+            free(buf)
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")

@@ -86913,3 +86913,23 @@ Validation on GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`):
 - `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `3 passed`.
 - `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed`.
 - Post-doc targeted bundle: `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/kernels/hip_gfx1100/sampling/__init__.py hipengine/kernels/hip_gfx1151/__init__.py tests/test_gpu_sampler_kernel.py && python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q && HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed` + `4 passed`.
+
+## 2026-06-14 - S6 standalone GPU full-vocab temperature sampler
+
+Extended the standalone gfx1100 native sampler with
+`temperature_rows_i32`, the full-vocab `top_k=0` companion to the bounded
+`topk_temperature_rows_i32` kernel.  It scans finite FP32 vocab logits, uses a
+parallel max/sum reduction, samples from a SplitMix64-derived row/step RNG stream
+in ascending token-id cumulative order, and writes selected token id/logprob.
+The path remains standalone/default-off and is not routed into PARO/GGUF
+generation.  Remaining native sampler work: GPU logits processors, generation
+routing, and exact GPU top-p.
+
+Updated `docs/SAMPLING.md` and `docs/KERNELS.md` to mark standalone S6 coverage
+for both `top_k=0` and bounded `1 <= top_k <= 64` temperature sampling.
+
+Validation on GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`):
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py tests/test_gpu_sampler_kernel.py`.
+- `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `3 passed`.
+- `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `5 passed`.
+- Post-doc targeted bundle: `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/kernels/hip_gfx1100/sampling/__init__.py hipengine/kernels/hip_gfx1151/__init__.py tests/test_gpu_sampler_kernel.py && python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q && HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed` + `5 passed`.

@@ -205,11 +205,160 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
   }
 }
 
+__global__ void sampler_temperature_rows_i32_kernel(
+    const float* __restrict__ logits,
+    const float* __restrict__ temperatures,
+    const uint64_t* __restrict__ row_seeds,
+    int32_t* __restrict__ out_indices,
+    float* __restrict__ out_logprobs,
+    int64_t rows,
+    int64_t vocab_size,
+    uint64_t step_index) {
+  extern __shared__ unsigned char shared_raw[];
+  float* shared_values = reinterpret_cast<float*>(shared_raw);
+  int32_t* shared_indices = reinterpret_cast<int32_t*>(shared_values + blockDim.x);
+
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t logits_base = row * vocab_size;
+
+  float local_max = kNegInf;
+  int32_t local_index = INT32_MAX;
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    const float value = logits[logits_base + i];
+    if (isfinite(value) && better_pair_i32(value, static_cast<int32_t>(i), local_max, local_index)) {
+      local_max = value;
+      local_index = static_cast<int32_t>(i);
+    }
+  }
+  shared_values[tid] = local_max;
+  shared_indices[tid] = local_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride && better_pair_i32(
+            shared_values[tid + stride], shared_indices[tid + stride], shared_values[tid], shared_indices[tid])) {
+      shared_values[tid] = shared_values[tid + stride];
+      shared_indices[tid] = shared_indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float row_max = shared_values[0];
+  const int32_t row_argmax = shared_indices[0];
+  if (row_argmax == INT32_MAX) {
+    if (tid == 0) {
+      out_indices[row] = -1;
+      if (out_logprobs != nullptr) {
+        out_logprobs[row] = kNegInf;
+      }
+    }
+    return;
+  }
+
+  const float temperature = temperatures[row];
+  if (!(temperature > 0.0f) || !isfinite(temperature)) {
+    if (tid == 0) {
+      out_indices[row] = row_argmax;
+      if (out_logprobs != nullptr) {
+        out_logprobs[row] = 0.0f;
+      }
+    }
+    return;
+  }
+
+  float local_sum = 0.0f;
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    const float value = logits[logits_base + i];
+    if (isfinite(value)) {
+      local_sum += expf(value / temperature - row_max / temperature);
+    }
+  }
+  shared_values[tid] = local_sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      shared_values[tid] += shared_values[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float weight_sum = shared_values[0];
+  if (tid != 0) {
+    return;
+  }
+  if (!(weight_sum > 0.0f) || !isfinite(weight_sum)) {
+    out_indices[row] = row_argmax;
+    if (out_logprobs != nullptr) {
+      out_logprobs[row] = 0.0f;
+    }
+    return;
+  }
+
+  const float max_scaled = row_max / temperature;
+  const float threshold = sampler_uniform01(row_seeds[row], step_index, row) * weight_sum;
+  float cumulative = 0.0f;
+  int32_t selected_index = row_argmax;
+  float selected_logit = row_max;
+  for (int64_t i = 0; i < vocab_size; ++i) {
+    const float value = logits[logits_base + i];
+    if (!isfinite(value)) {
+      continue;
+    }
+    cumulative += expf(value / temperature - max_scaled);
+    if (threshold <= cumulative) {
+      selected_index = static_cast<int32_t>(i);
+      selected_logit = value;
+      break;
+    }
+  }
+  out_indices[row] = selected_index;
+  if (out_logprobs != nullptr) {
+    out_logprobs[row] = selected_logit / temperature - (logf(weight_sum) + max_scaled);
+  }
+}
+
 bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128;
 }
 
 }  // namespace
+
+extern "C" int hipengine_sampler_temperature_f32_rows_i32(
+    const float* logits,
+    const float* temperatures,
+    const uint64_t* row_seeds,
+    int32_t* out_indices,
+    float* out_logprobs,
+    int64_t rows,
+    int64_t vocab_size,
+    uint64_t step_index,
+    int64_t threads,
+    hipStream_t stream) {
+  if (logits == nullptr || temperatures == nullptr || row_seeds == nullptr || out_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const size_t smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      sampler_temperature_rows_i32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(t),
+      smem,
+      stream,
+      logits,
+      temperatures,
+      row_seeds,
+      out_indices,
+      out_logprobs,
+      rows,
+      vocab_size,
+      step_index);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_sampler_topk_temperature_f32_rows_i32(
     const float* logits,
