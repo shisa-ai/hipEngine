@@ -1024,14 +1024,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         choices = []
         final_texts: list[str] = []
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
-            text, finish_reason = _apply_stop(output, request.stop)
-            if request.echo:
-                text = prompt + text
+            generated_text, finish_reason = _apply_stop(output, request.stop)
+            text = prompt + generated_text if request.echo else generated_text
             final_texts.append(text)
             choice = {
                 "text": text,
                 "index": index,
-                "logprobs": _completion_logprobs(detail, text) if request.logprobs is not None else None,
+                "logprobs": (
+                    _completion_logprobs(detail, generated_text, echo_text=prompt if request.echo else "")
+                    if request.logprobs is not None
+                    else None
+                ),
                 "finish_reason": finish_reason,
             }
             if n > 1:
@@ -1889,13 +1892,6 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
                 code="unsupported_parameter",
                 param="logprobs",
             )
-        if isinstance(request, CompletionRequest) and request.echo:
-            raise OpenAIHTTPError(
-                400,
-                "echo with logprobs is not currently supported",
-                code="unsupported_parameter",
-                param="echo",
-            )
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
@@ -2124,17 +2120,29 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
     )
 
 
-def _completion_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
-    tokens = _trim_token_logprobs(detail.token_logprobs, text)
+def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str = "") -> dict[str, Any]:
+    tokens = list(_trim_token_logprobs(detail.token_logprobs, text))
+    response_tokens: list[str] = []
+    token_logprobs: list[float | None] = []
+    top_logprobs: list[dict[str, float] | None] = []
     offsets: list[int] = []
     cursor = 0
+    if echo_text:
+        response_tokens.append(echo_text)
+        token_logprobs.append(None)
+        top_logprobs.append(None)
+        offsets.append(0)
+        cursor = len(echo_text)
     for token in tokens:
+        response_tokens.append(token.token_text)
+        token_logprobs.append(token.logprob)
+        top_logprobs.append(_completion_top_logprobs(token))
         offsets.append(cursor)
         cursor += len(token.token_text)
     return {
-        "tokens": [token.token_text for token in tokens],
-        "token_logprobs": [token.logprob for token in tokens],
-        "top_logprobs": [_completion_top_logprobs(token) for token in tokens],
+        "tokens": response_tokens,
+        "token_logprobs": token_logprobs,
+        "top_logprobs": top_logprobs,
         "text_offset": offsets,
     }
 

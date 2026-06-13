@@ -86763,3 +86763,17 @@ Validation:
 - Re-read `docs/AGENTIC.md` end-to-end.
 - `python3 - <<'PY'` marker/coverage check over `docs/AGENTIC.md` -> `1066 lines` and required feature areas present.
 - `git diff --check -- docs/AGENTIC.md WORKLOG.md`.
+
+## 2026-06-14 - Completion echo+logprobs follow-up
+
+Extended the S8 non-streaming logprobs path to allow OpenAI completion
+`echo=true` with `logprobs=N`.  The response text includes the prompt prefix;
+`choices[].logprobs` includes that prompt as a prefix entry with `null` logprob
+and shifts generated-token offsets after the prefix.  Streaming logprobs remain
+explicitly unsupported.  Updated `docs/API.md` and `docs/SAMPLING.md` to remove
+`echo+logprobs` from the unsupported list.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_returns_openai_logprobs tests/test_server_api.py::test_completions_endpoint_echo_logprobs_shift_generated_offsets tests/test_server_api.py::test_chat_completion_returns_openai_logprobs tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> passed (`76 passed`).

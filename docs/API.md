@@ -118,7 +118,9 @@ Non-streaming completions accept OpenAI-style `logprobs: N` and return
 `top_logprobs: N` and returns `choices[].logprobs.content` entries. Requests for
 logprobs are routed through the host-logits metadata path so the selected token
 logprob/top candidates are based on the same processed logits used for sampling.
-Streaming logprobs and completion `echo+logprobs` are rejected explicitly for now.
+For completion `echo+logprobs`, the echoed prompt is represented as a prefix
+entry with `null` logprob and generated-token offsets are shifted accordingly.
+Streaming logprobs are rejected explicitly for now.
 
 ### Streaming usage chunks
 
@@ -188,8 +190,7 @@ shared or sensitive deployments.
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
   requests stay on each engine's graph/argmax fast path.
-- Streaming `logprobs`, completion `echo+logprobs`, and non-text chat content
-  parts are rejected.
+- Streaming `logprobs` and non-text chat content parts are rejected.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
   available, one-token stops lower to runtime `stop_token_ids` and multi-token
   stops lower to suffix-matched `stop_token_sequences` for early host-path

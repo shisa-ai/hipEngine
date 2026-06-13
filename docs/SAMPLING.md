@@ -49,7 +49,7 @@ PARO and GGUF while native GPU sampling remains incomplete:
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
 is fixed for the host-logits path. Remaining implementation work is native c>N
-stochastic execution, GPU sampler kernels, exact GPU top-p, and streaming/echo
+stochastic execution, GPU sampler kernels, exact GPU top-p, and streaming
 logprobs parity.
 
 ## Hardware lane for this work
@@ -128,7 +128,7 @@ models should either populate these fields or reject unsupported aliases.
 | `seed` / `row_seeds` | Public/server/runtime | Stable row RNG seed; `n > 1` rows diverge deterministically. | Low/Medium |
 | `stop` strings | Server post-trim + token lowering | Keep post-trim; lower one-token stops to `stop_token_ids` and multi-token stops to suffix-matched `stop_token_sequences`. | Medium |
 | `stop_token_ids` / `stop_token_sequences` | Public/runtime + scheduler state | Token stops finish PARO/GGUF host-sampled rows; native c>N execution still needs to consume scheduler stop metadata. | Medium |
-| `logprobs` / `top_logprobs` | Public/server/runtime for non-streaming host-logits paths | Return selected logprob and optional top candidates; streaming logprobs and completion `echo+logprobs` are rejected until token metadata can be carried chunk-by-chunk / through prompt echo. | High |
+| `logprobs` / `top_logprobs` | Public/server/runtime for non-streaming host-logits paths | Return selected logprob and optional top candidates; completion `echo+logprobs` shifts generated-token offsets after a null-logprob prompt prefix. Streaming logprobs are rejected until token metadata can be carried chunk-by-chunk. | High |
 
 Compatibility rule: if `temperature <= 0` and the request has no active logit
 processors (`logit_bias`, penalties, bad-token constraints, etc.), `top_p` and
@@ -415,7 +415,7 @@ fully vectorized at first:
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Partial:** canonical sampler metadata and scheduler-owned `RowSamplingState` history are available in decode-work order; native c>N stochastic execution still open. |
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | GPU1 smoke passes CPU-reference filtering and fixed-seed determinism. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | GPU top-p matches CPU retain set on boundary fixtures and removes full-vocab D2H copies. |
-| S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Partial:** non-streaming completion/chat response tests pass for selected logprob/top-logprobs cases; streaming logprobs and completion `echo+logprobs` remain explicit unsupported cases. |
+| S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Partial:** non-streaming completion/chat response tests pass for selected logprob/top-logprobs cases, including completion `echo+logprobs`; streaming logprobs remain an explicit unsupported case. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.

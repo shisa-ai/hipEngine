@@ -468,6 +468,33 @@ def test_completions_endpoint_returns_openai_logprobs() -> None:
     assert fake.calls[0][1].top_logprobs == 2
 
 
+def test_completions_endpoint_echo_logprobs_shift_generated_offsets() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text=" world",
+                token_logprobs=(
+                    TokenLogprob(token_id=7, token_text=" world", logprob=-0.125),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 1, "echo": True, "logprobs": 0},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == "hello world"
+    assert choice["logprobs"]["tokens"] == ["hello", " world"]
+    assert choice["logprobs"]["token_logprobs"] == [None, -0.125]
+    assert choice["logprobs"]["text_offset"] == [0, 5]
+
+
 def test_chat_completion_returns_openai_logprobs() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -1088,12 +1115,16 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     assert wrong_model.status_code == 404
     assert wrong_model.json()["error"]["code"] == "model_not_found"
 
-    unsupported_echo_logprobs = client.post(
-        "/v1/completions",
-        json={"model": "fake-model", "prompt": "hello", "echo": True, "logprobs": 1},
+    unsupported_chat_top_logprobs = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "top_logprobs": 1,
+        },
     )
-    assert unsupported_echo_logprobs.status_code == 400
-    assert unsupported_echo_logprobs.json()["error"]["param"] == "echo"
+    assert unsupported_chat_top_logprobs.status_code == 400
+    assert unsupported_chat_top_logprobs.json()["error"]["param"] == "top_logprobs"
 
     unsupported_extra = client.post(
         "/v1/completions",
