@@ -39,10 +39,14 @@ supported GPUs and models.
 
 **v0.2.1 alpha.** The runtime hot path is torch-free by construction, and the
 first two 35B-class model-loading surfaces are now available on gfx1100:
-[shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed)
+[shisa-ai/Qwen3.6-35B-A3B-PARO-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
 (19.07 GiB, 4.68 bpw) in packed
 [ParoQuant](https://github.com/shisa-ai/paroquant) format, plus Qwen3.6 GGUF
 `Q4_K_M` / `Q4_K_S` files through the new resident GGUF path.
+Older benchmark artifacts may still show the historical
+`Qwen3.6-35B-A3B-PARO-full4096-e5-packed` name or local MTP-BF16 assembly path;
+those rows use the same packed PARO architecture and remain the evidence for the
+numbers below.
 
 - INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
 - Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-IQ4_XS.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~24 s for PARO packed on the same hardware) for the same decode-repack reason.
@@ -78,7 +82,7 @@ With BF16 KV cache, hipEngine running the packed Qwen 3.6 PARO model fits a
 under 24 GiB tracked allocator peak.
 
 The numbers below are for
-`shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed` on W7900/gfx1100 with q3072
+`shisa-ai/Qwen3.6-35B-A3B-PARO-packed` on W7900/gfx1100 with q3072
 full-attention prefill chunks:
 
 | Model                | Context | KV cache | Sampled peak | Allocator peak | Retained KV | Prefill      | Decode     |
@@ -136,36 +140,36 @@ With `-ub 512`:
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 hipEngine rows use TheRock ROCm 7.13 and load each resident model once for 1 warmup + 5 measured in-session repetitions per shape. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The `hipEngine GGUF Q4_K_S` column uses the same chunked-prefill policy plus the WMMA prefill + GEMV decode fast paths and the persistent on-load decode-repack into T16 tile layouts.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 hipEngine PARO row uses measured code commit `bf7e2a39` with ROCm 7.2.53211 and loads one resident max-context session for 1 warmup + 5 measured in-session repetitions per shape. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The `hipEngine GGUF Q4_K_S` and llama.cpp columns are retained from the last successful W7900 comparison rows; the current local GGUF Q4_K_S refresh is blocked because the available GGUF now exposes `blk.40.nextn.*` MTP tensors that the 40-layer GGUF loader does not yet accept.
 
 ### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2718.497** | 2258.847 | 2436.049 | 1816.927 |
-| 4K/128 | **2838.773** | 2576.673 | 2176.905 | 1705.093 |
-| 32K/128 | **2074.699** | 1893.967 | 1496.409 | 1128.554 |
-| 128K/128 | **1055.454** | 998.143 | 710.213 | 480.539 |
+| 512/128 | **2689.774** | 2258.847 | 2436.049 | 1816.927 |
+| 4K/128 | **2851.225** | 2576.673 | 2176.905 | 1705.093 |
+| 32K/128 | **2058.678** | 1893.967 | 1496.409 | 1128.554 |
+| 128K/128 | **1048.275** | 998.143 | 710.213 | 480.539 |
 
 ### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 103.460 | 109.152 | 85.487 | **127.515** |
-| 4K/128 | 101.964 | 100.048 | 87.375 | **120.163** |
-| 32K/128 | 90.438 | 86.774 | 76.994 | **98.073** |
-| 128K/128 | 59.598 | 57.954 | 57.341 | **64.478** |
+| 512/128 | 116.696 | 109.152 | 85.487 | **127.515** |
+| 4K/128 | 106.837 | 100.048 | 87.375 | **120.163** |
+| 32K/128 | 92.648 | 86.774 | 76.994 | **98.073** |
+| 128K/128 | 60.542 | 57.954 | 57.341 | **64.478** |
 
 ### Peak GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 20.962 | 25.108 | 21.125 | **20.844** |
-| 4K/128 | 21.906 | 25.108 | 21.197 | **20.969** |
-| 32K/128 | 22.016 | 25.108 | 21.738 | **21.533** |
-| 128K/128 | **22.122** | 25.108 | 23.605 | 23.596 |
+| 512/128 | 23.098 | 25.108 | 21.125 | **20.844** |
+| 4K/128 | 25.113 | 25.108 | 21.197 | **20.969** |
+| 32K/128 | 25.222 | 25.108 | 21.738 | **21.533** |
+| 128K/128 | 25.222 | 25.108 | 23.605 | **23.596** |
 
-hipEngine W7900 row source: [`benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json`](benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json). Both hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`), so the peak-memory column is a max-context persistent-session high-water mark rather than each shape's minimum allocation. Existing W7900 llama.cpp HIP/Vulkan Q4_K_M rows are reused unchanged. The hipEngine GGUF Q4_K_S column is compared against the existing llama.cpp Q4_K_M baselines because that is the lineage of measured baselines we have on this host; cross-quant comparisons should be read as approximate.
+hipEngine PARO W7900 row source: [`benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`](benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json). The PARO column is a 5-run median from one resident session allocated for the maximum requested context (`128K/128`), so the peak-memory column is a max-context persistent-session high-water mark rather than each shape's minimum allocation. Existing W7900 hipEngine GGUF and llama.cpp HIP/Vulkan rows are reused unchanged. The hipEngine GGUF Q4_K_S column is compared against the existing llama.cpp Q4_K_M baselines because that is the lineage of measured baselines we have on this host; cross-quant comparisons should be read as approximate.
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
@@ -205,7 +209,7 @@ cheap.
 | --- | --- | ---: | --- |
 | DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
 | MTP B=3 persistent chain, locked sprint baseline | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; retained as the sprint baseline. Artifacts: [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
-| MTP B=1 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 default | **1.018x AR** (`113.14` vs `111.10 tok/s` prompt-mean), `14.173 ms/cycle` | Exact `9/9`, first retained break-even row. B=3 remains higher-density but just short (`0.968x` same-session); full vocab was exact but no-held (`0.880x`). See [`docs/MTP.md`](docs/MTP.md) and [`B=1 artifact`](benchmarks/results/2026-06-12-hipengine-mtp-b1-budget-retained.json). |
+| MTP B=1 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 default | **1.023x prompt-mean / 1.014x total-time AR**, `14.134 ms/cycle` | Exact `9/9`, 3-run retained break-even row. B=3 remains higher-density but just short (`0.968x` same-session); full vocab was exact but no-held (`0.880x`). See [`docs/MTP.md`](docs/MTP.md) and [`B=1 artifact`](benchmarks/results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json). |
 
 ## Concurrency (batched decode)
 
@@ -404,7 +408,7 @@ The OpenAI-compatible FastAPI layer is installed by default:
 ```bash
 pip install hipengine
 hipengine serve \
-  --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
   --quant w4_paro \
   --served-model-name qwen-paro
 ```

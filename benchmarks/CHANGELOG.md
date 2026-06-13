@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-14
+
+- [diagnostic refresh] shisa-ai/Qwen3.6-35B-A3B-PARO-packed / w4_paro BF16 KV / W7900 README persistent 5-run sweep: previous PARO prefill `2718.497 / 2838.773 / 2074.699 / 1055.454` and decode `103.460 / 101.964 / 90.438 / 59.598 tok/s` -> measured-code prefill `2689.774 / 2851.225 / 2058.678 / 1048.275` and decode `116.696 / 106.837 / 92.648 / 60.542 tok/s`; canonical public model label moved to `shisa-ai/Qwen3.6-35B-A3B-PARO-packed`; GGUF Q4_K_S current refresh blocked on local `blk.40.nextn.*` MTP-bearing GGUF tensor map, so GGUF/llama.cpp comparison columns remain last-successful rows; `benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`.
+
 ## 2026-06-13
 
 - [diagnostic refresh] Qwen3.6-35B-A3B / W7900 concurrency 512/128 c=1/2/4/8: top-level concurrency table refreshed from old RX 7900 XTX hipEngine-only `133.84/131.09/181.56/225.90` tok/s to current W7900 hipEngine PARO `116.68/113.45/156.03/188.69` tok/s, llama.cpp Vulkan GGUF `106.47/159.19/70.44/26.26` tok/s, and local vLLM GPTQ Int4 no-MTP OpenAI-wall `19.39/37.53/72.96/115.96` tok/s; `benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json`, `benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json`, `benchmarks/results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json`, `docs/VLLM_RDNA3.md`.

@@ -86251,3 +86251,35 @@ also reviewed: normal native prefill enters grouped compact MoE for multi-token
 MoE layers, so selected c=1 MoE dispatch work does not improve the main prefill
 path.  Future prefill wins belong in the grouped-MoE/reduced-DAG lane, not this
 c=1 selected-MoE dispatcher.
+
+## 2026-06-14 - README topline PARO refresh and GGUF follow-up
+
+Reran the W7900 README persistent sweep for the canonical public packed PARO
+checkpoint:
+
+`HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run.json`
+
+Measured-code 5-run medians:
+- prefill tok/s: `2689.774 / 2851.225 / 2058.678 / 1048.275` for
+  `512/128 / 4K/128 / 32K/128 / 128K/128`.
+- decode tok/s: `116.696 / 106.837 / 92.648 / 60.542`.
+- tracked peak GiB: `23.098 / 25.113 / 25.222 / 25.222`; sampled HIP used
+  peak `22.110 GiB`; KV audit passed and final token IDs were stable.
+
+Compacted the raw 7 MB sweep JSON into
+`benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`
+and moved the raw JSON to `/tmp/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-raw.json`.
+Updated `README.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+Attempted the matching GGUF Q4_K_S README refresh:
+
+`HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-14-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json`
+
+Blocked immediately in the loader: local
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf` now exposes `blk.40.nextn.*`
+MTP tensors and no compatible local older GGUF was present.  Follow-up: update
+the GGUF loader/tensor map for the latest MTP-bearing Qwen3.6 GGUF layout, then
+rerun GGUF AR toplines and audit whether recent PARO/MTP dispatch/fusion wins
+have GGUF AR analogs.  The previous c=1 C-dispatch no-hold is still not expected
+to help longer-context graph-replay AR decode materially; it only becomes live
+again for graph-off/recapture/high-concurrency paths.
