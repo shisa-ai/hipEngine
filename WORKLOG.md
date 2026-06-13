@@ -86283,3 +86283,54 @@ rerun GGUF AR toplines and audit whether recent PARO/MTP dispatch/fusion wins
 have GGUF AR analogs.  The previous c=1 C-dispatch no-hold is still not expected
 to help longer-context graph-replay AR decode materially; it only becomes live
 again for graph-off/recapture/high-concurrency paths.
+
+## 2026-06-14 - GGUF MTP tensor compatibility
+
+Updated the Qwen3.5/Qwen3.6 GGUF tensor mapper to treat trailing `blk.N.nextn.*`
+blocks as non-executable MTP predictor blocks for the AR runtime.  The mapper now
+keeps both counts: metadata-declared block count and effective AR block count.
+Validation remains strict for executable layers; only tensors under trailing
+`nextn` blocks are ignored.
+
+Real local file check:
+
+```bash
+python3 - <<'PY'
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
+path='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf'
+info=GGUFReader(path).info
+model_map=build_qwen35_gguf_tensor_map(info)
+print('passed', model_map.validation.passed)
+print('declared', model_map.config.declared_block_count)
+print('effective', model_map.config.block_count)
+print('ignored_block_ids', model_map.config.ignored_block_ids)
+print('ignored_count', len(model_map.validation.ignored))
+print('layer_types', model_map.config.layer_types.count('linear_attention'), model_map.config.layer_types.count('full_attention'))
+print('map_tensor_count', len(model_map.tensor_names))
+print('file_tensor_count', len(info.tensors))
+print('ignored_preview', model_map.validation.ignored[:8])
+PY
+```
+
+Result: validation passed; declared `41`, effective AR `40`, ignored block
+`(40,)`, ignored tensors `20`, layer types `30 linear / 10 full`, mapped tensor
+count `733` vs file tensor count `753`.
+
+Downstream decode-repack plan smoke on the same file produced 40 layer specs, no
+`blk.40.*` planned tensors, `gguf_q6_k_t16_v1` LM head, and
+`gguf_q4_k_t16_v1` layer-0 expert gate layout.
+
+End-to-end W7900 smoke:
+
+`HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/1 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/hipengine-gguf-mtp-ignore-smoke-20260614.json`
+
+Smoke result: loaded and ran; persistent load `73.871 s`, tracked peak
+`20.185 GiB`, `512/1` prefill `36.645 tok/s`, decode `94.013 tok/s`, final
+token stable.  This was a compatibility smoke, not a retained README benchmark.
+
+Validation:
+- `python3 -m pytest tests/test_qwen35_gguf_mtp_mapping.py` -> `1 passed`.
+- `python3 -m pytest tests/test_qwen35_gguf_mtp_mapping.py tests/test_qwen35_gguf_mapping.py -q` -> `1 passed, 5 skipped`.
+- `python3 -m py_compile hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py`.
+- `git diff --check`.

@@ -99,6 +99,8 @@ class Qwen35GGUFConfig:
     expert_used_count: int = 0
     expert_feed_forward_length: int = 0
     expert_shared_feed_forward_length: int = 0
+    declared_block_count: int = 0
+    ignored_block_ids: tuple[int, ...] = ()
 
     @property
     def is_moe(self) -> bool:
@@ -112,6 +114,7 @@ class Qwen35GGUFMappingValidation:
     missing: tuple[str, ...]
     unexpected: tuple[str, ...]
     shape_errors: tuple[str, ...]
+    ignored: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -197,8 +200,12 @@ def qwen35_gguf_config_from_metadata(info: GGUFModelInfo) -> Qwen35GGUFConfig:
     if architecture not in {"qwen35", "qwen35moe"}:
         raise ValueError(f"expected GGUF architecture 'qwen35' or 'qwen35moe', got {architecture!r}")
     prefix = architecture
-    block_count = _int_metadata(metadata, f"{prefix}.block_count")
+    declared_block_count = _int_metadata(metadata, f"{prefix}.block_count")
     full_interval = int(metadata.get(f"{prefix}.full_attention_interval", 0) or 0)
+    block_count, ignored_block_ids = _ar_block_count_from_tensor_inventory(
+        info,
+        declared_block_count=declared_block_count,
+    )
     layer_types = tuple(
         FULL_ATTENTION if full_interval and (layer_id + 1) % full_interval == 0 else LINEAR_ATTENTION
         for layer_id in range(block_count)
@@ -237,6 +244,8 @@ def qwen35_gguf_config_from_metadata(info: GGUFModelInfo) -> Qwen35GGUFConfig:
         expert_used_count=expert_used_count,
         expert_feed_forward_length=expert_ffn,
         expert_shared_feed_forward_length=shared_ffn,
+        declared_block_count=declared_block_count,
+        ignored_block_ids=ignored_block_ids,
     )
 
 
@@ -252,8 +261,9 @@ def validate_qwen35_gguf_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFMappingVal
     actual = {tensor.name: tensor for tensor in info.tensors}
     required = set(required_qwen35_gguf_tensor_names(config))
     actual_names = set(actual)
+    ignored = set(_ignored_ar_tensor_names(config, actual_names))
     missing = tuple(sorted(required - actual_names))
-    unexpected = tuple(sorted(actual_names - required))
+    unexpected = tuple(sorted(actual_names - required - ignored))
     shape_errors = tuple(_shape_errors(config, actual))
     present = tuple(sorted(required & actual_names))
     return Qwen35GGUFMappingValidation(
@@ -262,6 +272,7 @@ def validate_qwen35_gguf_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFMappingVal
         missing=missing,
         unexpected=unexpected,
         shape_errors=shape_errors,
+        ignored=tuple(sorted(ignored)),
     )
 
 
@@ -326,6 +337,44 @@ def _layer_required_tensor_names(
     layer_type: str,
 ) -> tuple[str, ...]:
     return tuple(f"blk.{layer_id}.{suffix}" for suffix in _layer_slot_suffixes(config, layer_type).values())
+
+
+def _ar_block_count_from_tensor_inventory(
+    info: GGUFModelInfo,
+    *,
+    declared_block_count: int,
+) -> tuple[int, tuple[int, ...]]:
+    """Return executable AR layer count, excluding trailing MTP/nextn blocks.
+
+    Recent Qwen3.6 GGUF exports may include the MTP predictor as an extra
+    trailing ``blk.N`` with ``nextn`` tensors while keeping that block in the
+    metadata ``block_count``.  The AR runtime should not materialize or execute
+    that block, but all preceding model layers must remain strictly validated.
+    """
+
+    tensor_names = {tensor.name for tensor in info.tensors}
+    block_count = int(declared_block_count)
+    ignored: list[int] = []
+    while block_count > 0 and _has_nextn_tensors(tensor_names, layer_id=block_count - 1):
+        block_count -= 1
+        ignored.append(block_count)
+    ignored.reverse()
+    return block_count, tuple(ignored)
+
+
+def _ignored_ar_tensor_names(config: Qwen35GGUFConfig, actual_names: set[str]) -> tuple[str, ...]:
+    ignored: list[str] = []
+    for layer_id in config.ignored_block_ids:
+        prefix = f"blk.{layer_id}."
+        block_names = sorted(name for name in actual_names if name.startswith(prefix))
+        if any(name.startswith(f"{prefix}nextn.") for name in block_names):
+            ignored.extend(block_names)
+    return tuple(ignored)
+
+
+def _has_nextn_tensors(tensor_names: set[str], *, layer_id: int) -> bool:
+    prefix = f"blk.{layer_id}.nextn."
+    return any(name.startswith(prefix) for name in tensor_names)
 
 
 def _shape_errors(config: Qwen35GGUFConfig, actual: Mapping[str, GGUFTensorInfo]) -> list[str]:
