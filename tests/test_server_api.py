@@ -131,6 +131,80 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     }
 
 
+def test_capabilities_endpoint_reports_manifest_and_auth() -> None:
+    fake = FakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="/models/fake",
+            served_model_name="fake-model",
+            api_key="secret",
+            eager_load=False,
+            max_context_tokens=2048,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    unauthorized = client.get("/v1/hipengine/capabilities")
+    assert unauthorized.status_code == 401
+
+    response = client.get("/v1/hipengine/capabilities", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["object"] == "hipengine.capabilities"
+    assert body["model"] == {
+        "id": "fake-model",
+        "path": "/models/fake",
+        "backend": "auto",
+        "quant": "w4_paro",
+    }
+    assert body["context"] == {
+        "configured_max_context_tokens": 2048,
+        "effective_max_context_tokens": 2048,
+        "chat_default_max_tokens": 4096,
+        "chat_default_mode": "bounded",
+    }
+    assert body["tokenizer"]["tokenize"] is True
+    assert body["tokenizer"]["count_tokens"] is True
+    assert body["features"]["stream_options"] == {"include_usage": True, "include_hipengine": True}
+    assert body["features"]["logprobs"]["streaming"] == "buffered"
+    assert body["sessions"] == {
+        "resident_context": True,
+        "commit_policy": False,
+        "continuations": False,
+    }
+    assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
+    assert "timeout_ms" in body["unsupported_fields"]
+
+
+def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
+    fake = FakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            chat_default_max_tokens=None,
+            kv_storage="int8_per_token_head",
+            kv_scale_dtype="fp32",
+            prefix_cache="radix",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.get("/v1/hipengine/capabilities")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["context"]["chat_default_max_tokens"] is None
+    assert body["context"]["chat_default_mode"] == "auto"
+    assert body["cache"]["prefix_cache"] == "radix"
+    assert body["cache"]["kv_storage"] == "int8_per_token_head"
+    assert body["cache"]["kv_scale_dtype"] == "fp32"
+
+
 def test_server_eager_loads_model_on_startup(caplog) -> None:
     caplog.set_level(logging.INFO, logger="uvicorn.error")
     fake = FakeLLM(outputs=["warm"])

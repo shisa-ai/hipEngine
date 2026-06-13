@@ -87110,3 +87110,22 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `42 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC capabilities manifest
+
+Added authenticated `GET /v1/hipengine/capabilities` as the canonical manifest
+for local-agent harnesses.  The endpoint reports served model/config,
+configured/effective context tokens, bounded vs auto chat defaults,
+tokenizer/count-token callable availability, Qwen chat-template family,
+streaming/logprobs/tools/reasoning support, sampling parameters, cache/session
+settings, loaded-model count, and known unsupported fields.  It reads existing
+app state and config only; lazy servers do not allocate/load just to answer the
+manifest.
+
+Updated `docs/API.md` and `docs/AGENTIC.md` to document the endpoint and current
+unsupported capabilities.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `44 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

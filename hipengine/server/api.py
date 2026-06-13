@@ -1026,6 +1026,109 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             ],
         }
 
+    @app.get("/v1/hipengine/capabilities")
+    async def capabilities(_auth: None = Depends(require_auth)) -> dict[str, Any]:
+        engine = getattr(app.state, "hipengine_llm", None)
+        configured_context = configured_max_context_tokens()
+        cached_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
+        effective_context = configured_context if configured_context is not None else cached_context
+        return {
+            "object": "hipengine.capabilities",
+            "model": {
+                "id": config.model_id,
+                "path": config.model,
+                "backend": config.backend,
+                "quant": config.quant,
+            },
+            "context": {
+                "configured_max_context_tokens": configured_context,
+                "effective_max_context_tokens": None if effective_context is None else int(effective_context),
+                "chat_default_max_tokens": config.chat_default_max_tokens,
+                "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
+            },
+            "tokenizer": {
+                "tokenize": callable(getattr(engine, "tokenize", None)),
+                "detokenize": callable(getattr(engine, "detokenize", None)),
+                "count_tokens": callable(getattr(engine, "count_tokens", None)),
+                "name": None if engine is None else type(engine).__name__,
+            },
+            "chat_template": {
+                "family": "qwen",
+                "reasoning_tags": True,
+                "tool_call_tags": True,
+            },
+            "features": {
+                "completions": True,
+                "chat_completions": True,
+                "streaming": True,
+                "stream_options": {
+                    "include_usage": True,
+                    "include_hipengine": True,
+                },
+                "finish_details": True,
+                "tools": {
+                    "enabled": True,
+                    "strict_decoding": False,
+                    "format": "qwen_tool_call_json",
+                },
+                "reasoning_controls": {
+                    "enabled": True,
+                    "fields": [
+                        "reasoning_effort",
+                        "enable_thinking",
+                        "chat_template_kwargs",
+                        "thinking",
+                        "reasoning",
+                    ],
+                    "token_budget": False,
+                },
+                "logprobs": {
+                    "completions": True,
+                    "chat": True,
+                    "top_logprobs_max": 20,
+                    "streaming": "buffered",
+                },
+            },
+            "sampling": {
+                "modes": ["greedy", "temperature"],
+                "parameters": [
+                    "temperature",
+                    "top_p",
+                    "top_k",
+                    "min_p",
+                    "repetition_penalty",
+                    "presence_penalty",
+                    "frequency_penalty",
+                    "logit_bias",
+                    "seed",
+                    "n",
+                    "stop",
+                ],
+            },
+            "cache": {
+                "prefix_cache": prefix_cache_mode,
+                "kv_storage": config.kv_storage,
+                "kv_scale_dtype": config.kv_scale_dtype,
+                "kv_scale_granularity": config.kv_scale_granularity,
+            },
+            "sessions": {
+                "resident_context": True,
+                "commit_policy": False,
+                "continuations": False,
+            },
+            "routing": {
+                "loaded_model_count": 0 if engine is None else 1,
+                "multiple_models": False,
+            },
+            "unsupported_fields": [
+                "continuation_id",
+                "session.commit",
+                "timeout_ms",
+                "response_format",
+                "parallel_tool_calls",
+            ],
+        }
+
     @app.post("/v1/completions", response_model=None)
     async def completions(
         request: CompletionRequest,

@@ -78,8 +78,9 @@ Known baseline limitations:
   cache state, and budget pressure still need runtime signals.
 - Resident session reuse needs an explicit commit policy before hidden reasoning
   or failed/truncated tool-call attempts can safely be retained across turns.
-- Public agent/runtime capability discovery is not exposed yet. `/health` and
-  `/v1/models` are minimal; `/metrics` is opt-in Prometheus output.
+- Public agent/runtime capability discovery is exposed through
+  `/v1/hipengine/capabilities`, but tokenizer diagnostics and continuation/
+  session commit support are still not implemented.
 - Server startup supports one loaded model at a time; routing, multiple resident
   models, tensor parallelism, and model-family fallback are not yet designed.
 
@@ -1178,6 +1179,18 @@ Implement:
   tool support, reasoning controls, sampling modes, logprobs support,
   continuation support, cache/session support, loaded-model count, routing
   support, and known unsupported fields.
+
+Current code reality:
+
+- `GET /v1/hipengine/capabilities` returns an authenticated manifest without
+  forcing lazy model load.
+- The manifest reports served model/config, configured/effective context tokens,
+  bounded vs auto chat default, tokenizer/count-token callable availability,
+  Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
+  parameters, cache/session settings, loaded-model count, and unsupported fields.
+- Continuations, `session.commit`, deadline/cancellation, multi-model routing,
+  strict tool decoding, and token diagnostics are advertised as unsupported until
+  their runtime paths exist.
 
 Exit gates:
 
