@@ -124,11 +124,22 @@ Streaming requests with logprobs use a buffered detailed-generation path so SSE
 chunks can carry logprob metadata; ordinary streams without logprobs remain
 live token/chunk streams.
 
-### Streaming usage chunks
+### Streaming usage and hipEngine metadata
 
 Both completion endpoints accept OpenAI-compatible `stream_options`. Set
 `"stream_options": {"include_usage": true}` with `"stream": true` to request a
 final SSE payload with `choices: []` and `usage` before `data: [DONE]`.
+
+Set `"stream_options": {"include_hipengine": true}` to request hipEngine
+extension metadata on SSE payloads. Each payload gets a top-level `hipengine`
+object with `metadata_version`, `event`, and `timing.elapsed_ms`. Choice chunks
+also get `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, or
+`done`) when a phase is known. Final choice chunks include the same
+`finish_details` under `choices[].hipengine.finish_details`, and usage chunks
+mirror usage under `hipengine.usage`.
+
+Cache, prefill/TTFT, decode-rate, budget-pressure, and exact per-phase token
+metadata are omitted until the runtime exposes those signals.
 
 ### Finish details
 

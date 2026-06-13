@@ -886,6 +886,8 @@ def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:
     assert '"object":"chat.completion.chunk"' in response.text
     assert "data: [DONE]" in response.text
     payloads = _sse_payloads(response.text)
+    assert all("hipengine" not in payload for payload in payloads)
+    assert all("hipengine" not in payload["choices"][0] for payload in payloads if payload.get("choices"))
     deltas = [payload["choices"][0]["delta"] for payload in payloads if payload.get("choices")]
     assert deltas[:4] == [
         {"role": "assistant"},
@@ -902,6 +904,47 @@ def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:
         "total_tokens": fake.count_tokens(prompt) + completion_tokens,
     }
     assert fake.calls[0][1].max_tokens == 4096
+
+
+def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=["<think>scratch pad</think>streamed ", "reply"],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert payloads[0]["hipengine"]["metadata_version"] == 1
+    assert payloads[0]["hipengine"]["event"] == "role"
+    assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
+
+    reasoning = next(payload for payload in payloads if payload.get("choices") and "reasoning_content" in payload["choices"][0]["delta"])
+    assert reasoning["hipengine"]["event"] == "delta"
+    assert reasoning["choices"][0]["hipengine"] == {"phase": "think"}
+
+    content = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content") == "streamed ")
+    assert content["choices"][0]["hipengine"] == {"phase": "answer"}
+
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"] == "stop")
+    assert done["hipengine"]["event"] == "done"
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "stop"},
+    }
+    assert payloads[-1]["hipengine"]["event"] == "usage"
+    assert payloads[-1]["hipengine"]["usage"] == payloads[-1]["usage"]
 
 
 def test_streaming_completion_uses_engine_stream_and_usage() -> None:
@@ -924,10 +967,40 @@ def test_streaming_completion_uses_engine_stream_and_usage() -> None:
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "data: [DONE]" in response.text
     payloads = _sse_payloads(response.text)
+    assert all("hipengine" not in payload for payload in payloads)
+    assert all("hipengine" not in payload["choices"][0] for payload in payloads if payload.get("choices"))
     text_chunks = [payload["choices"][0]["text"] for payload in payloads if payload.get("choices")]
     assert text_chunks == ["alpha", " beta", ""]
     assert payloads[-1]["usage"] == {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
     assert fake.stream_calls == [("hello", SamplingParams(max_tokens=2))]
+
+
+def test_streaming_completion_can_include_hipengine_metadata() -> None:
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["alpha", " beta"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert [payload["hipengine"]["event"] for payload in payloads] == ["delta", "delta", "done", "usage"]
+    assert payloads[0]["choices"][0]["hipengine"] == {"phase": "answer"}
+    assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
+    assert payloads[2]["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "stop"},
+    }
+    assert payloads[-1]["hipengine"]["usage"] == payloads[-1]["usage"]
 
 
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:

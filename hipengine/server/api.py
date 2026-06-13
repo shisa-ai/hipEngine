@@ -898,6 +898,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> AsyncIterator[str]:
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
+        stream_started_at = time.perf_counter()
+        include_hipengine = _stream_include_hipengine(request)
         full_text: list[str] = []
         try:
             _validate_generation_request(config, request)
@@ -911,7 +913,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if not text:
                     continue
                 full_text.append(text)
-                yield _completion_stream_delta(response_id, created, config.model_id, text)
+                yield _completion_stream_delta(
+                    response_id,
+                    created,
+                    config.model_id,
+                    text,
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                )
         except OpenAIHTTPError as exc:
             app.state.hipengine_server_metrics.record_failure()
             _log_stream_failure(
@@ -968,9 +977,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         text, finish_reason = _apply_stop(raw_text, request.stop)
         usage = _usage(engine, (prompt,), [text])
         app.state.hipengine_server_metrics.record_success(usage)
-        yield _completion_stream_done(response_id, created, config.model_id, finish_reason)
+        yield _completion_stream_done(
+            response_id,
+            created,
+            config.model_id,
+            finish_reason,
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+        )
         if _stream_include_usage(request):
-            yield _completion_stream_usage(response_id, created, config.model_id, usage)
+            yield _completion_stream_usage(
+                response_id,
+                created,
+                config.model_id,
+                usage,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
         yield "data: [DONE]\n\n"
 
     @app.get("/health")
@@ -1056,6 +1079,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "usage": batch.usage,
         }
         if request.stream:
+            stream_started_at = time.perf_counter()
             return StreamingResponse(
                 _completion_stream(
                     response_id,
@@ -1064,6 +1088,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     final_texts,
                     choices,
                     usage=batch.usage if _stream_include_usage(request) else None,
+                    include_hipengine=_stream_include_hipengine(request),
+                    stream_started_at=stream_started_at,
                 ),
                 media_type="text/event-stream",
             )
@@ -1137,6 +1163,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> AsyncIterator[str]:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
+        stream_started_at = time.perf_counter()
+        include_hipengine = _stream_include_hipengine(request)
         try:
             n = _request_n(request)
             batch = await generate(tuple(prompt for _ in range(n)), request)
@@ -1152,7 +1180,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     tool_calls=bool(parsed.tool_calls),
                 )
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
-                yield _chat_stream_role(response_id, created, config.model_id, index=index)
+                yield _chat_stream_role(
+                    response_id,
+                    created,
+                    config.model_id,
+                    index=index,
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                )
                 for event in _chat_stream_parsed(
                     response_id,
                     created,
@@ -1166,10 +1201,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         finish_reason,
                         reason_override="tool_calls" if parsed.tool_calls else "stop" if server_stop else None,
                     ),
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
                 ):
                     yield event
             if _stream_include_usage(request):
-                yield _chat_stream_usage(response_id, created, config.model_id, batch.usage)
+                yield _chat_stream_usage(
+                    response_id,
+                    created,
+                    config.model_id,
+                    batch.usage,
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                )
         except OpenAIHTTPError as exc:
             _log_stream_failure(
                 "POST /v1/chat/completions stream",
@@ -1214,6 +1258,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             return
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
+        stream_started_at = time.perf_counter()
+        include_hipengine = _stream_include_hipengine(request)
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
@@ -1224,7 +1270,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, (prompt,), engine)
                 _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
-            yield _chat_stream_role(response_id, created, config.model_id)
+            yield _chat_stream_role(
+                response_id,
+                created,
+                config.model_id,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
             async for token in generation_batcher.stream((prompt,), sampling):
                 text = str(token)
                 if not text:
@@ -1239,6 +1291,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         config.model_id,
                         field,
                         chunk,
+                        include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at,
                     )
             if not buffer_tool_output:
                 for field, chunk in splitter.finish():
@@ -1248,6 +1302,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         config.model_id,
                         field,
                         chunk,
+                        include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at,
                     )
         except OpenAIHTTPError as exc:
             app.state.hipengine_server_metrics.record_failure()
@@ -1318,12 +1374,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 parsed,
                 "tool_calls" if parsed.tool_calls else finish_reason,
                 finish_details=_finish_details_payload(None, "tool_calls" if parsed.tool_calls else finish_reason),
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             ):
                 yield event
         else:
-            yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
+            yield _chat_stream_done(
+                response_id,
+                created,
+                config.model_id,
+                finish_reason,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
         if _stream_include_usage(request):
-            yield _chat_stream_usage(response_id, created, config.model_id, usage)
+            yield _chat_stream_usage(
+                response_id,
+                created,
+                config.model_id,
+                usage,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
         yield "data: [DONE]\n\n"
 
     return app
@@ -2438,6 +2510,49 @@ def _stream_include_usage(request: CompletionRequest | ChatCompletionRequest) ->
     return isinstance(options, Mapping) and bool(options.get("include_usage"))
 
 
+def _stream_include_hipengine(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    options = request.stream_options
+    return isinstance(options, Mapping) and bool(options.get("include_hipengine"))
+
+
+def _stream_hipengine_payload(
+    event: str,
+    *,
+    stream_started_at: float | None = None,
+    usage: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"metadata_version": 1, "event": str(event)}
+    if stream_started_at is not None:
+        payload["timing"] = {"elapsed_ms": round(max(0.0, (time.perf_counter() - stream_started_at) * 1000.0), 3)}
+    if usage is not None:
+        payload["usage"] = dict(usage)
+    return payload
+
+
+def _choice_hipengine_payload(
+    phase: str,
+    *,
+    finish_details: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"phase": str(phase)}
+    if finish_details is not None:
+        payload["finish_details"] = dict(finish_details)
+    return payload
+
+
+def _attach_stream_hipengine(
+    payload: dict[str, Any],
+    *,
+    include_hipengine: bool,
+    event: str,
+    stream_started_at: float | None,
+    usage: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
+    if include_hipengine:
+        payload["hipengine"] = _stream_hipengine_payload(event, stream_started_at=stream_started_at, usage=usage)
+    return payload
+
+
 def _completion_stream_delta(
     response_id: str,
     created: int,
@@ -2446,22 +2561,30 @@ def _completion_stream_delta(
     *,
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
+    choice = {
+        "text": text,
+        "index": int(index),
+        "logprobs": None if logprobs is None else dict(logprobs),
+        "finish_reason": None,
+    }
+    if include_hipengine:
+        choice["hipengine"] = _choice_hipengine_payload("answer")
     return _sse(
-        {
-            "id": response_id,
-            "object": "text_completion",
-            "created": created,
-            "model": model,
-            "choices": [
-                {
-                    "text": text,
-                    "index": int(index),
-                    "logprobs": None if logprobs is None else dict(logprobs),
-                    "finish_reason": None,
-                }
-            ],
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "text_completion",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+            },
+            include_hipengine=include_hipengine,
+            event="delta",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
@@ -2473,40 +2596,59 @@ def _completion_stream_done(
     *,
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
+    finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
+    choice = {
+        "text": "",
+        "index": int(index),
+        "logprobs": None,
+        "finish_reason": finish_reason,
+        "finish_details": finish_payload,
+    }
+    if include_hipengine:
+        choice["hipengine"] = _choice_hipengine_payload("done", finish_details=finish_payload)
     return _sse(
-        {
-            "id": response_id,
-            "object": "text_completion",
-            "created": created,
-            "model": model,
-            "choices": [
-                {
-                    "text": "",
-                    "index": int(index),
-                    "logprobs": None,
-                    "finish_reason": finish_reason,
-                    "finish_details": (
-                        _finish_details_payload(None, finish_reason)
-                        if finish_details is None
-                        else dict(finish_details)
-                    ),
-                }
-            ],
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "text_completion",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+            },
+            include_hipengine=include_hipengine,
+            event="done",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
-def _completion_stream_usage(response_id: str, created: int, model: str, usage: Mapping[str, int]) -> str:
+def _completion_stream_usage(
+    response_id: str,
+    created: int,
+    model: str,
+    usage: Mapping[str, int],
+    *,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
+) -> str:
     return _sse(
-        {
-            "id": response_id,
-            "object": "text_completion",
-            "created": created,
-            "model": model,
-            "choices": [],
-            "usage": dict(usage),
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "text_completion",
+                "created": created,
+                "model": model,
+                "choices": [],
+                "usage": dict(usage),
+            },
+            include_hipengine=include_hipengine,
+            event="usage",
+            stream_started_at=stream_started_at,
+            usage=usage,
+        )
     )
 
 
@@ -2538,6 +2680,8 @@ def _completion_stream(
     choices: Sequence[dict[str, Any]],
     *,
     usage: Mapping[str, int] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     for index, text in enumerate(texts):
@@ -2549,6 +2693,8 @@ def _completion_stream(
             text,
             index=index,
             logprobs=choice.get("logprobs"),
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
         )
     for choice in choices:
         yield _completion_stream_done(
@@ -2558,9 +2704,18 @@ def _completion_stream(
             str(choice["finish_reason"]),
             index=choice["index"],
             finish_details=choice.get("finish_details"),
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
         )
     if usage is not None:
-        yield _completion_stream_usage(response_id, created, model, usage)
+        yield _completion_stream_usage(
+            response_id,
+            created,
+            model,
+            usage,
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+        )
     yield "data: [DONE]\n\n"
 
 
@@ -2587,15 +2742,28 @@ def _chat_stream(
     yield "data: [DONE]\n\n"
 
 
-def _chat_stream_role(response_id: str, created: int, model: str, *, index: int = 0) -> str:
+def _chat_stream_role(
+    response_id: str,
+    created: int,
+    model: str,
+    *,
+    index: int = 0,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
+) -> str:
     return _sse(
-        {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [{"index": int(index), "delta": {"role": "assistant"}, "finish_reason": None}],
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [{"index": int(index), "delta": {"role": "assistant"}, "finish_reason": None}],
+            },
+            include_hipengine=include_hipengine,
+            event="role",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
@@ -2608,18 +2776,28 @@ def _chat_stream_delta(
     *,
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
         choice["logprobs"] = dict(logprobs)
+    if include_hipengine:
+        phase = "think" if field == "reasoning_content" else "answer"
+        choice["hipengine"] = _choice_hipengine_payload(phase)
     return _sse(
-        {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [choice],
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+            },
+            include_hipengine=include_hipengine,
+            event="delta",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
@@ -2631,30 +2809,38 @@ def _chat_stream_tool_call(
     *,
     index: int = 0,
     tool_index: int = 0,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
-    return _sse(
-        {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [
+    choice = {
+        "index": int(index),
+        "delta": {
+            "tool_calls": [
                 {
-                    "index": int(index),
-                    "delta": {
-                        "tool_calls": [
-                            {
-                                "index": int(tool_index),
-                                "id": call.id,
-                                "type": "function",
-                                "function": {"name": call.name, "arguments": call.arguments},
-                            }
-                        ]
-                    },
-                    "finish_reason": None,
+                    "index": int(tool_index),
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.arguments},
                 }
-            ],
-        }
+            ]
+        },
+        "finish_reason": None,
+    }
+    if include_hipengine:
+        choice["hipengine"] = _choice_hipengine_payload("tool_call")
+    return _sse(
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+            },
+            include_hipengine=include_hipengine,
+            event="tool_call",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
@@ -2668,16 +2854,55 @@ def _chat_stream_parsed(
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
     finish_details: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
-        yield _chat_stream_delta(response_id, created, model, "reasoning_content", split.reasoning_content, index=index)
+        yield _chat_stream_delta(
+            response_id,
+            created,
+            model,
+            "reasoning_content",
+            split.reasoning_content,
+            index=index,
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+        )
     if split.content:
-        yield _chat_stream_delta(response_id, created, model, "content", split.content, index=index, logprobs=logprobs)
+        yield _chat_stream_delta(
+            response_id,
+            created,
+            model,
+            "content",
+            split.content,
+            index=index,
+            logprobs=logprobs,
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+        )
     for tool_index, call in enumerate(parsed.tool_calls):
-        yield _chat_stream_tool_call(response_id, created, model, call, index=index, tool_index=tool_index)
+        yield _chat_stream_tool_call(
+            response_id,
+            created,
+            model,
+            call,
+            index=index,
+            tool_index=tool_index,
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+        )
     done_reason = "tool_calls" if parsed.tool_calls else finish_reason
-    yield _chat_stream_done(response_id, created, model, done_reason, index=index, finish_details=finish_details)
+    yield _chat_stream_done(
+        response_id,
+        created,
+        model,
+        done_reason,
+        index=index,
+        finish_details=finish_details,
+        include_hipengine=include_hipengine,
+        stream_started_at=stream_started_at,
+    )
 
 
 def _chat_stream_done(
@@ -2688,39 +2913,58 @@ def _chat_stream_done(
     *,
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
+    finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
+    choice = {
+        "index": int(index),
+        "delta": {},
+        "finish_reason": finish_reason,
+        "finish_details": finish_payload,
+    }
+    if include_hipengine:
+        choice["hipengine"] = _choice_hipengine_payload("done", finish_details=finish_payload)
     return _sse(
-        {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [
-                {
-                    "index": int(index),
-                    "delta": {},
-                    "finish_reason": finish_reason,
-                    "finish_details": (
-                        _finish_details_payload(None, finish_reason)
-                        if finish_details is None
-                        else dict(finish_details)
-                    ),
-                }
-            ],
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+            },
+            include_hipengine=include_hipengine,
+            event="done",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
-def _chat_stream_usage(response_id: str, created: int, model: str, usage: Mapping[str, int]) -> str:
+def _chat_stream_usage(
+    response_id: str,
+    created: int,
+    model: str,
+    usage: Mapping[str, int],
+    *,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
+) -> str:
     return _sse(
-        {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [],
-            "usage": dict(usage),
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [],
+                "usage": dict(usage),
+            },
+            include_hipengine=include_hipengine,
+            event="usage",
+            stream_started_at=stream_started_at,
+            usage=usage,
+        )
     )
 
 

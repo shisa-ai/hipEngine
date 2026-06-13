@@ -73,8 +73,9 @@ Known baseline limitations:
   streams. Completion `echo+logprobs` does not compute real prompt-token
   logprobs yet; the echoed prompt is represented as a prefix entry with `null`
   logprob.
-- Streaming is content-first; metadata deltas for reasoning/answer/tool token
-  counts, timing, cache state, and budget pressure are not first-class yet.
+- Streaming supports opt-in basic `stream_options.include_hipengine` metadata,
+  but exact reasoning/answer/tool token counts, TTFT/prefill/decode timings,
+  cache state, and budget pressure still need runtime signals.
 - Resident session reuse needs an explicit commit policy before hidden reasoning
   or failed/truncated tool-call attempts can safely be retained across turns.
 - Public agent/runtime capability discovery is not exposed yet. `/health` and
@@ -704,6 +705,19 @@ Implement:
   `structured`, `done`);
 - include TTFT, prefill ms, decode tok/s, cache hit/miss, KV bytes, stop reason,
   and budget-pressure state when available.
+
+Current code reality:
+
+- `stream_options: {"include_hipengine": true}` is accepted for completion and
+  chat streams without changing default OpenAI-compatible SSE payloads.
+- Opt-in SSE payloads include top-level `hipengine.metadata_version`,
+  `hipengine.event`, and `hipengine.timing.elapsed_ms`; choice chunks include
+  `choices[].hipengine.phase` for answer/reasoning/tool/done chunks.
+- Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
+  usage chunks mirror `usage` under top-level `hipengine.usage`.
+- Backend TTFT/prefill/decode-rate, cache hit/miss, KV-byte, budget-pressure,
+  and exact per-phase token counts are still omitted until generation/runtime
+  code emits those signals.
 
 Exit gates:
 

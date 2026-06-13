@@ -87090,3 +87090,23 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `40 passed`.
 - `python3 -m pytest tests/test_sampling.py::test_sampler_plan_uses_processed_argmax_for_logprobs tests/test_sampling.py::test_stop_token_sequences_are_active_processors -q` -> `2 passed`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC opt-in streaming metadata
+
+Implemented the P0.3 basic `stream_options.include_hipengine` SSE extension for
+completion and chat streams.  Default streams remain OpenAI-compatible with no
+`hipengine` metadata.  Opt-in streams now include top-level
+`hipengine.metadata_version`, `hipengine.event`, and elapsed stream timing, plus
+per-choice `choices[].hipengine.phase` for answer/reasoning/tool/done chunks.
+Final chunks mirror `finish_details` under choice metadata and usage chunks
+mirror usage under top-level `hipengine.usage`.
+
+Updated `docs/API.md` and `docs/AGENTIC.md` to describe the basic metadata
+shape and to keep the runtime gaps explicit: TTFT/prefill/decode-rate,
+cache/KV, budget pressure, and exact per-phase token counts still need
+generation/runtime signals.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `42 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
