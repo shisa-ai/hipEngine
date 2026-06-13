@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GenerationOutput, TokenLogprob
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
 from hipengine.server.api import ChatCompletionRequest, _GenerationBatcher
@@ -20,8 +20,10 @@ class FakeLLM:
         outputs: list[str] | None = None,
         stream_chunks: list[str] | None = None,
         token_map: dict[str, list[int]] | None = None,
+        detailed_outputs: list[GenerationOutput] | None = None,
     ) -> None:
         self.outputs = outputs
+        self.detailed_outputs = detailed_outputs
         self.stream_chunks = stream_chunks
         self.token_map = token_map
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
@@ -48,11 +50,16 @@ class FakeLLM:
         return selected
 
     def generate(self, prompts, sampling_params: SamplingParams) -> list[str]:
+        return [output.text for output in self.generate_detailed(prompts, sampling_params)]
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         prompts = tuple(prompts)
         self.calls.append((prompts, sampling_params))
+        if self.detailed_outputs is not None:
+            return self.detailed_outputs[: len(prompts)]
         if self.outputs is not None:
-            return self.outputs[: len(prompts)]
-        return [f"generated:{prompt}" for prompt in prompts]
+            return [GenerationOutput(text=output) for output in self.outputs[: len(prompts)]]
+        return [GenerationOutput(text=f"generated:{prompt}") for prompt in prompts]
 
     def stream(self, prompt: str, sampling_params: SamplingParams):
         self.stream_calls.append((str(prompt), sampling_params))
@@ -419,6 +426,88 @@ def test_completions_endpoint_plumbs_sampling_parameters() -> None:
     assert sampling.logit_bias == ((12, -1.5),)
     assert sampling.seed == 123
 
+
+
+def test_completions_endpoint_returns_openai_logprobs() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="alpha beta",
+                token_logprobs=(
+                    TokenLogprob(
+                        token_id=1,
+                        token_text="alpha",
+                        logprob=-0.25,
+                        top_logprobs=((1, "alpha", -0.25), (2, "omega", -1.5)),
+                    ),
+                    TokenLogprob(
+                        token_id=3,
+                        token_text=" beta",
+                        logprob=-0.5,
+                        top_logprobs=((3, " beta", -0.5),),
+                    ),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 2, "logprobs": 2},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == "alpha beta"
+    assert choice["logprobs"]["tokens"] == ["alpha", " beta"]
+    assert choice["logprobs"]["token_logprobs"] == [-0.25, -0.5]
+    assert choice["logprobs"]["top_logprobs"][0] == {"alpha": -0.25, "omega": -1.5}
+    assert fake.calls[0][1].logprobs is True
+    assert fake.calls[0][1].top_logprobs == 2
+
+
+def test_chat_completion_returns_openai_logprobs() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="assistant reply",
+                token_logprobs=(
+                    TokenLogprob(
+                        token_id=4,
+                        token_text="assistant",
+                        logprob=-0.1,
+                        top_logprobs=((4, "assistant", -0.1),),
+                    ),
+                    TokenLogprob(token_id=5, token_text=" reply", logprob=-0.2),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "logprobs": True,
+            "top_logprobs": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["message"]["content"] == "assistant reply"
+    assert choice["logprobs"]["content"][0]["token"] == "assistant"
+    assert choice["logprobs"]["content"][0]["top_logprobs"] == [
+        {"token": "assistant", "logprob": -0.1, "bytes": None}
+    ]
+    assert fake.calls[0][1].logprobs is True
+    assert fake.calls[0][1].top_logprobs == 1
 
 
 def test_chat_completion_renders_messages_to_prompt() -> None:
@@ -999,12 +1088,12 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     assert wrong_model.status_code == 404
     assert wrong_model.json()["error"]["code"] == "model_not_found"
 
-    unsupported_logprobs = client.post(
+    unsupported_echo_logprobs = client.post(
         "/v1/completions",
-        json={"model": "fake-model", "prompt": "hello", "logprobs": 1},
+        json={"model": "fake-model", "prompt": "hello", "echo": True, "logprobs": 1},
     )
-    assert unsupported_logprobs.status_code == 400
-    assert unsupported_logprobs.json()["error"]["param"] == "logprobs"
+    assert unsupported_echo_logprobs.status_code == 400
+    assert unsupported_echo_logprobs.json()["error"]["param"] == "echo"
 
     unsupported_extra = client.post(
         "/v1/completions",

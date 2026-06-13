@@ -86717,3 +86717,25 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_chat_completion_uses_bounded_default_max_tokens tests/test_server_api.py::test_chat_completion_auto_default_max_tokens_uses_remaining_context tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults -q` -> `3 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `34 passed`.
+
+## 2026-06-14 - S8 non-streaming logprobs response path
+
+Implemented the first S8 logprobs response slice for `docs/SAMPLING.md`:
+non-streaming OpenAI completions now accept `logprobs: N`, non-streaming chat
+accepts `logprobs: true` plus optional `top_logprobs: N`, and both response
+paths return selected token logprobs plus optional top-logprob candidates from the
+host-logits sampler metadata.  Public `LLM.generate()` remains `list[str]`; a new
+`generate_detailed()` path carries `GenerationOutput` / `TokenLogprob` metadata
+for server use.  `SamplingParams` / `GenerationRequest` now carry `logprobs` and
+`top_logprobs`, and requested logprobs force the host-logits/processed-argmax
+path instead of the greedy graph path so full logits are available.
+
+Explicit unsupported cases for this slice: streaming logprobs and completion
+`echo+logprobs`.  They now fail clearly instead of returning incomplete metadata.
+`docs/SAMPLING.md` marks S8 partial and keeps streaming/echo parity open.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/llm.py hipengine/generation/engine_loop.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `62 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> `13 passed`.
+- Combined rerun: `python3 -m pytest tests/test_sampling.py tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> passed (`75 passed`).

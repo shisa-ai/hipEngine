@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
-from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, derive_row_seed
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GenerationOutput, TokenLogprob, derive_row_seed
 from hipengine.kvcache import resolve_prefix_cache_mode
 
 
@@ -127,7 +127,7 @@ class CompletionRequest(_OpenAIBaseModel):
     stop: str | list[str] | None = None
     seed: int | None = Field(default=None, ge=0)
     echo: bool = False
-    logprobs: int | None = None
+    logprobs: int | None = Field(default=None, ge=0, le=20)
     ignore_eos: bool = False
     kv_storage: str | None = None
     kv_scale_dtype: str | None = None
@@ -166,6 +166,8 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     reasoning: dict[str, Any] | None = None
     stop: str | list[str] | None = None
     seed: int | None = Field(default=None, ge=0)
+    logprobs: bool | None = None
+    top_logprobs: int | None = Field(default=None, ge=0, le=20)
     ignore_eos: bool = False
     kv_storage: str | None = None
     kv_scale_dtype: str | None = None
@@ -176,6 +178,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
 class _GeneratedBatch:
     outputs: list[str]
     usage: dict[str, int]
+    details: list[GenerationOutput]
 
 
 @dataclass
@@ -816,6 +819,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 effective_max_context_tokens(engine),
                 chat_default_max_tokens=config.chat_default_max_tokens,
             ),
+            logprobs=_request_logprobs_enabled(request),
+            top_logprobs=_request_top_logprobs(request),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
             top_p=float(request.top_p if request.top_p is not None else 1.0),
             top_k=int(request.top_k if request.top_k is not None else 0),
@@ -849,7 +854,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         row_seeds=_row_seeds_for_request(request.seed, len(prompts)),
                     )
                 _validate_context_budget(effective_max_context_tokens(engine), engine, prompts, sampling)
-            raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
+            if _request_logprobs_enabled(request):
+                raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
+            else:
+                raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
         except OpenAIHTTPError:
             app.state.hipengine_server_metrics.record_failure()
             raise
@@ -868,7 +876,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="generation_failed",
             ) from exc
 
-        outputs = [str(item) for item in raw_outputs]
+        details = [_coerce_generation_output(item) for item in raw_outputs]
+        outputs = [item.text for item in details]
         if len(outputs) != len(prompts):
             app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(
@@ -877,7 +886,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type="server_error",
                 code="bad_generator_output",
             )
-        batch = _GeneratedBatch(outputs=outputs, usage=_usage(engine, prompts, outputs))
+        if _request_logprobs_enabled(request):
+            _validate_logprob_details(details, outputs)
+        batch = _GeneratedBatch(outputs=outputs, usage=_usage(engine, prompts, outputs), details=details)
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
 
@@ -998,6 +1009,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
+        _validate_generation_request(config, request)
         prompts = _normalize_prompts(request.prompt)
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
@@ -1011,7 +1023,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         choices = []
         final_texts: list[str] = []
-        for index, (prompt, output) in enumerate(zip(expanded_prompts, batch.outputs)):
+        for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
             text, finish_reason = _apply_stop(output, request.stop)
             if request.echo:
                 text = prompt + text
@@ -1019,7 +1031,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             choice = {
                 "text": text,
                 "index": index,
-                "logprobs": None,
+                "logprobs": _completion_logprobs(detail, text) if request.logprobs is not None else None,
                 "finish_reason": finish_reason,
             }
             if n > 1:
@@ -1053,6 +1065,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
+        _validate_generation_request(config, request)
         thinking = _thinking_control_from_request(request)
         prompt = render_chat_prompt(
             request.messages,
@@ -1072,7 +1085,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
-        for index, output in enumerate(batch.outputs):
+        for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
             text, finish_reason = _apply_stop(output, request.stop)
             parsed = _parse_chat_tool_calls(text)
             message, parsed_finish_reason = _chat_message_from_parsed(parsed)
@@ -1083,6 +1096,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "message": message,
                 "finish_reason": finish_reason,
             }
+            if request.logprobs:
+                choice["logprobs"] = _chat_logprobs(detail, text)
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, 0, index)
             choices.append(choice)
@@ -1811,6 +1826,50 @@ def _chat_default_max_tokens_label(config: ServerConfig) -> str:
     return "auto" if config.chat_default_max_tokens is None else str(int(config.chat_default_max_tokens))
 
 
+def _request_logprobs_enabled(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    if isinstance(request, CompletionRequest):
+        return request.logprobs is not None
+    return bool(request.logprobs)
+
+
+def _request_top_logprobs(request: CompletionRequest | ChatCompletionRequest) -> int:
+    if isinstance(request, CompletionRequest):
+        return 0 if request.logprobs is None else int(request.logprobs)
+    return 0 if request.top_logprobs is None else int(request.top_logprobs)
+
+
+async def _generate_detailed(
+    engine: Any,
+    prompts: tuple[str, ...],
+    sampling: SamplingParams,
+) -> list[Any]:
+    detailed = getattr(engine, "generate_detailed", None)
+    if callable(detailed):
+        return list(await run_in_threadpool(detailed, prompts, sampling))
+    return [GenerationOutput(text=str(item)) for item in await run_in_threadpool(engine.generate, prompts, sampling)]
+
+
+def _coerce_generation_output(value: Any) -> GenerationOutput:
+    if isinstance(value, GenerationOutput):
+        return value
+    token_logprobs = getattr(value, "token_logprobs", None)
+    if token_logprobs is not None:
+        return GenerationOutput(text=str(getattr(value, "text", value)), token_logprobs=tuple(token_logprobs))
+    return GenerationOutput(text=str(value))
+
+
+def _validate_logprob_details(details: Sequence[GenerationOutput], outputs: Sequence[str]) -> None:
+    for output, text in zip(details, outputs, strict=True):
+        if text and not output.token_logprobs:
+            raise OpenAIHTTPError(
+                500,
+                "generator did not return token logprobs for a logprobs request",
+                error_type="server_error",
+                code="missing_logprobs",
+                param="logprobs",
+            )
+
+
 def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
     _request_n(request)
     extra_keys = _request_extra_keys(request)
@@ -1822,12 +1881,27 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             code="unsupported_parameter",
             param=param,
         )
-    if isinstance(request, CompletionRequest) and request.logprobs is not None:
+    if _request_logprobs_enabled(request):
+        if request.stream:
+            raise OpenAIHTTPError(
+                400,
+                "streaming logprobs are not currently supported",
+                code="unsupported_parameter",
+                param="logprobs",
+            )
+        if isinstance(request, CompletionRequest) and request.echo:
+            raise OpenAIHTTPError(
+                400,
+                "echo with logprobs is not currently supported",
+                code="unsupported_parameter",
+                param="echo",
+            )
+    if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
-            "logprobs is not currently supported",
-            code="unsupported_parameter",
-            param="logprobs",
+            "top_logprobs requires logprobs=true",
+            code="invalid_request",
+            param="top_logprobs",
         )
     try:
         from hipengine.kvcache import resolve_kv_policy
@@ -2045,7 +2119,65 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         str(sampling.kv_scale_granularity),
         None if sampling.seed is None else int(sampling.seed),
         tuple(int(seed) for seed in sampling.row_seeds),
+        bool(sampling.logprobs),
+        int(sampling.top_logprobs),
     )
+
+
+def _completion_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
+    tokens = _trim_token_logprobs(detail.token_logprobs, text)
+    offsets: list[int] = []
+    cursor = 0
+    for token in tokens:
+        offsets.append(cursor)
+        cursor += len(token.token_text)
+    return {
+        "tokens": [token.token_text for token in tokens],
+        "token_logprobs": [token.logprob for token in tokens],
+        "top_logprobs": [_completion_top_logprobs(token) for token in tokens],
+        "text_offset": offsets,
+    }
+
+
+def _completion_top_logprobs(token: TokenLogprob) -> dict[str, float] | None:
+    if not token.top_logprobs:
+        return None
+    return {text: float(logprob) for _token_id, text, logprob in token.top_logprobs}
+
+
+def _chat_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
+    tokens = _trim_token_logprobs(detail.token_logprobs, text)
+    return {
+        "content": [
+            {
+                "token": token.token_text,
+                "logprob": token.logprob,
+                "bytes": None,
+                "top_logprobs": [
+                    {"token": top_text, "logprob": float(top_logprob), "bytes": None}
+                    for _top_id, top_text, top_logprob in token.top_logprobs
+                ],
+            }
+            for token in tokens
+        ],
+        "refusal": None,
+    }
+
+
+def _trim_token_logprobs(tokens: Sequence[TokenLogprob], text: str) -> tuple[TokenLogprob, ...]:
+    if not tokens or not text:
+        return ()
+    selected: list[TokenLogprob] = []
+    cursor = 0
+    for token in tokens:
+        next_cursor = cursor + len(token.token_text)
+        if next_cursor > len(text):
+            break
+        selected.append(token)
+        cursor = next_cursor
+        if cursor >= len(text):
+            break
+    return tuple(selected)
 
 
 def _usage(engine: Any, prompts: Sequence[str], outputs: Sequence[str]) -> dict[str, int]:

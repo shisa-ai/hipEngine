@@ -33,6 +33,8 @@ class SamplingParams:
     kv_scale_granularity: str = "per_token_head"
     seed: int | None = None
     row_seeds: tuple[int, ...] = ()
+    logprobs: bool = False
+    top_logprobs: int = 0
 
     def __post_init__(self) -> None:
         from hipengine.generation.sampling import normalize_logit_bias_pairs, normalize_stop_token_sequences, validate_sampling_params
@@ -54,6 +56,8 @@ class SamplingParams:
         object.__setattr__(self, "kv_scale_granularity", str(self.kv_scale_granularity))
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "row_seeds", tuple(int(seed) for seed in self.row_seeds))
+        object.__setattr__(self, "logprobs", bool(self.logprobs))
+        object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)
 
 
@@ -83,9 +87,30 @@ class LLM:
         prompt_tuple = _normalize_prompts(prompts)
         if not prompt_tuple:
             return []
+        return [output.text for output in self.generate_detailed(prompt_tuple, sampling_params)]
+
+    def generate_detailed(
+        self,
+        prompts: str | Iterable[str],
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Return generated text plus optional per-token metadata."""
+
+        from hipengine.generation import GenerationOutput
+
+        prompt_tuple = _normalize_prompts(prompts)
+        if not prompt_tuple:
+            return []
         generator = self._get_text_generator()
         request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
-        return generator.generate(request)
+        detailed = getattr(generator, "generate_detailed", None)
+        if callable(detailed):
+            outputs = list(detailed(request))
+        else:
+            outputs = [GenerationOutput(text=str(item)) for item in generator.generate(request)]
+        if len(outputs) != len(prompt_tuple):
+            raise RuntimeError(f"generator returned {len(outputs)} outputs for {len(prompt_tuple)} prompts")
+        return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
 
     def stream(
         self,
@@ -219,6 +244,8 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         kv_scale_granularity=params.kv_scale_granularity,
         seed=params.seed,
         row_seeds=params.row_seeds,
+        logprobs=params.logprobs,
+        top_logprobs=params.top_logprobs,
     )
 
 

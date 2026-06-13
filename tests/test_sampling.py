@@ -31,6 +31,8 @@ def _params(**overrides):
         "row_seeds": (),
         "stop_token_ids": (),
         "stop_token_sequences": (),
+        "logprobs": False,
+        "top_logprobs": 0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -48,6 +50,12 @@ def test_sampler_plan_uses_processed_argmax_for_active_processors() -> None:
 
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
     assert plan.active_processors == ("presence_penalty",)
+
+
+def test_sampler_plan_uses_processed_argmax_for_logprobs() -> None:
+    plan = plan_sampler(_params(temperature=0.0, logprobs=True, top_logprobs=2))
+
+    assert plan.mode is SamplingMode.PROCESSED_ARGMAX
 
 
 def test_stop_token_sequences_are_active_processors() -> None:
@@ -71,6 +79,19 @@ def test_greedy_tie_break_selects_lower_token_id() -> None:
     assert result.logit == 3.0
     assert result.logprob is None
     assert result.mode is SamplingMode.GREEDY_FAST
+
+
+def test_processed_argmax_reports_requested_logprobs() -> None:
+    result = select_token(
+        np.array([1.0, 3.0, 3.0, 2.0], dtype=np.float32),
+        _params(logprobs=True, top_logprobs=2),
+    )
+
+    assert result.token_id == 1
+    assert result.logprob is not None
+    assert result.mode is SamplingMode.PROCESSED_ARGMAX
+    assert result.top_logprobs[0][0] == 1
+    assert len(result.top_logprobs) == 2
 
 
 def test_logit_bias_and_penalties_apply_before_processed_argmax() -> None:

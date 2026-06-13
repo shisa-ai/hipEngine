@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from hipengine.generation.registry import GenerationRequest, register_text_generator
+from hipengine.generation.registry import GenerationOutput, GenerationRequest, TokenLogprob, register_text_generator
 from hipengine.generation.sampling import (
     RowSamplingState,
     SamplingMode,
@@ -27,6 +27,7 @@ class Qwen35GGUFBringupGenerator:
     weight_index: GGUFModelInfo
     model_plugin: Any
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
+    last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
@@ -38,12 +39,17 @@ class Qwen35GGUFBringupGenerator:
         return len(self.tokenize(text))
 
     def generate(self, request: GenerationRequest) -> list[str]:
+        outputs = self.generate_detailed(request)
+        return [output.text for output in outputs]
+
+    def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
         plan = plan_sampler(request)
         if request.max_tokens == 0:
-            return ["" for _ in request.prompts]
-        outputs: list[str] = []
+            self.last_generation_outputs = tuple(GenerationOutput(text="") for _ in request.prompts)
+            return list(self.last_generation_outputs)
+        outputs: list[GenerationOutput] = []
         with Qwen35GGUFResidentSession(self.model_path) as session:
             for row_index, prompt in enumerate(request.prompts):
                 prompt_ids = self.tokenizer.encode(prompt)
@@ -51,14 +57,17 @@ class Qwen35GGUFBringupGenerator:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 if plan.mode is SamplingMode.GREEDY_FAST:
                     generated_ids = self._generate_greedy(session, prompt_ids, request)
+                    outputs.append(GenerationOutput(text=self.tokenizer.decode(generated_ids)))
                 else:
-                    generated_ids = self._generate_sampled(
-                        session,
-                        prompt_ids,
-                        request,
-                        row_index=row_index,
+                    outputs.append(
+                        self._generate_sampled(
+                            session,
+                            prompt_ids,
+                            request,
+                            row_index=row_index,
+                        )
                     )
-                outputs.append(self.tokenizer.decode(generated_ids))
+        self.last_generation_outputs = tuple(outputs)
         return outputs
 
     def _generate_greedy(
@@ -106,37 +115,57 @@ class Qwen35GGUFBringupGenerator:
         request: GenerationRequest,
         *,
         row_index: int,
-    ) -> list[int]:
+    ) -> GenerationOutput:
         state = RowSamplingState(
             prompt_tokens=tuple(int(token) for token in prompt_ids),
             seed=row_seed_for_index(request, row_index),
             row_index=row_index,
         )
-        generated_ids: list[int] = []
+        samples = []
         result = session.prefill(prompt_ids, return_logits=True)
-        token_id = _select_from_gguf_logits(result, request, state)
-        generated_ids.append(token_id)
+        sample = _select_from_gguf_logits(result, request, state)
+        samples.append(sample)
+        generated_ids = [int(sample.token_id)]
         if _gguf_finished(generated_ids, self.tokenizer, request):
-            return generated_ids
+            return _gguf_generation_output(self.tokenizer, samples)
         for _ in range(request.max_tokens - 1):
             step = session.step(generated_ids[-1], return_logits=True)
-            token_id = _select_from_gguf_logits(step, request, state)
-            generated_ids.append(token_id)
+            sample = _select_from_gguf_logits(step, request, state)
+            samples.append(sample)
+            generated_ids.append(int(sample.token_id))
             if _gguf_finished(generated_ids, self.tokenizer, request):
                 break
-        return generated_ids
+        return _gguf_generation_output(self.tokenizer, samples)
 
 
 def _select_from_gguf_logits(
     result: Any,
     request: GenerationRequest,
     state: RowSamplingState,
-) -> int:
+):
     logits = getattr(result, "logits", None)
     if logits is None:
         raise RuntimeError("GGUF sampled generation requires logits from the resident session")
-    sample = select_token(logits.reshape(-1), request, state)
-    return int(sample.token_id)
+    return select_token(logits.reshape(-1), request, state)
+
+
+def _gguf_generation_output(tokenizer: Qwen35GGUFTokenizer, samples) -> GenerationOutput:
+    token_logprobs = tuple(
+        TokenLogprob(
+            token_id=sample.token_id,
+            token_text=tokenizer.decode([int(sample.token_id)]),
+            logprob=sample.logprob,
+            top_logprobs=tuple(
+                (token_id, tokenizer.decode([int(token_id)]), logprob)
+                for token_id, logprob in sample.top_logprobs
+            ),
+        )
+        for sample in samples
+    )
+    return GenerationOutput(
+        text="".join(token.token_text for token in token_logprobs),
+        token_logprobs=token_logprobs,
+    )
 
 
 def _gguf_finished(

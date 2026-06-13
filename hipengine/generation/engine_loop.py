@@ -17,7 +17,7 @@ from typing import Iterable, Protocol, Sequence
 
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
-from hipengine.generation.registry import GenerationRequest, TextGenerator
+from hipengine.generation.registry import GenerationOutput, GenerationRequest, TextGenerator
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
 DEFAULT_KV_POOL_INITIAL_PAGES = 128
@@ -118,6 +118,9 @@ class SubmitPollTextGenerator:
         return getattr(self._inner, name)
 
     def generate(self, request: GenerationRequest) -> list[str]:
+        return [output.text for output in self.generate_detailed(request)]
+
+    def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         prompts = tuple(str(prompt) for prompt in request.prompts)
         if not prompts:
             return []
@@ -159,7 +162,7 @@ class _SubmitPollTextRunner:
     def __init__(self, inner: TextGenerator, request: GenerationRequest) -> None:
         self._inner = inner
         self._request = request
-        self.outputs: dict[int, str] = {}
+        self.outputs: dict[int, GenerationOutput] = {}
 
     def prefill(self, work: WorkItem) -> None:
         return None
@@ -167,14 +170,19 @@ class _SubmitPollTextRunner:
     def decode(self, work: WorkItem) -> tuple[GeneratedToken, ...]:
         request_ids = tuple(int(request_id) for request_id in work.request_ids)
         subrequest = self._subset_request(request_ids)
-        outputs = list(self._inner.generate(subrequest))
+        detailed = getattr(self._inner, "generate_detailed", None)
+        if callable(detailed):
+            outputs = list(detailed(subrequest))
+        else:
+            outputs = [GenerationOutput(text=str(item)) for item in self._inner.generate(subrequest)]
         if len(outputs) != len(request_ids):
             raise RuntimeError(
                 f"generator returned {len(outputs)} outputs for {len(request_ids)} submit+poll rows"
             )
         tokens: list[GeneratedToken] = []
         for row, (request_id, output) in enumerate(zip(request_ids, outputs, strict=True)):
-            self.outputs[request_id] = str(output)
+            generation_output = output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+            self.outputs[request_id] = generation_output
             tokens.append(GeneratedToken(request_id, row, finished=True))
         return tuple(tokens)
 

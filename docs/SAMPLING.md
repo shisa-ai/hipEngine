@@ -19,8 +19,9 @@ PARO and GGUF while native GPU sampling remains incomplete:
   fields, and `hipengine.generation.sampling` owns validation, sampler planning,
   row seed derivation, and CPU/NumPy token selection.
 - `hipengine.server.api` accepts OpenAI-style `temperature`, `top_p`, `top_k`,
-  `min_p`, penalties, `logit_bias`, `seed`, `stop`, `n`, and streaming
-  `stream_options.include_usage`. Tokenizable `stop` strings are lowered to
+  `min_p`, penalties, `logit_bias`, `seed`, `stop`, `n`, non-streaming
+  `logprobs` / `top_logprobs`, and streaming `stream_options.include_usage`.
+  Tokenizable `stop` strings are lowered to
   runtime single-token stops or multi-token stop sequences; all stop strings
   still use response post-trimming. Unknown top-level request extras are rejected
   instead of silently ignored, and rejected/failed requests log `REQUEST_FAILED`
@@ -48,8 +49,8 @@ PARO and GGUF while native GPU sampling remains incomplete:
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
 is fixed for the host-logits path. Remaining implementation work is native c>N
-stochastic execution, GPU sampler kernels, exact GPU top-p, and public logprobs
-responses.
+stochastic execution, GPU sampler kernels, exact GPU top-p, and streaming/echo
+logprobs parity.
 
 ## Hardware lane for this work
 
@@ -127,7 +128,7 @@ models should either populate these fields or reject unsupported aliases.
 | `seed` / `row_seeds` | Public/server/runtime | Stable row RNG seed; `n > 1` rows diverge deterministically. | Low/Medium |
 | `stop` strings | Server post-trim + token lowering | Keep post-trim; lower one-token stops to `stop_token_ids` and multi-token stops to suffix-matched `stop_token_sequences`. | Medium |
 | `stop_token_ids` / `stop_token_sequences` | Public/runtime + scheduler state | Token stops finish PARO/GGUF host-sampled rows; native c>N execution still needs to consume scheduler stop metadata. | Medium |
-| `logprobs` / `top_logprobs` | Rejected or absent | Later response feature; do not block basic sampling. | High |
+| `logprobs` / `top_logprobs` | Public/server/runtime for non-streaming host-logits paths | Return selected logprob and optional top candidates; streaming logprobs and completion `echo+logprobs` are rejected until token metadata can be carried chunk-by-chunk / through prompt echo. | High |
 
 Compatibility rule: if `temperature <= 0` and the request has no active logit
 processors (`logit_bias`, penalties, bad-token constraints, etc.), `top_p` and
@@ -151,7 +152,7 @@ a client sent `top_p=0.95` with `temperature=0`.
 | `seed` | `SamplingParams.seed` | Base seed for row derivation. |
 | `n` | prompt expansion + `row_seeds` | Existing server expands rows; make row seeds deterministic and sampler-state-aware. |
 | `stop` | server trim + token lowering | Tokenizable stops lower to token IDs/sequences for early host-path termination and remain post-trimmed for response consistency. |
-| `logprobs` | later response schema | Reject until selected-logprob/top-logprobs plumbing is explicit. |
+| `logprobs` / `top_logprobs` | `SamplingParams.logprobs` / `.top_logprobs` | Completions use OpenAI `logprobs: N`; chat uses `logprobs: true` plus optional `top_logprobs: N`. Non-streaming responses include selected token logprobs and optional top candidates. |
 | unknown sampler extras | reject or explicitly ignore by allowlist | Current `extra="allow"` behavior should be paired with a validator to avoid silent drops. |
 
 ## Runtime architecture
@@ -178,7 +179,7 @@ Add a small sampler module, for example `hipengine.generation.sampling`, with:
   - `token_id`;
   - `token_text`;
   - selected `logit`;
-  - optional `logprob` and `top_logprobs` later;
+  - optional `logprob` and `top_logprobs`;
   - sampler mode used for observability.
 
 `RowSamplingState` belongs to generation/session code, not model plugins. Model
@@ -320,8 +321,8 @@ Host sampler implementation notes:
 - Clamp non-finite logits to `-inf` except when all logits are non-finite, which
   should raise a clear error.
 - Always retain at least one candidate after `top_k`, `top_p`, and `min_p`.
-- Record the selected token's original processed logit and sampled logprob in
-  `SampleResult` even before public `logprobs` responses are implemented.
+- Record the selected token's original processed logit, sampled logprob, and
+  requested top-logprob summary in `SampleResult` for public response plumbing.
 - Keep CPU sampler code independent from Qwen/PARO so GGUF can reuse it.
 
 ## Native GPU sampler path
@@ -414,7 +415,7 @@ fully vectorized at first:
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Partial:** canonical sampler metadata and scheduler-owned `RowSamplingState` history are available in decode-work order; native c>N stochastic execution still open. |
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | GPU1 smoke passes CPU-reference filtering and fixed-seed determinism. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | GPU top-p matches CPU retain set on boundary fixtures and removes full-vocab D2H copies. |
-| S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | OpenAI-compatible response tests pass for selected logprob/top-logprobs cases. |
+| S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Partial:** non-streaming completion/chat response tests pass for selected logprob/top-logprobs cases; streaming logprobs and completion `echo+logprobs` remain explicit unsupported cases. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
@@ -491,7 +492,8 @@ Resolved for the current host-sampler milestone:
 
 Still open:
 
-1. How much OpenAI `logprobs` compatibility is needed before marking sampled
-   server responses production-ready?
+1. Should streaming OpenAI `logprobs` chunks be implemented before marking
+   sampled server responses production-ready, or is non-streaming compatibility
+   sufficient for local coding-agent use?
 2. Should fixed-seed GPU sampling match the host RNG exactly, or is stable
    GPU-only determinism sufficient for retained native sampling?

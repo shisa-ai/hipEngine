@@ -1058,9 +1058,17 @@ class Qwen35ParoAutoregressiveStepResult:
     token_id: int
     token_text: str
     logit: float
+    logprob: float | None = None
+    top_logprobs: tuple[tuple[int, float], ...] = ()
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {"token_id": self.token_id, "token_text": self.token_text, "logit": self.logit}
+        return {
+            "token_id": self.token_id,
+            "token_text": self.token_text,
+            "logit": self.logit,
+            "logprob": self.logprob,
+            "top_logprobs": [list(item) for item in self.top_logprobs],
+        }
 
 
 @dataclass(frozen=True)
@@ -8354,6 +8362,8 @@ class Qwen35ParoResidentSession:
             token_id=token_id,
             token_text=_decode_token_cached(self.tokenizer, token_id),
             logit=float(sample.logit),
+            logprob=sample.logprob,
+            top_logprobs=sample.top_logprobs,
         )
 
     def _read_sample(self) -> Qwen35ParoAutoregressiveStepResult:

@@ -94,6 +94,7 @@ class SampleResult:
     logprob: float | None
     mode: SamplingMode
     candidate_count: int
+    top_logprobs: tuple[tuple[int, float], ...] = ()
 
 
 LogitBiasInput = Mapping[int | str, float] | Iterable[tuple[int | str, float]] | None
@@ -182,6 +183,9 @@ def validate_sampling_params(params: Any) -> None:
     for seed_value in getattr(params, "row_seeds", ()):
         if int(seed_value) < 0:
             raise ValueError("row_seeds must be non-negative")
+    top_logprobs = int(getattr(params, "top_logprobs", 0))
+    if top_logprobs < 0:
+        raise ValueError("top_logprobs must be non-negative")
     for token_id in getattr(params, "stop_token_ids", ()):
         if int(token_id) < 0:
             raise ValueError("stop_token_ids must be non-negative")
@@ -219,8 +223,9 @@ def plan_sampler(
     validate_sampling_params(params)
     processors = active_processor_names(params)
     temperature = float(getattr(params, "temperature", 0.0))
+    needs_logits = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     if temperature <= 0.0:
-        if processors:
+        if processors or needs_logits:
             return SamplerPlan(SamplingMode.PROCESSED_ARGMAX, processors, native_gpu_available)
         return SamplerPlan(SamplingMode.GREEDY_FAST, processors, native_gpu_available)
     if native_gpu_available:
@@ -291,16 +296,20 @@ def select_token(
     _apply_logit_bias(processed, normalize_logit_bias_pairs(getattr(params, "logit_bias", None)))
     _apply_history_penalties(processed, params, row_state)
 
+    requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
+    requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
     if temperature <= 0.0:
         token_id = _argmax_lower_id(processed)
+        logprob, top_logprobs = _logprob_summary(processed, token_id, requested_top_logprobs) if requested_logprobs else (None, ())
         row_state.observe(token_id)
         return SampleResult(
             token_id=token_id,
             logit=float(processed[token_id]),
-            logprob=None,
-            mode=SamplingMode.GREEDY_FAST if not active_processor_names(params) else SamplingMode.PROCESSED_ARGMAX,
+            logprob=logprob,
+            mode=SamplingMode.GREEDY_FAST if not active_processor_names(params) and not requested_logprobs else SamplingMode.PROCESSED_ARGMAX,
             candidate_count=int(np.isfinite(processed).sum()),
+            top_logprobs=top_logprobs,
         )
 
     scaled = processed / temperature
@@ -327,12 +336,14 @@ def select_token(
     token_id = int(retained_ids[choice])
     probability = float(retained_probs[choice])
     row_state.observe(token_id)
+    top_logprobs = _top_logprob_pairs(retained_ids, retained_probs, requested_top_logprobs)
     return SampleResult(
         token_id=token_id,
         logit=float(processed[token_id]),
         logprob=float(math.log(probability)),
         mode=SamplingMode.HOST_LOGITS_SAMPLE,
         candidate_count=int(retained_ids.size),
+        top_logprobs=top_logprobs,
     )
 
 
@@ -382,6 +393,39 @@ def _top_k_candidate_ids(values: np.ndarray, top_k: int) -> np.ndarray:
     if top_k > 0:
         return sorted_ids[: min(top_k, sorted_ids.size)]
     return sorted_ids
+
+
+def _logprob_summary(
+    logits: np.ndarray,
+    token_id: int,
+    top_logprobs: int,
+) -> tuple[float, tuple[tuple[int, float], ...]]:
+    finite_ids = np.flatnonzero(np.isfinite(logits)).astype(np.int64, copy=False)
+    if finite_ids.size == 0:
+        raise ValueError("no finite logits remain after processing")
+    probs = _softmax(logits[finite_ids])
+    token_positions = np.flatnonzero(finite_ids == int(token_id))
+    if token_positions.size == 0:
+        raise ValueError("selected token has no finite logit")
+    selected_prob = float(probs[int(token_positions[0])])
+    return float(math.log(selected_prob)), _top_logprob_pairs(finite_ids, probs, top_logprobs)
+
+
+def _top_logprob_pairs(
+    token_ids: np.ndarray,
+    probs: np.ndarray,
+    limit: int,
+) -> tuple[tuple[int, float], ...]:
+    if limit <= 0 or token_ids.size == 0:
+        return ()
+    order = np.lexsort((token_ids, -probs))
+    pairs: list[tuple[int, float]] = []
+    for index in order[: min(int(limit), int(token_ids.size))]:
+        probability = float(probs[int(index)])
+        if probability <= 0.0 or not math.isfinite(probability):
+            continue
+        pairs.append((int(token_ids[int(index)]), float(math.log(probability))))
+    return tuple(pairs)
 
 
 def _softmax(values: np.ndarray) -> np.ndarray:

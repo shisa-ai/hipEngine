@@ -39,6 +39,8 @@ class GenerationRequest:
     kv_scale_granularity: str = "per_token_head"
     seed: int | None = None
     row_seeds: tuple[int, ...] = ()
+    logprobs: bool = False
+    top_logprobs: int = 0
 
     def __post_init__(self) -> None:
         from hipengine.generation.sampling import normalize_logit_bias_pairs, normalize_stop_token_sequences, validate_sampling_params
@@ -61,7 +63,43 @@ class GenerationRequest:
         object.__setattr__(self, "kv_scale_granularity", str(self.kv_scale_granularity))
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "row_seeds", tuple(int(seed) for seed in self.row_seeds))
+        object.__setattr__(self, "logprobs", bool(self.logprobs))
+        object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)
+
+
+@dataclass(frozen=True)
+class TokenLogprob:
+    """Host-visible logprob metadata for one generated token."""
+
+    token_id: int
+    token_text: str
+    logprob: float | None = None
+    top_logprobs: tuple[tuple[int, str, float], ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "token_id", int(self.token_id))
+        object.__setattr__(self, "token_text", str(self.token_text))
+        object.__setattr__(
+            self,
+            "top_logprobs",
+            tuple((int(token_id), str(text), float(logprob)) for token_id, text, logprob in self.top_logprobs),
+        )
+
+
+@dataclass(frozen=True)
+class GenerationOutput:
+    """Generated text plus optional per-token sampler metadata."""
+
+    text: str
+    token_logprobs: tuple[TokenLogprob, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", str(self.text))
+        object.__setattr__(self, "token_logprobs", tuple(self.token_logprobs))
+
+    def __str__(self) -> str:
+        return self.text
 
 
 class TextGenerator(Protocol):
