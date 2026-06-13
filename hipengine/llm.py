@@ -167,6 +167,26 @@ class LLM:
             raise NotImplementedError("tokenization is not supported by this generator")
         return tuple(int(token) for token in tokenizer(str(text)))
 
+    def detokenize(self, token_ids: Iterable[int], *, skip_special: bool = False) -> str:
+        """Return text for token ids when the resolved generator exposes decoding."""
+
+        ids = tuple(int(token) for token in token_ids)
+        generator = self._get_text_generator()
+        detokenizer = getattr(generator, "detokenize", None)
+        if callable(detokenizer):
+            try:
+                return str(detokenizer(ids, skip_special=bool(skip_special)))
+            except TypeError:
+                return str(detokenizer(ids))
+        tokenizer = getattr(generator, "tokenizer", None)
+        decode = getattr(tokenizer, "decode", None)
+        if callable(decode):
+            try:
+                return str(decode(ids, skip_special=bool(skip_special)))
+            except TypeError:
+                return str(decode(ids))
+        raise NotImplementedError("detokenization is not supported by this generator")
+
     def _get_text_generator(self) -> Any:
         if self._text_generator is not None:
             return self._text_generator

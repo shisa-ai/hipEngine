@@ -79,8 +79,8 @@ Known baseline limitations:
 - Resident session reuse needs an explicit commit policy before hidden reasoning
   or failed/truncated tool-call attempts can safely be retained across turns.
 - Public agent/runtime capability discovery is exposed through
-  `/v1/hipengine/capabilities`, but tokenizer diagnostics and continuation/
-  session commit support are still not implemented.
+  `/v1/hipengine/capabilities`, but continuation/session commit support is still
+  not implemented.
 - Server startup supports one loaded model at a time; routing, multiple resident
   models, tensor parallelism, and model-family fallback are not yet designed.
 
@@ -738,6 +738,20 @@ Implement:
   effective `max_tokens`, chat default, truncation/clear policy, and what would
   be dropped.
 
+Current code reality:
+
+- `POST /v1/hipengine/tokenize`, `/detokenize`, `/count_tokens`, and
+  `/fit_context` are implemented and authenticated like the other `/v1/*`
+  endpoints.
+- Raw text diagnostics use the served tokenizer/counting hooks. Chat diagnostics
+  render the same Qwen-style prompt as generation, including tool markup and
+  thinking controls, before counting.
+- `/fit_context` uses the same context arithmetic and chat default max-token
+  policy as generation admission, and reports the current clear policy as
+  `reject` with no automatic truncation/dropping.
+- Endpoints return explicit unsupported-feature errors when the served model does
+  not expose tokenizer/counting/decoding hooks.
+
 Exit gates:
 
 - `/fit_context` and actual generation use the same token accounting;
@@ -1189,8 +1203,9 @@ Current code reality:
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
   parameters, cache/session settings, loaded-model count, and unsupported fields.
 - Continuations, `session.commit`, deadline/cancellation, multi-model routing,
-  strict tool decoding, and token diagnostics are advertised as unsupported until
-  their runtime paths exist.
+  and strict tool decoding are advertised as unsupported until their runtime
+  paths exist. Token diagnostics are advertised from current tokenizer/counting
+  callables.
 
 Exit gates:
 

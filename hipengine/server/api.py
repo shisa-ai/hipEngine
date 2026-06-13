@@ -174,6 +174,31 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     kv_scale_granularity: str | None = None
 
 
+class TokenizeRequest(_OpenAIBaseModel):
+    text: str
+
+
+class DetokenizeRequest(_OpenAIBaseModel):
+    token_ids: list[int]
+    skip_special: bool = False
+
+
+class TokenDiagnosticRequest(_OpenAIBaseModel):
+    text: str | None = None
+    messages: list[ChatMessage] | None = None
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
+    reasoning_effort: str | None = None
+    enable_thinking: bool | None = None
+    chat_template_kwargs: dict[str, Any] | None = None
+    thinking: str | dict[str, Any] | None = None
+    reasoning: dict[str, Any] | None = None
+
+
+class FitContextRequest(TokenDiagnosticRequest):
+    max_tokens: int | None = Field(default=None, ge=0)
+
+
 @dataclass(frozen=True)
 class _GeneratedBatch:
     outputs: list[str]
@@ -1029,6 +1054,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.get("/v1/hipengine/capabilities")
     async def capabilities(_auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
+        tokenizer_caps = _tokenizer_capability_flags(engine)
         configured_context = configured_max_context_tokens()
         cached_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         effective_context = configured_context if configured_context is not None else cached_context
@@ -1047,9 +1073,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
             },
             "tokenizer": {
-                "tokenize": callable(getattr(engine, "tokenize", None)),
-                "detokenize": callable(getattr(engine, "detokenize", None)),
-                "count_tokens": callable(getattr(engine, "count_tokens", None)),
+                "tokenize": tokenizer_caps["tokenize"],
+                "detokenize": tokenizer_caps["detokenize"],
+                "count_tokens": tokenizer_caps["count_tokens"],
                 "name": None if engine is None else type(engine).__name__,
             },
             "chat_template": {
@@ -1066,6 +1092,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "include_hipengine": True,
                 },
                 "finish_details": True,
+                "token_diagnostics": {
+                    "tokenize": tokenizer_caps["tokenize"],
+                    "detokenize": tokenizer_caps["detokenize"],
+                    "count_tokens": tokenizer_caps["count_tokens"],
+                    "fit_context": tokenizer_caps["count_tokens"],
+                },
                 "tools": {
                     "enabled": True,
                     "strict_decoding": False,
@@ -1127,6 +1159,78 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "response_format",
                 "parallel_tool_calls",
             ],
+        }
+
+    @app.post("/v1/hipengine/tokenize")
+    async def tokenize(request: TokenizeRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
+        engine = get_llm()
+        token_ids = await run_in_threadpool(_tokenize_text, engine, request.text)
+        return {
+            "object": "hipengine.tokens",
+            "text": request.text,
+            "token_ids": list(token_ids),
+            "token_count": len(token_ids),
+        }
+
+    @app.post("/v1/hipengine/detokenize")
+    async def detokenize(request: DetokenizeRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
+        engine = get_llm()
+        token_ids = tuple(int(token) for token in request.token_ids)
+        text = await run_in_threadpool(_detokenize_ids, engine, token_ids, request.skip_special)
+        return {
+            "object": "hipengine.text",
+            "text": text,
+            "token_ids": list(token_ids),
+        }
+
+    @app.post("/v1/hipengine/count_tokens")
+    async def count_tokens(request: TokenDiagnosticRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
+        engine = get_llm()
+        text, input_type = _diagnostic_text_from_request(config, request)
+        token_count = await run_in_threadpool(_count_tokens_strict, engine, text)
+        return {
+            "object": "hipengine.count_tokens",
+            "input_type": input_type,
+            "text": text,
+            "token_count": token_count,
+        }
+
+    @app.post("/v1/hipengine/fit_context")
+    async def fit_context(request: FitContextRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
+        engine = get_llm()
+        text, input_type = _diagnostic_text_from_request(config, request)
+        prompt_tokens = await run_in_threadpool(_count_tokens_strict, engine, text)
+        max_context = effective_max_context_tokens(engine)
+        if request.max_tokens is not None:
+            effective_max_tokens = max(0, int(request.max_tokens))
+        elif input_type == "chat":
+            chat_request = _chat_request_from_diagnostic(config, request)
+            effective_max_tokens = _request_max_tokens(
+                chat_request,
+                (text,),
+                engine,
+                max_context,
+                chat_default_max_tokens=config.chat_default_max_tokens,
+            )
+        else:
+            effective_max_tokens = 16
+        required_context = int(prompt_tokens) + int(effective_max_tokens) + 1
+        fits = True if max_context is None else required_context <= int(max_context)
+        return {
+            "object": "hipengine.fit_context",
+            "input_type": input_type,
+            "text": text,
+            "prompt_tokens": int(prompt_tokens),
+            "max_context_tokens": None if max_context is None else int(max_context),
+            "requested_max_tokens": request.max_tokens,
+            "effective_max_tokens": int(effective_max_tokens),
+            "required_context_tokens": required_context,
+            "fits": fits,
+            "chat_default_max_tokens": config.chat_default_max_tokens if input_type == "chat" else None,
+            "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
+            "clear_policy": "reject",
+            "would_truncate": False,
+            "would_drop": [],
         }
 
     @app.post("/v1/completions", response_model=None)
@@ -2175,6 +2279,133 @@ def _count_tokens_for_admission(engine: Any, text: str) -> int:
         return max(0, int(counter(text)))
     except NotImplementedError:
         return 0
+
+
+def _count_tokens_strict(engine: Any, text: str) -> int:
+    counter = getattr(engine, "count_tokens", None)
+    if not callable(counter):
+        raise OpenAIHTTPError(
+            501,
+            "token counting is not supported by this model",
+            error_type="server_error",
+            code="unsupported_feature",
+            param="text",
+        )
+    try:
+        return max(0, int(counter(str(text))))
+    except NotImplementedError as exc:
+        raise OpenAIHTTPError(
+            501,
+            "token counting is not supported by this model",
+            error_type="server_error",
+            code="unsupported_feature",
+            param="text",
+        ) from exc
+
+
+def _tokenizer_capability_flags(engine: Any | None) -> dict[str, bool]:
+    if engine is None:
+        return {"tokenize": False, "detokenize": False, "count_tokens": False}
+    target = getattr(engine, "_text_generator", None) or engine
+    tokenizer = getattr(target, "tokenizer", None)
+    return {
+        "tokenize": callable(getattr(target, "tokenize", None)),
+        "detokenize": callable(getattr(target, "detokenize", None)) or callable(getattr(tokenizer, "decode", None)),
+        "count_tokens": callable(getattr(target, "count_tokens", None)),
+    }
+
+
+def _tokenize_text(engine: Any, text: str) -> tuple[int, ...]:
+    tokenizer = getattr(engine, "tokenize", None)
+    if not callable(tokenizer):
+        raise OpenAIHTTPError(
+            501,
+            "tokenization is not supported by this model",
+            error_type="server_error",
+            code="unsupported_feature",
+            param="text",
+        )
+    try:
+        return tuple(int(token) for token in tokenizer(str(text)))
+    except NotImplementedError as exc:
+        raise OpenAIHTTPError(
+            501,
+            "tokenization is not supported by this model",
+            error_type="server_error",
+            code="unsupported_feature",
+            param="text",
+        ) from exc
+
+
+def _detokenize_ids(engine: Any, token_ids: Sequence[int], skip_special: bool = False) -> str:
+    detokenizer = getattr(engine, "detokenize", None)
+    if callable(detokenizer):
+        try:
+            return str(detokenizer(tuple(int(token) for token in token_ids), skip_special=bool(skip_special)))
+        except TypeError:
+            return str(detokenizer(tuple(int(token) for token in token_ids)))
+        except NotImplementedError as exc:
+            raise OpenAIHTTPError(
+                501,
+                "detokenization is not supported by this model",
+                error_type="server_error",
+                code="unsupported_feature",
+                param="token_ids",
+            ) from exc
+    tokenizer = getattr(engine, "tokenizer", None)
+    decode = getattr(tokenizer, "decode", None)
+    if callable(decode):
+        try:
+            return str(decode(tuple(int(token) for token in token_ids), skip_special=bool(skip_special)))
+        except TypeError:
+            return str(decode(tuple(int(token) for token in token_ids)))
+    raise OpenAIHTTPError(
+        501,
+        "detokenization is not supported by this model",
+        error_type="server_error",
+        code="unsupported_feature",
+        param="token_ids",
+    )
+
+
+def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnosticRequest) -> ChatCompletionRequest:
+    return ChatCompletionRequest(
+        model=config.model_id,
+        messages=list(request.messages or ()),
+        tools=request.tools,
+        tool_choice=request.tool_choice,
+        reasoning_effort=request.reasoning_effort,
+        enable_thinking=request.enable_thinking,
+        chat_template_kwargs=request.chat_template_kwargs,
+        thinking=request.thinking,
+        reasoning=request.reasoning,
+        max_tokens=getattr(request, "max_tokens", None),
+    )
+
+
+def _diagnostic_text_from_request(config: ServerConfig, request: TokenDiagnosticRequest) -> tuple[str, str]:
+    has_text = request.text is not None
+    has_messages = request.messages is not None
+    if has_text == has_messages:
+        raise OpenAIHTTPError(
+            400,
+            "provide exactly one of text or messages",
+            code="invalid_request",
+            param="text",
+        )
+    if has_text:
+        return str(request.text), "text"
+    chat_request = _chat_request_from_diagnostic(config, request)
+    thinking = _thinking_control_from_request(chat_request)
+    return (
+        render_chat_prompt(
+            chat_request.messages,
+            tools=chat_request.tools,
+            tool_choice=chat_request.tool_choice,
+            thinking=thinking,
+        ),
+        "chat",
+    )
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

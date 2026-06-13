@@ -85,6 +85,37 @@ def test_llm_tokenize_delegates_to_generator(monkeypatch) -> None:
     assert llm.tokenize("Az") == (65, 122)
 
 
+def test_llm_detokenize_delegates_to_generator(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def detokenize(self, token_ids, *, skip_special: bool = False) -> str:
+            suffix = " skip" if skip_special else ""
+            return ",".join(str(int(token)) for token in token_ids) + suffix
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["unused"]
+
+    fake_index = SimpleNamespace(config={"architectures": ["FakeForCausalLM"]}, model_path="/tmp/fake-model")
+    fake_plugin = SimpleNamespace(name="fake_detokenizer_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_detokenizer_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+
+    assert llm.detokenize([65, 122], skip_special=True) == "65,122 skip"
+
+
 def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading

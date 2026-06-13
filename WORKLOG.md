@@ -87129,3 +87129,26 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `44 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC token diagnostics endpoints
+
+Implemented authenticated P0.4 diagnostics endpoints:
+`POST /v1/hipengine/tokenize`, `/detokenize`, `/count_tokens`, and
+`/fit_context`.  Raw text diagnostics use the served tokenizer/count hooks;
+chat diagnostics render the same Qwen-style prompt as generation, including
+tools and thinking controls, before counting.  `/fit_context` mirrors generation
+admission arithmetic for chat defaults and reports the current clear policy as
+`reject` with no automatic truncation/dropping.  Unsupported tokenizer/counting
+hooks return explicit unsupported-feature errors.
+
+Added `LLM.detokenize()` as a torch-free bridge to generator `detokenize()` or
+tokenizer `decode()` when available, and updated the capabilities manifest to
+advertise token diagnostics from actual tokenizer/counting callables.
+
+Updated `docs/API.md` and `docs/AGENTIC.md` to document the endpoints and current
+behavior.
+
+Validation:
+- `python3 -m py_compile hipengine/llm.py hipengine/server/api.py tests/test_server_api.py tests/test_llm_generate.py`.
+- `python3 -m pytest tests/test_llm_generate.py tests/test_server_api.py -q` -> `54 passed`.
+- `git diff --check -- hipengine/llm.py hipengine/server/api.py tests/test_server_api.py tests/test_llm_generate.py docs/API.md docs/AGENTIC.md`.
