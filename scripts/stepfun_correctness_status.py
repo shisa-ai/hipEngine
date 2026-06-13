@@ -353,6 +353,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--source-artifact-count-only",
+        action="store_true",
+        help=(
+            "Emit only len(source_artifacts) for compact input provenance "
+            "record-count polling. Overrides --summary-only and blocker queue "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--source-artifact-count-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of len(source_artifacts) for compact "
+            "input provenance record-count drift polling. Overrides --summary-only "
+            "and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifact-failures-only",
         action="store_true",
         help=(
@@ -3462,6 +3480,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             isinstance(compact_output_modes, dict)
             and compact_output_modes.get("source_artifacts_sha_only")
             == "source_artifacts_sha256"
+            and compact_output_modes.get("source_artifact_count_only")
+            == "len(source_artifacts)"
+            and compact_output_modes.get("source_artifact_count_sha_only")
+            == "len(source_artifacts).sha256"
             and compact_output_modes.get("oracle_wrapper_timeout_source_only")
             == "source_artifacts.oracle_wrapper_timeout"
             and compact_output_modes.get("oracle_wrapper_timeout_source_sha_only")
@@ -6664,6 +6686,8 @@ def _handoff_summary(
             "first_remaining_blocker_report_only": "first_remaining_blocker_report",
             "first_remaining_blocker_report_sha_only": "first_remaining_blocker_report_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
+            "source_artifact_count_only": "len(source_artifacts)",
+            "source_artifact_count_sha_only": "len(source_artifacts).sha256",
             "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
             "oracle_wrapper_timeout_source_sha_only": (
                 "source_artifacts.oracle_wrapper_timeout.sha256"
@@ -8998,6 +9022,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["source_artifacts"].get("text_resource")
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
+    elif args.source_artifact_count_sha_only:
+        result = _stable_json_sha256(len(status["source_artifacts"]))
+    elif args.source_artifact_count_only:
+        result = len(status["source_artifacts"])
     elif args.verification_status_command_sha_only:
         result = status["next_action_commands"]["handoff_integrity"].get(
             "verification_status_command_sha256"

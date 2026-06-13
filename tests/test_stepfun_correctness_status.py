@@ -1711,6 +1711,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_remaining_blocker_report_only": "first_remaining_blocker_report",
         "first_remaining_blocker_report_sha_only": "first_remaining_blocker_report_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
+        "source_artifact_count_only": "len(source_artifacts)",
+        "source_artifact_count_sha_only": "len(source_artifacts).sha256",
         "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
         "oracle_wrapper_timeout_source_sha_only": (
             "source_artifacts.oracle_wrapper_timeout.sha256"
@@ -6240,39 +6242,56 @@ def test_stepfun_correctness_status_source_artifacts_sha_only(capsys, tmp_path: 
     docs = tmp_path / "STEPFUN.md"
     resource = tmp_path / "resource.json"
     output = tmp_path / "source-artifacts-sha.json"
+    count_output = tmp_path / "source-artifact-count.json"
+    count_sha_output = tmp_path / "source-artifact-count-sha.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
     _write_resource_artifact(resource)
     _write_docs(docs)
 
     status = build_status(prompt, oracle, docs, resource_artifact=resource)
-    rc = main(
-        [
-            "--prompt-artifact",
-            str(prompt),
-            "--oracle-artifact",
-            str(oracle),
-            "--resource-artifact",
-            str(resource),
-            "--docs",
-            str(docs),
-            "--output",
-            str(output),
-            "--summary-only",
-            "--readiness-summary-only",
-            "--readiness-summary-sha-only",
-            "--source-artifacts-sha-only",
-            "--pretty",
-        ]
-    )
+    source_artifact_count = len(status["source_artifacts"])
+    calls = [
+        (output, "--source-artifacts-sha-only", status["source_artifacts_sha256"]),
+        (count_output, "--source-artifact-count-only", source_artifact_count),
+        (
+            count_sha_output,
+            "--source-artifact-count-sha-only",
+            _stable_json_sha256(source_artifact_count),
+        ),
+    ]
+    for call_output, mode, expected in calls:
+        rc = main(
+            [
+                "--prompt-artifact",
+                str(prompt),
+                "--oracle-artifact",
+                str(oracle),
+                "--resource-artifact",
+                str(resource),
+                "--docs",
+                str(docs),
+                "--output",
+                str(call_output),
+                "--summary-only",
+                "--readiness-summary-only",
+                "--readiness-summary-sha-only",
+                mode,
+                "--pretty",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(call_output.read_text()) == expected
 
-    assert rc == 0
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
     payload = json.loads(output.read_text())
-    assert payload == status["source_artifacts_sha256"]
     assert payload == _stable_json_sha256(status["source_artifacts"])
+    assert source_artifact_count == 4
+    compact_modes = status["handoff_summary"]["compact_output_modes"]
+    assert compact_modes["source_artifact_count_only"] == "len(source_artifacts)"
+    assert compact_modes["source_artifact_count_sha_only"] == "len(source_artifacts).sha256"
 
 
 
@@ -10095,6 +10114,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_remaining_blocker_report_only": "first_remaining_blocker_report",
         "first_remaining_blocker_report_sha_only": "first_remaining_blocker_report_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
+        "source_artifact_count_only": "len(source_artifacts)",
+        "source_artifact_count_sha_only": "len(source_artifacts).sha256",
         "oracle_wrapper_timeout_source_only": "source_artifacts.oracle_wrapper_timeout",
         "oracle_wrapper_timeout_source_sha_only": (
             "source_artifacts.oracle_wrapper_timeout.sha256"
