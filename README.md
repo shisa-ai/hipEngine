@@ -422,7 +422,8 @@ Supported endpoints: `GET /v1/models`, `POST /v1/completions`, and
 calling, and Qwen no-think controls. Chat responses separate `<think>` reasoning
 into `reasoning_content` (matching the OpenAI reasoning-content convention). The
 server eagerly warms the model on startup by default, logs startup load/warmup
-timing, and has an explicit `--debug` mode for full request/response payload
+timing, caps omitted chat `max_tokens` with `--chat-default-max-tokens` (default
+4096), and has an explicit `--debug` mode for full request/response payload
 logging. See [`docs/API.md`](docs/API.md) for request examples, bearer-token
 auth, diagnostics, and current limitations.
 

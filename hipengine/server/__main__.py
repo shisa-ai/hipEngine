@@ -38,6 +38,19 @@ def _env_positive_int(name: str) -> int | None:
     return _positive_int(raw)
 
 
+def _chat_default_max_tokens(value: str) -> int | None:
+    if value.strip().lower() in {"auto", "remaining", "context"}:
+        return None
+    return _positive_int(value)
+
+
+def _env_chat_default_max_tokens(name: str, default: str = "4096") -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        raw = default
+    return _chat_default_max_tokens(raw)
+
+
 def _env_nonnegative_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
     if raw is None or raw == "":
@@ -87,6 +100,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Resident session/KV context tokens preallocated at startup "
             "(default: auto = min(model max context, estimated allocatable KV context))"
+        ),
+    )
+    parser.add_argument(
+        "--chat-default-max-tokens",
+        type=_chat_default_max_tokens,
+        default=_env_chat_default_max_tokens("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS"),
+        metavar="N|auto",
+        help=(
+            "Default max_tokens for chat requests that omit it; use 'auto' for remaining context "
+            "(env HIPENGINE_CHAT_DEFAULT_MAX_TOKENS; default: 4096)"
         ),
     )
     parser.add_argument(
@@ -146,6 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         eager_load_prompt=args.eager_load_prompt,
         eager_load_max_tokens=args.eager_load_max_tokens,
         max_context_tokens=args.max_context_tokens,
+        chat_default_max_tokens=args.chat_default_max_tokens,
         kv_storage=args.kv_storage,
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,

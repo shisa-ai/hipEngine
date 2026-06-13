@@ -136,7 +136,7 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
     assert response.status_code == 200
     assert "Config: model=fake-path" in caplog.text
     assert "max_context_tokens=131072" in caplog.text
-    assert "chat_default_max_tokens=auto" in caplog.text
+    assert "chat_default_max_tokens=4096" in caplog.text
     assert "kv_storage=auto" in caplog.text
     assert "KVCache: storage=bf16" in caplog.text
     assert "model_max_context_tokens=262144" in caplog.text
@@ -331,6 +331,57 @@ def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
     assert sampling.stop_token_ids == (99,)
     assert sampling.stop_token_sequences == ((10, 11),)
     assert fake.tokenize_calls == ["!", "two tokens"]
+
+
+def test_chat_completion_uses_bounded_default_max_tokens() -> None:
+    fake = FakeLLM(outputs=["assistant reply"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            max_context_tokens=100,
+            chat_default_max_tokens=7,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.calls[0][1].max_tokens == 7
+
+
+def test_chat_completion_auto_default_max_tokens_uses_remaining_context() -> None:
+    fake = FakeLLM(outputs=["assistant reply"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            max_context_tokens=12,
+            chat_default_max_tokens=None,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = fake.calls[0][0][0]
+    assert fake.calls[0][1].max_tokens == 12 - fake.count_tokens(prompt) - 1
 
 
 def test_completions_endpoint_plumbs_sampling_parameters() -> None:
@@ -622,7 +673,7 @@ def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:
         "completion_tokens": completion_tokens,
         "total_tokens": fake.count_tokens(prompt) + completion_tokens,
     }
-    assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
+    assert fake.calls[0][1].max_tokens == 4096
 
 
 def test_streaming_completion_uses_engine_stream_and_usage() -> None:
@@ -654,19 +705,23 @@ def test_streaming_completion_uses_engine_stream_and_usage() -> None:
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)
+    monkeypatch.delenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
+    assert default_args.chat_default_max_tokens == 4096
 
     monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
     monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", "radix")
     monkeypatch.setenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", "3.5")
     monkeypatch.setenv("HIPENGINE_DEBUG", "1")
+    monkeypatch.setenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", "auto")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
     assert env_args.generation_batch_window_ms == 3.5
     assert env_args.debug is True
+    assert env_args.chat_default_max_tokens is None
 
     cli_args = build_parser().parse_args(
         [
@@ -678,12 +733,15 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "off",
             "--generation-batch-window-ms",
             "0",
+            "--chat-default-max-tokens",
+            "123",
             "--no-debug",
         ]
     )
     assert cli_args.metrics == "off"
     assert cli_args.prefix_cache == "off"
     assert cli_args.generation_batch_window_ms == 0.0
+    assert cli_args.chat_default_max_tokens == 123
     assert cli_args.debug is False
 
     app = create_app(ServerConfig(model="fake-path", eager_load=False, prefix_cache="radix"), llm=FakeLLM())

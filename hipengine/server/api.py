@@ -55,6 +55,7 @@ class ServerConfig:
     eager_load_prompt: str = "one two three four"
     eager_load_max_tokens: int = 1
     max_context_tokens: int | None = None
+    chat_default_max_tokens: int | None = 4096
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
@@ -675,11 +676,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_context = configured_max_context_tokens()
             _LOGGER.info(
                 "Config: model=%s served_model=%s max_context_tokens=%s "
-                "chat_default_max_tokens=auto kv_storage=%s kv_scale_dtype=%s "
+                "chat_default_max_tokens=%s kv_storage=%s kv_scale_dtype=%s "
                 "kv_scale_granularity=%s eager_load=False",
                 config.model,
                 config.model_id,
                 "auto" if max_context is None else str(max_context),
+                _chat_default_max_tokens_label(config),
                 config.kv_storage,
                 config.kv_scale_dtype,
                 config.kv_scale_granularity,
@@ -705,11 +707,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             resident_prepare_s = time.perf_counter() - prepare_started
             _LOGGER.info(
                 "Config: model=%s served_model=%s max_context_tokens=%s "
-                "chat_default_max_tokens=auto kv_storage=%s kv_scale_dtype=%s "
+                "chat_default_max_tokens=%s kv_storage=%s kv_scale_dtype=%s "
                 "kv_scale_granularity=%s eager_load=True",
                 config.model,
                 config.model_id,
                 "unknown" if max_context is None else str(max_context),
+                _chat_default_max_tokens_label(config),
                 config.kv_storage,
                 config.kv_scale_dtype,
                 config.kv_scale_granularity,
@@ -806,7 +809,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
         return SamplingParams(
-            max_tokens=_request_max_tokens(request, prompts, engine, effective_max_context_tokens(engine)),
+            max_tokens=_request_max_tokens(
+                request,
+                prompts,
+                engine,
+                effective_max_context_tokens(engine),
+                chat_default_max_tokens=config.chat_default_max_tokens,
+            ),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
             top_p=float(request.top_p if request.top_p is not None else 1.0),
             top_k=int(request.top_k if request.top_k is not None else 0),
@@ -1769,16 +1778,37 @@ def _request_max_tokens(
     prompts: Sequence[str],
     engine: Any,
     max_context_tokens: int | None,
+    *,
+    chat_default_max_tokens: int | None = 4096,
 ) -> int:
     if request.max_tokens is not None:
         return max(0, int(request.max_tokens))
-    if isinstance(request, ChatCompletionRequest) and max_context_tokens is not None:
-        remaining = min(
-            int(max_context_tokens) - _count_tokens_for_admission(engine, str(prompt)) - 1
-            for prompt in prompts
-        )
-        return max(0, int(remaining))
-    return 8192 if isinstance(request, ChatCompletionRequest) else 16
+    if isinstance(request, ChatCompletionRequest):
+        remaining = _remaining_context_tokens(prompts, engine, max_context_tokens)
+        if chat_default_max_tokens is None:
+            return 8192 if remaining is None else max(0, int(remaining))
+        default_tokens = max(0, int(chat_default_max_tokens))
+        if remaining is None:
+            return default_tokens
+        return max(0, min(default_tokens, int(remaining)))
+    return 16
+
+
+def _remaining_context_tokens(
+    prompts: Sequence[str],
+    engine: Any,
+    max_context_tokens: int | None,
+) -> int | None:
+    if max_context_tokens is None:
+        return None
+    return min(
+        int(max_context_tokens) - _count_tokens_for_admission(engine, str(prompt)) - 1
+        for prompt in prompts
+    )
+
+
+def _chat_default_max_tokens_label(config: ServerConfig) -> str:
+    return "auto" if config.chat_default_max_tokens is None else str(int(config.chat_default_max_tokens))
 
 
 def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:

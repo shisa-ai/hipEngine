@@ -58,8 +58,9 @@ startup. Requests that ask for a different KV policy are rejected instead of
 rebuilding the resident model. Startup logs include a compact KVCache summary
 from current HIP free memory and warn when even INT8 KV is below the model's
 advertised max context. Chat requests that omit `max_tokens` use
-`max_tokens=auto`, meaning the remaining admitted context
-(`max_context_tokens - prompt_tokens - 1`).
+`--chat-default-max-tokens` (default `4096`) clamped to the remaining admitted
+context. Pass `--chat-default-max-tokens auto` to restore the previous behavior
+of using the full remaining context (`max_context_tokens - prompt_tokens - 1`).
 
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
@@ -168,6 +169,9 @@ shared or sensitive deployments.
 
 ## Current limitations
 
+- Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
+  runtime failures after that point are reported as SSE error chunks and
+  `REQUEST_FAILED` logs, not a different HTTP status.
 - Request execution is serialized with an in-process lock. Continuous batching,
   concurrent decode, and scheduling fairness are later runtime work.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,

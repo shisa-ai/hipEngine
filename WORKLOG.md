@@ -86696,3 +86696,24 @@ Validation:
 - Re-read `docs/AGENTIC.md` end-to-end.
 - `python3 -m py_compile scripts/resolve_worklog_conflict.py`.
 - `git diff --check -- docs/README.md docs/TODO.md docs/AGENTIC.md WORKLOG.md`.
+
+## 2026-06-14 - Chat default max-token cap for streaming OOM guard
+
+Investigated a GPU1 streaming failure where `/v1/chat/completions` returned HTTP
+200 for the SSE stream and then logged `REQUEST_FAILED ... generation failed: HIP
+error 2: out of memory`.  The server's omitted-chat-`max_tokens` behavior was
+still `auto`, which meant a chat request without `max_tokens` could try to decode
+the full remaining 262k-token context on the 7900 XTX.
+
+Added `ServerConfig.chat_default_max_tokens` plus `hipengine serve
+--chat-default-max-tokens N|auto` / `HIPENGINE_CHAT_DEFAULT_MAX_TOKENS`.  The new
+default is `4096`, clamped to remaining admitted context.  Passing `auto` keeps
+the old full-remaining-context behavior for users who explicitly want it.
+Startup config logs now show the resolved chat default.  `docs/API.md` documents
+that streaming runtime failures after SSE start still arrive as SSE error chunks
+and `REQUEST_FAILED` logs because HTTP status has already been sent.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_uses_bounded_default_max_tokens tests/test_server_api.py::test_chat_completion_auto_default_max_tokens_uses_remaining_context tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `34 passed`.
