@@ -86674,3 +86674,25 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params tests/test_server_api.py::test_server_lowers_single_token_stop_strings_to_stop_token_ids tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence tests/test_generation_qwen35_gguf_sampling.py::test_gguf_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_gguf_sampling.py::test_gguf_host_sampler_stops_on_multi_token_stop_sequence -q` -> `20 passed`.
 - `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_server_api.py tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_scheduler_sampler_states_track_generated_history tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence -q` -> `60 passed`.
 - `git diff --check`.
+
+## 2026-06-14 - Agentic inference roadmap reorg
+
+Reorganized the old scratch `docs/TODO.md` into `docs/AGENTIC.md` so the file
+name matches the scope: inference features for local agent/coding harnesses, not
+a generic repository todo list.  Chose `AGENTIC.md` over `AGENT.md` to avoid
+confusion with root `AGENTS.md`, and over `REASONING.md` because the roadmap also
+covers tool-call reliability, structured output, session commit policy,
+forkable caches, continuation handles, cancellation, diagnostics, and harness
+operations.
+
+The new roadmap records the current server/sampling/tool-call/thinking-control
+baseline, known harness-facing gaps, guiding principles, and a P0-P5 priority
+structure centered on decode telemetry, logit processors, thinking budgets,
+structured tool/JSON decoding, session/cache controls, native sampling polish,
+and pi/local-agent integration.  Added the document to `docs/README.md` under
+feature plans.
+
+Validation:
+- Re-read `docs/AGENTIC.md` end-to-end.
+- `python3 -m py_compile scripts/resolve_worklog_conflict.py`.
+- `git diff --check -- docs/README.md docs/TODO.md docs/AGENTIC.md WORKLOG.md`.

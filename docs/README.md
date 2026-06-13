@@ -44,6 +44,7 @@ working on.
 | --- | --- |
 | [`CONCURRENCY.md`](CONCURRENCY.md) | c>N serving readiness, diagnostic evidence, and server/scheduler/kernel/KV punchlist. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
+| [`AGENTIC.md`](AGENTIC.md) | Serving features for local agent harnesses built on top of sampling/decode-state primitives. |
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
 | [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |
