@@ -17,7 +17,7 @@ from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
-from hipengine.generation.sampling import RowSamplingState, normalize_logit_bias_pairs
+from hipengine.generation.sampling import RowSamplingState, normalize_logit_bias_pairs, normalize_stop_token_sequences
 from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
@@ -47,6 +47,7 @@ class PerRowSamplingParams:
     logit_bias: tuple[tuple[int, float], ...] = ()
     seed: int | None = None
     stop_tokens: tuple[int, ...] = ()
+    stop_token_sequences: tuple[tuple[int, ...], ...] = ()
 
     def __post_init__(self) -> None:
         if self.temperature < 0.0:
@@ -68,6 +69,7 @@ class PerRowSamplingParams:
         stops = tuple(int(token) for token in self.stop_tokens)
         if any(token < 0 for token in stops):
             raise ValueError("stop_tokens must be non-negative")
+        stop_sequences = normalize_stop_token_sequences(self.stop_token_sequences)
         logit_bias = normalize_logit_bias_pairs(self.logit_bias)
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_k", int(self.top_k))
@@ -79,6 +81,7 @@ class PerRowSamplingParams:
         object.__setattr__(self, "logit_bias", logit_bias)
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "stop_tokens", stops)
+        object.__setattr__(self, "stop_token_sequences", stop_sequences)
 
     def resolved_seed(self, *, request_id: int, row_index: int) -> int:
         base = int(self.seed) if self.seed is not None else 0
@@ -100,6 +103,7 @@ class SamplerParamsBlock:
     logit_bias_rows: tuple[tuple[tuple[int, float], ...], ...]
     seeds: tuple[int, ...]
     stop_token_rows: tuple[tuple[int, ...], ...]
+    stop_token_sequence_rows: tuple[tuple[tuple[int, ...], ...], ...]
 
     def __post_init__(self) -> None:
         rows = len(self.request_ids)
@@ -115,10 +119,16 @@ class SamplerParamsBlock:
         _check_len("logit_bias_rows", self.logit_bias_rows, rows)
         _check_len("seeds", self.seeds, rows)
         _check_len("stop_token_rows", self.stop_token_rows, rows)
+        _check_len("stop_token_sequence_rows", self.stop_token_sequence_rows, rows)
         object.__setattr__(
             self,
             "logit_bias_rows",
             tuple(normalize_logit_bias_pairs(row) for row in self.logit_bias_rows),
+        )
+        object.__setattr__(
+            self,
+            "stop_token_sequence_rows",
+            tuple(normalize_stop_token_sequences(row) for row in self.stop_token_sequence_rows),
         )
         if len(set(self.request_ids)) != rows:
             raise ValueError("sampler params block request_ids must be unique")
@@ -150,6 +160,7 @@ class SamplerParamsBlock:
                 for index, (request_id, row) in enumerate(zip(ids, params, strict=True))
             ),
             stop_token_rows=tuple(row.stop_tokens for row in params),
+            stop_token_sequence_rows=tuple(row.stop_token_sequences for row in params),
         )
 
     def params_for(self, request_id: int) -> PerRowSamplingParams:
@@ -165,6 +176,7 @@ class SamplerParamsBlock:
             logit_bias=self.logit_bias_rows[index],
             seed=self.seeds[index],
             stop_tokens=self.stop_token_rows[index],
+            stop_token_sequences=self.stop_token_sequence_rows[index],
         )
 
 

@@ -10,6 +10,7 @@ from hipengine.generation.sampling import (
     SamplingMode,
     derive_row_seed,
     normalize_logit_bias_pairs,
+    normalize_stop_token_sequences,
     plan_sampler,
     row_seed_for_index,
     select_token,
@@ -29,6 +30,7 @@ def _params(**overrides):
         "seed": None,
         "row_seeds": (),
         "stop_token_ids": (),
+        "stop_token_sequences": (),
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -46,6 +48,14 @@ def test_sampler_plan_uses_processed_argmax_for_active_processors() -> None:
 
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
     assert plan.active_processors == ("presence_penalty",)
+
+
+def test_stop_token_sequences_are_active_processors() -> None:
+    plan = plan_sampler(_params(temperature=0.0, stop_token_sequences=((10, 11),)))
+
+    assert plan.mode is SamplingMode.PROCESSED_ARGMAX
+    assert plan.active_processors == ("stop_token_sequences",)
+    assert normalize_stop_token_sequences([[10, 11], [10, 11], []]) == ((10, 11),)
 
 
 def test_sampler_plan_uses_host_logits_for_non_greedy_without_gpu_sampler() -> None:

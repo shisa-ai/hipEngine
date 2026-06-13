@@ -116,13 +116,13 @@ class Qwen35GGUFBringupGenerator:
         result = session.prefill(prompt_ids, return_logits=True)
         token_id = _select_from_gguf_logits(result, request, state)
         generated_ids.append(token_id)
-        if _gguf_finished(token_id, self.tokenizer, request):
+        if _gguf_finished(generated_ids, self.tokenizer, request):
             return generated_ids
         for _ in range(request.max_tokens - 1):
             step = session.step(generated_ids[-1], return_logits=True)
             token_id = _select_from_gguf_logits(step, request, state)
             generated_ids.append(token_id)
-            if _gguf_finished(token_id, self.tokenizer, request):
+            if _gguf_finished(generated_ids, self.tokenizer, request):
                 break
         return generated_ids
 
@@ -140,13 +140,23 @@ def _select_from_gguf_logits(
 
 
 def _gguf_finished(
-    token_id: int,
+    generated_ids: list[int] | tuple[int, ...],
     tokenizer: Qwen35GGUFTokenizer,
     request: GenerationRequest,
 ) -> bool:
+    if not generated_ids:
+        return False
+    token_id = int(generated_ids[-1])
     if not request.ignore_eos and int(token_id) == int(tokenizer.eos_token_id):
         return True
-    return int(token_id) in {int(stop_id) for stop_id in request.stop_token_ids}
+    if token_id in {int(stop_id) for stop_id in request.stop_token_ids}:
+        return True
+    for sequence in request.stop_token_sequences:
+        if len(sequence) <= 0 or len(sequence) > len(generated_ids):
+            continue
+        if tuple(int(token) for token in generated_ids[-len(sequence) :]) == sequence:
+            return True
+    return False
 
 
 def _session_uses_host_routed_decode(session: Qwen35GGUFResidentSession) -> bool:

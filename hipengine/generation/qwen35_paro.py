@@ -246,16 +246,19 @@ class Qwen35ParoOneTokenGenerator:
         state = _row_sampling_state(request, prompt_ids, row_index=row_index)
         _configure_host_sampler(session, request, state)
         generated_text: list[str] = []
+        generated_token_ids: list[int] = []
         try:
             next_result = session.prefill_native(prompt_ids, sample=True)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
             generated_text.append(next_result.token_text)
+            generated_token_ids.append(int(next_result.token_id))
             if _is_finished(
                 session.tokenizer,
-                next_result.token_id,
+                generated_token_ids,
                 ignore_eos=ignore_eos,
                 stop_token_ids=request.stop_token_ids,
+                stop_token_sequences=request.stop_token_sequences,
             ):
                 return "".join(generated_text)
 
@@ -265,12 +268,14 @@ class Qwen35ParoOneTokenGenerator:
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
                 generated_text.append(result.token_text)
+                generated_token_ids.append(int(result.token_id))
                 current_token_id = int(result.token_id)
                 if _is_finished(
                     session.tokenizer,
-                    result.token_id,
+                    generated_token_ids,
                     ignore_eos=ignore_eos,
                     stop_token_ids=request.stop_token_ids,
+                    stop_token_sequences=request.stop_token_sequences,
                 ):
                     break
             return "".join(generated_text)
@@ -502,16 +507,19 @@ class Qwen35ParoOneTokenGenerator:
         )
         state = _row_sampling_state(request, prompt_ids, row_index=row_index)
         _configure_host_sampler(session, request, state)
+        generated_token_ids: list[int] = []
         try:
             next_result = session.prefill_native(prompt_ids, sample=True)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
             yield next_result.token_text
+            generated_token_ids.append(int(next_result.token_id))
             if _is_finished(
                 session.tokenizer,
-                next_result.token_id,
+                generated_token_ids,
                 ignore_eos=ignore_eos,
                 stop_token_ids=request.stop_token_ids,
+                stop_token_sequences=request.stop_token_sequences,
             ):
                 return
 
@@ -521,12 +529,14 @@ class Qwen35ParoOneTokenGenerator:
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
                 yield result.token_text
+                generated_token_ids.append(int(result.token_id))
                 current_token_id = int(result.token_id)
                 if _is_finished(
                     session.tokenizer,
-                    result.token_id,
+                    generated_token_ids,
                     ignore_eos=ignore_eos,
                     stop_token_ids=request.stop_token_ids,
+                    stop_token_sequences=request.stop_token_sequences,
                 ):
                     return
         finally:
@@ -664,14 +674,32 @@ def _is_eos(tokenizer: Any | None, token_id: int) -> bool:
 
 def _is_finished(
     tokenizer: Any | None,
-    token_id: int,
+    generated_token_ids: list[int] | tuple[int, ...],
     *,
     ignore_eos: bool,
     stop_token_ids: tuple[int, ...],
+    stop_token_sequences: tuple[tuple[int, ...], ...],
 ) -> bool:
+    if not generated_token_ids:
+        return False
+    token_id = int(generated_token_ids[-1])
     if not ignore_eos and _is_eos(tokenizer, token_id):
         return True
-    return int(token_id) in {int(stop_id) for stop_id in stop_token_ids}
+    if token_id in {int(stop_id) for stop_id in stop_token_ids}:
+        return True
+    return _ends_with_stop_sequence(generated_token_ids, stop_token_sequences)
+
+
+def _ends_with_stop_sequence(
+    generated_token_ids: list[int] | tuple[int, ...],
+    stop_token_sequences: tuple[tuple[int, ...], ...],
+) -> bool:
+    for sequence in stop_token_sequences:
+        if len(sequence) <= 0 or len(sequence) > len(generated_token_ids):
+            continue
+        if tuple(int(token) for token in generated_token_ids[-len(sequence) :]) == sequence:
+            return True
+    return False
 
 
 def make_qwen35_paro_one_token_generator(

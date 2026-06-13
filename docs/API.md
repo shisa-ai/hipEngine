@@ -176,9 +176,9 @@ shared or sensitive deployments.
   requests stay on each engine's graph/argmax fast path.
 - `logprobs` and non-text chat content parts are rejected.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
-  available, strings that encode to exactly one token are also lowered to
-  runtime `stop_token_ids` for early termination. Multi-token stop suffix
-  matching remains future work.
+  available, one-token stops lower to runtime `stop_token_ids` and multi-token
+  stops lower to suffix-matched `stop_token_sequences` for early host-path
+  termination. Native c>N/GPU paths still need to consume that metadata.
 - Tool calling uses Qwen-style prompt markup and output parsing; malformed
   `<tool_call>` JSON is treated as ordinary assistant text.
 - Unknown top-level request parameters are rejected instead of silently ignored.

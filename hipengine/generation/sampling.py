@@ -97,6 +97,7 @@ class SampleResult:
 
 
 LogitBiasInput = Mapping[int | str, float] | Iterable[tuple[int | str, float]] | None
+StopTokenSequencesInput = Iterable[Iterable[int]] | None
 
 
 def normalize_logit_bias_pairs(logit_bias: LogitBiasInput = None) -> tuple[tuple[int, float], ...]:
@@ -128,6 +129,25 @@ def normalize_logit_bias_pairs(logit_bias: LogitBiasInput = None) -> tuple[tuple
             raise ValueError("logit_bias values must be finite")
         values[token_id] = bias
     return tuple(sorted(values.items()))
+
+
+def normalize_stop_token_sequences(
+    stop_token_sequences: StopTokenSequencesInput = None,
+) -> tuple[tuple[int, ...], ...]:
+    """Normalize non-empty token-id stop sequences."""
+
+    if stop_token_sequences is None:
+        return ()
+    normalized: list[tuple[int, ...]] = []
+    for raw_sequence in stop_token_sequences:
+        sequence = tuple(int(token) for token in raw_sequence)
+        if not sequence:
+            continue
+        if any(token < 0 for token in sequence):
+            raise ValueError("stop_token_sequences must contain non-negative token ids")
+        if sequence not in normalized:
+            normalized.append(sequence)
+    return tuple(normalized)
 
 
 def validate_sampling_params(params: Any) -> None:
@@ -165,6 +185,7 @@ def validate_sampling_params(params: Any) -> None:
     for token_id in getattr(params, "stop_token_ids", ()):
         if int(token_id) < 0:
             raise ValueError("stop_token_ids must be non-negative")
+    normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None))
     normalize_logit_bias_pairs(getattr(params, "logit_bias", None))
 
 
@@ -182,6 +203,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("frequency_penalty")
     if tuple(int(token) for token in getattr(params, "stop_token_ids", ())):
         names.append("stop_token_ids")
+    if normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)):
+        names.append("stop_token_sequences")
     return tuple(names)
 
 
@@ -414,6 +437,7 @@ __all__ = [
     "active_processor_names",
     "derive_row_seed",
     "normalize_logit_bias_pairs",
+    "normalize_stop_token_sequences",
     "plan_sampler",
     "row_seed_for_index",
     "select_token",

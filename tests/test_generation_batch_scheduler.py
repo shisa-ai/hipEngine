@@ -16134,6 +16134,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
             frequency_penalty=0.3,
             logit_bias={"12": -1.5},
             seed=7,
+            stop_token_sequences=((12, 13),),
         ),
     )
     r2 = scheduler.submit(
@@ -16172,11 +16173,13 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.frequency_penalties == (0.0, 0.3, 0.4)
     assert block.logit_bias_rows == ((), ((12, -1.5),), ((7, 0.25),))
     assert block.stop_token_rows == ((99,), (), ())
+    assert block.stop_token_sequence_rows == ((), ((12, 13),), ())
     assert block.seeds == again.seeds
     assert len(set(block.seeds)) == 3
     assert block.params_for(r1).temperature == 0.7
     assert block.params_for(r1).min_p == 0.05
     assert block.params_for(r1).logit_bias == ((12, -1.5),)
+    assert block.params_for(r1).stop_token_sequences == ((12, 13),)
 
     scheduler.record_generated([GeneratedToken(r0, 100, finished=True)])
     with pytest.raises(KeyError, match="sampler params"):

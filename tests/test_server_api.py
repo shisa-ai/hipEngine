@@ -329,6 +329,7 @@ def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
     assert response.json()["choices"][0]["text"] == "alpha"
     sampling = fake.calls[0][1]
     assert sampling.stop_token_ids == (99,)
+    assert sampling.stop_token_sequences == ((10, 11),)
     assert fake.tokenize_calls == ["!", "two tokens"]
 
 

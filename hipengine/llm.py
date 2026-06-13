@@ -26,6 +26,7 @@ class SamplingParams:
     frequency_penalty: float = 0.0
     logit_bias: Any = ()
     stop_token_ids: tuple[int, ...] = ()
+    stop_token_sequences: tuple[tuple[int, ...], ...] = ()
     ignore_eos: bool = False
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
@@ -34,7 +35,7 @@ class SamplingParams:
     row_seeds: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
-        from hipengine.generation.sampling import normalize_logit_bias_pairs, validate_sampling_params
+        from hipengine.generation.sampling import normalize_logit_bias_pairs, normalize_stop_token_sequences, validate_sampling_params
 
         object.__setattr__(self, "max_tokens", int(self.max_tokens))
         object.__setattr__(self, "temperature", float(self.temperature))
@@ -46,6 +47,7 @@ class SamplingParams:
         object.__setattr__(self, "frequency_penalty", float(self.frequency_penalty))
         object.__setattr__(self, "logit_bias", normalize_logit_bias_pairs(self.logit_bias))
         object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
+        object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
         object.__setattr__(self, "ignore_eos", bool(self.ignore_eos))
         object.__setattr__(self, "kv_storage", str(self.kv_storage))
         object.__setattr__(self, "kv_scale_dtype", str(self.kv_scale_dtype))
@@ -210,6 +212,7 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         frequency_penalty=params.frequency_penalty,
         logit_bias=params.logit_bias,
         stop_token_ids=params.stop_token_ids,
+        stop_token_sequences=params.stop_token_sequences,
         ignore_eos=params.ignore_eos,
         kv_storage=params.kv_storage,
         kv_scale_dtype=params.kv_scale_dtype,

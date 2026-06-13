@@ -804,6 +804,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts: Sequence[str],
         engine: Any,
     ) -> SamplingParams:
+        stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
         return SamplingParams(
             max_tokens=_request_max_tokens(request, prompts, engine, effective_max_context_tokens(engine)),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
@@ -814,7 +815,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             presence_penalty=float(request.presence_penalty if request.presence_penalty is not None else 0.0),
             frequency_penalty=float(request.frequency_penalty if request.frequency_penalty is not None else 0.0),
             logit_bias=request.logit_bias or (),
-            stop_token_ids=_stop_token_ids_from_stop(request.stop, engine),
+            stop_token_ids=stop_token_ids,
+            stop_token_sequences=stop_token_sequences,
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -1969,26 +1971,29 @@ def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     return tuple(str(item) for item in stop)
 
 
-def _stop_token_ids_from_stop(stop: str | list[str] | None, engine: Any) -> tuple[int, ...]:
-    """Lower OpenAI stop strings that are exactly one tokenizer token.
-
-    Multi-token stop strings intentionally remain server-side trim-only until
-    sequence-level suffix matching exists in generation state.
-    """
+def _stop_tokens_from_stop(
+    stop: str | list[str] | None,
+    engine: Any,
+) -> tuple[tuple[int, ...], tuple[tuple[int, ...], ...]]:
+    """Lower tokenizable OpenAI stop strings to token stop metadata."""
 
     stops = tuple(item for item in _stop_strings(stop) if item)
     tokenizer = getattr(engine, "tokenize", None)
     if not stops or not callable(tokenizer):
-        return ()
+        return (), ()
     token_ids: list[int] = []
+    sequences: list[tuple[int, ...]] = []
     for item in stops:
         try:
             ids = tuple(int(token) for token in tokenizer(item))
-        except (NotImplementedError, TypeError, ValueError):
+        except (KeyError, NotImplementedError, TypeError, ValueError):
             continue
-        if len(ids) == 1 and ids[0] not in token_ids:
-            token_ids.append(ids[0])
-    return tuple(token_ids)
+        if len(ids) == 1:
+            if ids[0] not in token_ids:
+                token_ids.append(ids[0])
+        elif len(ids) > 1 and ids not in sequences:
+            sequences.append(ids)
+    return tuple(token_ids), tuple(sequences)
 
 
 def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
@@ -2003,6 +2008,7 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         float(sampling.frequency_penalty),
         tuple((int(token), float(bias)) for token, bias in sampling.logit_bias),
         tuple(int(token) for token in sampling.stop_token_ids),
+        tuple(tuple(int(token) for token in row) for row in sampling.stop_token_sequences),
         bool(sampling.ignore_eos),
         str(sampling.kv_storage),
         str(sampling.kv_scale_dtype),

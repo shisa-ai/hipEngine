@@ -86647,3 +86647,30 @@ Validation:
 - `python3 -m py_compile hipengine/llm.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_llm_generate.py`.
 - `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_calls_llm_and_applies_stop tests/test_server_api.py::test_server_lowers_single_token_stop_strings_to_stop_token_ids tests/test_llm_generate.py::test_llm_tokenize_delegates_to_generator tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_gguf_sampling.py::test_gguf_host_sampler_stops_on_stop_token_id -q` -> `5 passed`.
 - `python3 -m pytest tests/test_llm_generate.py tests/test_server_api.py tests/test_sampling.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id -q` -> `55 passed`.
+
+## 2026-06-14 - Sampling S4 multi-token stop sequences
+
+Completed the host-sampler side of S4 stop handling.  Added canonical
+`stop_token_sequences` to public `SamplingParams`, `GenerationRequest`,
+`PerRowSamplingParams`, and `SamplerParamsBlock`; validation now normalizes
+non-empty non-negative stop-token sequences and sampler planning treats them as
+an active processor so greedy-equivalent requests with token stops route to the
+host-logits path for early termination.
+
+The server now tokenizes each OpenAI `stop` string when tokenizer access is
+available: exactly-one-token stops lower to `stop_token_ids`, multi-token stops
+lower to `stop_token_sequences`, and all stop strings still use response
+post-trimming for output consistency.  PARO and GGUF host-sampled rows now track
+generated token ids and stop as soon as their suffix matches a lowered stop
+sequence.  Native c>N/GPU execution still needs to consume the same scheduler
+metadata before it can claim parity.
+
+Updated `docs/SAMPLING.md` and `docs/API.md` to mark S4 done for the host
+sampler and keep native c>N/GPU/logprobs as the remaining sampling tracks.
+Untracked `.handoff/` and the existing benchmark JSON were left untouched.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/llm.py hipengine/generation/registry.py hipengine/generation/batch_scheduler.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params tests/test_server_api.py::test_server_lowers_single_token_stop_strings_to_stop_token_ids tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence tests/test_generation_qwen35_gguf_sampling.py::test_gguf_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_gguf_sampling.py::test_gguf_host_sampler_stops_on_multi_token_stop_sequence -q` -> `20 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_server_api.py tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_scheduler_sampler_states_track_generated_history tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence -q` -> `60 passed`.
+- `git diff --check`.

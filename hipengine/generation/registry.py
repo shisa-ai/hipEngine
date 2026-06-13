@@ -33,6 +33,7 @@ class GenerationRequest:
     frequency_penalty: float = 0.0
     logit_bias: Any = ()
     stop_token_ids: tuple[int, ...] = ()
+    stop_token_sequences: tuple[tuple[int, ...], ...] = ()
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
@@ -40,7 +41,7 @@ class GenerationRequest:
     row_seeds: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
-        from hipengine.generation.sampling import normalize_logit_bias_pairs, validate_sampling_params
+        from hipengine.generation.sampling import normalize_logit_bias_pairs, normalize_stop_token_sequences, validate_sampling_params
 
         object.__setattr__(self, "prompts", tuple(str(prompt) for prompt in self.prompts))
         object.__setattr__(self, "max_tokens", int(self.max_tokens))
@@ -54,6 +55,7 @@ class GenerationRequest:
         object.__setattr__(self, "frequency_penalty", float(self.frequency_penalty))
         object.__setattr__(self, "logit_bias", normalize_logit_bias_pairs(self.logit_bias))
         object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
+        object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
         object.__setattr__(self, "kv_storage", str(self.kv_storage))
         object.__setattr__(self, "kv_scale_dtype", str(self.kv_scale_dtype))
         object.__setattr__(self, "kv_scale_granularity", str(self.kv_scale_granularity))

@@ -297,6 +297,42 @@ def test_qwen35_paro_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
 
 
 
+def test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def configure_host_sampler(self, params, state):
+            calls.append(("configure_host_sampler", params is None))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append(("step", token_id, position, sample))
+            return _result(101, "B") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(_request(max_tokens=3, stop_token_sequences=((100, 101),)))
+
+    assert out == ["AB"]
+    assert len([call for call in calls if call[0] == "step"]) == 1
+
+
+
 def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(monkeypatch) -> None:
     calls = []
     token_rows = {"alpha": [10, 11], "beta": [20]}

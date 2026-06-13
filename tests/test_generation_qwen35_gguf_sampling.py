@@ -162,3 +162,40 @@ def test_gguf_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
 
     assert out == ["B"]
     assert not any(call[0] == "step" for call in calls)
+
+
+def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 0.0, 5.0]], dtype=np.float32),
+            )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    out = _generator().generate(
+        _request(temperature=0.7, top_k=1, max_tokens=3, stop_token_sequences=((1, 2),))
+    )
+
+    assert out == ["BC"]
+    assert len([call for call in calls if call[0] == "step"]) == 1
