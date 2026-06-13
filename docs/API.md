@@ -130,6 +130,26 @@ Both completion endpoints accept OpenAI-compatible `stream_options`. Set
 `"stream_options": {"include_usage": true}` with `"stream": true` to request a
 final SSE payload with `choices: []` and `usage` before `data: [DONE]`.
 
+### Finish details
+
+Completion and chat choices include a hipEngine extension field,
+`finish_details`, next to the OpenAI-compatible `finish_reason`. The extension
+always contains `reason` and may include `eos_token_id`, `stop_sequence`,
+`length_limit`, `deadline_exceeded`, `cancelled`, `forced_close`,
+`synthetic_tokens`, `reasoning_tokens`, `answer_tokens`, `tool_call_tokens`,
+`structured_tokens`, `budget_pressure`, `cache_action`, and `sampler_mode`.
+
+`finish_reason` remains the coarse OpenAI value for compatibility. For example,
+backend `reason: "eos"` is exposed as `finish_reason: "stop"` with
+`finish_details.reason: "eos"`, while backend `reason: "length"` maps to
+`finish_reason: "length"`. Tool-call parsing reports
+`finish_reason: "tool_calls"` and `finish_details.reason: "tool_calls"`.
+Streaming responses include `finish_details` on the final choice chunk;
+ordinary delta chunks are unchanged.
+
+When a backend does not yet provide structured finish metadata, the server emits
+the conservative fallback `{"reason": finish_reason}`.
+
 ### Tool calling
 
 `POST /v1/chat/completions` accepts OpenAI-style `tools` and `tool_choice` for

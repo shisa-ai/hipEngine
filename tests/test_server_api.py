@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GenerationOutput, TokenLogprob
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, FinishDetails, GenerationOutput, TokenLogprob
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
 from hipengine.server.api import ChatCompletionRequest, _GenerationBatcher
@@ -79,6 +79,11 @@ class FakeLLM:
         if self.token_map is None:
             raise NotImplementedError("fake tokenization is not configured")
         return tuple(self.token_map[str(text)])
+
+
+class DetailedGenerateFakeLLM(FakeLLM):
+    def generate(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        return self.generate_detailed(prompts, sampling_params)
 
 
 def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
@@ -301,6 +306,7 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     assert body["model"] == "fake-model"
     assert [choice["text"] for choice in body["choices"]] == ["alpha", "beta"]
     assert [choice["finish_reason"] for choice in body["choices"]] == ["stop", "stop"]
+    assert [choice["finish_details"] for choice in body["choices"]] == [{"reason": "stop"}, {"reason": "stop"}]
     assert body["usage"] == {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4}
     assert fake.calls == [
         (
@@ -315,6 +321,42 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
             ),
         )
     ]
+
+
+def test_completions_preserve_structured_finish_details() -> None:
+    fake = DetailedGenerateFakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="alpha",
+                finish_details=FinishDetails(reason="eos", eos_token_id=151645, sampler_mode="greedy_fast"),
+            ),
+            GenerationOutput(
+                text="beta",
+                finish_details=FinishDetails(reason="length", length_limit=2, budget_pressure="answer_budget"),
+            ),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": ["one", "two"], "max_tokens": 2},
+    )
+
+    assert response.status_code == 200
+    choices = response.json()["choices"]
+    assert [choice["finish_reason"] for choice in choices] == ["stop", "length"]
+    assert choices[0]["finish_details"] == {
+        "reason": "eos",
+        "eos_token_id": 151645,
+        "sampler_mode": "greedy_fast",
+    }
+    assert choices[1]["finish_details"] == {
+        "reason": "length",
+        "length_limit": 2,
+        "budget_pressure": "answer_budget",
+    }
 
 
 def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
@@ -520,6 +562,7 @@ def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:
     payloads = _sse_payloads(response.text)
     assert payloads[0]["choices"][0]["text"] == "alpha"
     assert payloads[0]["choices"][0]["logprobs"]["token_logprobs"] == [-0.25]
+    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "stop"}
     assert fake.stream_calls == []
     assert fake.calls[0][1].logprobs is True
 
@@ -598,6 +641,7 @@ def test_streaming_chat_completion_returns_logprobs_from_buffered_path() -> None
     content_chunks = [payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content")]
     assert content_chunks[0]["choices"][0]["delta"] == {"content": "assistant"}
     assert content_chunks[0]["choices"][0]["logprobs"]["content"][0]["logprob"] == -0.1
+    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "stop"}
     assert fake.stream_calls == []
     assert fake.calls[0][1].logprobs is True
 
@@ -627,6 +671,7 @@ def test_chat_completion_renders_messages_to_prompt() -> None:
             "index": 0,
             "message": {"role": "assistant", "content": "assistant reply"},
             "finish_reason": "stop",
+            "finish_details": {"reason": "stop"},
         }
     ]
     assert fake.calls[0][0] == (
@@ -767,6 +812,7 @@ def test_chat_completion_returns_openai_tool_calls() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"] == {"reason": "tool_calls"}
     message = choice["message"]
     assert message["content"] == ""
     tool_call = message["tool_calls"][0]
@@ -814,6 +860,7 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert tool_call["function"]["name"] == "bash"
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
 
 
 def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:

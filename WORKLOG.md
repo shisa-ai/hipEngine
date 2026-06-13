@@ -87069,3 +87069,24 @@ Validation:
 - `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `1 passed`.
 - GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`): `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py::test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state -q` -> `1 passed`.
 - GPU1 full sampler file: `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `8 passed`.
+
+## 2026-06-14 - AGENTIC structured finish details
+
+Added `FinishDetails` to `GenerationOutput` and exported it through
+`hipengine.generation`.  The OpenAI server now preserves structured finish
+metadata through the non-logprobs batcher path, exposes compact
+`choices[].finish_details` on completion/chat responses and final SSE choice
+chunks, and maps detailed backend reasons to compatible public `finish_reason`
+values (`eos` -> `stop`, `length` -> `length`, parsed tool calls ->
+`tool_calls`).  Backends that do not yet return detail get the conservative
+fallback `{"reason": finish_reason}`.
+
+Updated `docs/API.md` and `docs/AGENTIC.md` to document the extension field and
+to keep the roadmap honest: real backend EOS/token-stop/length/cancel/deadline
+signals still need to be emitted by the generation loops.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `40 passed`.
+- `python3 -m pytest tests/test_sampling.py::test_sampler_plan_uses_processed_argmax_for_logprobs tests/test_sampling.py::test_stop_token_sequences_are_active_processors -q` -> `2 passed`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

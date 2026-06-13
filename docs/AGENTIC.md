@@ -183,6 +183,19 @@ class FinishDetails:
 Server responses can expose this under an extension field such as
 `finish_details` while preserving `finish_reason` compatibility.
 
+Current code reality:
+
+- `FinishDetails` exists on `GenerationOutput` and the OpenAI server exposes a
+  compact `choices[].finish_details` extension on non-streaming responses and
+  final SSE choice chunks.
+- The server maps detailed backend reasons to coarse OpenAI `finish_reason`
+  values without changing legacy fallback behavior: `eos` remains public
+  `stop`, `length` maps to public `length`, and parsed tool calls report
+  `tool_calls`.
+- Normal backends still need to emit real EOS, token-stop, length, cancellation,
+  deadline, forced-close, budget, cache, and sampler metadata; absent backend
+  detail, the server falls back to `{"reason": finish_reason}`.
+
 ### Logit processor stack
 
 Add one ordered stack for all token-selection policy. It should work on host

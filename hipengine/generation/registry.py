@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -88,15 +89,130 @@ class TokenLogprob:
 
 
 @dataclass(frozen=True)
+class FinishDetails:
+    """Structured reason and accounting metadata for a completed generation."""
+
+    reason: str
+    eos_token_id: int | None = None
+    stop_sequence: tuple[int, ...] = ()
+    length_limit: int | None = None
+    deadline_exceeded: bool = False
+    cancelled: bool = False
+    forced_close: bool = False
+    synthetic_tokens: int = 0
+    reasoning_tokens: int = 0
+    answer_tokens: int = 0
+    tool_call_tokens: int = 0
+    structured_tokens: int = 0
+    budget_pressure: str | None = None
+    cache_action: str | None = None
+    sampler_mode: str | None = None
+
+    def __post_init__(self) -> None:
+        reason = "stop" if self.reason is None or str(self.reason).strip() == "" else str(self.reason)
+        stop_sequence = () if self.stop_sequence is None else self.stop_sequence
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
+        object.__setattr__(self, "stop_sequence", tuple(int(token) for token in stop_sequence))
+        object.__setattr__(self, "length_limit", None if self.length_limit is None else int(self.length_limit))
+        object.__setattr__(self, "deadline_exceeded", bool(self.deadline_exceeded))
+        object.__setattr__(self, "cancelled", bool(self.cancelled))
+        object.__setattr__(self, "forced_close", bool(self.forced_close))
+        object.__setattr__(self, "synthetic_tokens", int(self.synthetic_tokens))
+        object.__setattr__(self, "reasoning_tokens", int(self.reasoning_tokens))
+        object.__setattr__(self, "answer_tokens", int(self.answer_tokens))
+        object.__setattr__(self, "tool_call_tokens", int(self.tool_call_tokens))
+        object.__setattr__(self, "structured_tokens", int(self.structured_tokens))
+        object.__setattr__(self, "budget_pressure", None if self.budget_pressure is None else str(self.budget_pressure))
+        object.__setattr__(self, "cache_action", None if self.cache_action is None else str(self.cache_action))
+        object.__setattr__(self, "sampler_mode", None if self.sampler_mode is None else str(self.sampler_mode))
+
+    @classmethod
+    def from_value(cls, value: Any) -> "FinishDetails":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(
+                reason=str(value.get("reason", "stop")),
+                eos_token_id=value.get("eos_token_id"),
+                stop_sequence=tuple(value.get("stop_sequence", ())),
+                length_limit=value.get("length_limit"),
+                deadline_exceeded=bool(value.get("deadline_exceeded", False)),
+                cancelled=bool(value.get("cancelled", False)),
+                forced_close=bool(value.get("forced_close", False)),
+                synthetic_tokens=int(value.get("synthetic_tokens", 0)),
+                reasoning_tokens=int(value.get("reasoning_tokens", 0)),
+                answer_tokens=int(value.get("answer_tokens", 0)),
+                tool_call_tokens=int(value.get("tool_call_tokens", 0)),
+                structured_tokens=int(value.get("structured_tokens", 0)),
+                budget_pressure=value.get("budget_pressure"),
+                cache_action=value.get("cache_action"),
+                sampler_mode=value.get("sampler_mode"),
+            )
+        return cls(
+            reason=str(getattr(value, "reason", "stop")),
+            eos_token_id=getattr(value, "eos_token_id", None),
+            stop_sequence=tuple(getattr(value, "stop_sequence", ())),
+            length_limit=getattr(value, "length_limit", None),
+            deadline_exceeded=bool(getattr(value, "deadline_exceeded", False)),
+            cancelled=bool(getattr(value, "cancelled", False)),
+            forced_close=bool(getattr(value, "forced_close", False)),
+            synthetic_tokens=int(getattr(value, "synthetic_tokens", 0)),
+            reasoning_tokens=int(getattr(value, "reasoning_tokens", 0)),
+            answer_tokens=int(getattr(value, "answer_tokens", 0)),
+            tool_call_tokens=int(getattr(value, "tool_call_tokens", 0)),
+            structured_tokens=int(getattr(value, "structured_tokens", 0)),
+            budget_pressure=getattr(value, "budget_pressure", None),
+            cache_action=getattr(value, "cache_action", None),
+            sampler_mode=getattr(value, "sampler_mode", None),
+        )
+
+    def to_json_dict(self, *, reason: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"reason": self.reason if reason is None else str(reason)}
+        if self.eos_token_id is not None:
+            payload["eos_token_id"] = self.eos_token_id
+        if self.stop_sequence:
+            payload["stop_sequence"] = list(self.stop_sequence)
+        if self.length_limit is not None:
+            payload["length_limit"] = self.length_limit
+        if self.deadline_exceeded:
+            payload["deadline_exceeded"] = True
+        if self.cancelled:
+            payload["cancelled"] = True
+        if self.forced_close:
+            payload["forced_close"] = True
+        if self.synthetic_tokens:
+            payload["synthetic_tokens"] = self.synthetic_tokens
+        if self.reasoning_tokens:
+            payload["reasoning_tokens"] = self.reasoning_tokens
+        if self.answer_tokens:
+            payload["answer_tokens"] = self.answer_tokens
+        if self.tool_call_tokens:
+            payload["tool_call_tokens"] = self.tool_call_tokens
+        if self.structured_tokens:
+            payload["structured_tokens"] = self.structured_tokens
+        if self.budget_pressure is not None:
+            payload["budget_pressure"] = self.budget_pressure
+        if self.cache_action is not None:
+            payload["cache_action"] = self.cache_action
+        if self.sampler_mode is not None:
+            payload["sampler_mode"] = self.sampler_mode
+        return payload
+
+
+@dataclass(frozen=True)
 class GenerationOutput:
-    """Generated text plus optional per-token sampler metadata."""
+    """Generated text plus optional per-token sampler and finish metadata."""
 
     text: str
     token_logprobs: tuple[TokenLogprob, ...] = ()
+    finish_details: FinishDetails | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
         object.__setattr__(self, "token_logprobs", tuple(self.token_logprobs))
+        if self.finish_details is not None:
+            object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
 
     def __str__(self) -> str:
         return self.text

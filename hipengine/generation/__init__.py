@@ -32,6 +32,7 @@ from hipengine.generation.engine_loop import (
 )
 from hipengine.generation.registry import (
     DuplicateGeneratorError,
+    FinishDetails,
     GenerationKey,
     GenerationOutput,
     GenerationRequest,
@@ -86,6 +87,7 @@ __all__ = [
     "EngineLoopConfig",
     "EngineLoopEvent",
     "EngineLoopRunner",
+    "FinishDetails",
     "GeneratedToken",
     "GenerationKey",
     "GenerationOutput",

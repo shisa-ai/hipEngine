@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
-from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GenerationOutput, TokenLogprob, derive_row_seed
+from hipengine.generation import FinishDetails, GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GenerationOutput, TokenLogprob, derive_row_seed
 from hipengine.kvcache import resolve_prefix_cache_mode
 
 
@@ -346,7 +346,7 @@ def _log_stream_failure(
 class _QueuedGeneration:
     prompts: tuple[str, ...]
     sampling: SamplingParams
-    future: asyncio.Future[list[str]] | None = None
+    future: asyncio.Future[list[Any]] | None = None
     stream_queue: asyncio.Queue[object] | None = None
     cancelled: bool = False
 
@@ -365,10 +365,10 @@ class _GenerationBatcher:
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
 
-    async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[str]:
+    async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[Any]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
-        future: asyncio.Future[list[str]] = loop.create_future()
+        future: asyncio.Future[list[Any]] = loop.create_future()
         self._queue.append(
             _QueuedGeneration(
                 prompts=prompt_tuple,
@@ -454,13 +454,13 @@ class _GenerationBatcher:
         for item, start, end in slices:
             _finish_queued_generation(item, outputs=outputs[start:end])
 
-    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[str]:
+    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[Any]:
         raw_outputs = await run_in_threadpool(
             self._engine_factory().generate,
             prompts,
             sampling,
         )
-        outputs = [str(item) for item in raw_outputs]
+        outputs = list(raw_outputs)
         if len(outputs) != len(prompts):
             raise RuntimeError(
                 f"generator returned {len(outputs)} outputs for {len(prompts)} prompts"
@@ -1025,6 +1025,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         final_texts: list[str] = []
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
             generated_text, finish_reason = _apply_stop(output, request.stop)
+            server_stop = generated_text != output
+            finish_reason = _finish_reason_for_output(detail, finish_reason, server_stop=server_stop)
             text = prompt + generated_text if request.echo else generated_text
             final_texts.append(text)
             choice = {
@@ -1036,6 +1038,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     else None
                 ),
                 "finish_reason": finish_reason,
+                "finish_details": _finish_details_payload(
+                    detail,
+                    finish_reason,
+                    reason_override="stop" if server_stop else None,
+                ),
             }
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, index // n, index % n)
@@ -1090,14 +1097,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         choices = []
         for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
             text, finish_reason = _apply_stop(output, request.stop)
+            server_stop = text != output
             parsed = _parse_chat_tool_calls(text)
             message, parsed_finish_reason = _chat_message_from_parsed(parsed)
-            if parsed.tool_calls:
-                finish_reason = parsed_finish_reason
+            finish_reason = _finish_reason_for_output(
+                detail,
+                parsed_finish_reason if parsed.tool_calls else finish_reason,
+                server_stop=server_stop,
+                tool_calls=bool(parsed.tool_calls),
+            )
             choice = {
                 "index": index,
                 "message": message,
                 "finish_reason": finish_reason,
+                "finish_details": _finish_details_payload(
+                    detail,
+                    finish_reason,
+                    reason_override="tool_calls" if parsed.tool_calls else "stop" if server_stop else None,
+                ),
             }
             if request.logprobs:
                 choice["logprobs"] = _chat_logprobs(detail, text)
@@ -1125,7 +1142,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             batch = await generate(tuple(prompt for _ in range(n)), request)
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
+                server_stop = text != output
                 parsed = _parse_chat_tool_calls(text)
+                detail = batch.details[index]
+                finish_reason = _finish_reason_for_output(
+                    detail,
+                    finish_reason,
+                    server_stop=server_stop,
+                    tool_calls=bool(parsed.tool_calls),
+                )
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
                 yield _chat_stream_role(response_id, created, config.model_id, index=index)
                 for event in _chat_stream_parsed(
@@ -1136,6 +1161,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason,
                     index=index,
                     logprobs=logprobs,
+                    finish_details=_finish_details_payload(
+                        detail,
+                        finish_reason,
+                        reason_override="tool_calls" if parsed.tool_calls else "stop" if server_stop else None,
+                    ),
                 ):
                     yield event
             if _stream_include_usage(request):
@@ -1281,7 +1311,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         app.state.hipengine_server_metrics.record_success(usage)
         if buffer_tool_output:
             parsed = _parse_chat_tool_calls(text)
-            for event in _chat_stream_parsed(response_id, created, config.model_id, parsed, finish_reason):
+            for event in _chat_stream_parsed(
+                response_id,
+                created,
+                config.model_id,
+                parsed,
+                "tool_calls" if parsed.tool_calls else finish_reason,
+                finish_details=_finish_details_payload(None, "tool_calls" if parsed.tool_calls else finish_reason),
+            ):
                 yield event
         else:
             yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
@@ -1858,8 +1895,13 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
     if isinstance(value, GenerationOutput):
         return value
     token_logprobs = getattr(value, "token_logprobs", None)
-    if token_logprobs is not None:
-        return GenerationOutput(text=str(getattr(value, "text", value)), token_logprobs=tuple(token_logprobs))
+    finish_details = getattr(value, "finish_details", None)
+    if token_logprobs is not None or finish_details is not None:
+        return GenerationOutput(
+            text=str(getattr(value, "text", value)),
+            token_logprobs=tuple(token_logprobs or ()),
+            finish_details=finish_details,
+        )
     return GenerationOutput(text=str(value))
 
 
@@ -2055,6 +2097,42 @@ def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str]:
     if earliest is None:
         return text, "stop"
     return text[:earliest], "stop"
+
+
+def _finish_reason_for_output(
+    detail: GenerationOutput | None,
+    fallback: str,
+    *,
+    server_stop: bool = False,
+    tool_calls: bool = False,
+) -> str:
+    if tool_calls:
+        return "tool_calls"
+    if server_stop:
+        return "stop"
+    finish = None if detail is None else detail.finish_details
+    if finish is None:
+        return str(fallback)
+    reason = finish.reason.strip().lower()
+    if reason in {"length", "max_length", "max_tokens", "token_budget_exhausted", "budget_exhausted"}:
+        return "length"
+    if reason in {"tool_call", "tool_calls"}:
+        return "tool_calls"
+    if reason == "content_filter":
+        return "content_filter"
+    return str(fallback)
+
+
+def _finish_details_payload(
+    detail: GenerationOutput | None,
+    finish_reason: str,
+    *,
+    reason_override: str | None = None,
+) -> dict[str, Any]:
+    finish = None if detail is None else detail.finish_details
+    if finish is None:
+        finish = FinishDetails(reason=finish_reason)
+    return finish.to_json_dict(reason=reason_override)
 
 
 def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
@@ -2387,7 +2465,15 @@ def _completion_stream_delta(
     )
 
 
-def _completion_stream_done(response_id: str, created: int, model: str, finish_reason: str, *, index: int = 0) -> str:
+def _completion_stream_done(
+    response_id: str,
+    created: int,
+    model: str,
+    finish_reason: str,
+    *,
+    index: int = 0,
+    finish_details: Mapping[str, Any] | None = None,
+) -> str:
     return _sse(
         {
             "id": response_id,
@@ -2400,6 +2486,11 @@ def _completion_stream_done(response_id: str, created: int, model: str, finish_r
                     "index": int(index),
                     "logprobs": None,
                     "finish_reason": finish_reason,
+                    "finish_details": (
+                        _finish_details_payload(None, finish_reason)
+                        if finish_details is None
+                        else dict(finish_details)
+                    ),
                 }
             ],
         }
@@ -2460,7 +2551,14 @@ def _completion_stream(
             logprobs=choice.get("logprobs"),
         )
     for choice in choices:
-        yield _completion_stream_done(response_id, created, model, str(choice["finish_reason"]), index=choice["index"])
+        yield _completion_stream_done(
+            response_id,
+            created,
+            model,
+            str(choice["finish_reason"]),
+            index=choice["index"],
+            finish_details=choice.get("finish_details"),
+        )
     if usage is not None:
         yield _completion_stream_usage(response_id, created, model, usage)
     yield "data: [DONE]\n\n"
@@ -2569,6 +2667,7 @@ def _chat_stream_parsed(
     *,
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
+    finish_details: Mapping[str, Any] | None = None,
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
@@ -2577,17 +2676,37 @@ def _chat_stream_parsed(
         yield _chat_stream_delta(response_id, created, model, "content", split.content, index=index, logprobs=logprobs)
     for tool_index, call in enumerate(parsed.tool_calls):
         yield _chat_stream_tool_call(response_id, created, model, call, index=index, tool_index=tool_index)
-    yield _chat_stream_done(response_id, created, model, "tool_calls" if parsed.tool_calls else finish_reason, index=index)
+    done_reason = "tool_calls" if parsed.tool_calls else finish_reason
+    yield _chat_stream_done(response_id, created, model, done_reason, index=index, finish_details=finish_details)
 
 
-def _chat_stream_done(response_id: str, created: int, model: str, finish_reason: str, *, index: int = 0) -> str:
+def _chat_stream_done(
+    response_id: str,
+    created: int,
+    model: str,
+    finish_reason: str,
+    *,
+    index: int = 0,
+    finish_details: Mapping[str, Any] | None = None,
+) -> str:
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": int(index), "delta": {}, "finish_reason": finish_reason}],
+            "choices": [
+                {
+                    "index": int(index),
+                    "delta": {},
+                    "finish_reason": finish_reason,
+                    "finish_details": (
+                        _finish_details_payload(None, finish_reason)
+                        if finish_details is None
+                        else dict(finish_details)
+                    ),
+                }
+            ],
         }
     )
 
