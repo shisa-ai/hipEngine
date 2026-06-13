@@ -140,8 +140,11 @@ class Qwen35ParoOneTokenGenerator:
         return int(getattr(session, "max_sequence_length", self._session_capacity))
 
     def count_tokens(self, text: str) -> int:
+        return len(self.tokenize(text))
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), str(text), None)
-        return len(prompt_ids)
+        return tuple(int(token) for token in prompt_ids)
 
     def stream(self, request: GenerationRequest) -> Iterator[str]:
         if len(request.prompts) != 1:

@@ -31,6 +31,12 @@ class Qwen35GGUFBringupGenerator:
     def __post_init__(self) -> None:
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
 
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        return tuple(int(token) for token in self.tokenizer.encode(str(text)))
+
+    def count_tokens(self, text: str) -> int:
+        return len(self.tokenize(text))
+
     def generate(self, request: GenerationRequest) -> list[str]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")

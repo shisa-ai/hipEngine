@@ -814,6 +814,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             presence_penalty=float(request.presence_penalty if request.presence_penalty is not None else 0.0),
             frequency_penalty=float(request.frequency_penalty if request.frequency_penalty is not None else 0.0),
             logit_bias=request.logit_bias or (),
+            stop_token_ids=_stop_token_ids_from_stop(request.stop, engine),
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -1966,6 +1967,28 @@ def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     if isinstance(stop, str):
         return (stop,)
     return tuple(str(item) for item in stop)
+
+
+def _stop_token_ids_from_stop(stop: str | list[str] | None, engine: Any) -> tuple[int, ...]:
+    """Lower OpenAI stop strings that are exactly one tokenizer token.
+
+    Multi-token stop strings intentionally remain server-side trim-only until
+    sequence-level suffix matching exists in generation state.
+    """
+
+    stops = tuple(item for item in _stop_strings(stop) if item)
+    tokenizer = getattr(engine, "tokenize", None)
+    if not stops or not callable(tokenizer):
+        return ()
+    token_ids: list[int] = []
+    for item in stops:
+        try:
+            ids = tuple(int(token) for token in tokenizer(item))
+        except (NotImplementedError, TypeError, ValueError):
+            continue
+        if len(ids) == 1 and ids[0] not in token_ids:
+            token_ids.append(ids[0])
+    return tuple(token_ids)
 
 
 def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:

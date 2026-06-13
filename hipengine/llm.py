@@ -131,6 +131,15 @@ class LLM:
             raise NotImplementedError("token counting is not supported by this generator")
         return int(counter(str(text)))
 
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        """Return tokenizer token ids when the resolved generator exposes them."""
+
+        generator = self._get_text_generator()
+        tokenizer = getattr(generator, "tokenize", None)
+        if not callable(tokenizer):
+            raise NotImplementedError("tokenization is not supported by this generator")
+        return tuple(int(token) for token in tokenizer(str(text)))
+
     def _get_text_generator(self) -> Any:
         if self._text_generator is not None:
             return self._text_generator

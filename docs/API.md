@@ -175,6 +175,10 @@ shared or sensitive deployments.
   `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
   requests stay on each engine's graph/argmax fast path.
 - `logprobs` and non-text chat content parts are rejected.
+- OpenAI `stop` strings are always post-trimmed; when tokenizer access is
+  available, strings that encode to exactly one token are also lowered to
+  runtime `stop_token_ids` for early termination. Multi-token stop suffix
+  matching remains future work.
 - Tool calling uses Qwen-style prompt markup and output parsing; malformed
   `<tool_call>` JSON is treated as ordinary assistant text.
 - Unknown top-level request parameters are rejected instead of silently ignored.

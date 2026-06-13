@@ -86628,3 +86628,22 @@ Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_scheduler_sampler_states_track_generated_history -q` -> `2 passed`.
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_scheduler_sampler_states_track_generated_history tests/test_sampling.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_gguf_sampling.py -q` -> `18 passed`.
 - `git diff --check`.
+
+## 2026-06-14 - Sampling S4 single-token server stop lowering
+
+Advanced S4 stop handling by exposing tokenizer token ids through
+`LLM.tokenize()` and PARO/GGUF generator `tokenize()` methods.  The server now
+attempts to lower OpenAI `stop` strings that encode to exactly one token into
+`SamplingParams.stop_token_ids`, while preserving response post-trimming for all
+stop strings.  Multi-token stop strings intentionally remain trim-only until
+suffix matching is carried in generation state.
+
+Updated `docs/SAMPLING.md` and `docs/API.md` to reflect exactly-one-token stop
+lowering and the remaining multi-token stop-sequence gap.  Untracked
+`.handoff/`, `docs/TODO.md`, and the benchmark result JSON that appeared in the
+worktree were left untouched.
+
+Validation:
+- `python3 -m py_compile hipengine/llm.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_llm_generate.py`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_calls_llm_and_applies_stop tests/test_server_api.py::test_server_lowers_single_token_stop_strings_to_stop_token_ids tests/test_llm_generate.py::test_llm_tokenize_delegates_to_generator tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id tests/test_generation_qwen35_gguf_sampling.py::test_gguf_host_sampler_stops_on_stop_token_id -q` -> `5 passed`.
+- `python3 -m pytest tests/test_llm_generate.py tests/test_server_api.py tests/test_sampling.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_stops_on_stop_token_id -q` -> `55 passed`.

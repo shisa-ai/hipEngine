@@ -19,12 +19,15 @@ class FakeLLM:
         self,
         outputs: list[str] | None = None,
         stream_chunks: list[str] | None = None,
+        token_map: dict[str, list[int]] | None = None,
     ) -> None:
         self.outputs = outputs
         self.stream_chunks = stream_chunks
+        self.token_map = token_map
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
         self.stream_calls: list[tuple[str, SamplingParams]] = []
         self.prepares: list[tuple[int | None, SamplingParams]] = []
+        self.tokenize_calls: list[str] = []
         self.max_sequence_length: int | None = None
         self.kv_capacity_estimate = None
         self.kv_capacity_int8_estimate = None
@@ -63,6 +66,12 @@ class FakeLLM:
 
     def count_tokens(self, text: str) -> int:
         return len(text.split())
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        self.tokenize_calls.append(str(text))
+        if self.token_map is None:
+            raise NotImplementedError("fake tokenization is not configured")
+        return tuple(self.token_map[str(text)])
 
 
 def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
@@ -299,6 +308,28 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
             ),
         )
     ]
+
+
+def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
+    fake = FakeLLM(outputs=["alpha!tail"], token_map={"!": [99], "two tokens": [10, 11]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "one",
+            "max_tokens": 4,
+            "stop": ["!", "two tokens"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["text"] == "alpha"
+    sampling = fake.calls[0][1]
+    assert sampling.stop_token_ids == (99,)
+    assert fake.tokenize_calls == ["!", "two tokens"]
 
 
 def test_completions_endpoint_plumbs_sampling_parameters() -> None:

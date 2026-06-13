@@ -55,6 +55,36 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
     )
 
 
+def test_llm_tokenize_delegates_to_generator(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def tokenize(self, text: str) -> tuple[int, ...]:
+            return tuple(ord(char) for char in text)
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["unused"]
+
+    fake_index = SimpleNamespace(config={"architectures": ["FakeForCausalLM"]}, model_path="/tmp/fake-model")
+    fake_plugin = SimpleNamespace(name="fake_tokenizer_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_tokenizer_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+
+    assert llm.tokenize("Az") == (65, 122)
+
+
 def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading
