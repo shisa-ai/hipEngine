@@ -86739,3 +86739,27 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `62 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> `13 passed`.
 - Combined rerun: `python3 -m pytest tests/test_sampling.py tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds -q` -> passed (`75 passed`).
+
+## 2026-06-14 - Agentic roadmap implementation handoff pass
+
+Expanded `docs/AGENTIC.md` from a concise roadmap into an implementation handoff
+for the next agent.  Removed meta coverage-map/scratch-note framing and folded
+all recovered ideas into concrete feature specs: decode state, finish details,
+logit processor stack, DFA/constraint engine, session/cache commit controls,
+reasoning budget soft-close mechanics, graceful exhaustion, continuations,
+tool/schema/grammar decoding, context auto-clear, harness operations, and
+multi-model/routing/TP serving.
+
+The reasoning-budget section now preserves the detailed design: tokenized
+`</think>` close sequences, soft logit-bias ramp, forced-token queue, graph
+bulk + host-stepped tail option, rejected answer-start-token forcing, and honest
+`finish_details` / continuation metadata.  The punchlist now breaks P0-P6 into
+implementable sub-features with implementation notes, likely touchpoints where
+useful, and exit gates.  Also aligned the baseline with the current S8 partial
+state: non-streaming completion/chat logprobs are available, while streaming
+logprobs and completion `echo+logprobs` remain open parity work.
+
+Validation:
+- Re-read `docs/AGENTIC.md` end-to-end.
+- `python3 - <<'PY'` marker/coverage check over `docs/AGENTIC.md` -> `1066 lines` and required feature areas present.
+- `git diff --check -- docs/AGENTIC.md WORKLOG.md`.

@@ -2,16 +2,26 @@
 
 Last updated: 2026-06-14
 
-This document tracks product and implementation work for the **basic working
-inference engine** and its OpenAI-compatible server. It is intentionally focused
-on features that make hipEngine useful to local agent harnesses (pi, coding
-agents, evaluation runners) while preserving the torch-free runtime, plugin
-registry boundaries, and greedy graph fast path.
+`AGENTIC.md` is the implementation handoff for making hipEngine useful as a
+local **agent runtime**. The scope is not broad project management; it is the
+serving/library behavior that coding agents, harnesses, and evaluation runners
+need from an inference engine: controllable reasoning, useful output under tight
+budgets, reliable tool and structured-output decoding, resumable generations,
+explicit session/cache control, cancellation/deadline handling, diagnostics, and
+later model routing / multi-model / multi-GPU serving.
 
-For detailed sampler mechanics, keep `docs/SAMPLING.md` as the source of truth.
-For public request/response behavior, keep `docs/API.md` current. Kernel,
-benchmark, and speculative-decode backlogs belong in their dedicated docs unless
-they directly affect the serving/harness contract below.
+The roadmap assumes these invariants remain fixed:
+
+- the runtime hot path stays torch-free;
+- dispatch remains registry-driven, not backend/quant/model `if` ladders;
+- greedy-equivalent requests stay on the retained graph/argmax fast path unless
+  a replacement is proven exact and non-regressive;
+- public behavior changes are documented in `docs/API.md`;
+- sampler mechanics stay aligned with `docs/SAMPLING.md`.
+
+Kernel, benchmark, speculative-decode, and low-level performance backlogs belong
+in their dedicated docs unless they directly affect the agent/harness contract
+below.
 
 ## Current working baseline
 
@@ -20,17 +30,24 @@ Already available or recently added:
 - OpenAI-style `/v1/completions` and `/v1/chat/completions` server endpoints.
 - Qwen-style chat rendering with `<think>` splitting into `reasoning_content` in
   non-streaming responses and `delta.reasoning_content` in streaming responses.
-- Chat `max_tokens=None` can use remaining context automatically.
+- Chat requests that omit `max_tokens` use the server's bounded
+  `--chat-default-max-tokens` default (`4096`) clamped to remaining admitted
+  context; `--chat-default-max-tokens auto` restores full remaining-context
+  behavior.
 - Resident session/context preallocation hooks for server use.
 - Eager model warmup before server readiness.
 - Host-backed functional sampling for PARO/GGUF c=1 and serialized multi-row
   requests; greedy-equivalent requests stay on the graph/argmax fast path.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, stop token ids,
-  `seed`, and per-row seeds.
-- Explicit single-token stop ids and exactly-one-token OpenAI `stop` strings can
-  terminate host-sampled PARO/GGUF rows early; multi-token stop suffix matching
-  remains open.
+  stop token sequences, `seed`, and per-row seeds.
+- Non-streaming completion/chat logprobs are partially supported through the
+  host-logits metadata path: completions accept `logprobs: N`; chat accepts
+  `logprobs: true` plus optional `top_logprobs: N`.
+- Tokenizable OpenAI `stop` strings lower to `stop_token_ids` or
+  `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
+  while responses still use post-trimming for consistency. Native c>N/GPU paths
+  still need to consume the same stop metadata before claiming parity.
 - OpenAI-style chat `tools` / `tool_choice` prompt injection and output parsing
   for Qwen-style `<tool_call>{...}</tool_call>` blocks.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
@@ -43,212 +60,978 @@ Known baseline limitations:
 - Tool calling is prompt-and-parse, not constrained decoding; malformed
   `<tool_call>` JSON is treated as assistant text.
 - Thinking controls are prompt/template controls only; there is no token-level
-  thinking budget, logit processor, or forced close sequence yet.
+  thinking budget, dynamic logit processor, or forced close sequence yet.
 - Server-side reasoning/tool parsing lives above generation; the generation loop
-  does not yet expose a canonical token-level decode state.
+  does not yet expose canonical token-level phase state for reasoning, answer,
+  tool-call, or structured-output spans.
 - Public finish metadata is still coarse (`stop`, `length`, `tool_calls`) and
   does not explain budget pressure, forced tokens, cancellation, cache behavior,
   or per-phase token counts.
+- Streaming logprobs and completion `echo+logprobs` are explicitly unsupported
+  until token metadata can be carried chunk-by-chunk / through prompt echo.
 - Streaming is content-first; metadata deltas for reasoning/answer/tool token
-  counts, timing, and cache state are not first-class yet.
+  counts, timing, cache state, and budget pressure are not first-class yet.
 - Resident session reuse needs an explicit commit policy before hidden reasoning
-  or failed tool-call attempts can safely be retained across turns.
+  or failed/truncated tool-call attempts can safely be retained across turns.
+- Server startup supports one loaded model at a time; routing, multiple resident
+  models, tensor parallelism, and model-family fallback are not yet designed.
 
-## Guiding principles
+## Implementation principles
 
 1. **Build primitives, not one-off hacks.** Thinking budgets, stop sequences,
    JSON/tool constraints, min-answer reserves, logit bias, and suppress-EOS
-   behavior should share decode-state and logit-processor primitives.
-2. **Be honest in metadata.** If the engine forces a token, appends synthetic
-   text, truncates mid-structure, cancels a request, or drops session state, the
-   response must say so.
+   behavior should share decode-state, logit-processor, DFA, and forced-token
+   primitives.
+2. **Keep behavior observable.** If the engine forces a token, appends synthetic
+   text, truncates mid-structure, cancels a request, clears context, falls back
+   to host sampling, or drops session state, the response must say so.
 3. **Keep harnesses in control.** Agents need token counts, continuation handles,
-   cancellation, deadlines, cache handles, and predictable tool/JSON behavior.
+   cancellation, deadlines, cache handles, model capabilities, and predictable
+   tool/JSON behavior.
 4. **Do not poison resident context.** Hidden reasoning, malformed tool-call
    attempts, and truncated outputs should not be silently committed into a
    long-lived session.
 5. **Preserve the fast path.** Greedy-equivalent requests remain on the current
    graph/argmax path unless a replacement is proven exact and non-regressive.
-6. **Keep boundaries clean.** No torch on the hot path; no backend/quant/model
-   `if` ladders in engine or dispatch code.
+6. **Keep model-specific syntax at model/template boundaries.** Qwen `<think>`
+   and `<tool_call>` markup is a current served-template behavior, not a reason
+   to hardcode Qwen checks in engine/dispatch internals.
 
-## Priority roadmap
+## Core primitives to add
+
+These primitives are referenced throughout the punchlist. Build them once and
+reuse them.
+
+### Decode state and telemetry
+
+A generation-layer state object should exist per row/request and be available to
+server streaming and non-streaming paths. Suggested home: a small module such as
+`hipengine/generation/decode_state.py` or `hipengine/generation/control.py`.
+
+Minimum shape:
+
+```python
+class DecodePhase(Enum):
+    PREFILL = "prefill"
+    THINK = "think"
+    CLOSING_THINK = "closing_think"
+    ANSWER = "answer"
+    TOOL_CALL = "tool_call"
+    STRUCTURED = "structured"
+    DONE = "done"
+
+@dataclass
+class DecodeState:
+    request_id: str
+    row_index: int
+    step_index: int
+    prompt_tokens: int
+    generated_tokens: int
+    phase: DecodePhase
+    reasoning_tokens: int = 0
+    answer_tokens: int = 0
+    tool_call_tokens: int = 0
+    structured_tokens: int = 0
+    stop_suffix_state: object | None = None
+    forced_tokens_pending: tuple[int, ...] = ()
+    budget_pressure: str | None = None
+    sampler_mode: str | None = None
+    continuation_eligible: bool = False
+```
+
+Implementation notes:
+
+- Keep the state independent from model plugins; model plugins may provide
+  marker token sequences and chat-template metadata.
+- Update it during generation, not only after server text parsing.
+- Keep the existing server `_ReasoningSplitter` as a compatibility/output layer
+  until decode-state streaming fully replaces it.
+- Thread state into `GenerationOutput` / streaming chunks without changing
+  existing minimal OpenAI fields for clients that ignore extras.
+
+### Finish details
+
+Add a structured detail object next to coarse OpenAI `finish_reason` values.
+Suggested shape:
+
+```python
+@dataclass(frozen=True)
+class FinishDetails:
+    reason: str                         # eos, stop, length, cancelled, ...
+    eos_token_id: int | None = None
+    stop_sequence: tuple[int, ...] = ()
+    length_limit: int | None = None
+    deadline_exceeded: bool = False
+    cancelled: bool = False
+    forced_close: bool = False
+    synthetic_tokens: int = 0
+    reasoning_tokens: int = 0
+    answer_tokens: int = 0
+    tool_call_tokens: int = 0
+    structured_tokens: int = 0
+    budget_pressure: str | None = None
+    cache_action: str | None = None
+    sampler_mode: str | None = None
+```
+
+Server responses can expose this under an extension field such as
+`finish_details` while preserving `finish_reason` compatibility.
+
+### Logit processor stack
+
+Add one ordered stack for all token-selection policy. It should work on host
+logits first and later be mirrored by GPU kernels for promoted paths.
+
+Required processors:
+
+1. static OpenAI-style `logit_bias`;
+2. repetition/presence/frequency penalties (already in the host sampler);
+3. suppress token ids;
+4. min-token / suppress-EOS until a visible answer/tool call exists;
+5. stop DFA state update;
+6. forced-token queue;
+7. dynamic budget processors, including thinking soft-close;
+8. grammar/JSON/tool-call constraints.
+
+Implementation notes:
+
+- Keep a pure, testable planner that decides whether processors require
+  `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or a future `GPU_SAMPLE` path.
+- Greedy-equivalent requests with no active processors must still take the graph
+  fast path.
+- Processors should emit metadata: names active, tokens suppressed/forced,
+  budget pressure, and why a request left the fast path.
+
+### DFA / constraint engine
+
+Use one tokenizer-aware DFA primitive for stop sequences, forced delimiters,
+JSON/tool constraints, and patch grammars.
+
+Required operations:
+
+- lower strings/schemas/grammar states into token-id constraints;
+- update state with each accepted token;
+- report allowed next token set or sparse token bias;
+- detect complete stop/grammar/failure states;
+- provide forced-token suffixes when a delimiter/object must be closed.
+
+Start with exact token-sequence matching and JSON-object close-brace fixtures;
+do not block P1 on full JSON Schema support.
+
+### Session/cache control
+
+Resident-session APIs need explicit commit semantics before long-lived agent use.
+The generation result should tell the session layer what to retain:
+
+```text
+append_all          # raw generated tokens, including hidden reasoning
+append_visible_only # final visible assistant answer/tool calls only
+append_none         # stateless response; keep only reusable prompt/prefix cache
+append_prompt_only  # retain admitted prompt/prefix, drop generated tail
+```
+
+Visible-only commit may require re-prefilling the visible transcript after
+generation. That cost is acceptable compared with retaining hidden reasoning or
+malformed partial tool calls in KV.
+
+## Reasoning budget / soft-close design
+
+This is the highest-leverage agentic feature: avoid the failure mode where a
+thinking model spends the whole budget in `<think>` and returns no useful
+answer/tool call.
+
+### Problem
+
+`max_tokens` is currently one undifferentiated pool. For Qwen-style visible
+thinking, a response may look like:
+
+```text
+<think>
+...long chain of thought...
+</think>
+final answer or <tool_call>{...}</tool_call>
+```
+
+If the model spends nearly all generated tokens inside `<think>`, the harness may
+receive an empty answer, a partial delimiter, or a malformed tool/JSON block.
+Prompt-only `reasoning_effort` hints reduce this risk but cannot guarantee a
+visible answer under budget pressure.
+
+### State needed before control
+
+Soft-close depends on token-level state inside generation, not only the server's
+post-hoc text splitter:
+
+- current phase: `THINK`, `CLOSING_THINK`, `ANSWER`, `TOOL_CALL`, `DONE`;
+- generated token count and remaining hard budget;
+- reasoning token count;
+- guaranteed visible-answer reserve (`min_answer_tokens`);
+- whether the current suffix is a partial close delimiter or stop sequence;
+- whether EOS should be suppressed until a visible answer/tool call starts;
+- whether the response already contains a valid tool call or structured object.
+
+The existing `_ReasoningSplitter` logic can inform the state machine, but budget
+control must run before token selection.
+
+### Policy surface
+
+Candidate request/session controls:
+
+```python
+@dataclass(frozen=True)
+class ThinkingBudget:
+    max_think_tokens: int | None = None          # soft cap before close pressure
+    hard_think_cap: int | None = None             # force close at/after this cap
+    min_answer_tokens: int | None = None          # reserve visible output budget
+    soft_close_window: int = 128                  # ramp over final N think tokens
+    close_sequences: tuple[tuple[int, ...], ...] = ()  # tokenized </think> variants
+    suppress_eos_until_answer: bool = True
+```
+
+Public API options:
+
+- keep current `enable_thinking` / `reasoning_effort` prompt controls;
+- add an optional structured `thinking` object for hard controls, e.g.
+  `{ "max_tokens": 2048, "min_answer_tokens": 512, "soft_close_window": 128 }`;
+- expose server defaults so agent harnesses can rely on bounded behavior without
+  sending every field manually.
+
+The generation layer should lower model-template strings (`</think>`,
+`</think>\n`, etc.) to token sequences using the served tokenizer. Model plugins
+or chat-template metadata should provide candidate close strings.
+
+### Close target
+
+Prefer closing the reasoning delimiter, not forcing answer-start prose:
+
+1. Bias the first token(s) of accepted close sequences such as `</think>`.
+2. Once the model begins a close sequence, force the remaining tokens through the
+   normal decode path.
+3. Switch phase accounting from reasoning to answer/tool-call after the delimiter
+   completes.
+
+A rejected alternative is boosting `response`/answer-start tokens directly, but
+that is template-specific and risks weird partial transitions. Closing `</think>`
+is more robust and keeps the model in control of the final answer.
+
+### Logit-processor mechanics
+
+Implement thinking control as one policy in the general processor stack:
+
+1. Start from FP32 logits.
+2. Apply static OpenAI-style `logit_bias`.
+3. Apply penalties and suppress-token constraints.
+4. Apply min-token / suppress-EOS policy when no visible answer exists yet.
+5. Apply dynamic budget processors, including thinking soft-close.
+6. Apply forced-token queue if a delimiter/grammar sequence is already in
+   progress.
+7. Run argmax or sampling.
+
+For soft-close, compute a ramp from remaining think/answer budget. As the soft
+window is consumed, add a sparse positive bias to viable first tokens of
+`close_sequences`; at the hard cap, force the close sequence. If a sequence is
+partially matched, the forced-token queue emits the rest so KV state stays
+consistent.
+
+### Graph-capture implications
+
+Dynamic budget bias changes per decode step, so it does not fit a single static
+multi-token graph replay without extra machinery. Practical options:
+
+- **A: graph bulk + host-stepped tail.** Use the greedy graph path until the
+  soft-close window, then switch to a host-stepped logits/processor path for the
+  final ~64-256 tokens. This is the simplest first implementation and the tail
+  cost is acceptable for harness reliability.
+- **B: graph variants.** Capture separate graphs with and without a constant
+  close bias. Lower overhead, less flexible.
+- **C: device-side budget counter.** Add a device-visible step/budget counter and
+  processor kernel that updates close-token bias. Most elegant, most kernel work.
+
+P1 should start with option A and document the performance tradeoff; only promote
+native/GPU processors after correctness and benchmark gates pass.
+
+### Graceful exhaustion contract
+
+If the request still exhausts its hard limit:
+
+- Best case: force `</think>` through the normal decode path, mark
+  `forced_close=true`, and continue for the reserved answer budget.
+- If no answer budget remains, return `finish_reason="length"` plus
+  `finish_details.reason="thinking_budget_exhausted"` and a continuation handle
+  when possible.
+- If text is appended outside model decoding, mark it as synthetic and do not
+  silently commit it to resident session state.
+
+Example finish metadata:
+
+```json
+{
+  "finish_reason": "length",
+  "finish_details": {
+    "reason": "thinking_budget_exhausted",
+    "forced_close": true,
+    "synthetic_tokens": 0,
+    "reasoning_tokens": 2048,
+    "answer_tokens": 128,
+    "budget_pressure": "hard_cap"
+  },
+  "continuation_id": "gen_abc123"
+}
+```
+
+## Implementation punchlist
+
+Each item below should be implemented as a self-contained logical unit with
+focused tests, docs/API updates when public behavior changes, and a WORKLOG entry.
+The `Implementation notes` are intentionally concrete enough for another agent to
+start coding without re-deriving the design.
 
 ### P0 — Decode observability and robust finish semantics
 
 These are the foundation for every agent-friendly feature below.
 
-- [ ] **Canonical `DecodeState` / `GenerationTelemetry`.** Track, per row:
-  request id, row index, step index, prompt tokens, generated tokens,
-  reasoning/answer/tool-call phase, stop-suffix state, forced-token queue state,
-  EOS/stop/length status, and sampler mode. Keep it generation-layer owned, not
-  server-only.
-  - Exit gate: fake-session tests prove streaming and non-streaming paths report
-    the same phase/token counts; greedy path output remains byte-identical.
-- [ ] **Structured finish details.** Extend results with machine-readable detail
-  beyond the OpenAI `finish_reason`: `reason`, `eos_token_id`, `stop_sequence`,
-  `length_limit`, `deadline_exceeded`, `cancelled`, `forced_close`,
-  `synthetic_tokens`, `reasoning_tokens`, `answer_tokens`, `tool_call_tokens`,
-  and `sampler_mode`.
-  - Exit gate: server tests cover stop, EOS, length, tool-call, and malformed
-    tool-call finishes without changing existing minimal OpenAI fields.
-- [ ] **Streaming metadata deltas.** Add optional stream events or `usage_delta`
-  payloads for token counts and phase transitions: thinking -> answer ->
-  tool-call -> done. Include TTFT, prefill ms, decode tok/s, cache hit/miss, and
-  KV bytes when available.
-  - Exit gate: `stream_options.include_usage` remains compatible; opt-in
-    metadata is ignored safely by plain OpenAI clients.
-- [ ] **Token diagnostics endpoints.** Add `/tokenize`, `/detokenize`,
-  `/count_tokens`, and `/fit_context` helpers for harness preflight.
-  - Exit gate: requests can learn prompt token count, remaining output budget,
-    model/server max context, and truncation decisions before generation.
-- [ ] **Request cancellation and deadlines.** Make cancellation/deadline checks
-  visible to the scheduler and decode loop, not only the HTTP layer.
-  - Exit gate: cancel/deadline tests leave no active row/session leak and return
-    explicit finish details.
+#### P0.1 Canonical `DecodeState` / `GenerationTelemetry`
+
+Implement:
+
+- add generation-owned per-row phase/token accounting;
+- expose a snapshot on `GenerationOutput` and streaming chunks;
+- keep a compatibility bridge from server `_ReasoningSplitter` until generation
+  phase accounting is authoritative;
+- record `sampler_mode`, fast-path vs host-logits fallback, stop suffix state,
+  forced-token queue state, and continuation eligibility.
+
+Likely touchpoints:
+
+- `hipengine/generation/registry.py` for result dataclasses;
+- `hipengine/generation/sampling.py` for sampler mode metadata;
+- `hipengine/generation/qwen35_paro.py` / `qwen35_gguf.py` for output plumbing;
+- `hipengine/server/api.py` for response/stream serialization.
+
+Exit gates:
+
+- fake-session tests prove streaming and non-streaming paths report the same
+  phase/token counts;
+- greedy-equivalent output text and token ids remain unchanged;
+- no torch import is introduced on the hot path.
+
+#### P0.2 Structured finish details
+
+Implement:
+
+- add `FinishDetails` or equivalent to generation outputs;
+- map internal reasons to OpenAI-compatible `finish_reason` while preserving
+  detailed extension metadata;
+- include EOS, stop sequence, length, cancellation, deadline, forced close,
+  synthetic tokens, budget pressure, cache action, and sampler mode.
+
+Exit gates:
+
+- server tests cover EOS, token stop, stop sequence, length, tool call,
+  malformed tool call, budget exhaustion, cancellation, and deadline;
+- old clients still see the same coarse `finish_reason` strings;
+- errors are stable enough for harness retry logic.
+
+#### P0.3 Streaming metadata deltas
+
+Implement:
+
+- add opt-in streaming metadata under an extension field such as `usage_delta`,
+  `hipengine`, or a dedicated event type;
+- stream phase transitions (`think`, `closing_think`, `answer`, `tool_call`,
+  `structured`, `done`);
+- include TTFT, prefill ms, decode tok/s, cache hit/miss, KV bytes, stop reason,
+  and budget-pressure state when available.
+
+Exit gates:
+
+- `stream_options.include_usage` remains OpenAI-compatible;
+- plain clients can ignore metadata without breaking content streaming;
+- tests verify final accumulated deltas match non-streaming usage/telemetry.
+
+#### P0.4 Token diagnostics endpoints
+
+Implement:
+
+- `/tokenize` and `/detokenize` using the served tokenizer;
+- `/count_tokens` for raw text and chat messages after server template rendering;
+- `/fit_context` that returns prompt tokens, admitted context, effective
+  `max_tokens`, chat default, truncation/clear policy, and what would be dropped.
+
+Exit gates:
+
+- `/fit_context` and actual generation use the same token accounting;
+- tests cover raw prompts, chat messages, tool messages, and thinking controls;
+- capability metadata advertises these endpoints.
+
+#### P0.5 Request cancellation and deadlines
+
+Implement:
+
+- request-level cancellation token checked by scheduler/decode loops;
+- deadline timestamps lowered from HTTP request or server defaults;
+- cleanup that releases active rows/session reservations on cancel/deadline;
+- finish details with `cancelled=true` or `deadline_exceeded=true`.
+
+Exit gates:
+
+- cancel/deadline tests leave no active row/session leak;
+- streaming cancellation emits a final error/done event instead of hanging;
+- follow-up requests can reuse the server after cancellation.
 
 ### P1 — Controlled decoding and thinking budgets
 
 Build this on top of P0 telemetry rather than as a Qwen-only special case.
 
-- [ ] **General logit-processor framework.** Define a documented processor order
-  shared by host and future GPU paths: static logit bias, suppress tokens,
-  penalties, min-token/EOS suppression, forced-token queue, stop DFA, dynamic
-  budget processors, and later grammar constraints.
-  - Exit gate: processed-argmax fixtures prove deterministic tie-breaking and
-    no regression for greedy-equivalent requests.
-- [ ] **Forced-token queue.** Allow policies to force a known token sequence
-  through the normal decode path so KV state stays consistent.
-  - Exit gate: forced multi-token delimiters are emitted exactly once and count
-    as forced in finish metadata.
-- [ ] **Multi-token stop suffix matching.** Lower stop strings to token-id
-  sequences, track suffix/DFA state per row, and finish as soon as a full stop
-  sequence completes while preserving response trimming.
-  - Exit gate: one-token stop behavior stays green; overlapping multi-token stop
-    fixtures pass for PARO and GGUF host-sampled paths.
-- [ ] **Thinking budget policy.** Add request-level controls such as
-  `max_think_tokens`, `min_answer_tokens`, `hard_think_cap`, and
-  `thinking_soft_close_tokens`. When budget pressure begins, bias the first
-  token(s) of accepted close sequences such as `</think>`, then force the rest
-  of the delimiter once started.
-  - Exit gate: a model still in reasoning near the reserve budget transitions to
-    answer mode or returns `thinking_budget_exhausted` with `forced_close=true`.
-- [ ] **Graceful length exhaustion.** If length is hit mid-reasoning,
-  mid-tool-call, or mid-JSON object, return honest details and a continuation
-  option instead of silently producing an empty or malformed final answer.
-  - Exit gate: no synthetic text is appended without `synthetic_tokens` metadata;
-    forced-through-model tokens remain eligible for session commit.
-- [ ] **Continuation handles.** For `finish_reason="length"` or controlled tail
-  stops, return a resumable generation handle so harnesses can ask for more
-  output without reprefilling the entire prompt.
-  - Exit gate: continuation works after normal text and after a partial tool/JSON
-    structure, or explicitly reports why it cannot resume.
+#### P1.1 General logit-processor framework
+
+Implement:
+
+- a pure processor plan that decides `GREEDY_FAST`, `PROCESSED_ARGMAX`,
+  `HOST_LOGITS_SAMPLE`, or future `GPU_SAMPLE`;
+- ordered processor execution for static bias, penalties, suppressions,
+  min-token/EOS policy, stop DFA, forced tokens, dynamic budgets, and grammars;
+- metadata explaining which processors were active and why fast path was left.
+
+Exit gates:
+
+- processed-argmax fixtures prove deterministic tie-breaking;
+- greedy-equivalent requests still use graph/argmax fast path;
+- host sampler tests cover processor ordering.
+
+#### P1.2 Forced-token queue
+
+Implement:
+
+- per-row forced-token queue integrated before argmax/sampling;
+- queue population from close delimiters, stop/grammar repair, and future JSON
+  close-brace enforcement;
+- telemetry for forced token count and reason.
+
+Exit gates:
+
+- forced multi-token delimiters are emitted exactly once;
+- forced tokens go through normal decode so KV state stays consistent;
+- finish details distinguish forced-through-model tokens from synthetic text.
+
+#### P1.3 Stop DFA promotion
+
+Current host PARO/GGUF suffix matching exists; make it a first-class decode
+primitive.
+
+Implement:
+
+- move stop suffix state into decode state / DFA helper;
+- keep server post-trimming for response consistency;
+- ensure native c>N/GPU sampler paths consume the same stop metadata before they
+  claim token-level stop parity.
+
+Exit gates:
+
+- one-token and overlapping multi-token stop fixtures pass for PARO and GGUF
+  host paths;
+- native c>N/GPU paths either pass the same fixtures or report unsupported path
+  clearly;
+- stop details include the matched token sequence.
+
+#### P1.4 Thinking budget policy
+
+Implement:
+
+- request/server defaults for `max_think_tokens`, `min_answer_tokens`,
+  `hard_think_cap`, and `soft_close_window`;
+- tokenizer lowering for accepted close strings;
+- soft logit-bias ramp near the budget boundary;
+- hard forced close at cap;
+- EOS suppression until answer/tool-call starts when configured.
+
+Exit gates:
+
+- deterministic fake-logit fixtures show soft-close bias changes token choice;
+- hard-cap fixtures force the full close sequence;
+- a reasoning-heavy fixture returns either visible answer/tool-call tokens or
+  `thinking_budget_exhausted` with `forced_close=true`;
+- graph fast path is preserved outside controlled tail windows.
+
+#### P1.5 Graceful length exhaustion
+
+Implement:
+
+- detect length exhaustion by phase: in reasoning, closing delimiter, answer,
+  tool-call, JSON/grammar object, or plain text;
+- return honest finish details and continuation eligibility;
+- avoid appending synthetic text unless explicitly marked and excluded from
+  resident-session commit.
+
+Exit gates:
+
+- tests cover length in `<think>`, partial `</think>`, partial `<tool_call>`,
+  partial JSON, and normal answer;
+- no case silently returns empty assistant content without an explanatory detail;
+- continuation handle presence/absence is deterministic.
+
+#### P1.6 Continuation handles
+
+Implement:
+
+- persistent generation handles for resumable length stops;
+- handle metadata: model id, session/cache reference, decode state, tokenizer,
+  sampler params, seed/RNG state, and allowed continuation budget;
+- expiration and cancellation cleanup.
+
+Exit gates:
+
+- continuation resumes after normal text and after partial structured output;
+- invalid/expired handles return stable errors;
+- resuming does not reprefill the whole prompt when resident state is available.
 
 ### P2 — Tool-call and structured-output reliability
 
 The current tool-call support is enough for local smoke tests; harness-grade tool
 use needs decoding constraints and better protocol coverage.
 
-- [ ] **Strict tool-call mode.** Support `tool_choice="required"`, specific tool
-  choice, and no-tool mode at decode time rather than prompt-only. Emit exactly
-  one valid call when required, or a structured refusal/error finish.
-  - Exit gate: server fixtures cover `none`, `auto`, `required`, and specific
-    function choice with deterministic fake logits.
-- [ ] **Tool JSON schema validation.** Validate generated tool arguments against
-  the provided JSON schema and surface validation errors separately from normal
-  assistant text. Decide whether invalid calls are returned, repaired, retried,
-  or downgraded to text.
-  - Exit gate: malformed JSON, unknown tool names, missing required args, and
-    wrong types each have stable finish details.
-- [ ] **Constrained JSON / schema decoding.** Add JSON-object and JSON-schema
-  constrained decoding usable for tool arguments, `response_format`, and harness
-  control messages.
-  - Exit gate: valid-close-brace before EOS is enforced on fixture prompts; plain
-    sampling behavior is unchanged when constraints are absent.
-- [ ] **Patch/diff constrained mode.** Add an optional unified-diff or patch
-  grammar for coding agents that need valid edit blocks instead of free-form
-  prose.
-  - Exit gate: generated patches parse under the selected grammar and report
-    grammar finish details.
-- [ ] **Tool streaming polish.** Stream tool-call name/arguments chunks in a way
-  OpenAI-compatible clients can consume incrementally, including stable call ids
-  and index handling for multiple calls.
-  - Exit gate: streaming and non-streaming tool responses round-trip to the same
-    parsed tool-call list.
+#### P2.1 Strict tool-call mode
+
+Implement:
+
+- decode-time enforcement for `tool_choice="none"`, `"auto"`, `"required"`, and
+  a specific function name;
+- exactly-one-call or multi-call policy decided explicitly;
+- structured refusal/error when a required call cannot be produced under budget.
+
+Exit gates:
+
+- server fixtures cover `none`, `auto`, `required`, and specific function choice;
+- no-tool mode suppresses `<tool_call>` starts;
+- required-tool mode does not return ordinary prose as success.
+
+#### P2.2 Tool JSON schema validation
+
+Implement:
+
+- parse generated tool call JSON into `{name, arguments}`;
+- validate tool name and arguments against request-provided JSON schema;
+- choose and document invalid-call policy: return error detail, retry with
+  constrained repair, or downgrade to text.
+
+Exit gates:
+
+- malformed JSON, unknown tool name, missing required arg, wrong type, and extra
+  disallowed arg each have stable finish details;
+- streaming and non-streaming paths agree on parsed calls/errors;
+- prior assistant tool calls and `role: "tool"` results still replay correctly.
+
+#### P2.3 Constrained JSON / schema decoding
+
+Implement:
+
+- JSON-object mode for `response_format` and tool arguments;
+- minimal JSON Schema subset: object, required properties, scalar types, enum,
+  arrays with bounded depth, and additionalProperties policy;
+- close-brace/quote enforcement before EOS when a JSON object is incomplete.
+
+Exit gates:
+
+- generated JSON parses on fixture prompts;
+- invalid schema requests return `unsupported_parameter` or `schema_violation`;
+- unconstrained sampling behavior is unchanged when no constraint is active.
+
+#### P2.4 Guidance / grammar plugin interface
+
+Implement:
+
+- a tokenizer-aware grammar interface over the DFA primitive;
+- registry or plugin mechanism for JSON, JSON schema, tool-call-only, and patch
+  grammars;
+- capability reporting for supported grammars.
+
+Exit gates:
+
+- JSON object and tool-call grammars share the same processor/forced-token path;
+- unsupported grammar requests fail clearly;
+- adding a new grammar does not require server/model dispatch branches.
+
+#### P2.5 Patch/diff constrained mode
+
+Implement:
+
+- optional unified-diff grammar for coding agents;
+- configurable policy for file headers, hunks, and fenced vs unfenced patches;
+- finish details for grammar success/failure/truncation.
+
+Exit gates:
+
+- generated patch fixtures parse under the selected grammar;
+- partial patch at length stop returns continuation handle or structured error;
+- plain text mode remains unaffected.
+
+#### P2.6 Tool streaming polish
+
+Implement:
+
+- incremental `delta.tool_calls` chunks with stable ids and indexes;
+- argument streaming that clients can concatenate to the non-streaming payload;
+- final finish details for parsed/validated tool calls.
+
+Exit gates:
+
+- streaming and non-streaming tool responses round-trip to the same parsed list;
+- multi-call fixtures preserve indexes;
+- malformed streaming tool JSON is reported consistently.
 
 ### P3 — Session, cache, and context control
 
 Agents repeatedly reuse long system prompts, repo summaries, and tool traces.
 Expose explicit controls instead of relying on implicit resident-session behavior.
 
-- [ ] **Selective session commit policy.** Add per-request/session commit modes:
-  `append_all`, `append_visible_only`, `append_none`, and possibly
-  `append_prompt_only`. Default server behavior should avoid committing hidden
-  reasoning unless explicitly requested.
-  - Exit gate: hidden `<think>` tokens and malformed/truncated tool-call attempts
-    are not retained under `append_visible_only`; state accounting remains exact.
-- [ ] **Visible-only re-prefill path.** If the generated raw tokens differ from
-  the visible committed transcript, re-prefill the visible assistant answer/tool
-  call so resident KV matches what future turns will see.
-  - Exit gate: follow-up turn logits match a stateless prompt built from the
-    visible transcript.
-- [ ] **Forkable prefix/session cache.** Add cache handles for pinned prefixes and
-  forkable conversations: `cache_key`, `fork_from`, `rollback_to`, `delete`, and
-  cache usage metadata.
-  - Exit gate: two branches can fork from one prefix without cross-contaminating
-    generated turns; eviction reports are deterministic.
-- [ ] **Context fitting policy.** Make truncation/auto-clear behavior explicit:
-  fail, truncate oldest visible turns, keep pinned system prefix, or start a new
-  session. Return what was kept/dropped.
-  - Exit gate: `/fit_context` and generation use the same token accounting.
-- [ ] **Session snapshot save/restore.** Persist prefix/session state once the
-  cache layout is stable.
-  - Exit gate: restored sessions pass deterministic continuation fixtures.
+#### P3.1 Selective session commit policy
+
+Implement:
+
+- request/session commit modes: `append_all`, `append_visible_only`,
+  `append_none`, `append_prompt_only`;
+- default policy that does not retain hidden reasoning unless explicitly asked;
+- finish metadata recording the selected cache action.
+
+Exit gates:
+
+- hidden `<think>` tokens and malformed/truncated tool-call attempts are not
+  retained under `append_visible_only`;
+- `append_all` remains available for users who want raw transcript continuity;
+- state accounting remains exact across turns.
+
+#### P3.2 Visible-only re-prefill path
+
+Implement:
+
+- detect when raw generated tokens differ from the visible committed transcript;
+- re-prefill visible assistant answer/tool calls into resident KV;
+- fall back to `append_none` with metadata if visible re-prefill cannot fit.
+
+Exit gates:
+
+- follow-up turn logits match a stateless prompt built from the visible
+  transcript;
+- re-prefill cost is logged separately from decode;
+- no hidden reasoning leaks into visible-only sessions.
+
+#### P3.3 Forkable prefix/session cache
+
+Implement:
+
+- cache handles for pinned prefixes and conversations: `cache_key`, `fork_from`,
+  `rollback_to`, `delete`, and `commit`;
+- prefix vs turn-history eviction policy;
+- cache usage metadata in responses.
+
+Exit gates:
+
+- two branches can fork from one prefix without cross-contaminating generated
+  turns;
+- rollback restores deterministic continuation state;
+- eviction decisions are observable and deterministic under fixed inputs.
+
+#### P3.4 Context fitting and auto-clear policy
+
+Implement:
+
+- explicit overflow policies: `fail`, `auto_clear_transient`,
+  `truncate_oldest_visible`, `keep_pinned_prefix`, `compact_summary`, and
+  `new_session`;
+- `/fit_context` preflight with the same decision logic as generation;
+- response metadata listing kept/dropped/reset segments.
+
+Exit gates:
+
+- auto-clear never silently drops pinned prefixes or committed visible turns;
+- context overflow errors include actionable fit data;
+- generation and `/fit_context` agree on token counts and decisions.
+
+#### P3.5 Session snapshot save/restore
+
+Implement after cache layout stabilizes:
+
+- snapshot format for prefix tokens, visible transcript, KV payload references,
+  decode/sampling state, tokenizer/model id, and cache policy;
+- atomic write/read and versioning;
+- clear incompatibility errors when model/quant/backend/tokenizer differs.
+
+Exit gates:
+
+- restored sessions pass deterministic continuation fixtures;
+- corrupted/incompatible snapshots fail safely;
+- snapshot files never include secrets or unredacted debug payloads by default.
 
 ### P4 — Scheduler, batching, and native sampling polish
 
 These items overlap with `docs/SAMPLING.md`; keep the detailed sampler plan
 there and use this section to track serving impact.
 
-- [ ] **Native c>N stochastic execution.** Use scheduler-owned `RowSamplingState`
-  for true batched sampled decode instead of serial c=1 row routing.
-  - Exit gate: c=2/4 fixed-seed fixtures are deterministic and match independent
-    c=1 semantics where expected.
-- [ ] **GPU sampler kernels.** Promote top-k/temperature/logit-processor kernels
-  after CPU-reference fixtures and GPU1 determinism gates pass.
-  - Exit gate: selected requests avoid full-vocab D2H logits copies and provide
-    rocprof evidence before any performance claim.
-- [ ] **Exact GPU top-p.** Implement or explicitly defer full-vocab nucleus
-  sampling without weakening retain-one/top-p semantics.
-  - Exit gate: boundary fixtures match host retained sets.
-- [ ] **Public logprobs.** Return selected logprob and optional top-logprobs
-  through library and server responses.
-  - Exit gate: response schema tests pass for greedy, processed-argmax, and
-    sampled requests.
-- [ ] **Admission/backpressure policy.** Expose queue depth, max active requests,
-  reject/429 behavior, and Retry-After hints for harness retry loops.
-  - Exit gate: overload tests do not deadlock active resident sessions.
+#### P4.1 Native c>N stochastic execution
+
+Implement:
+
+- use scheduler-owned `RowSamplingState` for true batched sampled decode;
+- project logits for active rows in batch where possible;
+- keep per-row seeds/history/stop DFA aligned with request ids and row indexes.
+
+Exit gates:
+
+- c=2/4 fixed-seed fixtures are deterministic;
+- semantics match independent c=1 where expected;
+- unsupported processor combinations fall back or reject explicitly.
+
+#### P4.2 GPU sampler kernels
+
+Implement:
+
+- native row-wise kernels for processors, top-k/temperature softmax, RNG, and
+  sample selection;
+- counter-based RNG keyed by row seed and step index;
+- metadata proving full-vocab D2H logits copies are avoided on promoted paths.
+
+Exit gates:
+
+- CPU-reference fixtures pass on small vocab;
+- GPU1 deterministic smoke passes;
+- rocprof evidence is recorded before any performance claim.
+
+#### P4.3 Exact GPU top-p
+
+Implement or explicitly defer:
+
+- full-vocab nucleus retain-set computation without weakening retain-one and
+  tie-break semantics;
+- boundary fixtures for equal probabilities and cumulative-probability edges.
+
+Exit gates:
+
+- GPU top-p retained sets match host on fixtures;
+- fallback behavior is explicit when exact GPU top-p is unsupported;
+- no approximate top-p path is promoted as exact.
+
+#### P4.4 Logprobs parity
+
+Current state: non-streaming completion/chat logprobs are partially implemented
+through the host-logits metadata path. Remaining work is parity and native-path
+coverage.
+
+Implement:
+
+- streaming `logprobs` / `top_logprobs` deltas;
+- completion `echo+logprobs` prompt-token metadata;
+- clear rejection/fallback policy for paths that cannot provide logprobs;
+- native/GPU sampler logprob output when those paths are promoted.
+
+Exit gates:
+
+- response schema tests pass for greedy, processed-argmax, sampled, streaming,
+  and echo cases where advertised;
+- logprob values are finite or explicitly omitted with reason;
+- unsupported combinations fail with stable OpenAI-compatible errors;
+- OpenAI compatibility is documented.
+
+#### P4.5 Admission/backpressure policy
+
+Implement:
+
+- queue depth limits, max active requests, and max active sessions;
+- `429` / Retry-After behavior for overload;
+- scheduler fairness policy visible in metrics.
+
+Exit gates:
+
+- overload tests do not deadlock active resident sessions;
+- rejected requests do not allocate KV/session state;
+- metrics expose active, queued, completed, failed, cancelled, and rejected counts.
 
 ### P5 — Harness integration and operations
 
-- [ ] **Capabilities manifest.** Expose model/server capabilities through
-  `/v1/models` metadata or `/v1/hipengine/capabilities`: context sizes,
-  tokenizer name, chat template family, tool support, reasoning controls,
-  sampling modes, logprobs support, continuation support, and cache support.
-- [ ] **Pi/local-agent config snippets.** Keep a tested minimal pi config for
-  hipEngine: base URL, tool calling, Qwen thinking format, reasoning toggle,
-  timeout/deadline recommendations, and known unsupported fields.
-- [ ] **Golden harness traces.** Maintain fixtures for a full agent loop:
-  assistant -> tool call -> tool result -> assistant final answer, with both
-  streaming and non-streaming variants.
-- [ ] **Error taxonomy.** Standardize `unsupported_parameter`,
-  `invalid_tool_call`, `schema_violation`, `context_overflow`,
-  `deadline_exceeded`, `cancelled`, and `engine_busy` responses.
-- [ ] **Health/readiness diagnostics.** Extend readiness to include model loaded,
-  warmup complete, allocator/KV capacity, graph cache status, and selected GPU.
-- [ ] **Deterministic replay bundle.** Allow a failed harness request to emit a
-  compact replay artifact: request JSON, model id, sampler params, seed, token
-  counts, finish details, and optional redacted prompt hashes.
+#### P5.1 Capabilities manifest
+
+Implement:
+
+- `/v1/hipengine/capabilities` or enriched `/v1/models` metadata;
+- context sizes, effective chat default, tokenizer name, chat template family,
+  tool support, reasoning controls, sampling modes, logprobs support,
+  continuation support, cache/session support, loaded-model count, routing
+  support, and known unsupported fields.
+
+Exit gates:
+
+- pi/local harness can configure itself from the manifest without guessing;
+- values match server startup config and current model capabilities;
+- tests cover both default and custom `--chat-default-max-tokens`.
+
+#### P5.2 Pi/local-agent config snippets
+
+Implement:
+
+- checked-in minimal config examples for pi or OpenAI-compatible local agents;
+- recommended settings for Qwen thinking format, tool calling, timeout/deadline,
+  max-token behavior, and unsupported fields;
+- a smoke command that validates the config against a running server.
+
+Exit gates:
+
+- snippets stay synchronized with `docs/API.md`;
+- a golden tool-call loop works with the documented config;
+- unsupported fields are not silently sent by the recommended config.
+
+#### P5.3 Golden harness traces
+
+Implement:
+
+- fixtures for assistant -> tool call -> tool result -> final answer;
+- streaming and non-streaming variants;
+- reasoning/no-thinking variants;
+- length/cancellation/error variants.
+
+Exit gates:
+
+- traces are deterministic under fixed fake logits or fixed seeds;
+- parsed tool calls and final visible transcript match expected JSON;
+- traces can be used for regression by future agents.
+
+#### P5.4 Error taxonomy
+
+Implement stable errors for:
+
+- `unsupported_parameter`;
+- `invalid_tool_call`;
+- `schema_violation`;
+- `context_overflow`;
+- `deadline_exceeded`;
+- `cancelled`;
+- `engine_busy`;
+- `model_unavailable`;
+- `routing_failed`.
+
+Exit gates:
+
+- each error has status code, machine code, parameter/path when applicable, and
+  human-readable message;
+- streaming errors use a consistent SSE error chunk;
+- docs/API lists the errors clients should handle.
+
+#### P5.5 Health/readiness diagnostics
+
+Implement:
+
+- readiness fields for model loaded, warmup complete, allocator/KV capacity,
+  graph cache status, selected GPU, queue depth, active sessions, loaded models,
+  and last startup/load timings;
+- distinction between liveness (`/health`) and readiness/capability.
+
+Exit gates:
+
+- readiness turns true only after eager load/warmup when enabled;
+- failures include actionable diagnostics;
+- no sensitive prompt/generated text appears in health payloads.
+
+#### P5.6 Deterministic replay bundle
+
+Implement:
+
+- opt-in compact artifact for failed harness requests: request JSON, model id,
+  sampler params, seeds/RNG state, token counts, finish details, capability
+  snapshot, and redacted prompt hashes;
+- clear redaction controls for prompts/tool results.
+
+Exit gates:
+
+- replay artifacts are finite JSON;
+- tests verify redaction and stable schema;
+- artifacts are not emitted by default for sensitive deployments.
+
+### P6 — Multi-model, routing, and tensor parallel serving
+
+These are not needed for the first single-model agent harness, but they are part
+of the longer-term agent-runtime surface and should stay visible.
+
+#### P6.1 Multiple resident models
+
+Implement:
+
+- server config for multiple model/quant/backend entries;
+- per-model weight residency and KV pool accounting;
+- explicit VRAM admission at startup or dynamic load time;
+- model unload/eviction policy, if dynamic residency is supported.
+
+Exit gates:
+
+- `/v1/models` advertises loaded/resident status and capability per model;
+- requests can target two loaded models without cross-contaminating sessions;
+- overload/admission failure is explicit and leaves existing models usable.
+
+#### P6.2 Capability-aware routing
+
+Implement:
+
+- route by requested model id, context length, grammar/tool capability, quant,
+  backend, current load, and optional policy labels;
+- no implicit fallback unless the request opts in;
+- stable routing metadata in responses.
+
+Exit gates:
+
+- routing fixtures cover missing model, unsupported grammar, context overflow,
+  overloaded target, and explicit fallback;
+- clients can see which model actually served the request;
+- routing does not add backend/quant branches in generation code.
+
+#### P6.3 Tensor parallelism / multi-GPU plan
+
+Design before implementation:
+
+- define TP boundaries for weight shards, KV cache, collectives, sampler output,
+  graph capture, and session snapshots;
+- identify required collective kernels/libraries and failure handling;
+- decide how TP interacts with routing and multiple resident models.
+
+Exit gates:
+
+- design doc identifies required kernels/collectives and smallest measurable
+  smoke;
+- no TP code lands on the default path without hardware validation;
+- capability manifest reports TP topology and unsupported features.
+
+#### P6.4 Model-family fallback policy
+
+Implement only after routing exists:
+
+- opt-in request field for fallback model families;
+- deterministic preference order and capability checks;
+- response metadata showing requested vs served model.
+
+Exit gates:
+
+- no implicit model substitution;
+- fallback failures are explicit;
+- session/cache handles remain scoped to the served model/tokenizer.
+
+## Implementation dependency map
+
+Use this as the handoff for an implementation agent:
+
+1. **Do P0 before deep P1/P2 work.** Token-level phase/accounting and finish
+   metadata are prerequisites for reasoning budgets, honest truncation, and
+   structured-output errors.
+2. **Build the processor primitives once.** Static logit bias, suppress tokens,
+   stop DFA, forced-token queue, budget processors, and grammar processors should
+   share one ordered stack instead of separate per-feature hooks.
+3. **Reasoning soft-close is the first policy on that stack.** It exercises
+   dynamic bias, forced close sequences, answer-token reserve, graph-tail
+   fallback, finish details, and session commit rules.
+4. **Constrained tool/JSON decoding should reuse the same DFA/forced-token path.**
+   Do not build a separate tool-call parser that cannot later support JSON schema
+   or patch grammars.
+5. **Session commit policy must land before long-lived agent sessions are enabled
+   by default.** Visible-only commit may require re-prefilling visible output; do
+   that explicitly rather than retaining hidden reasoning in KV.
+6. **P6 routing/TP/multi-model work should not precede the single-model contract.**
+   Expose capabilities first so clients can detect what the server can actually
+   do.
 
 ## Near-term implementation slices
 
@@ -256,17 +1039,19 @@ Good next logical units, in order:
 
 1. **DecodeState MVP:** add generation-layer phase/token accounting and finish
    details, then thread it through server responses without changing output text.
-2. **Token diagnostics endpoints:** expose tokenizer/count/fit helpers; useful to
+2. **Reasoning soft-close MVP:** implement tokenized `</think>` close sequences,
+   soft logit-bias ramp, hard forced close, and answer-token reserve on the
+   host-stepped tail path.
+3. **Token diagnostics endpoints:** expose tokenizer/count/fit helpers; useful to
    every harness and low risk to runtime performance.
-3. **Stop DFA + forced-token queue:** finish the stop-sequence gap from
-   `docs/SAMPLING.md` and create the primitive needed for thinking close and
-   structured decoding.
-4. **Thinking budget MVP:** close `</think>` through forced tokens, reserve answer
-   tokens, and report budget-exhaustion metadata.
+4. **Stop DFA promotion + forced-token queue:** move host stop-sequence state
+   into the canonical decode/processor layer and reuse it for forced delimiters.
 5. **Strict tool-call fixtures:** lock down prompt/render/parse behavior and add
    schema-validation errors before attempting grammar-constrained decoding.
 6. **Session commit policy:** prevent hidden reasoning or malformed partial tool
    calls from being silently retained in resident sessions.
+7. **Capabilities manifest:** advertise effective context/max-token behavior,
+   tool/reasoning support, sampling/logprob support, and loaded-model limits.
 
 ## Validation expectations
 
