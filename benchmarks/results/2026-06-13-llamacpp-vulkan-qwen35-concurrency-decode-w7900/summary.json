@@ -1,0 +1,707 @@
+{
+  "kind": "llamacpp_vulkan_concurrency_decode_sweep",
+  "created_at": "2026-06-13T05:24:03.070883+00:00",
+  "performance_claim": false,
+  "host": "GGML_VK_VISIBLE_DEVICES=0",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "ctx_per_seq": 1024,
+    "reps": 3,
+    "cache_type_k": "f16",
+    "cache_type_v": "f16"
+  },
+  "methodology": {
+    "server": "llama-server restarted per (concurrency, rep) with -np concurrency and -c ctx_per_seq*concurrency",
+    "client": "concurrent POST /completion with exact prompt token-id rows",
+    "primary_metric": "sum(predicted_n) / max(predicted_ms) across the concurrent responses",
+    "secondary_metric": "sum(predicted_n) / client wall time including prompt eval and HTTP",
+    "aggregate_across_runs": "median"
+  },
+  "rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 106.4689006836468,
+      "decode_tok_s_per_request_median": 106.4689006836468,
+      "decode_tok_s_aggregate_runs": [
+        106.4689006836468,
+        106.79018731666294,
+        106.43481615880074
+      ],
+      "e2e_tok_s_aggregate_median": 90.26144663156524,
+      "e2e_tok_s_aggregate_runs": [
+        90.26144663156524,
+        90.45016891488716,
+        90.2194784530076
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 1,
+          "wall_s": 1.418102686991915,
+          "total_predicted": 128,
+          "max_predicted_ms": 1202.229,
+          "aggregate_decode_tok_s_timing": 106.4689006836468,
+          "aggregate_tok_s_e2e": 90.26144663156524,
+          "per_request_decode_tok_s_timing": 106.4689006836468,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 1.4180343558546156,
+              "predicted_n": 128,
+              "predicted_ms": 1202.229,
+              "predicted_per_second": 106.4689006836468,
+              "prompt_n": 512,
+              "prompt_ms": 214.407,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c1-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 1024 -np 1 -b 2048 -ub 512 --host 127.0.0.1 --port 18110 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 1,
+          "wall_s": 1.4151438469998538,
+          "total_predicted": 128,
+          "max_predicted_ms": 1198.612,
+          "aggregate_decode_tok_s_timing": 106.79018731666294,
+          "aggregate_tok_s_e2e": 90.45016891488716,
+          "per_request_decode_tok_s_timing": 106.79018731666294,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 1.4150517350062728,
+              "predicted_n": 128,
+              "predicted_ms": 1198.612,
+              "predicted_per_second": 106.79018731666294,
+              "prompt_n": 512,
+              "prompt_ms": 215.056,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c1-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 1024 -np 1 -b 2048 -ub 512 --host 127.0.0.1 --port 18111 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 1,
+          "wall_s": 1.4187623581383377,
+          "total_predicted": 128,
+          "max_predicted_ms": 1202.614,
+          "aggregate_decode_tok_s_timing": 106.43481615880074,
+          "aggregate_tok_s_e2e": 90.2194784530076,
+          "per_request_decode_tok_s_timing": 106.43481615880074,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 1.4186748459469527,
+              "predicted_n": 128,
+              "predicted_ms": 1202.614,
+              "predicted_per_second": 106.43481615880074,
+              "prompt_n": 512,
+              "prompt_ms": 214.883,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c1-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 1024 -np 1 -b 2048 -ub 512 --host 127.0.0.1 --port 18112 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 159.18645770956803,
+      "decode_tok_s_per_request_median": 79.59322885478402,
+      "decode_tok_s_aggregate_runs": [
+        159.18645770956803,
+        159.3981722758012,
+        132.4165555867631
+      ],
+      "e2e_tok_s_aggregate_median": 112.83570097878814,
+      "e2e_tok_s_aggregate_runs": [
+        112.83570097878814,
+        113.0543602570756,
+        111.45712263384596
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 2,
+          "wall_s": 2.2687854799441993,
+          "total_predicted": 256,
+          "max_predicted_ms": 1608.177,
+          "aggregate_decode_tok_s_timing": 159.18645770956803,
+          "aggregate_tok_s_e2e": 112.83570097878814,
+          "per_request_decode_tok_s_timing": 79.59322885478402,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 2.268626487115398,
+              "predicted_n": 128,
+              "predicted_ms": 1608.177,
+              "predicted_per_second": 79.59322885478403,
+              "prompt_n": 512,
+              "prompt_ms": 658.923,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 2.2685311648529023,
+              "predicted_n": 128,
+              "predicted_ms": 1607.345,
+              "predicted_per_second": 79.63442820303047,
+              "prompt_n": 512,
+              "prompt_ms": 659.897,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c2-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 2048 -np 2 -b 2048 -ub 512 --host 127.0.0.1 --port 18120 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 2,
+          "wall_s": 2.264397405087948,
+          "total_predicted": 256,
+          "max_predicted_ms": 1606.041,
+          "aggregate_decode_tok_s_timing": 159.3981722758012,
+          "aggregate_tok_s_e2e": 113.0543602570756,
+          "per_request_decode_tok_s_timing": 79.6990861379006,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 2.264276193920523,
+              "predicted_n": 128,
+              "predicted_ms": 1606.041,
+              "predicted_per_second": 79.6990861379006,
+              "prompt_n": 512,
+              "prompt_ms": 656.878,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 2.2642093820031732,
+              "predicted_n": 128,
+              "predicted_ms": 1605.24,
+              "predicted_per_second": 79.73885524905933,
+              "prompt_n": 512,
+              "prompt_ms": 657.819,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c2-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 2048 -np 2 -b 2048 -ub 512 --host 127.0.0.1 --port 18121 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 2,
+          "wall_s": 2.2968473790679127,
+          "total_predicted": 256,
+          "max_predicted_ms": 1933.293,
+          "aggregate_decode_tok_s_timing": 132.4165555867631,
+          "aggregate_tok_s_e2e": 111.45712263384596,
+          "per_request_decode_tok_s_timing": 66.20827779338155,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 2.2965364530682564,
+              "predicted_n": 128,
+              "predicted_ms": 1607.206,
+              "predicted_per_second": 79.64131542565173,
+              "prompt_n": 512,
+              "prompt_ms": 337.952,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 2.2851337688043714,
+              "predicted_n": 128,
+              "predicted_ms": 1933.293,
+              "predicted_per_second": 66.20827779338155,
+              "prompt_n": 512,
+              "prompt_ms": 350.692,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c2-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 2048 -np 2 -b 2048 -ub 512 --host 127.0.0.1 --port 18122 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 70.44384160537112,
+      "decode_tok_s_per_request_median": 17.61096040134278,
+      "decode_tok_s_aggregate_runs": [
+        69.58640531716247,
+        70.527214344464,
+        70.44384160537112
+      ],
+      "e2e_tok_s_aggregate_median": 67.91970355089225,
+      "e2e_tok_s_aggregate_runs": [
+        67.08336305631286,
+        67.98878264090985,
+        67.91970355089225
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 4,
+          "wall_s": 7.632294754963368,
+          "total_predicted": 512,
+          "max_predicted_ms": 7357.759,
+          "aggregate_decode_tok_s_timing": 69.58640531716247,
+          "aggregate_tok_s_e2e": 67.08336305631286,
+          "per_request_decode_tok_s_timing": 17.39660132929062,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 7.581998134031892,
+              "predicted_n": 128,
+              "predicted_ms": 7357.759,
+              "predicted_per_second": 17.39660132929062,
+              "prompt_n": 512,
+              "prompt_ms": 223.162,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 7.63157646311447,
+              "predicted_n": 128,
+              "predicted_ms": 6619.233,
+              "predicted_per_second": 19.337587904822204,
+              "prompt_n": 512,
+              "prompt_ms": 788.393,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 7.631241837982088,
+              "predicted_n": 128,
+              "predicted_ms": 6619.305,
+              "predicted_per_second": 19.337377564563045,
+              "prompt_n": 512,
+              "prompt_ms": 788.11,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 7.63223236403428,
+              "predicted_n": 128,
+              "predicted_ms": 6618.838,
+              "predicted_per_second": 19.338741936273408,
+              "prompt_n": 512,
+              "prompt_ms": 788.994,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c4-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 4096 -np 4 -b 2048 -ub 512 --host 127.0.0.1 --port 18140 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 4,
+          "wall_s": 7.530654030153528,
+          "total_predicted": 512,
+          "max_predicted_ms": 7259.609,
+          "aggregate_decode_tok_s_timing": 70.527214344464,
+          "aggregate_tok_s_e2e": 67.98878264090985,
+          "per_request_decode_tok_s_timing": 17.631803586116,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 7.530605467967689,
+              "predicted_n": 128,
+              "predicted_ms": 6621.951,
+              "predicted_per_second": 19.329650732842936,
+              "prompt_n": 512,
+              "prompt_ms": 681.627,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 7.529589212033898,
+              "predicted_n": 128,
+              "predicted_ms": 6623.254,
+              "predicted_per_second": 19.325847989522973,
+              "prompt_n": 512,
+              "prompt_ms": 679.981,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 7.486460984917358,
+              "predicted_n": 128,
+              "predicted_ms": 7259.609,
+              "predicted_per_second": 17.631803586116,
+              "prompt_n": 512,
+              "prompt_ms": 225.766,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 7.5300558500457555,
+              "predicted_n": 128,
+              "predicted_ms": 6622.378,
+              "predicted_per_second": 19.328404388876624,
+              "prompt_n": 512,
+              "prompt_ms": 681.029,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c4-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 4096 -np 4 -b 2048 -ub 512 --host 127.0.0.1 --port 18141 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 4,
+          "wall_s": 7.53831323212944,
+          "total_predicted": 512,
+          "max_predicted_ms": 7268.201,
+          "aggregate_decode_tok_s_timing": 70.44384160537112,
+          "aggregate_tok_s_e2e": 67.91970355089225,
+          "per_request_decode_tok_s_timing": 17.61096040134278,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 7.4940982409752905,
+              "predicted_n": 128,
+              "predicted_ms": 7268.201,
+              "predicted_per_second": 17.61096040134278,
+              "prompt_n": 512,
+              "prompt_ms": 224.569,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 7.53591716196388,
+              "predicted_n": 128,
+              "predicted_ms": 6634.337,
+              "predicted_per_second": 19.29356316991434,
+              "prompt_n": 512,
+              "prompt_ms": 677.526,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 7.538042918080464,
+              "predicted_n": 128,
+              "predicted_ms": 6632.97,
+              "predicted_per_second": 19.29753941296282,
+              "prompt_n": 512,
+              "prompt_ms": 679.439,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 7.537696422077715,
+              "predicted_n": 128,
+              "predicted_ms": 6633.657,
+              "predicted_per_second": 19.29554090601911,
+              "prompt_n": 512,
+              "prompt_ms": 678.486,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c4-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 4096 -np 4 -b 2048 -ub 512 --host 127.0.0.1 --port 18142 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 26.261533949020972,
+      "decode_tok_s_per_request_median": 3.2826917436276215,
+      "decode_tok_s_aggregate_runs": [
+        26.261533949020972,
+        30.870176617806774,
+        24.53219335297346
+      ],
+      "e2e_tok_s_aggregate_median": 22.812759360748167,
+      "e2e_tok_s_aggregate_runs": [
+        22.812759360748167,
+        23.085203080468546,
+        22.751497047453356
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 8,
+          "wall_s": 44.88716090004891,
+          "total_predicted": 1024,
+          "max_predicted_ms": 38992.391,
+          "aggregate_decode_tok_s_timing": 26.261533949020972,
+          "aggregate_tok_s_e2e": 22.812759360748167,
+          "per_request_decode_tok_s_timing": 3.2826917436276215,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 44.66859618201852,
+              "predicted_n": 128,
+              "predicted_ms": 38992.391,
+              "predicted_per_second": 3.282691743627622,
+              "prompt_n": 512,
+              "prompt_ms": 5674.393,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 44.886553049087524,
+              "predicted_n": 128,
+              "predicted_ms": 22134.726,
+              "predicted_per_second": 5.782768668561789,
+              "prompt_n": 512,
+              "prompt_ms": 17074.761,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 44.805255274055526,
+              "predicted_n": 128,
+              "predicted_ms": 27943.51,
+              "predicted_per_second": 4.580670073301458,
+              "prompt_n": 512,
+              "prompt_ms": 11185.563,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 44.886673561064526,
+              "predicted_n": 128,
+              "predicted_ms": 22133.597,
+              "predicted_per_second": 5.783063638503944,
+              "prompt_n": 512,
+              "prompt_ms": 5889.275,
+              "stop": true
+            },
+            {
+              "index": 4,
+              "wall_s": 44.80531487497501,
+              "predicted_n": 128,
+              "predicted_ms": 27942.689,
+              "predicted_per_second": 4.580804660567922,
+              "prompt_n": 512,
+              "prompt_ms": 11186.631,
+              "stop": true
+            },
+            {
+              "index": 5,
+              "wall_s": 44.669055979000404,
+              "predicted_n": 128,
+              "predicted_ms": 38992.036,
+              "predicted_per_second": 3.282721630642729,
+              "prompt_n": 512,
+              "prompt_ms": 5674.904,
+              "stop": true
+            },
+            {
+              "index": 6,
+              "wall_s": 44.80546470684931,
+              "predicted_n": 128,
+              "predicted_ms": 27943.813,
+              "predicted_per_second": 4.580620404237604,
+              "prompt_n": 512,
+              "prompt_ms": 11185.01,
+              "stop": true
+            },
+            {
+              "index": 7,
+              "wall_s": 44.88655881001614,
+              "predicted_n": 128,
+              "predicted_ms": 22133.966,
+              "predicted_per_second": 5.782967227834361,
+              "prompt_n": 512,
+              "prompt_ms": 5888.716,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c8-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 8 -b 2048 -ub 512 --host 127.0.0.1 --port 18180 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 8,
+          "wall_s": 44.35741788498126,
+          "total_predicted": 1024,
+          "max_predicted_ms": 33171.174,
+          "aggregate_decode_tok_s_timing": 30.870176617806774,
+          "aggregate_tok_s_e2e": 23.085203080468546,
+          "per_request_decode_tok_s_timing": 3.8587720772258467,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 44.22517626197077,
+              "predicted_n": 128,
+              "predicted_ms": 33169.757,
+              "predicted_per_second": 3.8589369225707624,
+              "prompt_n": 512,
+              "prompt_ms": 11052.929,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 44.35629854700528,
+              "predicted_n": 128,
+              "predicted_ms": 21919.38,
+              "predicted_per_second": 5.839581229031113,
+              "prompt_n": 512,
+              "prompt_ms": 11382.653,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 44.32377470494248,
+              "predicted_n": 128,
+              "predicted_ms": 22123.927,
+              "predicted_per_second": 5.785591319298785,
+              "prompt_n": 512,
+              "prompt_ms": 11145.266,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 44.224455720046535,
+              "predicted_n": 128,
+              "predicted_ms": 33171.174,
+              "predicted_per_second": 3.8587720772258467,
+              "prompt_n": 512,
+              "prompt_ms": 11050.934,
+              "stop": true
+            },
+            {
+              "index": 4,
+              "wall_s": 44.22388776112348,
+              "predicted_n": 128,
+              "predicted_ms": 33170.849,
+              "predicted_per_second": 3.858809884546518,
+              "prompt_n": 512,
+              "prompt_ms": 11051.467,
+              "stop": true
+            },
+            {
+              "index": 5,
+              "wall_s": 44.32390620699152,
+              "predicted_n": 128,
+              "predicted_ms": 22123.632,
+              "predicted_per_second": 5.78566846528635,
+              "prompt_n": 512,
+              "prompt_ms": 11145.819,
+              "stop": true
+            },
+            {
+              "index": 6,
+              "wall_s": 44.324784372001886,
+              "predicted_n": 128,
+              "predicted_ms": 22122.88,
+              "predicted_per_second": 5.785865131483785,
+              "prompt_n": 512,
+              "prompt_ms": 11146.834,
+              "stop": true
+            },
+            {
+              "index": 7,
+              "wall_s": 44.22477599605918,
+              "predicted_n": 128,
+              "predicted_ms": 33170.065,
+              "predicted_per_second": 3.8589010904862557,
+              "prompt_n": 512,
+              "prompt_ms": 11052.439,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c8-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 8 -b 2048 -ub 512 --host 127.0.0.1 --port 18181 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 8,
+          "wall_s": 45.00802728999406,
+          "total_predicted": 1024,
+          "max_predicted_ms": 41741.07,
+          "aggregate_decode_tok_s_timing": 24.53219335297346,
+          "aggregate_tok_s_e2e": 22.751497047453356,
+          "per_request_decode_tok_s_timing": 3.0665241691216827,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 45.00611873785965,
+              "predicted_n": 128,
+              "predicted_ms": 22043.199,
+              "predicted_per_second": 5.806779678394229,
+              "prompt_n": 512,
+              "prompt_ms": 19954.293,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 44.905846846988425,
+              "predicted_n": 128,
+              "predicted_ms": 30572.533,
+              "predicted_per_second": 4.186764636086909,
+              "prompt_n": 512,
+              "prompt_ms": 11324.511,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 45.00796187785454,
+              "predicted_n": 128,
+              "predicted_ms": 22041.324,
+              "predicted_per_second": 5.807273646537749,
+              "prompt_n": 512,
+              "prompt_ms": 8631.217,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 44.906489617191255,
+              "predicted_n": 128,
+              "predicted_ms": 30571.826,
+              "predicted_per_second": 4.186861458651505,
+              "prompt_n": 512,
+              "prompt_ms": 11325.504,
+              "stop": true
+            },
+            {
+              "index": 4,
+              "wall_s": 44.75048754410818,
+              "predicted_n": 128,
+              "predicted_ms": 41741.07,
+              "predicted_per_second": 3.0665241691216827,
+              "prompt_n": 512,
+              "prompt_ms": 3008.238,
+              "stop": true
+            },
+            {
+              "index": 5,
+              "wall_s": 45.00681133987382,
+              "predicted_n": 128,
+              "predicted_ms": 22042.1,
+              "predicted_per_second": 5.807069199395702,
+              "prompt_n": 512,
+              "prompt_ms": 8630.189,
+              "stop": true
+            },
+            {
+              "index": 6,
+              "wall_s": 45.006976421922445,
+              "predicted_n": 128,
+              "predicted_ms": 22042.418,
+              "predicted_per_second": 5.806985422379704,
+              "prompt_n": 512,
+              "prompt_ms": 8629.643,
+              "stop": true
+            },
+            {
+              "index": 7,
+              "wall_s": 44.905909228138626,
+              "predicted_n": 128,
+              "predicted_ms": 30572.795,
+              "predicted_per_second": 4.186728756726365,
+              "prompt_n": 512,
+              "prompt_ms": 11323.989,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/llamacpp-vulkan-concurrency-sweep-w7900-20260613/server-c8-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 8 -b 2048 -ub 512 --host 127.0.0.1 --port 18182 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    }
+  }
+}

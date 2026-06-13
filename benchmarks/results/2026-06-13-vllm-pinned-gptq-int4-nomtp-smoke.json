@@ -1,0 +1,93 @@
+{
+  "results": [
+    {
+      "name": "code_python",
+      "wall_s": 0.976,
+      "predicted_n": 32,
+      "predicted_per_second": 32.78,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "code_cpp",
+      "wall_s": 0.559,
+      "predicted_n": 32,
+      "predicted_per_second": 57.25,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "explain_concept",
+      "wall_s": 0.955,
+      "predicted_n": 32,
+      "predicted_per_second": 33.49,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "summarize",
+      "wall_s": 0.576,
+      "predicted_n": 32,
+      "predicted_per_second": 55.58,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "qa_factual",
+      "wall_s": 0.559,
+      "predicted_n": 32,
+      "predicted_per_second": 57.28,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "translation",
+      "wall_s": 0.565,
+      "predicted_n": 32,
+      "predicted_per_second": 56.62,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "creative_short",
+      "wall_s": 0.559,
+      "predicted_n": 32,
+      "predicted_per_second": 57.23,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "stepwise_math",
+      "wall_s": 0.565,
+      "predicted_n": 32,
+      "predicted_per_second": 56.66,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    },
+    {
+      "name": "long_code_review",
+      "wall_s": 1.213,
+      "predicted_n": 32,
+      "predicted_per_second": 26.39,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "accept_rate": null
+    }
+  ],
+  "aggregate": {
+    "n_requests": 9,
+    "total_predicted": 288,
+    "total_draft": 0,
+    "total_draft_accepted": 0,
+    "aggregate_accept_rate": null,
+    "wall_s_total": 6.53
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "kind": "concurrency_decode_throughput_sweep_partial_blocked",
+  "created_at": "2026-06-13T05:26:29Z",
+  "performance_claim": false,
+  "retained_ready": false,
+  "status": "blocked",
+  "host": "AMD Radeon RX 7900 XTX (gfx1100/RDNA3) via HIP_VISIBLE_DEVICES=1",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "reps": 3,
+    "kv_storage_dtype": "bf16"
+  },
+  "rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 135.77501548438093,
+      "decode_tok_s_per_request_median": 135.77501548438093,
+      "decode_tok_s_aggregate_runs": [
+        135.96827542949507,
+        135.77501548438093,
+        135.38990857505163
+      ],
+      "decode_tok_s_per_request_runs": [
+        135.96827542949507,
+        135.77501548438093,
+        135.38990857505163
+      ],
+      "path": "paro_bench_graph_replay"
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 129.57004093601537,
+      "decode_tok_s_per_request_median": 64.78502046800769,
+      "decode_tok_s_aggregate_runs": [
+        129.57543239994683,
+        128.59197340564694,
+        129.57004093601537
+      ],
+      "decode_tok_s_per_request_runs": [
+        64.78771619997342,
+        64.29598670282347,
+        64.78502046800769
+      ],
+      "path": "retained_native_batch"
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 177.42326950544066,
+      "decode_tok_s_per_request_median": 44.355817376360164,
+      "decode_tok_s_aggregate_runs": [
+        177.42326950544066,
+        177.41241108347162,
+        177.5360537377515
+      ],
+      "decode_tok_s_per_request_runs": [
+        44.355817376360164,
+        44.353102770867906,
+        44.384013434437875
+      ],
+      "path": "retained_native_batch"
+    },
+    "8": {
+      "concurrency": 8,
+      "status": "blocked",
+      "reason": "HIP OOM during native packed prefill scratch allocation on RX 7900 XTX current code",
+      "log": "/tmp/hipengine-concurrency-sweep-xtx-20260613/c8-manual.log"
+    }
+  },
+  "commands": {
+    "sweep": "HIP_VISIBLE_DEVICES=1 PYTHONPATH=. python3 scripts/qwen35_concurrency_decode_sweep.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --concurrencies 1,2,4,8 --reps 3 --work-dir /tmp/hipengine-concurrency-sweep-xtx-20260613 --json benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx/summary.json"
+  }
+}

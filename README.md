@@ -215,43 +215,79 @@ device batched LM-head argmax, on-stream position advance) that can be captured
 and replayed as a single HIP graph. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)
 for the design and the C3.0a/b/c decode-throughput work.
 
-The table below is an **initial** snapshot of PARO decode throughput as the
-number of concurrent sequences `c` grows on a fixed 512-prompt / 128-decode
-shape (gfx1100 / RX 7900 XTX, BF16 KV, median of 3 runs). *Aggregate* is total
-tok/s across the batch; *per-sequence* is tok/s seen by one request. llama.cpp
-and vLLM concurrency baselines are not yet measured on this host and will be
-added later.
+The table below is a current-code diagnostic snapshot of decode throughput as
+the number of concurrent sequences `c` grows on a fixed 512-prompt / 128-decode
+shape (gfx1100 / W7900, median of 3 runs). *Aggregate* is total tok/s across the
+batch; *per-sequence* is tok/s seen by one request. hipEngine uses PARO W4A16
+with BF16 KV. llama.cpp uses the available Qwen3.6 GGUF `UD-Q4_K_S` with Vulkan
+RADV, f16 KV, exact token-id prompts, and `llama-server -np c -c 1024*c`, so it
+is a useful server-side comparison but not same-quant. vLLM uses a local
+`v0.22.1rc1.dev499+g470229c37.d20260613` source build with
+`palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, no MTP, exact token-id prompts, and the
+OpenAI `/v1/completions` API. vLLM values are wall-throughput because the OpenAI
+response path does not expose llama.cpp-style pure decode timings; see
+[`docs/VLLM_RDNA3.md`](docs/VLLM_RDNA3.md) for the full vLLM setup notes and
+smoke-test details.
 
-### Decode tok/s vs concurrency (Qwen3.6 PARO, 512/128, gfx1100)
+### Decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128, W7900)
 
-| Concurrency `c` | Aggregate decode tok/s | Per-sequence decode tok/s | llama.cpp | vLLM |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | 133.84 | 133.84 | _TBD_ | _TBD_ |
-| 2 | 131.09 | 65.54 | _TBD_ | _TBD_ |
-| 4 | 181.56 | 45.39 | _TBD_ | _TBD_ |
-| 8 | **225.90** | 28.24 | _TBD_ | _TBD_ |
+| Concurrency `c` | hipEngine aggregate | hipEngine per-seq | llama.cpp Vulkan aggregate | llama.cpp per-seq | vLLM OpenAI aggregate | vLLM per-seq |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | **116.68** | **116.68** | 106.47 | 106.47 | 19.39 | 19.39 |
+| 2 | 113.45 | 56.73 | **159.19** | **79.59** | 37.53 | 18.77 |
+| 4 | **156.03** | **39.01** | 70.44 | 17.61 | 72.96 | 18.24 |
+| 8 | **188.69** | **23.59** | 26.26 | 3.28 | 115.96 | 14.49 |
 
-Aggregate throughput scales with concurrency (c1 → c8 is **1.69×**) while
-per-sequence latency falls as expected. The `c=2` aggregate dipping slightly
-below `c=1` is a known artifact of the small-context `c>1` regime being
-dispatch-bound: at `c=2` the batched step does not yet amortize per-step
-dispatch over enough rows. Correctness is gated by `native_batch_vs_independent_c1`
-generated-token equality (0 mismatches at c2/c4/c8) plus the per-kernel
-CPU-reference gates — these are throughput measurements, not retained
-performance claims.
+hipEngine aggregate throughput scales from c1 to c8 by **1.62x**. The `c=2`
+aggregate still dips slightly below `c=1`; this is the known small-context
+`c>1` dispatch-bound regime. llama.cpp wins this protocol at c=2, then falls off
+at c4/c8 with this server/Vulkan setup. vLLM now runs via the local source build;
+this no-MTP OpenAI-wall measurement is slower than hipEngine, but it reaches
+115.96 aggregate tok/s at c8 and its Prometheus post-TTFT aggregate estimates are
+19.93/39.07/77.48/125.98 tok/s for c1/c2/c4/c8.
 
-Source artifact:
-[`benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json`](benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json).
-Replicate with:
+Source artifacts:
+[`hipEngine W7900`](benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json),
+[`llama.cpp Vulkan W7900`](benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json),
+[`vLLM local build W7900`](benchmarks/results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
+and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
+A current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 now blocks with HIP OOM;
+see [`XTX partial`](benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json).
+Replicate hipEngine with:
 
 ```bash
-HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_concurrency_decode_sweep.py \
+HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/qwen35_concurrency_decode_sweep.py \
     --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
-    --fixture <8x512-prompt-ids>.json \
-    --compiler-version-file <hipcc-version>.txt \
+    --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+    --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
     --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
     --concurrencies 1,2,4,8 --reps 3 \
-    --json benchmarks/results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json
+    --json benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json
+```
+
+Replicate llama.cpp Vulkan with:
+
+```bash
+python3 scripts/llamacpp_vulkan_concurrency_sweep.py \
+    --repo /home/lhl/llama.cpp/llama.cpp-vulkan \
+    --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
+    --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+    --gpu 0 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+    --concurrencies 1,2,4,8 --reps 3 \
+    --json benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json
+```
+
+Replicate vLLM client sweep against an already-running local vLLM server with:
+
+```bash
+python3 scripts/vllm_openai_concurrency_sweep.py \
+    --url http://127.0.0.1:8008 \
+    --model palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
+    --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+    --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
+    --concurrencies 1,2,4,8 --reps 3 \
+    --json benchmarks/results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json
 ```
 
 `c=1` is measured with `scripts/qwen35_paro_bench.py --graph-replay-decode`

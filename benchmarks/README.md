@@ -480,27 +480,33 @@ HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE
 ## Concurrency decode snapshot (non-retained)
 
 Current-code PARO decode throughput vs number of concurrent sequences `c`, fixed
-512/128 per sequence, gfx1100 / RX 7900 XTX, BF16 KV, median of 3 runs. This is
-an **initial throughput snapshot for the top-level README "Concurrency" table**,
-not a retained row: it carries `native_batch_vs_independent_c1` generated-token
-equality (0 mismatches at c2/c4/c8) plus the per-kernel CPU-reference gates, but
-not the full retained gate suite (rocprof provenance / scaling-reference / bucket
-gates) of the accepted c=4/c=8 rows above. Numbers exceed the 2026-06-02 retained
-rows because of the C3.0a host-overhead trim and C3.0b device-resident decode
-work landed since (see [`docs/CONCURRENCY.md`](../docs/CONCURRENCY.md)).
+512/128 per sequence, gfx1100 / W7900, BF16 KV, median of 3 runs. This remains a
+diagnostic throughput snapshot for the top-level README "Concurrency" table, not
+a retained row: it carries the native-batch generated-token equality and
+per-kernel CPU-reference gates, but not the full retained gate suite (rocprof
+provenance / scaling-reference / bucket gates) of the accepted c=4/c=8 rows
+above. The llama.cpp column uses the available Qwen3.6 GGUF `UD-Q4_K_S` under
+Vulkan/RADV with f16 KV and exact token-id prompts, so it is cross-quant. The
+vLLM column uses a local `v0.22.1rc1.dev499+g470229c37.d20260613` source build,
+`palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, no MTP, and OpenAI `/v1/completions`
+wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
 
-| Concurrency `c` | Aggregate decode tok/s (median 3) | Per-sequence decode tok/s | Path |
-| --- | ---: | ---: | --- |
-| 1 | 133.84 | 133.84 | `qwen35_paro_bench.py --graph-replay-decode` |
-| 2 | 131.09 | 65.54 | `qwen35_batch_retained_bench.py --batch-size 2` |
-| 4 | 181.56 | 45.39 | `qwen35_batch_retained_bench.py --batch-size 4` |
-| 8 | 225.90 | 28.24 | `qwen35_batch_retained_bench.py --batch-size 8` |
+| Concurrency `c` | hipEngine agg decode tok/s | hipEngine per-seq tok/s | llama.cpp Vulkan agg tok/s | llama.cpp per-seq tok/s | vLLM OpenAI agg tok/s | vLLM per-seq tok/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 116.68 | 116.68 | 106.47 | 106.47 | 19.39 | 19.39 |
+| 2 | 113.45 | 56.73 | 159.19 | 79.59 | 37.53 | 18.77 |
+| 4 | 156.03 | 39.01 | 70.44 | 17.61 | 72.96 | 18.24 |
+| 8 | 188.69 | 23.59 | 26.26 | 3.28 | 115.96 | 14.49 |
 
-Artifact: [`results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json`](results/2026-06-08-hipengine-qwen35-concurrency-decode/summary.json).
-Replicate with `scripts/qwen35_concurrency_decode_sweep.py` (see its module
-docstring for the exact per-`c` sub-commands; the top-level `README.md`
-"Concurrency" section has the full command). llama.cpp / vLLM concurrency
-baselines on this host are TBD.
+Artifacts: [`hipEngine W7900`](results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json),
+[`llama.cpp Vulkan W7900`](results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json),
+[`vLLM local build W7900`](results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json).
+The current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 blocked with HIP OOM;
+see [`XTX partial`](results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json).
+Replicate with `scripts/qwen35_concurrency_decode_sweep.py`,
+`scripts/llamacpp_vulkan_concurrency_sweep.py`, and
+`scripts/vllm_openai_concurrency_sweep.py` (see module docstrings and the
+top-level `README.md` "Concurrency" section for exact commands).
 
 ## Source-lineage target: Qwen3.5-35B-A3B-PARO
 

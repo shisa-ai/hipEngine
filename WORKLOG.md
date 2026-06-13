@@ -86080,3 +86080,135 @@ check.
 
 Updated `scripts/llamacpp_vulkan_mtp_sweep.py` so new summaries include
 `accepted_per_output` and `draft_per_output` plus a printed `acc/output` column.
+
+## 2026-06-13 - Concurrency comparison rerun vs llama.cpp/vLLM
+
+Reran the 512/128 concurrency decode table on current HEAD
+`3d24ab60dccf45ab25950a5487ab0ef36da34322` and added a reproducible
+llama.cpp Vulkan server sweep driver.
+
+W7900 hipEngine command:
+```bash
+HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/qwen35_concurrency_decode_sweep.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
+  --concurrencies 1,2,4,8 --reps 3 \
+  --work-dir /tmp/hipengine-concurrency-sweep-w7900-20260613 \
+  --json benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json
+```
+Median aggregate decode tok/s: c1 `116.68`, c2 `113.45`, c4 `156.03`, c8
+`188.69`.  Artifact:
+`benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-w7900/summary.json`.
+
+llama.cpp Vulkan command used `llama-server` build `b9600 (263cc04a5)` with
+RADV/W7900 (`GGML_VK_VISIBLE_DEVICES=0`), exact fixture token-id prompts, f16 KV,
+and `-np c -c 1024*c`.  Median aggregate decode tok/s: c1 `106.47`, c2
+`159.19`, c4 `70.44`, c8 `26.26`.  Artifact:
+`benchmarks/results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json`.
+
+vLLM was not measurable locally: the installed vLLM env SIGILLs during torch
+import with bundled `libhipsparselt`, `/home/lhl/vllm/vllm` has ROCm extension
+ABI mismatches against both the sglang and TheRock torch stacks, and Docker
+access is denied in this harness.  Blocker artifact:
+`benchmarks/results/2026-06-13-vllm-qwen35-concurrency-decode-w7900-blocked.json`.
+
+Also attempted the old RX 7900 XTX target (`HIP_VISIBLE_DEVICES=1`): current
+code measured c1 `135.78`, c2 `129.57`, c4 `177.42`, then c8 blocked with HIP
+OOM during native packed prefill scratch allocation.  Partial artifact:
+`benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json`.
+
+## 2026-06-13 - vLLM RDNA3 Docker setup and Q4 MTP candidates
+
+Added a Docker-first vLLM RDNA3/gfx1100 setup note and helper script.  The
+current local conda/source vLLM paths remain unsuitable for benchmarking: the
+`vllm` env SIGILLs in bundled `libhipsparselt.so` on this AVX2-only 5950X, the
+local `/home/lhl/vllm/vllm` ROCm extensions mismatch the sglang torch stack, and
+the same checkout mismatches the TheRock torch ABI.  Docker remains the clean
+path once sudo/docker access is available.
+
+New files:
+- `docs/VLLM_RDNA3.md`
+- `scripts/vllm_rocm_gfx1100_docker.sh`
+
+Primary comparison model selected from HF evidence:
+`palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`.  It is GPTQ Int4, base
+`Qwen/Qwen3.6-35B-A3B`, has explicit `mtp.safetensors`, and the model card says
+MTP is verified on vLLM 0.19.1 with
+`--speculative-config '{"method":"mtp","num_speculative_tokens":2}'`.
+Fallback Q4 model: `QuantTrio/Qwen3.6-35B-A3B-AWQ`, AWQ 4-bit with a model-card
+vLLM MTP command using the older `qwen3_next_mtp` method alias.  Non-Q4 sanity
+fallback: official `Qwen/Qwen3.6-35B-A3B-FP8`, which includes `mtp.safetensors`.
+
+Follow-up: changed the vLLM Docker helper to default the official image to
+`vllm/vllm-openai-rocm:latest`, default GPTQ dtype to `float16`, and set
+`--max-num-batched-tokens 8192` to avoid the OpenAI server's 2048-token
+scheduler budget warning during 8 x 512 prompt concurrency tests.  The helper now
+also allows a no-MTP baseline by setting `VLLM_SPECULATIVE_CONFIG=` (empty), or
+other off/none/false values.
+
+Follow-up: latest official vLLM image can currently fail Qwen3.6 GPTQ MTP load
+with `KeyError: 'layers.0.mlp.experts.w2_weight'` in `qwen3_5_mtp.py`. Added
+`serve-pinned` / `pull-pinned` helper commands for the `v0.19.1` image named by
+the GPTQ+MTP model card, while keeping latest as the default. For latest-image
+baseline testing, set `VLLM_SPECULATIVE_CONFIG=` to disable MTP and avoid the
+MTP drafter load path.
+
+Follow-up: Docker cannot be run from this pi harness because the user lacks
+access to `/var/run/docker.sock` and `sudo -n docker` requires a password. The
+pinned no-MTP smoke command to run manually is
+`VLLM_SPECULATIVE_CONFIG= scripts/vllm_rocm_gfx1100_docker.sh serve-pinned`.
+Identified a Q8 fallback: `btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit`, about 40 GB,
+GPTQ 8-bit with BF16 MTP preserved per model card. Documented no-MTP and MTP
+commands for W7900, plus FP8 fallback notes.
+
+## 2026-06-13 - vLLM ROCm W7900 smoke results
+
+Sudo Docker access is now available. Updated the helper to omit `-it` when not
+running in an interactive terminal so pi can run containers directly.
+
+Tested `vllm/vllm-openai-rocm:v0.19.1` on W7900 (`HIP_VISIBLE_DEVICES=0`) with
+`--max-model-len 8192 --max-num-seqs 8 --max-num-batched-tokens 8192 --dtype float16`.
+
+Results:
+- `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4` without MTP starts and serves. Model
+  load: 21.06 GiB. KV cache: 198,528 tokens. Prompt-suite smoke:
+  44.10 aggregate tok/s, 48.14 prompt-mean tok/s.
+- Same Int4 model with MTP n=2 fails during MTP drafter load:
+  `KeyError: 'layers.0.mlp.experts.w2_weight'` in `qwen3_5_mtp.py`.
+- `btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit` without MTP starts and serves after a
+  first-run 345.6s download. Model load: 37.46 GiB. KV cache: 40,128 tokens.
+  Prompt-suite rerun: 39.72 aggregate tok/s, 39.93 prompt-mean tok/s.
+- Same GPTQ8 model with MTP n=1 fails with the same MTP drafter key error.
+
+Artifacts:
+- `benchmarks/results/2026-06-13-vllm-rocm-w7900-smoke-summary.json`
+- `benchmarks/results/2026-06-13-vllm-pinned-gptq-int4-nomtp-smoke.json`
+- `benchmarks/results/2026-06-13-vllm-pinned-gptq8-nomtp-smoke-rerun.json`
+
+## 2026-06-13 - local vLLM build concurrency c1-c8
+
+Paused Docker testing and ran against the user's local vLLM source build on
+`http://127.0.0.1:8008` (`v0.22.1rc1.dev499+g470229c37.d20260613`, W7900,
+`--dtype bfloat16 --max-model-len 128000 --gpu-memory-utilization 0.90
+--enforce-eager`, no MTP). Added `scripts/vllm_openai_concurrency_sweep.py` for
+OpenAI `/v1/completions` concurrency tests using exact prompt token IDs.
+
+Shape: 512-token prompt rows from
+`/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`, 128 output
+tokens, c=1,2,4,8, 3 reps.
+
+Median aggregate wall tok/s: c1 19.39, c2 37.53, c4 72.96, c8 115.96.
+Approx post-TTFT aggregate tok/s from vLLM metrics: c1 19.93, c2 39.07,
+c4 77.48, c8 125.98.
+
+Artifact:
+- `benchmarks/results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json`
+
+## 2026-06-13 - README concurrency rollup refresh
+
+Updated the top-level README concurrency table and benchmark rollup to include the
+latest W7900 hipEngine, llama.cpp Vulkan, and local vLLM source-build results.
+The table now keeps the llama.cpp and vLLM comparison columns without a derived
+ratio column, and links the vLLM details to `docs/VLLM_RDNA3.md`.

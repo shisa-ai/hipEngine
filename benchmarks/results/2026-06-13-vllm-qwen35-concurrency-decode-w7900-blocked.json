@@ -1,0 +1,58 @@
+{
+  "kind": "vllm_concurrency_decode_sweep_blocked",
+  "created_at": "2026-06-13T05:25:26Z",
+  "performance_claim": false,
+  "status": "blocked",
+  "host": "AMD Radeon Pro W7900 intended target (HIP_VISIBLE_DEVICES=0)",
+  "model_intended": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf or matching HF quant if available",
+  "shape_intended": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ]
+  },
+  "reason": "No runnable local vLLM ROCm stack is available in the current environment.",
+  "checks": [
+    {
+      "name": "installed-vllm-env-import",
+      "command": "LD_LIBRARY_PATH=/home/lhl/mambaforge/envs/vllm/lib/python3.12/site-packages/torch/lib:/home/lhl/mambaforge/envs/vllm/lib:$LD_LIBRARY_PATH /home/lhl/mambaforge/envs/vllm/bin/python -c 'import torch, vllm; print(torch.__version__, torch.version.hip, vllm.__version__)'",
+      "returncode": -4,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "elapsed_s": 1.332
+    },
+    {
+      "name": "local-vllm-source-sglang-env-rocm-extension",
+      "command": "cd /home/lhl/vllm/vllm && PYTHONPATH=. /home/lhl/mambaforge/envs/sglang/bin/python -c 'import torch, vllm; import vllm._rocm_C; print(torch.__version__, torch.version.hip, vllm.__version__)'",
+      "returncode": 1,
+      "stdout_tail": "",
+      "stderr_tail": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nImportError: /opt/rocm/lib/libamdhip64.so.7: undefined symbol: hsa_amd_memory_get_preferred_copy_engine, version ROCR_1\n",
+      "elapsed_s": 1.75
+    },
+    {
+      "name": "local-vllm-source-therock-env-rocm-extension",
+      "command": "cd /home/lhl/vllm/vllm && PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python -c 'import torch, vllm; import vllm._rocm_C; print(torch.__version__, torch.version.hip, vllm.__version__)'",
+      "returncode": 1,
+      "stdout_tail": "",
+      "stderr_tail": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nImportError: /home/lhl/vllm/vllm/vllm/_rocm_C.abi3.so: undefined symbol: _ZN3c103hip19getCurrentHIPStreamEa\n",
+      "elapsed_s": 1.715
+    },
+    {
+      "name": "docker-vllm-image-access",
+      "command": "docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -i vllm | head -20",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": "permission denied while trying to connect to the docker API at unix:///var/run/docker.sock\n",
+      "elapsed_s": 0.026
+    }
+  ],
+  "summary": [
+    "mambaforge env vllm torch import fails/crashes before vLLM can run (libopen-pal without LD path, then SIGILL in bundled libhipsparselt when LD path is supplied).",
+    "local /home/lhl/vllm/vllm source imports but ROCm extension is ABI-incompatible with the available torch/ROCm stacks.",
+    "docker vLLM path is not usable from this non-interactive harness because docker socket access is denied without sudo."
+  ]
+}

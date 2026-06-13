@@ -1,0 +1,50 @@
+{
+  "date": "2026-06-13",
+  "gpu": "W7900 / gfx1100 via HIP_VISIBLE_DEVICES=0",
+  "image": "vllm/vllm-openai-rocm:v0.19.1",
+  "tests": [
+    {
+      "name": "gptq_int4_no_mtp_startup",
+      "model": "palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4",
+      "speculative_config": null,
+      "status": "healthy",
+      "served_model_name": "qwen36-35b-a3b-gptq-nomtp",
+      "model_loading_memory_gib": 21.06,
+      "available_kv_cache_gib": 15.2,
+      "gpu_kv_cache_tokens": 198528,
+      "max_concurrency_at_8192_tokens": 68.55,
+      "prompt_suite_artifact": "benchmarks/results/2026-06-13-vllm-pinned-gptq-int4-nomtp-smoke.json",
+      "prompt_suite_aggregate_tok_s": 44.10,
+      "prompt_suite_mean_tok_s": 48.14
+    },
+    {
+      "name": "gptq_int4_mtp2_startup",
+      "model": "palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4",
+      "speculative_config": {"method": "mtp", "num_speculative_tokens": 2},
+      "status": "failed",
+      "failure": "KeyError: 'layers.0.mlp.experts.w2_weight' while loading Qwen3_5MoeMTP drafter"
+    },
+    {
+      "name": "gptq8_no_mtp_startup",
+      "model": "btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit",
+      "speculative_config": null,
+      "status": "healthy",
+      "served_model_name": "qwen36-35b-a3b-gptq8-nomtp",
+      "download_seconds_first_run": 345.60,
+      "model_loading_memory_gib": 37.46,
+      "available_kv_cache_gib": 3.07,
+      "gpu_kv_cache_tokens": 40128,
+      "max_concurrency_at_8192_tokens": 13.82,
+      "prompt_suite_artifact": "benchmarks/results/2026-06-13-vllm-pinned-gptq8-nomtp-smoke-rerun.json",
+      "prompt_suite_aggregate_tok_s": 39.72,
+      "prompt_suite_mean_tok_s": 39.93
+    },
+    {
+      "name": "gptq8_mtp1_startup",
+      "model": "btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit",
+      "speculative_config": {"method": "mtp", "num_speculative_tokens": 1},
+      "status": "failed",
+      "failure": "KeyError: 'layers.0.mlp.experts.w2_weight' while loading Qwen3_5MoeMTP drafter"
+    }
+  ]
+}

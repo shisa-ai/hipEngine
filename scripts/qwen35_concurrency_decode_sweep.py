@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -153,7 +154,7 @@ def main() -> int:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "performance_claim": False,
         "retained_ready": False,
-        "host": "AMD Radeon RX 7900 XTX (gfx1100/RDNA3) via HIP_VISIBLE_DEVICES=1",
+        "host": f"gfx1100/RDNA3 via HIP_VISIBLE_DEVICES={os.environ.get('HIP_VISIBLE_DEVICES', 'unset')}",
         "model": Path(args.model).name,
         "shape": {
             "prompt_length": args.prompt_length,
