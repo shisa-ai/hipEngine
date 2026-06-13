@@ -1,135 +1,356 @@
 # vLLM on RDNA3 / gfx1100
 
-This note tracks the local setup path for running vLLM on the W7900 / RX 7900
-XTX class GPUs and the Q4 + MTP model candidates for comparison against
-hipEngine and llama.cpp.
+This note tracks the local setup path for running vLLM on RDNA3 (`gfx1100`,
+W7900 / RX 7900 XTX class GPUs) and the Qwen3.6-35B-A3B Q4/MTP model
+candidates used for comparison against hipEngine and llama.cpp.
 
-## Recommendation
+Status as of 2026-06-13: the **native TheRock source build is the known-good
+path on this host**. The Docker images remain useful for reproduction, but they
+were not the best path here: no-MTP serving worked in the pinned image, while
+Qwen3.6 MTP loading failed inside the container, and the images do not use our
+local TheRock torch/ROCm stack or the local `gfx1100` GPTQ build patch.
 
-Use Docker first. The local conda vLLM environment is not a good baseline on
-this host: importing torch in `/home/lhl/mambaforge/envs/vllm` SIGILLs inside
-its bundled `libhipsparselt.so`, and the local source checkouts have ROCm
-extension ABI mismatches against the available torch stacks.
+For the detailed build log/recipe, also see `/home/lhl/vllm/BUILD-gfx1100.md`.
+This file keeps the hipEngine-facing summary, model table, and benchmark notes.
 
-Preferred image order:
+## TL;DR recommendation
 
-1. `vllm/vllm-openai-rocm:latest` - official vLLM ROCm image. This is the
-   helper default so we pick up fast-moving ROCm/RDNA3 and Qwen MTP fixes.
-2. `vllm/vllm-openai-rocm:v0.19.1` - pinned official baseline. Use this only
-   when we need to reproduce the version named by the recommended Q4+MTP
-   checkpoint's model card.
-3. `rocm/vllm:rocm7.13.0_gfx110X-all_ubuntu24.04_py3.13_pytorch_2.10.0_vllm_0.19.1`
-   - AMD image with an explicit gfx110X build. Current vLLM docs mark AMD
-   images deprecated in favor of official vLLM images, but this is a useful
-   RDNA3 fallback.
-4. TheRock source build - only if Docker fails or we need local development.
-   Rebuild vLLM extensions against the TheRock torch stack; do not reuse the
-   current stale local extensions.
+Use the local `vllm` conda env with TheRock torch and the custom vLLM source
+build:
 
-Run through the helper:
+- env: `/home/lhl/mambaforge/envs/vllm`
+- Python: 3.12
+- torch: `2.12.0a0+rocm7.13.0a20260416`
+- Triton: `3.7.0+git4089ddfa.rocm7.13.0a20260416`
+- TheRock ROCm package: `rocm 7.13.0a20260416`
+- vLLM source: `/home/lhl/vllm/vllm-main`
+- tested source commit: `470229c37efa` from upstream `origin/main`
+- installed wheel:
+  `vllm-0.22.1rc1.dev499+g470229c37.d20260613.rocm713`
+- local patch needed for tested HEAD on `gfx1100`:
+  `/home/lhl/vllm/patches/vllm-gfx1100-gptq-half-atomicadd.patch`
 
-```bash
-# Inspect the exact command.
-scripts/vllm_rocm_gfx1100_docker.sh print
+The source build imported both `vllm._C` and `vllm._rocm_C`, detected
+`PlatformEnum.ROCM`, passed a small `Qwen/Qwen3-0.6B` offline/server smoke test,
+and served `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4` without MTP for the benchmark
+below.
 
-# Pull and run the latest official vLLM image on W7900 / HIP_VISIBLE_DEVICES=0.
-scripts/vllm_rocm_gfx1100_docker.sh pull
-scripts/vllm_rocm_gfx1100_docker.sh serve
+## Why native source build beat the Docker images here
 
-# If latest regresses the Qwen3.6 GPTQ MTP loader, use the pinned image named
-# by the model card.
-scripts/vllm_rocm_gfx1100_docker.sh pull-pinned
-scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
+The official/AMD ROCm containers are convenient, but they are self-contained
+software stacks. On this host we already have a working TheRock torch/ROCm stack
+for `gfx110X`, and the successful build depended on matching vLLM extensions to
+that exact stack.
 
-# If the official images miss gfx1100 kernels or have a ROCm mismatch, try AMD's
-# explicit gfx110X image.
-scripts/vllm_rocm_gfx1100_docker.sh pull-amd
-scripts/vllm_rocm_gfx1100_docker.sh serve-amd
-```
+Observed differences:
 
-The helper uses `sudo docker` by default because this host's Docker socket is
-not accessible to the unprivileged user. Override with `DOCKER_BIN=docker` if
-your user is in the docker group.
+- The native build uses current vLLM `main`/HEAD instead of the older pinned
+  container baseline.
+- The native build compiles only the local arch via `PYTORCH_ROCM_ARCH=gfx1100`.
+- The native build uses TheRock's initialized `_rocm_sdk_devel` tree, not a
+  container ROCm install and not a mismatched `/opt/rocm`.
+- The tested HEAD needed a local patch for generic GPTQ `atomicAdd(half*)` /
+  `atomicAdd(half2*)` compilation on `gfx1100`.
+- Docker `vllm/vllm-openai-rocm:v0.19.1` could run no-MTP GPTQ, but MTP startup
+  failed with `KeyError: layers.0.mlp.experts.w2_weight` in the Qwen MTP drafter
+  loader.
 
-To pin a known-good vLLM image instead of using latest:
+Bottom line: use Docker to reproduce container behavior, but use the TheRock
+source build as the reference path for hipEngine comparisons on this machine.
 
-```bash
-scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
+## Native TheRock source-build recipe
 
-# Equivalent explicit override:
-VLLM_ROCM_IMAGE=vllm/vllm-openai-rocm:v0.19.1 \
-scripts/vllm_rocm_gfx1100_docker.sh serve
-```
+Run these commands in the `vllm` env. Keep this section aligned with
+`/home/lhl/vllm/BUILD-gfx1100.md`.
 
-Useful overrides:
-
-```bash
-HIP_VISIBLE_DEVICES=0 \
-VLLM_MODEL=palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
-VLLM_MAX_MODEL_LEN=8192 \
-VLLM_MAX_NUM_SEQS=8 \
-VLLM_MAX_NUM_BATCHED_TOKENS=8192 \
-VLLM_GPU_MEMORY_UTILIZATION=0.88 \
-VLLM_DTYPE=float16 \
-VLLM_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":2}' \
-scripts/vllm_rocm_gfx1100_docker.sh serve
-```
-
-For the AWQ candidate, switch model and, if needed, the older method alias:
+### 1. Verify env and GPU arch
 
 ```bash
-VLLM_MODEL=QuantTrio/Qwen3.6-35B-A3B-AWQ \
-VLLM_SPECULATIVE_CONFIG='{"method":"qwen3_next_mtp","num_speculative_tokens":2}' \
-scripts/vllm_rocm_gfx1100_docker.sh serve
+conda activate vllm
+
+python - <<'PY'
+import sys
+import torch
+print("python:", sys.version.split()[0], sys.executable)
+print("torch:", torch.__version__)
+print("hip:", torch.version.hip)
+print("cuda available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    props = torch.cuda.get_device_properties(0)
+    print("gpu:", torch.cuda.get_device_name(0))
+    print("gcn:", props.gcnArchName)
+PY
 ```
 
-Recent vLLM normalizes older Qwen MTP method aliases to `mtp`, so try the
-default `{"method":"mtp","num_speculative_tokens":2}` first unless the image
-is exactly following the AWQ model card command.
+Expected local arch: `gfx1100`.
 
-MTP settings to test:
+### 2. Use TheRock `rocm[devel]`, not system `/opt/rocm`
+
+`_rocm_sdk_core` was not enough for this vLLM build because it lacked CMake's
+`hip-lang-config.cmake`. Install the matching TheRock devel package and
+initialize it once:
 
 ```bash
-# Default candidate, from the GPTQ+MTP model card.
-VLLM_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":2}' \
-scripts/vllm_rocm_gfx1100_docker.sh serve
+ROCM_PY_VERSION="$(python - <<'PY'
+from importlib.metadata import version
+print(version("rocm"))
+PY
+)"
 
-# Lower-overhead MTP. Try this if repeated MTP layer forwards are slower.
-VLLM_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":1}' \
-scripts/vllm_rocm_gfx1100_docker.sh serve
+python -m pip --isolated install --pre \
+  --index-url https://rocm.nightlies.amd.com/v2/gfx110X-all/ \
+  "rocm[devel]==${ROCM_PY_VERSION}"
 
-# No-MTP baseline for measuring speculative speedup.
-VLLM_SPECULATIVE_CONFIG= \
-scripts/vllm_rocm_gfx1100_docker.sh serve
+rocm-sdk init
 ```
 
-The helper defaults `VLLM_MAX_NUM_BATCHED_TOKENS=8192`. vLLM's OpenAI server
-uses 2048 by default on this class of GPU, which is too low for the 8 x 512
-prompt concurrency sweep and produces a speculative scheduling warning.
-
-Known latest-image failure seen on 2026-06-13: GPTQ+MTP can fail while loading
-the MTP drafter with `KeyError: 'layers.0.mlp.experts.w2_weight'`. That is a
-vLLM/model-layout compatibility issue, not an MTP tuning issue. Try the pinned
-`v0.19.1` image for MTP, and separately test no-MTP on pinned/latest:
+Then export these in every build/run shell:
 
 ```bash
-# Pinned image, MTP enabled.
-scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
+export THEROCK_ROCM_HOME="$(rocm-sdk path --root)"
+export ROCM_HOME="$THEROCK_ROCM_HOME"
+export ROCM_PATH="$THEROCK_ROCM_HOME"
+export HIP_PATH="$THEROCK_ROCM_HOME"
+export PATH="$(rocm-sdk path --bin):$THEROCK_ROCM_HOME/bin:$THEROCK_ROCM_HOME/lib/llvm/bin:$PATH"
+export LD_LIBRARY_PATH="$THEROCK_ROCM_HOME/lib:$(python -c 'import sys; print(sys.prefix)')/lib:${LD_LIBRARY_PATH:-}"
+export CMAKE_PREFIX_PATH="$THEROCK_ROCM_HOME:$(python -c 'import sys; print(sys.prefix)')${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
 
-# Pinned image, no-MTP smoke test.
-VLLM_SPECULATIVE_CONFIG= \
-scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
-
-# Latest image, no-MTP baseline.
-VLLM_SPECULATIVE_CONFIG= \
-scripts/vllm_rocm_gfx1100_docker.sh serve
+hipcc --version
+test -f "$THEROCK_ROCM_HOME/lib/cmake/hip-lang/hip-lang-config.cmake"
 ```
 
-## Observed W7900 local vLLM results, 2026-06-13
+### 3. Install build prerequisites and matching AMDSMI
+
+```bash
+python -m pip install -U pip
+python -m pip install -U \
+  "cmake<4" ninja wheel pybind11 Cython packaging \
+  "setuptools>=77.0.3,<80.0.0" setuptools-scm setuptools-rust jinja2
+
+python -m pip install --no-build-isolation --no-deps "$THEROCK_ROCM_HOME/share/amd_smi"
+
+PY_PREFIX="$(python -c 'import sys; print(sys.prefix)')"
+ln -sfn "$THEROCK_ROCM_HOME/lib/libamd_smi.so.26" "$PY_PREFIX/lib/libamd_smi.so.26"
+ln -sfn libamd_smi.so.26 "$PY_PREFIX/lib/libamd_smi.so"
+```
+
+`amdsmi` is required by current vLLM ROCm platform detection.
+
+### 4. Install vLLM deps without replacing TheRock torch/triton
+
+```bash
+cd /home/lhl/vllm/vllm-main
+
+python - <<'PY' >/tmp/keep-therock-torch.txt
+from importlib.metadata import PackageNotFoundError, version
+for dist in ("torch", "torchvision", "torchaudio", "triton", "rocm"):
+    try:
+        print(f"{dist}=={version(dist)}")
+    except PackageNotFoundError:
+        pass
+PY
+cat /tmp/keep-therock-torch.txt
+
+python -m pip install \
+  -r requirements/rocm.txt \
+  -c /tmp/keep-therock-torch.txt \
+  --upgrade-strategy only-if-needed
+```
+
+If pip tries to uninstall or replace TheRock `torch`/`triton`, stop and fix the
+resolver inputs. The final vLLM wheel should also be installed with `--no-deps`.
+
+### 5. Patch, build, and install the vLLM wheel
+
+```bash
+cd /home/lhl/vllm/vllm-main
+
+export VLLM_TARGET_DEVICE=rocm
+export PYTORCH_ROCM_ARCH=gfx1100
+export MAX_JOBS="${MAX_JOBS:-$(nproc)}"
+export HSA_NO_SCRATCH_RECLAIM=1
+
+PATCH=/home/lhl/vllm/patches/vllm-gfx1100-gptq-half-atomicadd.patch
+if grep -q "gfx11 does not expose native atomicAdd overloads" \
+    csrc/libtorch_stable/quantization/gptq/q_gemm.cu; then
+  echo "gfx1100 GPTQ atomicAdd patch already applied"
+elif git apply --check "$PATCH"; then
+  git apply "$PATCH"
+else
+  echo "Patch did not apply; upstream may have changed. Only continue if q_gemm.cu builds on gfx1100."
+fi
+
+rm -rf build dist
+python setup.py clean --all
+python setup.py bdist_wheel --dist-dir=dist
+
+wheel="$(ls -t dist/vllm-*.whl | head -1)"
+python -m pip uninstall -y vllm
+python -m pip install --no-deps --force-reinstall "$wheel"
+```
+
+The tested unpatched HEAD failed on `gfx1100` while compiling
+`csrc/libtorch_stable/quantization/gptq/q_gemm.cu` with missing
+`atomicAdd(half*)` / `atomicAdd(half2*)` overloads.
+
+### 6. Validate install
+
+```bash
+python - <<'PY'
+import torch
+import vllm
+from vllm.platforms import current_platform
+
+print("torch:", torch.__version__)
+print("hip:", torch.version.hip)
+print("vllm:", vllm.__version__)
+print("platform:", current_platform._enum)
+
+import vllm._C
+import vllm._rocm_C
+print("_C:", vllm._C.__file__)
+print("_rocm_C:", vllm._rocm_C.__file__)
+PY
+```
+
+Expected: `PlatformEnum.ROCM`, and both extension imports succeed.
+
+Small server smoke:
+
+```bash
+export TORCHINDUCTOR_AUTOGRAD_CACHE=0
+
+vllm serve Qwen/Qwen3-0.6B \
+  --host 127.0.0.1 --port 8008 \
+  --served-model-name qwen-test \
+  --dtype bfloat16 \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.55 \
+  --enforce-eager
+```
+
+Then:
+
+```bash
+curl -s http://127.0.0.1:8008/v1/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen-test","prompt":"Say hello from vLLM on ROCm.","max_tokens":12,"temperature":0}' \
+  | python -m json.tool
+```
+
+Notes:
+
+- `TORCHINDUCTOR_AUTOGRAD_CACHE=0` works around a PyTorch AOTAutograd cache
+  pickling issue observed with this TheRock stack in compiled mode.
+- Use `--enforce-eager` for quick smoke tests. For non-eager runs, keep
+  `TORCHINDUCTOR_AUTOGRAD_CACHE=0` and expect compile/CUDAGraph warmup.
+- vLLM logs may say `device_config=cuda`; HIP still uses the PyTorch `cuda`
+  namespace.
+- On RDNA3 it is normal to see fallback from ROCm custom paged attention to
+  Triton attention.
+
+## Serving Qwen3.6-35B-A3B on the native build
+
+No-MTP baseline first:
+
+```bash
+export TORCHINDUCTOR_AUTOGRAD_CACHE=0
+export HSA_NO_SCRATCH_RECLAIM=1
+
+vllm serve palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
+  --host 127.0.0.1 --port 8008 \
+  --served-model-name qwen36-gptq-int4 \
+  --dtype bfloat16 \
+  --max-model-len 8192 \
+  --gpu-memory-utilization 0.90 \
+  --enforce-eager
+```
+
+If a specific GPTQ/AWQ checkpoint rejects `bfloat16`, retry with
+`--dtype float16`. Older Docker/model-card recipes used `float16` for ROCm GPTQ.
+
+MTP is separate from checkpoint MTP availability. Many Qwen3.6 checkpoints have
+MTP weights, but the vLLM MTP loader path must still be validated per checkpoint
+and vLLM revision. Start with one speculative token on HEAD even if older model
+cards show two:
+
+```bash
+vllm serve palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
+  --host 127.0.0.1 --port 8008 \
+  --served-model-name qwen36-gptq-int4-mtp \
+  --dtype bfloat16 \
+  --max-model-len 8192 \
+  --gpu-memory-utilization 0.90 \
+  --enforce-eager \
+  --spec-method mtp \
+  --spec-tokens 1
+```
+
+Older CLI/model-card equivalent:
+
+```bash
+--speculative-config '{"method":"mtp","num_speculative_tokens":1}'
+```
+
+Always keep a no-MTP baseline because MTP can lose on small batches or hit loader
+layout issues.
+
+## Qwen3.6-35B-A3B model candidates and sizes
+
+Sizes below are approximate GiB of model tensor files (`.safetensors`/`.bin`) as
+reported by the Hugging Face API. They do **not** include runtime allocator
+fragmentation, compiled kernels, activations, KV cache, or server overhead.
+
+This matters for 24GB cards: most useful Q4 Qwen3.6-35B-A3B checkpoints are
+already ~22-24 GiB on disk. They are W7900/48GB-friendly, but a 24GB RX 7900 XTX
+will usually have too little memory left for KV cache after loading the model.
+The few ~19-21 GiB derivative checkpoints may fit only at short context and are
+lower-confidence for MTP.
+
+### Primary vLLM candidates
+
+| Model | Format | Tensor size | MTP checkpoint weights? | 24GB card outlook | Notes |
+|---|---:|---:|---|---|---|
+| `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4` | GPTQ int4, g128 | ~22.74 GiB | Yes; clean `mtp.safetensors`, 785 `mtp.*` keys | Very tight / likely no | Best first GPTQ target; MTP excluded from GPTQ quantization. Native no-MTP benchmark used this model. |
+| `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` | AWQ int4, g32 | ~23.25 GiB | Yes; 2321 MTP-related packed keys | Very tight / likely no | Major AWQ candidate we initially missed; validate loader because MTP appears in packed AWQ layout. |
+| `QuantTrio/Qwen3.6-35B-A3B-AWQ` | AWQ int4, g128 | ~23.71 GiB | Yes; 785 `mtp.*` keys | No | Good AWQ fallback; quant config excludes MTP/attention/shared expert from AWQ. |
+| `Qwen/Qwen3.6-35B-A3B-FP8` | FP8 | ~34.89 GiB | Yes; `mtp.safetensors`, 1560 MTP keys | No | Official Qwen FP8; useful to test Qwen3.6+MTP independent of Q4, but not a Q4 comparison. |
+| `RedHatAI/Qwen3.6-35B-A3B-NVFP4` | compressed-tensors NVFP4 | ~23.32 GiB | Yes; fused MTP layout, `model_mtp.safetensors` | Very tight / likely no | Interesting FP4 route; vLLM supports compressed-tensors/modelopt families, but validate on `gfx1100`. |
+| `nvidia/Qwen3.6-35B-A3B-NVFP4` | ModelOpt NVFP4 | ~21.82 GiB | Yes; fused/minimal MTP keys | Tight | NVIDIA-oriented quantization; lower priority on ROCm/RDNA3. |
+| `unsloth/Qwen3.6-35B-A3B-NVFP4` | compressed-tensors NVFP4 | ~22.99 GiB | Config says MTP; index not available in API check | Very tight / likely no | Single safetensors file; validate before relying on MTP. |
+| `z-lab/Qwen3.6-35B-A3B-DFlash` | DFlash draft model | ~0.88 GiB | Draft/spec model, not main model | N/A | Potential drafter/speculative component, not a standalone 35B target. |
+
+### Other discovered 3.6 Q4-ish/derivative safetensor variants
+
+| Model | Format | Tensor size | MTP checkpoint weights? | 24GB card outlook | Notes |
+|---|---:|---:|---|---|---|
+| `btbtyler09/Qwen3.6-35B-A3B-GPTQ-4bit` | GPTQ int4, g32 | ~24.50 GiB | Fused/minimal MTP keys only | No | Larger than the 24GB card budget before KV cache. |
+| `btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit` | GPTQ int8, g32 | ~39.97 GiB | Fused/minimal MTP keys only | No | W7900-only fallback; Docker no-MTP loaded, MTP failed with same drafter key error. |
+| `llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GPTQ-Int4` | GPTQ int4, g128 | ~20.81 GiB | Fused/minimal MTP keys | Tight / possible short ctx | Derivative; lower confidence than palmfuture/QuantTrio. |
+| `llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-GPTQ-Int4` | GPTQ int4, g128 | ~19.23 GiB | No actual MTP keys found | Possible short ctx | Smaller, but not useful for MTP comparison. |
+| `groxaxo/Qwen3.6-35B-A3B-GPTQ-Pro-FOEM-4bit-g128` | GPTQ-like | ~20.81 GiB | Fused/minimal MTP keys | Tight / possible short ctx | Quant config missing in API check; risky. |
+| `Sociopacific/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-GPTQ-Int4` | GPTQ int4, g128 | ~21.17 GiB | No actual MTP keys found | Tight / possible short ctx | Distilled derivative; no MTP despite config fields. |
+| `Sociopacific/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-GPTQ-Int4` | GPTQ int4, g128 | ~21.17 GiB | No actual MTP keys found | Tight / possible short ctx | Same caveat as 4.7 derivative. |
+| `abhishekchohan/Qwen3.6-35B-A3B-Abliterated-AWQ` | compressed-tensors int4 | ~21.90 GiB | Fused/minimal MTP keys | Tight | Single-file derivative; lower priority. |
+| `genevera/Qwen3.6-35B-A3B-Abliterated-Heretic-AWQ-4bit` | AWQ int4, g128 | ~19.31 GiB | No actual MTP keys found | Possible short ctx | Smaller derivative, but not an MTP target. |
+| `Civitai/Qwen3.6-35B-A3B-Abliterated-AWQ` | compressed-tensors int4 | ~20.32 GiB | Not confirmed | Tight / possible short ctx | API header read timed out; validate before use. |
+| `feanors/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-AWQ-INT4` | AWQ int4, g128 | ~23.67 GiB | Fused/minimal MTP keys | No | Distilled derivative; too large for 24GB with KV cache. |
+| `mattbucci/Qwen3.6-35B-A3B-AWQ` | AWQ int4, g128 | ~19.05 GiB | No actual MTP keys found | Possible short ctx | Smaller but not an MTP target. |
+| `mattbucci/Qwen3.6-35B-A3B-AWQ-CT` | compressed-tensors int4 | ~18.93 GiB | No actual MTP keys found | Possible short ctx | One of the more 24GB-plausible sizes, but no MTP. |
+| `Chunity/Qwen3.6-35B-A3B-AutoRound-AWQ-4bit` | AWQ int4, g128 | ~22.56 GiB | Fused/minimal MTP keys | Very tight / likely no | AutoRound derivative. |
+| `selode-ai/Qwen-3.6-35B-A3B-VRAP-4-bit-AWQ-21.2GB` | AWQ int4, g128 | ~19.71 GiB | 617 MTP keys | Possible short ctx | Interesting smaller AWQ, but derivative and less proven. |
+| `FenomAI/Qwen3.6-35B-A3B-AWQ-4bit` | compressed-tensors int4, g32 | ~22.78 GiB | MTP-related packed keys | Very tight / likely no | Similar packed layout to cyankiwi, lower downloads. |
+
+For a 24GB card, llama.cpp/GGUF Q4 variants remain more realistic for local
+experiments because llama.cpp has lower runtime overhead and more explicit
+context/offload controls. For vLLM, treat W7900/48GB as the target for 35B-A3B
+Q4+MTP work.
+
+## Observed W7900 native vLLM results, 2026-06-13
 
 Local source build: `v0.22.1rc1.dev499+g470229c37.d20260613`, served on
-`http://127.0.0.1:8008`, `--dtype bfloat16 --max-model-len 128000
---gpu-memory-utilization 0.90 --enforce-eager`, no MTP.
+`http://127.0.0.1:8008`, `--max-model-len 128000 --gpu-memory-utilization 0.90
+--enforce-eager`, no MTP.
 
 Concurrency sweep used exact 512-token prompt-id rows from
 `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`, 128 output
@@ -172,141 +393,87 @@ benchmarks/results/2026-06-13-vllm-pinned-gptq-int4-nomtp-smoke.json
 benchmarks/results/2026-06-13-vllm-pinned-gptq8-nomtp-smoke-rerun.json
 ```
 
-Bottom line: vLLM works on W7900 for these GPTQ checkpoints without MTP. The
-native Qwen3.6 MTP path is blocked by the vLLM `Qwen3_5MoeMTP` loader expecting
-`layers.0.mlp.experts.w2_weight` keys. This affects both Int4 and GPTQ8, so it
-is not solved by moving to Q8.
+Bottom line: the pinned Docker image could serve these GPTQ checkpoints without
+MTP, but its Qwen3.6 MTP path was blocked by the vLLM `Qwen3_5MoeMTP` loader
+expecting `layers.0.mlp.experts.w2_weight` keys. This affected both Int4 and
+GPTQ8, so it was not solved by moving to Q8.
 
-## Candidate Q4 + MTP models
+## Docker helper status
 
-### Primary: `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`
-
-Use this first for vLLM MTP comparison.
-
-Evidence from the model card / Hugging Face API:
-
-- Base: `Qwen/Qwen3.6-35B-A3B`.
-- Quantization: GPTQ Int4, group size 128, symmetric.
-- MTP weights are included as BF16 and exposed as `mtp.safetensors`.
-- The card says the MTP layout is verified with vLLM 0.19.1 and SGLang 0.5.10.
-- The card's vLLM MTP command uses:
-  `--speculative-config '{"method":"mtp","num_speculative_tokens":2}'`.
-- Quantized size is listed as 24.4 GB including MTP weights, but plan for W7900
-  rather than RX 7900 XTX because runtime overhead and KV cache make 24 GB tight.
-
-Recommended first server command is the helper default:
+The helper remains in the repo for reproducing container behavior:
 
 ```bash
+# Inspect the exact command.
+scripts/vllm_rocm_gfx1100_docker.sh print
+
+# Official latest image.
+scripts/vllm_rocm_gfx1100_docker.sh pull
 scripts/vllm_rocm_gfx1100_docker.sh serve
+
+# Pinned official baseline.
+scripts/vllm_rocm_gfx1100_docker.sh pull-pinned
+scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
+
+# AMD explicit gfx110X image.
+scripts/vllm_rocm_gfx1100_docker.sh pull-amd
+scripts/vllm_rocm_gfx1100_docker.sh serve-amd
 ```
 
-The helper defaults to `VLLM_DTYPE=float16` for this model because vLLM rejects
-GPTQ with `bfloat16` activations.
-
-Then run the existing llama.cpp-style prompt suite against vLLM:
+Useful overrides:
 
 ```bash
-PYTHONPATH=. python3 scripts/mtp-bench.py \
-  --url http://127.0.0.1:8000 \
-  --temperature 0 --top-p 1 --no-cache-prompt --ignore-eos \
-  --max-tokens 32 \
-  --out /tmp/vllm-qwen36-gptq-mtp-d32.json
-```
-
-### Fallback Q4: `QuantTrio/Qwen3.6-35B-A3B-AWQ`
-
-Use this if GPTQ loader or kernels fail on ROCm.
-
-Evidence:
-
-- Base: `Qwen/Qwen3.6-35B-A3B`.
-- Quantization: AWQ 4-bit.
-- Model card requires `vllm>=0.19.0` and includes a vLLM command with MTP:
-  `--speculative-config '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'`.
-- Hugging Face API reports `quantization_config.quant_method = awq`.
-- vLLM ROCm platform code supports `awq` and automatically enables
-  `VLLM_USE_TRITON_AWQ=1`.
-
-Caveat: the AWQ repo does not expose a separate `mtp.safetensors` sibling in the
-API listing, unlike the GPTQ repo. Treat it as a fallback until the loader proves
-MTP is found at startup.
-
-### Q8 / higher-quality fallback: `btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit`
-
-Use this if Q4 loader paths are broken and W7900 memory is available. It is not
-a Q4 apples-to-apples comparison, but it is a useful vLLM fallback.
-
-Evidence from the model card / Hugging Face API:
-
-- Base: `Qwen/Qwen3.6-35B-A3B`.
-- Quantization: GPTQ 8-bit, group size 32, symmetric.
-- The model card says the MTP module is preserved at BF16.
-- Listed model size is about 40 GB, so this is W7900-only for our machines.
-- Use `float16`; the card notes this is required for ROCm GPTQ kernels.
-
-Start with no MTP to avoid the MTP drafter loader path:
-
-```bash
-VLLM_MODEL=btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit \
-VLLM_SERVED_MODEL_NAME=qwen36-35b-a3b-gptq8 \
-VLLM_GPU_MEMORY_UTILIZATION=0.95 \
-VLLM_SPECULATIVE_CONFIG= \
-scripts/vllm_rocm_gfx1100_docker.sh serve-pinned --skip-mm-profiling
-```
-
-If no-MTP starts cleanly, test MTP separately:
-
-```bash
-VLLM_MODEL=btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit \
-VLLM_SERVED_MODEL_NAME=qwen36-35b-a3b-gptq8-mtp \
-VLLM_GPU_MEMORY_UTILIZATION=0.95 \
+HIP_VISIBLE_DEVICES=0 \
+VLLM_MODEL=palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
+VLLM_MAX_MODEL_LEN=8192 \
+VLLM_MAX_NUM_SEQS=8 \
+VLLM_MAX_NUM_BATCHED_TOKENS=8192 \
+VLLM_GPU_MEMORY_UTILIZATION=0.88 \
+VLLM_DTYPE=float16 \
 VLLM_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":1}' \
-scripts/vllm_rocm_gfx1100_docker.sh serve-pinned --skip-mm-profiling
+scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
 ```
 
-### Non-Q4 fallback: `Qwen/Qwen3.6-35B-A3B-FP8`
+Disable MTP for baseline/repro:
 
-Not a Q4 comparison, but useful for checking whether vLLM's Qwen3.6 + MTP path
-works independent of AWQ/GPTQ quantization. The repo includes `mtp.safetensors`
-and is an official Qwen FP8 release. vLLM's Qwen3.6 recipe targets H100/H200 or
-MI300-class GPUs for FP8, so W7900 may run this slowly or fail if kernels assume
-FP8 hardware paths.
+```bash
+VLLM_SPECULATIVE_CONFIG= \
+scripts/vllm_rocm_gfx1100_docker.sh serve-pinned
+```
 
-A second FP8-like option is `RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic`, which uses
-`compressed-tensors`, exposes `model_mtp.safetensors`, and is tagged as tested
-against vLLM main.
+The helper uses `sudo docker` by default because this host's Docker socket is
+not accessible to the unprivileged user. Override with `DOCKER_BIN=docker` if
+your user is in the docker group.
 
-### llama.cpp-only reference: `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`
+## Failure signatures already observed
 
-Good for llama.cpp MTP, not the first choice for vLLM. vLLM ROCm advertises GGUF
-as a supported quantization family in current source, but the MTP GGUF path is
-primarily a llama.cpp workflow and is not the cleanest vLLM comparison.
+Older/stale local and container attempts hit these issues:
 
-## Local failure signatures already observed
-
-- `/home/lhl/mambaforge/envs/vllm`: torch import can SIGILL in
+- Old `/home/lhl/mambaforge/envs/vllm` state: torch import could SIGILL in
   `libhipsparselt.so.0` with `vmovups %zmm0`, which requires AVX512 on a Ryzen
-  5950X that only has AVX2.
-- `/home/lhl/vllm/vllm` with the sglang torch stack: `_rocm_C` fails with
+  5950X that only has AVX2. The current TheRock env no longer follows that
+  stale path.
+- `/home/lhl/vllm/vllm` with the sglang torch stack: `_rocm_C` failed with
   `libamdhip64.so.7: undefined symbol: hsa_amd_memory_get_preferred_copy_engine`.
-- `/home/lhl/vllm/vllm` with TheRock torch: `_rocm_C` fails with
-  `undefined symbol: c10::hip::getCurrentHIPStream`.
+- Stale local vLLM extensions with TheRock torch: `_rocm_C` failed with
+  `undefined symbol: c10::hip::getCurrentHIPStream`. Rebuilding vLLM extensions
+  against the active TheRock torch fixed this class of mismatch.
 - Unprivileged Docker access currently fails with permission denied on
   `/var/run/docker.sock`; use `sudo docker` or add the user to the docker group.
+- Docker `v0.19.1` Qwen3.6 MTP drafter load failed with
+  `KeyError: layers.0.mlp.experts.w2_weight`.
+- Native unpatched vLLM HEAD on `gfx1100` failed building generic GPTQ kernels
+  with missing `atomicAdd(half*)` / `atomicAdd(half2*)`; apply the local patch
+  before building that revision.
 
-## If we need a native TheRock build
+## Troubleshooting native build/runtime
 
-Only do this after Docker validation. Start from a clean env with TheRock torch
-and build vLLM extensions for gfx1100:
-
-```bash
-cd /home/lhl/vllm/vllm
-export VLLM_TARGET_DEVICE=rocm
-export PYTORCH_ROCM_ARCH=gfx1100
-export FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
-python -m pip install -U 'cmake<4' ninja wheel pybind11 Cython
-python -m pip install -r requirements/common.txt
-python -m pip install -e . --no-build-isolation --no-deps
-```
-
-This should be treated as a rebuild, not a fix-up of the existing stale env.
+- If `hipcc --version` does not match TheRock torch, re-export `ROCM_HOME`,
+  `ROCM_PATH`, `HIP_PATH`, `PATH`, and `LD_LIBRARY_PATH` from the build recipe.
+- If vLLM reports `UnspecifiedPlatform`, reinstall/verify AMDSMI from
+  `$THEROCK_ROCM_HOME/share/amd_smi` and ensure `libamd_smi.so*` is visible.
+- If CMake cannot find `hip-lang-config.cmake`, you are pointing at
+  `_rocm_sdk_core` or system ROCm instead of TheRock `_rocm_sdk_devel`.
+- If `torch.compile` fails with a launcher pickling error, set
+  `TORCHINDUCTOR_AUTOGRAD_CACHE=0` or use `--enforce-eager`.
+- If pip wants to replace `torch`/`triton`, stop; use the constraints file from
+  the recipe and install the final vLLM wheel with `--no-deps`.
