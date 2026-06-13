@@ -10,7 +10,7 @@ greedy performance path.
 ## Current state
 
 The public API and server now expose the functional host-sampling surface for
-PARO while native GPU sampling and GGUF host sampling remain incomplete:
+PARO and GGUF while native GPU sampling remains incomplete:
 
 - `hipengine.llm.SamplingParams` carries the functional sampler fields needed
   for host sampling: `temperature`, `top_p`, `top_k`, `min_p`, penalties,
@@ -24,9 +24,9 @@ PARO while native GPU sampling and GGUF host sampling remain incomplete:
 - `Qwen35ParoOneTokenGenerator` now keeps greedy-equivalent requests on the
   graph/argmax fast path and routes non-greedy or processed-argmax requests
   through a correctness-first host-logits sampler.
-- `Qwen35GGUFBringupGenerator` accepts greedy-equivalent inert filters but still
-  rejects true non-greedy sampling until the shared host sampler is wired into
-  the GGUF session.
+- `Qwen35GGUFBringupGenerator` keeps greedy-equivalent requests on its graph path
+  and routes non-greedy or processed-argmax requests through the shared
+  host-logits sampler using resident-session logits readback.
 - `Qwen35ParoResidentSession._sample_device_from_hidden(...)` remains the
   device-resident greedy suffix. It has been split internally into logits
   projection plus argmax selection so `_sample_from_hidden(...)` can copy FP32
@@ -39,9 +39,9 @@ PARO while native GPU sampling and GGUF host sampling remain incomplete:
 - `lm_head.hip` has a row-wise top-k helper capped at `k <= 8`, useful for
   drafter/verifier diagnostics but not enough for normal user sampling.
 
-The original user-visible failure for non-greedy Qwen3.5/PARO requests is fixed
-for the host-logits path. Remaining implementation work is GGUF host-sampler
-wiring, tokenizer-lowered stop sequences, native c>N state expansion, GPU sampler
+The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
+is fixed for the host-logits path. Remaining implementation work is
+tokenizer-lowered stop sequences, native c>N state expansion, GPU sampler
 kernels, exact GPU top-p, and public logprobs responses.
 
 ## Hardware lane for this work
@@ -398,7 +398,7 @@ fully vectorized at first:
 | --- | --- | --- | --- | --- | --- |
 | S0: API/schema cleanup | Extend `SamplingParams`, `GenerationRequest`, server request models, `_sampling_key`, and validation. Reject unsupported fields explicitly. | Low | ~100-200 Python/tests | None | **Done for public/server canonical fields.** |
 | S1: greedy-compatible unblock | Allow `temperature <= 0` with inert `top_p`/`top_k`; preserve current graph replay and argmax behavior. | Low | ~50-100 Python/tests | S0 | **Done for PARO and GGUF greedy-equivalent requests.** |
-| S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO c=1 and serial multi-row host sampling.** |
+| S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO and GGUF c=1 plus serial multi-row host sampling.** |
 | S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | Synthetic-logit processor tests and fixed-seed generator fixtures pass. |
 | S4: token-level stop | Lower stop token IDs where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | Rows finish on EOS/stop-token fixtures without overrun. |
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | c>N fixed-seed rows are deterministic and per-row state is isolated. |

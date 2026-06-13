@@ -111,11 +111,10 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 
 - Request execution is serialized with an in-process lock. Continuous batching,
   concurrent decode, and scheduling fairness are later runtime work.
-- PARO sampling supports `temperature`, `top_p`, `top_k`, `min_p`,
+- PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
-  requests stay on the graph/argmax fast path. GGUF true non-greedy sampling is
-  still rejected until the shared sampler is wired into that session.
+  requests stay on each engine's graph/argmax fast path.
 - `logprobs` and non-text chat content parts are rejected.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 - Token `usage` is exact only if the injected engine exposes `count_tokens`; the

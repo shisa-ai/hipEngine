@@ -86499,3 +86499,25 @@ Validation:
 - `scripts/update-therock-torch.sh --print-plan --date 20260613 --torch-version 2.12.0`
   fails with the expected torchaudio compatibility hint.
 - `git diff --check -- scripts/update-therock-torch.sh`.
+
+## 2026-06-14 - GGUF host sampling integration
+
+Extended the shared host-logits sampler to the Qwen3.5 GGUF generator.  GGUF now
+uses the existing resident-session `return_logits=True` prefill/step path for
+non-greedy or processed-argmax requests, selects tokens with
+`hipengine.generation.sampling.select_token`, and keeps greedy-equivalent
+requests on the existing `return_logits=False` graph/argmax path.  Single-token
+`stop_token_ids` also finish GGUF host-sampled rows.  Added focused fake-session
+coverage in `tests/test_generation_qwen35_gguf_sampling.py` for greedy inert
+filters, true non-greedy host sampling, and stop-token termination.
+
+Updated `docs/SAMPLING.md` and `docs/API.md` to reflect that both PARO and GGUF
+now have the functional host-logits compatibility path.  The full sampling goal
+is still not complete: remaining work includes tokenizer-lowered stop sequences,
+scheduler/native c>N sampler-state expansion, GPU sampler kernels, exact GPU
+top-p without full-vocab D2H copies, and public logprobs/top-logprobs responses.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_gguf_generate_path.py tests/test_server_api.py -q` -> `39 passed, 4 skipped`.
+- `python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `git diff --check`.
