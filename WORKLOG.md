@@ -86404,3 +86404,27 @@ retained JSON artifacts:
 Raw sweep JSONs were moved to `/tmp/2026-06-14-w7900-therock713-hipengine-{gguf-q4ks,paro-packed}-readme-persistent-5run-raw.json`.
 Updated `README.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` with
 the TheRock rows and the GGUF MTP tensor-ignore note.
+
+## 2026-06-14 - Sampling design GPU1 buildout
+
+Expanded `docs/SAMPLING.md` for the GPU1 / RX 7900 XTX sampling-development
+lane.  The doc now records the explicit `HIP_VISIBLE_DEVICES=1`/`gfx1100` setup,
+separates GPU1 smoke/profiler work from W7900 retained benchmark rows, and calls
+out the 7900 XTX VRAM caveat for full-model smokes.
+
+The sampling design now also includes server/API field mapping, unknown-extra
+rejection policy, sampler plan selection (`GREEDY_FAST`, `PROCESSED_ARGMAX`,
+`HOST_LOGITS_SAMPLE`, `GPU_SAMPLE`), PARO projection/token-selection extraction
+points, EOS/stop handling, host-logits sampler mechanics, native GPU sampler
+kernel decomposition, c>N state handling, code touchpoints, expanded track exit
+gates, and GPU1 smoke gates.  Scoping remains complexity + approximate LoC only;
+no day/week/hour estimates were added.
+
+GPU1 environment check:
+- `HIP_VISIBLE_DEVICES=1 python3 - <<'PY' ... ctypes.CDLL('libamdhip64.so') ... PY` -> `hip OK HIP_VISIBLE_DEVICES=1`.
+- `rocm-smi --showproductname` reports GPU[1] as `AMD Radeon RX 7900 XTX`, `gfx1100`.
+
+Validation:
+- Re-read `docs/SAMPLING.md` end to end.
+- `grep -nEi '\\b(day|days|week|weeks|hour|hours|2-4|1-2|1-3|time-based estimate|time estimate)\\b' docs/SAMPLING.md || true` -> no output.
+- `git diff --check`.
