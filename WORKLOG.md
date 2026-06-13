@@ -86469,3 +86469,33 @@ Validation:
 - `python3 -m py_compile hipengine/generation/sampling.py hipengine/llm.py hipengine/generation/registry.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py hipengine/generation/qwen35_gguf.py`.
 - `HIP_VISIBLE_DEVICES=1 python3 - <<'PY' ... ctypes.CDLL('libamdhip64.so') ... PY` -> `hip OK HIP_VISIBLE_DEVICES=1`.
 - `git diff --check`.
+
+## 2026-06-14 - TheRock torch update helper
+
+Added `scripts/update-therock-torch.sh` for active-environment TheRock upgrades.
+The helper follows the multi-arch package layout in ROCm/TheRock `RELEASES.md`:
+it queries `https://rocm.nightlies.amd.com/whl-multi-arch/`, discovers the
+latest complete compatible nightly date for the requested device (`gfx1100` by
+default), and pins exact versions for `rocm`, `rocm-sdk-core`,
+`rocm-sdk-libraries`, `rocm-sdk-devel`, `rocm-sdk-device-<gfx>`, `torch`,
+`torchvision`, and `torchaudio` to avoid pip resolver backtracking across dated
+nightlies.  The default plan keeps torchaudio compatibility, so the current
+latest resolved stack is ROCm `7.14.0a20260613`, torch
+`2.11.0+rocm7.14.0a20260613`, torchvision
+`0.26.0+rocm7.14.0a20260613`, and torchaudio
+`2.11.0+rocm7.14.0a20260613`; `--no-torchaudio` resolves the newer torch
+`2.12.0`/torchvision `0.27.0` pair for the same date.
+
+Validation:
+- `bash -n scripts/update-therock-torch.sh`.
+- `scripts/update-therock-torch.sh --help`.
+- `scripts/update-therock-torch.sh --print-plan` -> resolved latest compatible
+  gfx1100 cp312 Linux stack dated `20260613` with exact pins and
+  `--no-cache-dir` in the pip command.
+- `scripts/update-therock-torch.sh --print-plan --no-torchaudio` -> resolved
+  torch `2.12.0+rocm7.14.0a20260613` and torchvision
+  `0.27.0+rocm7.14.0a20260613`.
+- `scripts/update-therock-torch.sh --print-plan --json | python3 -m json.tool`.
+- `scripts/update-therock-torch.sh --print-plan --date 20260613 --torch-version 2.12.0`
+  fails with the expected torchaudio compatibility hint.
+- `git diff --check -- scripts/update-therock-torch.sh`.
