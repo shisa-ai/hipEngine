@@ -1,0 +1,188 @@
+{
+  "command": "ROOT=$(/home/lhl/mambaforge/envs/therock/bin/python3.12 -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=\"$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" LD_LIBRARY_PATH=\"$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json benchmarks/results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run.json",
+  "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+  "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+  "date": "2026-06-14",
+  "engine": "gguf",
+  "extra": {
+    "backend": "hip_gfx1100",
+    "bulk_prefill_attention_mode": "bulk",
+    "effective_use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "fastpath_safety": {
+      "allow_unsafe_qwen35moe_fastpaths": false,
+      "disabled_gemv_decode": false,
+      "disabled_wmma_prefill": false,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true,
+      "is_qwen35moe": true,
+      "reason": null,
+      "requested_gemv_decode": true,
+      "requested_wmma_prefill": true
+    },
+    "prefill_chunk_sizes_session": {
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 1025,
+      "full_attn_post": 1024,
+      "full_attn_query": 4096,
+      "full_attn_rope": 1024,
+      "linear": 1024,
+      "moe": 1024
+    },
+    "use_bulk_prefill": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true
+  },
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "measured_runs": 5,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The model/session is loaded once for the largest requested shape and reset between repetitions.",
+    "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
+    "Measured decode excludes HIP graph capture time when graph replay is enabled; graph capture is reported per first run of each shape."
+  ],
+  "performance_claim": false,
+  "persistent_session_load_seconds": 60.92174458806403,
+  "persistent_session_memory_summary": {
+    "hip_used_peak_sampled_bytes": 12887414784,
+    "hip_used_peak_sampled_gib": 12.002340316772461,
+    "notes": [
+      "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+      "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+      "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+    ],
+    "owned_session_peak_bytes": 26959237120,
+    "owned_session_peak_gib": 25.107746124267578,
+    "tracked_current_allocated_bytes_after_close": 0,
+    "tracked_current_allocated_bytes_before_close": 26959237120,
+    "tracked_current_allocated_gib_after_close": 0.0,
+    "tracked_current_allocated_gib_before_close": 25.107746124267578,
+    "tracked_peak_allocated_bytes": 26959237120,
+    "tracked_peak_allocated_gib": 25.107746124267578
+  },
+  "quant": "gguf_q4_k_s",
+  "raw_artifact_moved_to": "/tmp/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-raw.json",
+  "runtime_stack": "TheRock ROCm 7.13 clean env",
+  "schema": 1,
+  "source_commit": "c5c8bab1",
+  "status": "diagnostic_retained",
+  "summary_by_workload": {
+    "128K/128": {
+      "decode_tok_s_median": 58.0655587359795,
+      "decode_tok_s_samples": [
+        58.07580979140308,
+        58.061813522827194,
+        58.06963722493822,
+        58.04592591652949,
+        58.0655587359795
+      ],
+      "final_token_ids": [
+        1510,
+        1510,
+        1510,
+        1510,
+        1510
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 995.295038555332,
+      "prefill_tok_s_samples": [
+        995.096177637261,
+        995.295038555332,
+        995.276558621797,
+        995.7092866951624,
+        995.5654693374324
+      ],
+      "tracked_peak_allocated_gib_median": 25.107746124267578
+    },
+    "32K/128": {
+      "decode_tok_s_median": 86.4861487909198,
+      "decode_tok_s_samples": [
+        86.54821553962263,
+        86.54483197594517,
+        86.4861487909198,
+        86.47258590606333,
+        86.47925495411442
+      ],
+      "final_token_ids": [
+        234921,
+        234921,
+        234921,
+        234921,
+        234921
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1878.0519614824132,
+      "prefill_tok_s_samples": [
+        1879.5465711596364,
+        1880.6333512173746,
+        1878.0519614824132,
+        1877.7405405689012,
+        1875.0330623989798
+      ],
+      "tracked_peak_allocated_gib_median": 25.107746124267578
+    },
+    "4K/128": {
+      "decode_tok_s_median": 99.87326339315334,
+      "decode_tok_s_samples": [
+        100.20030259496993,
+        100.0588990390224,
+        99.87326339315334,
+        99.73366972320449,
+        99.6880986835786
+      ],
+      "final_token_ids": [
+        570,
+        570,
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2544.4753701858217,
+      "prefill_tok_s_samples": [
+        2559.7024984722098,
+        2552.0368604170526,
+        2540.647150500594,
+        2544.4753701858217,
+        2526.0642092640933
+      ],
+      "tracked_peak_allocated_gib_median": 25.107746124267578
+    },
+    "512/128": {
+      "decode_tok_s_median": 109.34736225801457,
+      "decode_tok_s_samples": [
+        109.50853423201993,
+        109.44952378218473,
+        109.3047997746128,
+        109.34736225801457,
+        109.28662729872994
+      ],
+      "final_token_ids": [
+        220,
+        220,
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2262.0969054372517,
+      "prefill_tok_s_samples": [
+        2262.0969054372517,
+        2294.077364705297,
+        2272.7969443249353,
+        2257.0151773079183,
+        2209.7935906313137
+      ],
+      "tracked_peak_allocated_gib_median": 25.107746124267578
+    }
+  },
+  "warmup_decode_tokens": 1,
+  "warmup_runs": 2,
+  "workloads": [
+    "512/128",
+    "4K/128",
+    "32K/128",
+    "128K/128"
+  ]
+}

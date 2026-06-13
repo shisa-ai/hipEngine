@@ -49,7 +49,7 @@ those rows use the same packed PARO architecture and remain the evidence for the
 numbers below.
 
 - INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
-- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-IQ4_XS.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~24 s for PARO packed on the same hardware) for the same decode-repack reason.
+- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
 - Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
 
 
@@ -140,25 +140,25 @@ With `-ub 512`:
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 hipEngine PARO row uses measured code commit `bf7e2a39` with ROCm 7.2.53211 and loads one resident max-context session for 1 warmup + 5 measured in-session repetitions per shape. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The `hipEngine GGUF Q4_K_S` and llama.cpp columns are retained from the last successful W7900 comparison rows; the current local GGUF Q4_K_S refresh is blocked because the available GGUF now exposes `blk.40.nextn.*` MTP tensors that the 40-layer GGUF loader does not yet accept.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 hipEngine PARO and GGUF rows use measured code commit `c5c8bab1` with a clean TheRock ROCm 7.13 stack (`HIP version: 7.13.26162-1140233ffe`) and load one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
 
 ### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2689.774** | 2258.847 | 2436.049 | 1816.927 |
-| 4K/128 | **2851.225** | 2576.673 | 2176.905 | 1705.093 |
-| 32K/128 | **2058.678** | 1893.967 | 1496.409 | 1128.554 |
-| 128K/128 | **1048.275** | 998.143 | 710.213 | 480.539 |
+| 512/128 | **2708.314** | 2262.097 | 2436.049 | 1816.927 |
+| 4K/128 | **2871.122** | 2544.475 | 2176.905 | 1705.093 |
+| 32K/128 | **2075.471** | 1878.052 | 1496.409 | 1128.554 |
+| 128K/128 | **1054.427** | 995.295 | 710.213 | 480.539 |
 
 ### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 116.696 | 109.152 | 85.487 | **127.515** |
-| 4K/128 | 106.837 | 100.048 | 87.375 | **120.163** |
-| 32K/128 | 92.648 | 86.774 | 76.994 | **98.073** |
-| 128K/128 | 60.542 | 57.954 | 57.341 | **64.478** |
+| 512/128 | 114.724 | 109.347 | 85.487 | **127.515** |
+| 4K/128 | 105.468 | 99.873 | 87.375 | **120.163** |
+| 32K/128 | 91.922 | 86.486 | 76.994 | **98.073** |
+| 128K/128 | 60.216 | 58.066 | 57.341 | **64.478** |
 
 ### Peak GiB
 
@@ -169,7 +169,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 | 32K/128 | 25.222 | 25.108 | 21.738 | **21.533** |
 | 128K/128 | 25.222 | 25.108 | 23.605 | **23.596** |
 
-hipEngine PARO W7900 row source: [`benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`](benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json). The PARO column is a 5-run median from one resident session allocated for the maximum requested context (`128K/128`), so the peak-memory column is a max-context persistent-session high-water mark rather than each shape's minimum allocation. Existing W7900 hipEngine GGUF and llama.cpp HIP/Vulkan rows are reused unchanged. The hipEngine GGUF Q4_K_S column is compared against the existing llama.cpp Q4_K_M baselines because that is the lineage of measured baselines we have on this host; cross-quant comparisons should be read as approximate.
+hipEngine W7900 row sources: PARO [`benchmarks/results/2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`](benchmarks/results/2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run-diagnostic.json), GGUF [`benchmarks/results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json`](benchmarks/results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json). Both columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`), so the peak-memory column is a max-context persistent-session high-water mark rather than each shape's minimum allocation. The TheRock userspace reports invalid/low `hipMemGetInfo` totals on this host, so hipEngine tracked allocator memory is the retained memory source. The hipEngine GGUF Q4_K_S column is compared against the existing llama.cpp Q4_K_M baselines because that is the lineage of measured baselines we have on this host; cross-quant comparisons should be read as approximate.
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 

@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-06-14
 
-- [diagnostic refresh] shisa-ai/Qwen3.6-35B-A3B-PARO-packed / w4_paro BF16 KV / W7900 README persistent 5-run sweep: previous PARO prefill `2718.497 / 2838.773 / 2074.699 / 1055.454` and decode `103.460 / 101.964 / 90.438 / 59.598 tok/s` -> measured-code prefill `2689.774 / 2851.225 / 2058.678 / 1048.275` and decode `116.696 / 106.837 / 92.648 / 60.542 tok/s`; canonical public model label moved to `shisa-ai/Qwen3.6-35B-A3B-PARO-packed`; GGUF Q4_K_S current refresh blocked on local `blk.40.nextn.*` MTP-bearing GGUF tensor map, so GGUF/llama.cpp comparison columns remain last-successful rows; `benchmarks/results/2026-06-14-w7900-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`.
+- [diagnostic refresh] shisa-ai/Qwen3.6-35B-A3B-PARO-packed + Qwen3.6-35B-A3B GGUF Q4_K_S / W7900 TheRock ROCm 7.13 README persistent 5-run sweep: previous PARO prefill/decode `2718.497/103.460`, `2838.773/101.964`, `2074.699/90.438`, `1055.454/59.598` -> current `2708.314/114.724`, `2871.122/105.468`, `2075.471/91.922`, `1054.427/60.216`; previous GGUF Q4_K_S `2258.847/109.152`, `2576.673/100.048`, `1893.967/86.774`, `998.143/57.954` -> current `2262.097/109.347`, `2544.475/99.873`, `1878.052/86.486`, `995.295/58.066`; rerun uses clean TheRock 7.13, 2 warmups + 5 measured, canonical public PARO label, and new GGUF MTP-block ignore; `benchmarks/results/2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`, `benchmarks/results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json`.
 
 ## 2026-06-13
 

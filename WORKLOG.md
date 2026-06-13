@@ -86354,3 +86354,53 @@ Validation:
 - Re-read `docs/SAMPLING.md` end to end.
 - `grep -nEi '\\b(day|days|week|weeks|hour|hours|time-based|2-4|1-2|1-3)\\b' docs/SAMPLING.md || true` -> no output.
 - `git diff --check`.
+
+## 2026-06-14 - W7900 TheRock README PARO/GGUF refresh
+
+Reran the W7900 README toplines under a clean TheRock ROCm 7.13 userspace after
+the GGUF MTP tensor-map fix.  The retained compiler version file was
+`/tmp/hipengine-hipcc-version-713.txt` with
+`HIP version: 7.13.26162-1140233ffe`; measured code commit was `c5c8bab1`.
+
+Before retaining the TheRock rows, attempted the GGUF Q4_K_S sweep under the
+system `/opt/rocm` 7.2 stack:
+
+`env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json benchmarks/results/2026-06-14-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json`
+
+Stopped that run after it reproduced the known W7900 GGUF prefill slowdown:
+partial medians were roughly `1552` tok/s at 512, `1717` at 4K, and `1362` at
+32K, versus prior TheRock rows around `2259`, `2577`, and `1894`.  Decode stayed
+in-family.  Decision: keep the system-ROCm run diagnostic-only and retain
+TheRock for the W7900 PARO/GGUF README comparison rows.
+
+Cache-warmed TheRock once per engine without `--require-cached-build`, then ran
+the retained GGUF Q4_K_S sweep:
+
+`ROOT=$(/home/lhl/mambaforge/envs/therock/bin/python3.12 -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json benchmarks/results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run.json`
+
+GGUF retained medians:
+- prefill tok/s: `2262.097 / 2544.475 / 1878.052 / 995.295` for
+  `512/128 / 4K/128 / 32K/128 / 128K/128`.
+- decode tok/s: `109.347 / 99.873 / 86.486 / 58.066`.
+- tracked peak GiB: `25.108 / 25.108 / 25.108 / 25.108`.
+- final token IDs stable: `[220]`, `[570]`, `[234921]`, `[1510]` by shape.
+
+Reran the canonical public packed PARO checkpoint under the same TheRock stack:
+
+`ROOT=$(/home/lhl/mambaforge/envs/therock/bin/python3.12 -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. timeout 21600 python3 scripts/qwen35_readme_sweep.py --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json benchmarks/results/2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run.json`
+
+PARO retained medians:
+- prefill tok/s: `2708.314 / 2871.122 / 2075.471 / 1054.427`.
+- decode tok/s: `114.724 / 105.468 / 91.922 / 60.216`.
+- tracked peak GiB: `23.098 / 25.113 / 25.222 / 25.222`.
+- final token IDs stable: `[9707]` for all four shapes.
+
+TheRock `hipMemGetInfo` reports invalid/low totals in this mixed userspace/kernel
+setup, so README/rollup memory uses hipEngine tracked allocator peaks.  Compacted
+retained JSON artifacts:
+- `benchmarks/results/2026-06-14-w7900-therock713-hipengine-gguf-q4ks-readme-persistent-5run-diagnostic.json`
+- `benchmarks/results/2026-06-14-w7900-therock713-hipengine-paro-packed-readme-persistent-5run-diagnostic.json`
+
+Raw sweep JSONs were moved to `/tmp/2026-06-14-w7900-therock713-hipengine-{gguf-q4ks,paro-packed}-readme-persistent-5run-raw.json`.
+Updated `README.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` with
+the TheRock rows and the GGUF MTP tensor-ignore note.
