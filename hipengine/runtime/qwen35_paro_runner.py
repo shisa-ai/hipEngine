@@ -1630,7 +1630,14 @@ class Qwen35ParoResidentSession:
                 self._set_slot_token_embedding(token_id, slot=slot)
                 self._set_slot_position(position, slot=slot)
                 hidden = self._run_layers(position=position, slot=slot, persist_aliases=False, stream=0)
-                results.append(self._sample_from_hidden(hidden) if sample else None)
+                if sample:
+                    slot_state = self._host_sampler_state_for_slot(slot)
+                    if self._host_sampling_params is not None and slot_state is not None:
+                        results.append(self._sample_from_hidden_host(hidden, self._host_sampling_params, slot_state))
+                    else:
+                        results.append(self._sample_from_hidden(hidden))
+                else:
+                    results.append(None)
             return tuple(results)
         finally:
             self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
@@ -3141,7 +3148,11 @@ class Qwen35ParoResidentSession:
                 DType.FP16,
                 self.device,
             )
-            results.append(self._sample_from_hidden(final_hidden))
+            slot_state = self._host_sampler_state_for_slot(slot)
+            if self._host_sampling_params is not None and slot_state is not None:
+                results.append(self._sample_from_hidden_host(final_hidden, self._host_sampling_params, slot_state))
+            else:
+                results.append(self._sample_from_hidden(final_hidden))
         return tuple(results)
 
     def _prefill_scratch_owner(self):
@@ -8282,6 +8293,21 @@ class Qwen35ParoResidentSession:
 
         self._host_sampling_params = params
         self._host_sampling_state = state
+        self._host_sampling_states_by_slot = None
+
+    def configure_host_sampler_rows(
+        self,
+        params: Any | None,
+        states_by_slot: Mapping[int, RowSamplingState] | None,
+    ) -> None:
+        """Configure per-slot host sampler state for c>N sampled batches."""
+
+        self._host_sampling_params = params
+        self._host_sampling_state = None
+        if params is None or states_by_slot is None:
+            self._host_sampling_states_by_slot = None
+        else:
+            self._host_sampling_states_by_slot = {int(slot): state for slot, state in states_by_slot.items()}
 
     def _project_logits_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
         paro_rmsnorm_out_fp16(
@@ -8341,6 +8367,12 @@ class Qwen35ParoResidentSession:
         self._sample_device_from_hidden(hidden)
         self.runtime.device_synchronize()
         return self._read_sample()
+
+    def _host_sampler_state_for_slot(self, slot: int) -> RowSamplingState | None:
+        states = getattr(self, "_host_sampling_states_by_slot", None)
+        if not states:
+            return None
+        return states.get(int(slot))
 
     def _sample_from_hidden_host(
         self,

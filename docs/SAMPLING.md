@@ -36,20 +36,22 @@ PARO and GGUF while native GPU sampling remains incomplete:
   device-resident greedy suffix. It has been split internally into logits
   projection plus argmax selection so `_sample_from_hidden(...)` can copy FP32
   logits to host for the functional sampler when configured.
-- c>N public requests can use the host sampler by serializing rows through the
-  c=1 PARO path. Native c>N stochastic sampling is still future work.
+- c>N PARO sampled requests use scheduler-owned row state, native packed prefill,
+  and the serial host-sampled decode bridge. GGUF still samples prompt rows
+  serially because its bring-up path has no c>N resident scheduler.
 - `PerRowSamplingParams` / `SamplerParamsBlock` carry the canonical scalar
   sampler metadata and logit-bias rows for scheduler/native-sampler shape.
   `ResidentBatchScheduler` now owns `RowSamplingState` rows, exposes them in
   decode-work order, and updates generated-token history through
-  `record_generated` / speculative accept paths; native c>N stochastic
-  execution remains S5/S6 work.
+  `record_generated` / speculative accept paths. PARO sampled batches clone
+  those states per physical slot for host token selection while keeping the
+  scheduler as the persistent history owner.
 - `lm_head.hip` has a row-wise top-k helper capped at `k <= 8`, useful for
   drafter/verifier diagnostics but not enough for normal user sampling.
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
-is fixed for the host-logits path. Remaining implementation work is native c>N
-stochastic execution, GPU sampler kernels, and exact GPU top-p.
+is fixed for the host-logits path. Remaining implementation work is native GPU
+sampler kernels and exact GPU top-p.
 
 ## Hardware lane for this work
 
@@ -126,7 +128,7 @@ models should either populate these fields or reject unsupported aliases.
 | `logit_bias` | Public/server/runtime | Token-id keyed bias map before filtering. | Medium |
 | `seed` / `row_seeds` | Public/server/runtime | Stable row RNG seed; `n > 1` rows diverge deterministically. | Low/Medium |
 | `stop` strings | Server post-trim + token lowering | Keep post-trim; lower one-token stops to `stop_token_ids` and multi-token stops to suffix-matched `stop_token_sequences`. | Medium |
-| `stop_token_ids` / `stop_token_sequences` | Public/runtime + scheduler state | Token stops finish PARO/GGUF host-sampled rows; native c>N execution still needs to consume scheduler stop metadata. | Medium |
+| `stop_token_ids` / `stop_token_sequences` | Public/runtime + scheduler state | Token stops finish PARO/GGUF host-sampled rows; PARO c>N sampled batches consume the same scheduler stop metadata; future native GPU sampler kernels must preserve parity. | Medium |
 | `logprobs` / `top_logprobs` | Public/server/runtime for host-logits paths | Return selected logprob and optional top candidates; completion `echo+logprobs` shifts generated-token offsets after a null-logprob prompt prefix. Streaming logprobs use a buffered detailed-generation SSE path while ordinary non-logprob streams remain live token/chunk streams. | High |
 
 Compatibility rule: if `temperature <= 0` and the request has no active logit
@@ -294,8 +296,8 @@ served tokenizer access is available, the server also lowers them to token stops
 - multi-token stops become `stop_token_sequences`;
 - PARO/GGUF host-sampled rows finish as soon as a generated token suffix matches
   a lowered sequence;
-- native c>N/GPU paths must consume the same scheduler stop metadata before they
-  can claim token-level stop parity.
+- PARO c>N sampled batches and future GPU sampler paths consume the same
+  scheduler stop metadata before claiming token-level stop parity.
 
 ## Host logits sampler path
 
@@ -411,16 +413,16 @@ fully vectorized at first:
 | S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO and GGUF c=1 plus serial multi-row host sampling.** |
 | S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | **Done for host sampler:** synthetic-logit processor tests and fixed-seed generator fixtures pass. |
 | S4: token-level stop | Lower stop token IDs/sequences where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Done for host sampler:** single-token IDs and multi-token server stop sequences finish PARO/GGUF host-sampled rows; native c>N/GPU execution still consumes this later. |
-| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Partial:** canonical sampler metadata and scheduler-owned `RowSamplingState` history are available in decode-work order; native c>N stochastic execution still open. |
+| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Done for PARO host sampler:** sampled prompt batches use scheduler-owned state, native packed prefill, and serial host-sampled decode; GGUF remains serial by design until it gets a c>N resident scheduler. |
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | GPU1 smoke passes CPU-reference filtering and fixed-seed determinism. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | GPU top-p matches CPU retain set on boundary fixtures and removes full-vocab D2H copies. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Done for host-logits server/library paths:** completion/chat response tests pass for selected logprob/top-logprobs cases, completion `echo+logprobs`, and buffered streaming logprobs. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
-S3 and S4 are complete for the host sampler. Native c>N/GPU execution still has
-to consume the same sampler/stop metadata; S6/S7 are performance work and should
-not block functional host support.
+S3, S4, S5, and S8 are complete for the current host-sampler/PARO scheduler
+scope. S6/S7 are native GPU performance work and should not block functional
+host support.
 
 ## Correctness and validation gates
 

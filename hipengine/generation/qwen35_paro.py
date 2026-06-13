@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from hipengine.generation.batch_scheduler import GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.registry import GenerationOutput, GenerationRequest, TokenLogprob, register_text_generator
 from hipengine.generation.sampling import (
     RowSamplingState,
@@ -91,21 +91,15 @@ class Qwen35ParoOneTokenGenerator:
             self.last_generation_outputs = (output,)
             return [output]
         if plan.mode is not SamplingMode.GREEDY_FAST:
-            self.last_batch_generation = {
-                "path": "serial_host_logits_sampler",
-                "batch_size": len(request.prompts),
-            }
             self.last_generation_outputs = tuple(
-                self._generate_one_sampled(
+                self._generate_batch_sampled(
                     runner,
-                    prompt,
+                    request.prompts,
                     request.max_tokens,
                     request=request,
-                    row_index=index,
                     ignore_eos=request.ignore_eos,
                     kv_policy=kv_policy,
                 )
-                for index, prompt in enumerate(request.prompts)
             )
             return list(self.last_generation_outputs)
         texts = self._generate_batch(
@@ -461,6 +455,168 @@ class Qwen35ParoOneTokenGenerator:
         }
         return ["".join(output_parts[request_id]) for request_id in request_ids]
 
+    def _generate_batch_sampled(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompts: tuple[str, ...],
+        max_tokens: int,
+        *,
+        request: GenerationRequest,
+        ignore_eos: bool,
+        kv_policy,
+    ) -> list[GenerationOutput]:
+        """Generate a sampled prompt list through scheduler-owned c>N state.
+
+        Native packed prefill handles the prompt rows together, while decode uses
+        the explicit serial slot bridge with per-slot host sampler state clones.
+        The scheduler remains the owner of persistent row history.
+        """
+
+        prompt_rows: list[list[int]] = []
+        for prompt in prompts:
+            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            if not prompt_ids:
+                raise ValueError("prompt produced no tokens")
+            prompt_rows.append([int(token) for token in prompt_ids])
+        batch_size = len(prompt_rows)
+        required_sequence_length = max(len(row) for row in prompt_rows) + max_tokens + 1
+        session_capacity = _session_capacity_for(required_sequence_length)
+        session = self._get_session(
+            runner,
+            max_sequence_length=session_capacity,
+            max_batch_size=batch_size,
+            kv_policy=kv_policy,
+        )
+        scheduler = ResidentBatchScheduler(capacity=batch_size)
+        sampling = _per_row_sampling_params(request)
+        request_ids = tuple(
+            scheduler.submit(
+                row,
+                max_new_tokens=max(0, max_tokens - 1),
+                sampling=sampling,
+                sampling_row_index=index,
+            )
+            for index, row in enumerate(prompt_rows)
+        )
+        admitted = scheduler.admit_pending()
+        if admitted != request_ids:
+            raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
+
+        output_steps: dict[int, list[Qwen35ParoAutoregressiveStepResult]] = {request_id: [] for request_id in request_ids}
+        generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
+        next_token_by_request: dict[int, int] = {}
+        packed_slabs = scheduler.next_compact_prefill_slabs(
+            chunk_size=max(len(row) for row in prompt_rows),
+            block_size=getattr(session, "block_size", 256),
+        )
+        prefill_slab_shapes: list[dict[str, Any]] = []
+        configure_rows = getattr(session, "configure_host_sampler_rows", None)
+        if not callable(configure_rows):
+            raise NotImplementedError("c>N sampled PARO batches require per-slot host sampler state")
+        try:
+            for slab in packed_slabs:
+                prefill_slab_shapes.append(
+                    {
+                        "request_ids": list(slab.request_ids),
+                        "slot_ids": list(slab.physical_slot_ids),
+                        "rows": slab.rows,
+                        "request_count": slab.request_count,
+                        "block_count": slab.block_count,
+                    }
+                )
+                configure_rows(request, _slot_sampler_state_clones(scheduler, slab.request_ids, slab.physical_slot_ids))
+                results = session.prefill_native_packed(slab, sample=True)
+                if len(results) != slab.request_count:
+                    raise RuntimeError(
+                        "packed prefill returned "
+                        f"{len(results)} results for {slab.request_count} requests"
+                    )
+                generated: list[GeneratedToken] = []
+                for request_id, result in zip(slab.request_ids, results, strict=True):
+                    if result is None:
+                        raise RuntimeError("packed native prefill did not produce next-token logits")
+                    output_steps[request_id].append(result)
+                    generated_ids[request_id].append(int(result.token_id))
+                    finished = max_tokens <= 1 or _is_finished(
+                        session.tokenizer,
+                        generated_ids[request_id],
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=request.stop_token_ids,
+                        stop_token_sequences=request.stop_token_sequences,
+                    )
+                    if finished:
+                        generated.append(GeneratedToken(request_id, result.token_id, finished=True))
+                    else:
+                        scheduler.sampler_state(request_id).observe(result.token_id)
+                        next_token_by_request[request_id] = int(result.token_id)
+                if generated:
+                    for done in scheduler.record_generated(generated):
+                        next_token_by_request.pop(done.request_id, None)
+
+            decode_steps = 0
+            serial_decode_fallback = False
+            while next_token_by_request:
+                work = scheduler.next_decode_work()
+                if work is None:
+                    raise RuntimeError("scheduler did not emit decode work")
+                request_ids_for_step = tuple(
+                    request_id for request_id in work.request_ids if request_id in next_token_by_request
+                )
+                if not request_ids_for_step:
+                    raise RuntimeError("scheduler decode work did not include runnable requests")
+                token_ids_for_step = [next_token_by_request[request_id] for request_id in request_ids_for_step]
+                positions_for_step = [
+                    scheduler.active_batch.requests[request_id].context_len
+                    for request_id in request_ids_for_step
+                ]
+                slots_for_step = [scheduler.active_batch.slot_for(request_id) for request_id in request_ids_for_step]
+                configure_rows(request, _slot_sampler_state_clones(scheduler, request_ids_for_step, slots_for_step))
+                results = session.step_batch_serial(
+                    token_ids_for_step,
+                    positions=positions_for_step,
+                    slots=slots_for_step,
+                    sample=True,
+                )
+                serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
+                generated = []
+                for request_id, result in zip(request_ids_for_step, results, strict=True):
+                    if result is None:
+                        raise RuntimeError("decode step did not produce next-token logits")
+                    output_steps[request_id].append(result)
+                    generated_ids[request_id].append(int(result.token_id))
+                    finished = _is_finished(
+                        session.tokenizer,
+                        generated_ids[request_id],
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=request.stop_token_ids,
+                        stop_token_sequences=request.stop_token_sequences,
+                    )
+                    generated.append(GeneratedToken(request_id, result.token_id, finished=finished))
+                    if not finished:
+                        next_token_by_request[request_id] = int(result.token_id)
+                completed = scheduler.record_generated(generated)
+                for done in completed:
+                    next_token_by_request.pop(done.request_id, None)
+                decode_steps += 1
+        finally:
+            configure_rows(None, None)
+
+        batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=False)
+        self.last_batch_generation = {
+            "path": "scheduler_native_packed_prefill_serial_host_sampler_decode",
+            "batch_size": batch_size,
+            "request_ids": list(request_ids),
+            "prompt_lengths": [len(row) for row in prompt_rows],
+            "packed_prefill_slabs": prefill_slab_shapes,
+            "decode_steps": decode_steps,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": serial_decode_fallback,
+            "native_compact_prefill": bool(getattr(batch_execution, "native_compact_prefill", False)),
+            "native_caware_decode": False,
+            "throughput_claim_eligible": False,
+        }
+        return [_generation_output_from_steps(session.tokenizer, output_steps[request_id]) for request_id in request_ids]
+
     def _stream_one(
         self,
         runner: Qwen35ParoNextTokenRunner,
@@ -616,6 +772,44 @@ class Qwen35ParoOneTokenGenerator:
         self._session_capacity = 0
         self._session_batch_size = 0
         self._session_kv_key = None
+
+
+def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams:
+    return PerRowSamplingParams(
+        temperature=request.temperature,
+        top_k=request.top_k,
+        top_p=request.top_p,
+        min_p=request.min_p,
+        repetition_penalty=request.repetition_penalty,
+        presence_penalty=request.presence_penalty,
+        frequency_penalty=request.frequency_penalty,
+        logit_bias=request.logit_bias,
+        seed=request.seed,
+        stop_tokens=request.stop_token_ids,
+        stop_token_sequences=request.stop_token_sequences,
+    )
+
+
+def _slot_sampler_state_clones(
+    scheduler: ResidentBatchScheduler,
+    request_ids: tuple[int, ...] | list[int],
+    slots: tuple[int, ...] | list[int],
+) -> dict[int, RowSamplingState]:
+    return {
+        int(slot): _clone_row_sampling_state(scheduler.sampler_state(int(request_id)))
+        for request_id, slot in zip(request_ids, slots, strict=True)
+    }
+
+
+def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
+    return RowSamplingState(
+        prompt_tokens=state.prompt_tokens,
+        seed=state.seed,
+        request_id=state.request_id,
+        row_index=state.row_index,
+        generated_tokens=tuple(state.generated_tokens),
+        step_index=state.step_index,
+    )
 
 
 def _generation_output_from_steps(

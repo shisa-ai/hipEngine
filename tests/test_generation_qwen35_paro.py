@@ -431,6 +431,78 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
     }
 
 
+def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) -> None:
+    calls = []
+    token_rows = {"alpha": [10, 11], "beta": [20]}
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: None,
+            decode=lambda ids: {100: "A", 101: "B", 200: "C", 201: "D"}[int(ids[0])],
+        )
+        block_size = 256
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length, kwargs.get("max_batch_size")))
+            self.max_sequence_length = max_sequence_length
+            self.max_batch_size = kwargs.get("max_batch_size", 1)
+
+        def configure_host_sampler_rows(self, params, states_by_slot):
+            calls.append(
+                (
+                    "configure_host_sampler_rows",
+                    None if params is None else params.temperature,
+                    None
+                    if states_by_slot is None
+                    else {slot: tuple(state.generated_tokens) for slot, state in states_by_slot.items()},
+                )
+            )
+
+        def prefill_native_packed(self, slab, *, sample: bool = True):
+            calls.append(("prefill_native_packed", slab.request_ids, slab.physical_slot_ids, sample))
+            return tuple(
+                _result(100 + request_id, {0: "A", 1: "B"}[request_id])
+                for request_id in slab.request_ids
+            )
+
+        def step_batch_serial(self, token_ids, *, positions, slots, sample: bool = True):
+            calls.append(("step_batch_serial", tuple(token_ids), tuple(positions), tuple(slots), sample))
+            return (_result(200, "C"), _result(201, "D"))
+
+        def batch_execution_metadata(self, *, scheduler_owned: bool = False, native_decode: bool = False):
+            calls.append(("batch_execution_metadata", scheduler_owned, native_decode))
+            return SimpleNamespace(native_compact_prefill=True)
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    out = generator.generate(_request(prompts=("alpha", "beta"), max_tokens=2, temperature=0.7, seed=5))
+
+    assert out == ["AC", "BD"]
+    assert calls == [
+        ("init", runner, 4096, 2),
+        ("configure_host_sampler_rows", 0.7, {0: (), 1: ()}),
+        ("prefill_native_packed", (0, 1), (0, 1), True),
+        ("configure_host_sampler_rows", 0.7, {0: (100,), 1: (101,)}),
+        ("step_batch_serial", (100, 101), (2, 1), (0, 1), True),
+        ("configure_host_sampler_rows", None, None),
+        ("batch_execution_metadata", True, False),
+    ]
+    assert generator.last_batch_generation["path"] == "scheduler_native_packed_prefill_serial_host_sampler_decode"
+    assert generator.last_batch_generation["native_compact_prefill"] is True
+
+
 def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:
     calls = []
 

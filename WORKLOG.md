@@ -86871,3 +86871,24 @@ transition text.
 Validation:
 - `python3 - <<'PY'` coverage check over `docs/AGENTIC.md` -> `1208 lines` and required hard-close/default/reference sections present.
 - `git diff --check -- docs/AGENTIC.md`.
+
+## 2026-06-14 - S5 PARO sampled prompt batches use scheduler state
+
+Implemented the S5 PARO c>N sampled batch path.  Non-greedy prompt batches now
+use `ResidentBatchScheduler`, native packed prefill, and the serial decode bridge
+with per-slot host sampler state clones instead of serializing every prompt
+through the c=1 sampled path.  Scheduler-owned `RowSamplingState` remains the
+persistent history owner: prefill seed tokens update sampler history without
+advancing scheduler decode positions, and decoded tokens flow through
+`record_generated`.  Runtime session support now includes
+`configure_host_sampler_rows()` for c>N host sampling.
+
+Updated `docs/SAMPLING.md`: S5 is marked done for the PARO host-sampler scheduler
+scope; remaining implementation work is S6 GPU top-k/temperature kernels and S7
+exact GPU top-p.  GGUF remains serial by design until it gains a c>N resident
+scheduler.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `13 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds tests/test_server_api.py tests/test_sampling.py tests/test_llm_generate.py -q` -> passed (`75 passed`).
