@@ -86219,3 +86219,35 @@ Added the remaining small benchmark artifacts that were useful to retain plus
 `scripts/llamacpp_vulkan_mtp_token_sweep.py`, the exact-token llama.cpp Vulkan
 MTP sweep helper. Left `.handoff/` untracked because it contains WIP handoff
 patches and diagnostic scratch outputs rather than rollup artifacts.
+
+## 2026-06-14 - c1 MoE dispatcher adoption no-hold
+
+Reviewed whether the MTP reduced-DAG MoE C dispatcher should be extended to
+regular c=1 AR decode.  Baseline W7900 command:
+
+`HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/qwen35_concurrency_decode_sweep.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --concurrencies 1 --reps 3 --work-dir /tmp/hipengine-c1-baseline-w7900-20260614 --json /tmp/hipengine-c1-baseline-w7900-20260614-summary.json`
+
+Baseline result: c=1 graph-replay decode median `116.130 tok/s` over
+`116.080, 116.224, 116.130`.
+
+Implemented a temporary c=1 C-dispatch branch locally: added the single-row
+combine function pointer, routed linear-attention c=1 through the decode
+small-batch shared-expert sequence, and guarded alternate c=1 router/fused
+rotate modes back to Python.  Exact off/on smoke command used
+`scripts/qwen35_e2e_correctness.py --prompt-length 32 --max-new-tokens 8`; both
+paths passed, token IDs matched, and max logit absolute difference was `0.0`.
+
+Performance did not hold on the retained graph-replay row:
+- c=1 C-dispatch default: median `116.267 tok/s` over
+  `116.176, 116.457, 116.267`.
+- same patched tree with `HIPENGINE_MOE_C1_C_DISPATCH=0`: median
+  `116.606 tok/s` over `116.606, 116.897, 116.024`.
+
+Decision: no-hold and reverted before commit.  Reason: regular c=1 retained
+decode is graph-replay based, so the Python/ctypes MoE dispatch sequence is paid
+during graph capture, not the steady replay window.  A c=1 C-side launcher is
+not a real retained speed lever unless graph replay is unavailable.  Prefill was
+also reviewed: normal native prefill enters grouped compact MoE for multi-token
+MoE layers, so selected c=1 MoE dispatch work does not improve the main prefill
+path.  Future prefill wins belong in the grouped-MoE/reduced-DAG lane, not this
+c=1 selected-MoE dispatcher.
