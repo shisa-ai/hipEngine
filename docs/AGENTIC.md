@@ -41,9 +41,11 @@ Already available or recently added:
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, stop token ids,
   stop token sequences, `seed`, and per-row seeds.
-- Non-streaming completion/chat logprobs are partially supported through the
-  host-logits metadata path: completions accept `logprobs: N`; chat accepts
-  `logprobs: true` plus optional `top_logprobs: N`.
+- Detailed logprob metadata is available through the host-logits metadata path:
+  completions accept `logprobs: N`; chat accepts `logprobs: true` plus optional
+  `top_logprobs: N`; completion `echo+logprobs` returns the echoed prompt as a
+  prefix entry with `null` prompt logprob; streaming completion/chat logprobs use
+  a buffered detailed-generation path rather than live token streaming.
 - Tokenizable OpenAI `stop` strings lower to `stop_token_ids` or
   `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
   while responses still use post-trimming for consistency. Native c>N/GPU paths
@@ -67,12 +69,16 @@ Known baseline limitations:
 - Public finish metadata is still coarse (`stop`, `length`, `tool_calls`) and
   does not explain budget pressure, forced tokens, cancellation, cache behavior,
   or per-phase token counts.
-- Streaming logprobs and completion `echo+logprobs` are explicitly unsupported
-  until token metadata can be carried chunk-by-chunk / through prompt echo.
+- Streaming logprobs are buffered detailed responses, not live per-token engine
+  streams. Completion `echo+logprobs` does not compute real prompt-token
+  logprobs yet; the echoed prompt is represented as a prefix entry with `null`
+  logprob.
 - Streaming is content-first; metadata deltas for reasoning/answer/tool token
   counts, timing, cache state, and budget pressure are not first-class yet.
 - Resident session reuse needs an explicit commit policy before hidden reasoning
   or failed/truncated tool-call attempts can safely be retained across turns.
+- Public agent/runtime capability discovery is not exposed yet. `/health` and
+  `/v1/models` are minimal; `/metrics` is opt-in Prometheus output.
 - Server startup supports one loaded model at a time; routing, multiple resident
   models, tensor parallelism, and model-family fallback are not yet designed.
 
@@ -182,25 +188,91 @@ Server responses can expose this under an extension field such as
 Add one ordered stack for all token-selection policy. It should work on host
 logits first and later be mirrored by GPU kernels for promoted paths.
 
-Required processors:
+Current code reality:
 
-1. static OpenAI-style `logit_bias`;
-2. repetition/presence/frequency penalties (already in the host sampler);
-3. suppress token ids;
-4. min-token / suppress-EOS until a visible answer/tool call exists;
-5. stop DFA state update;
-6. forced-token queue;
-7. dynamic budget processors, including thinking soft-close;
-8. grammar/JSON/tool-call constraints.
+- `hipengine.generation.sampling.select_token()` already applies finite-logit
+  cleanup, OpenAI-style token-id `logit_bias`, repetition/presence/frequency
+  penalties, top-k/top-p/min-p filtering, deterministic row seeds, and logprob
+  summaries on the host path.
+- PARO/GGUF stop tokens and stop token sequences are checked after token
+  selection in model-specific loops, then server post-trimming keeps OpenAI
+  `stop` string responses consistent.
+- `PerRowSamplingParams` / `SamplerParamsBlock` already carry per-row
+  `logit_bias`, penalties, stops, seeds, and temperature fields for scheduler
+  integration.
+- Standalone GPU sampler-family processor kernels exist for logit bias and
+  penalties, but they are not routed into normal PARO/GGUF generation yet.
+
+Required pre-selection processors, in order:
+
+1. normalize non-finite logits to the documented host-sampler semantics;
+2. apply static OpenAI-style `logit_bias`;
+3. apply repetition/presence/frequency penalties;
+4. apply suppress-token ids and min-token / suppress-EOS policy;
+5. apply dynamic budget processors, including thinking soft-close bias;
+6. apply grammar/JSON/tool-call masks or sparse biases;
+7. apply the forced-token queue as the final override when a delimiter/grammar
+   sequence is already in progress;
+8. run argmax or sampling.
+
+Required post-accept state updates:
+
+1. observe the selected token in the row RNG/history state;
+2. update stop DFA suffix state;
+3. update grammar/tool/reasoning phase state and token counters;
+4. populate telemetry for active processors, suppressed/forced tokens, budget
+   pressure, and why a request left the fast path.
 
 Implementation notes:
 
 - Keep a pure, testable planner that decides whether processors require
-  `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or a future `GPU_SAMPLE` path.
+  `GREEDY_FAST`, `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or a future
+  `GPU_SAMPLE` path.
 - Greedy-equivalent requests with no active processors must still take the graph
   fast path.
+- Stop tokens are emitted by the model and then terminate/trim the response; do
+  not implement ordinary stop sequences by suppressing the stop token unless the
+  requested mode is an explicit grammar/constraint mode.
 - Processors should emit metadata: names active, tokens suppressed/forced,
   budget pressure, and why a request left the fast path.
+
+### Speculative/MTP sampler compatibility
+
+Speculative decode must use the same effective token-selection policy as the AR
+path before it can be advertised for agent requests with custom sampling policy.
+
+Current code reality:
+
+- Native MTP draft proposals use raw/capped draft-vocab argmax. Exactness is
+  preserved only because accepted draft tokens are committed after target-model
+  verification over the full vocab.
+- The scheduler/speculative accept path accepts candidates by comparing draft
+  candidate tokens to target `top1`/accept-summary output; it does not currently
+  apply `logit_bias`, penalties, dynamic masks, forced tokens, grammar
+  constraints, or stochastic RNG state to target verification.
+
+Default rule:
+
+- Speculative/MTP routes are allowed only for `GREEDY_FAST` requests with no
+  active pre-selection processors and no logprob/metadata requirement that would
+  force processed logits.
+- If `logit_bias`, penalties, suppressions, forced tokens, grammar constraints,
+  thinking budget processors, `temperature > 0`, or requested logprobs are
+  active, route to AR `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE` until the
+  verifier can produce the same processed target selection per verify row.
+
+Future exact speculative support:
+
+- Target verification must run the same processor stack over each root/candidate
+  row before producing target top-1 or sampled-token decisions.
+- Logit bias does not need to affect draft proposals for correctness, because
+  target verification can reject biased-away candidates, but applying compatible
+  hard masks/biases to the proposer is important for acceptance density.
+- Hard constraints and forced-token queues must either constrain the proposer or
+  reject illegal draft tokens before any KV/session commit.
+- Stochastic speculative sampling requires explicit RNG-state ownership and
+  probability-ratio semantics; do not treat draft/target argmax equality as
+  compatible with sampled requests.
 
 ### DFA / constraint engine
 
@@ -221,6 +293,17 @@ do not block P1 on full JSON Schema support.
 ### Session/cache control
 
 Resident-session APIs need explicit commit semantics before long-lived agent use.
+The request API should use a `session` object:
+
+```json
+{
+  "session": {
+    "id": "sess_...",
+    "commit": "append_visible_only"
+  }
+}
+```
+
 The generation result should tell the session layer what to retain:
 
 ```text
@@ -233,6 +316,17 @@ append_prompt_only  # retain admitted prompt/prefix, drop generated tail
 Visible-only commit may require re-prefilling the visible transcript after
 generation. That cost is acceptable compared with retaining hidden reasoning or
 malformed partial tool calls in KV.
+
+Default policy:
+
+- stateless requests without `session.id`: `append_none`;
+- stateful chat/tool sessions: `append_visible_only`;
+- raw transcript/debug sessions must explicitly request `append_all`;
+- `length`, `cancelled`, `deadline_exceeded`, malformed tool-call, invalid JSON,
+  and synthetic-token finishes downgrade `append_visible_only` to
+  `append_prompt_only` unless the request explicitly chose `append_all`;
+- synthetic text is never committed unless a future explicit debug option says
+  otherwise.
 
 ## Reasoning budget / soft-close design
 
@@ -352,14 +446,16 @@ only renders prompt hints.
 
 | Effort | Hard think cap | Soft-close window | Min visible answer reserve | Intended use |
 | --- | ---: | ---: | ---: | --- |
-| `none` / `off` / `disabled` | 0 | 0 | normal output budget | Pre-close thinking and answer directly. |
+| `none` / `off` / `disabled` | 0 | 0 | all generated tokens | Pre-close thinking and answer directly. |
 | `minimal` | 256 | 64 | 256 | Tiny arithmetic / one-step tool decisions. |
 | `low` | 512 | 128 | 512 | Coding-agent default when quick tool calls are expected. |
 | `medium` | 4,096 | 512 | 1,024 | Non-trivial debugging or synthesis. |
 | `high` | 16,384 | 1,024 | 2,048 | Deep planning / complex code changes. |
 | `xhigh` / `max` | 32,768 | 2,048 | 4,096 | Rare long-horizon reasoning; still bounded. |
 
-Clamp these defaults to the actual generation budget:
+Clamp these defaults to the actual generation budget. If the final hard think cap
+is `0`, skip the general formula and reserve the full generation budget for
+visible answer/tool-call output.
 
 ```text
 effective_generation_budget =
@@ -381,6 +477,24 @@ soft_close_starts_at =
 Manual request fields override the table before clamping. `xhigh` / `max` is not
 unbounded; users who want unbounded thinking must explicitly disable the hard
 budget or set a larger `thinking.max_tokens` with enough `max_tokens` / context.
+
+Precedence and disabling rules:
+
+1. Server defaults are lowest precedence.
+2. `chat_template_kwargs` aliases are compatibility hints.
+3. Top-level convenience fields (`enable_thinking`, `reasoning_effort`,
+   `thinking_token_budget`) override template aliases.
+4. Nested `thinking` / `reasoning` objects override top-level convenience fields.
+5. In the final merged control object, `enabled=false`, `type=none/off/disabled`,
+   or an effort value of `none/off/disabled` wins over a non-disabling effort.
+6. `allow_unbounded=false` by default. A request may disable the hard think cap
+   only when it explicitly sets `thinking.allow_unbounded=true`; even then,
+   `min_answer_tokens` remains active unless the request explicitly sets it to
+   `0`.
+
+Current server behavior is weaker than this target: it accepts these control
+surfaces only to render prompt/template hints or pre-close Qwen thinking. It does
+not yet lower them into token-level decode policy.
 
 ### Hard-close sequence and overrides
 
@@ -444,16 +558,21 @@ is more robust and keeps the model in control of the final answer.
 
 ### Logit-processor mechanics
 
-Implement thinking control as one policy in the general processor stack:
+Implement thinking control as one policy in the general processor stack. The
+pre-selection half is:
 
 1. Start from FP32 logits.
 2. Apply static OpenAI-style `logit_bias`.
 3. Apply penalties and suppress-token constraints.
 4. Apply min-token / suppress-EOS policy when no visible answer exists yet.
 5. Apply dynamic budget processors, including thinking soft-close.
-6. Apply forced-token queue if a delimiter/grammar sequence is already in
+6. Apply grammar/tool masks or sparse biases.
+7. Apply forced-token queue if a delimiter/grammar sequence is already in
    progress.
-7. Run argmax or sampling.
+8. Run argmax or sampling.
+
+After accepting the token, update reasoning phase, answer reserve accounting,
+history penalties, stop/grammar DFA state, and telemetry.
 
 For soft-close, compute a ramp from remaining think/answer budget. As the soft
 window is consumed, add a sparse positive bias to viable first tokens of
@@ -564,8 +683,10 @@ Exit gates:
 
 Implement:
 
-- add opt-in streaming metadata under an extension field such as `usage_delta`,
-  `hipengine`, or a dedicated event type;
+- add opt-in streaming metadata via
+  `stream_options: {"include_hipengine": true}`;
+- put request-level timing/cache metadata in a top-level `hipengine` object on
+  SSE payloads, and per-choice phase/token metadata in `choices[].hipengine`;
 - stream phase transitions (`think`, `closing_think`, `answer`, `tool_call`,
   `structured`, `done`);
 - include TTFT, prefill ms, decode tok/s, cache hit/miss, KV bytes, stop reason,
@@ -581,10 +702,13 @@ Exit gates:
 
 Implement:
 
-- `/tokenize` and `/detokenize` using the served tokenizer;
-- `/count_tokens` for raw text and chat messages after server template rendering;
-- `/fit_context` that returns prompt tokens, admitted context, effective
-  `max_tokens`, chat default, truncation/clear policy, and what would be dropped.
+- `POST /v1/hipengine/tokenize` and `POST /v1/hipengine/detokenize` using the
+  served tokenizer;
+- `POST /v1/hipengine/count_tokens` for raw text and chat messages after server
+  template rendering;
+- `POST /v1/hipengine/fit_context` that returns prompt tokens, admitted context,
+  effective `max_tokens`, chat default, truncation/clear policy, and what would
+  be dropped.
 
 Exit gates:
 
@@ -597,7 +721,8 @@ Exit gates:
 Implement:
 
 - request-level cancellation token checked by scheduler/decode loops;
-- deadline timestamps lowered from HTTP request or server defaults;
+- `timeout_ms` as the public relative-deadline field plus a server default
+  `--request-timeout-ms`; internally lower to a monotonic deadline timestamp;
 - cleanup that releases active rows/session reservations on cancel/deadline;
 - finish details with `cancelled=true` or `deadline_exceeded=true`.
 
@@ -625,7 +750,9 @@ Exit gates:
 
 - processed-argmax fixtures prove deterministic tie-breaking;
 - greedy-equivalent requests still use graph/argmax fast path;
-- host sampler tests cover processor ordering.
+- host sampler tests cover processor ordering;
+- speculative/MTP routes are disabled or clearly rejected for active processors
+  until target verification applies the same processed token-selection policy.
 
 #### P1.2 Forced-token queue
 
@@ -715,10 +842,16 @@ Exit gates:
 
 Implement:
 
-- persistent generation handles for resumable length stops;
+- persistent generation handles for resumable length stops, returned as
+  `continuation_id` and resumed by sending the same `continuation_id` on a
+  follow-up request;
 - handle metadata: model id, session/cache reference, decode state, tokenizer,
   sampler params, seed/RNG state, and allowed continuation budget;
-- expiration and cancellation cleanup.
+- single-use handles by default, with an explicit `reuse=true` debug option only
+  after forkable cache semantics exist;
+- expiration and cancellation cleanup. Default TTL: 15 minutes or server
+  shutdown, whichever comes first. Handles are scoped to model id, tokenizer id,
+  auth principal/API key, and session id.
 
 Exit gates:
 
@@ -737,7 +870,12 @@ Implement:
 
 - decode-time enforcement for `tool_choice="none"`, `"auto"`, `"required"`, and
   a specific function name;
-- exactly-one-call or multi-call policy decided explicitly;
+- default strict-agent policy: at most one tool call per assistant turn;
+  `tool_choice="required"` requires exactly one valid call, a specific function
+  choice requires exactly one valid call to that function, and `auto` may return
+  zero or one valid call;
+- multi-call output is allowed only when the request explicitly sets
+  `parallel_tool_calls=true` or a future `tool_policy.max_calls > 1`;
 - structured refusal/error when a required call cannot be produced under budget.
 
 Exit gates:
@@ -752,8 +890,14 @@ Implement:
 
 - parse generated tool call JSON into `{name, arguments}`;
 - validate tool name and arguments against request-provided JSON schema;
-- choose and document invalid-call policy: return error detail, retry with
-  constrained repair, or downgrade to text.
+- compatibility mode keeps today's behavior: malformed `<tool_call>` JSON is
+  ordinary assistant text;
+- strict mode returns a normal HTTP response with no successful `tool_calls` and
+  `finish_details.reason` set to `invalid_tool_call`,
+  `tool_required_not_satisfied`, or `schema_violation`; transport-level HTTP
+  errors are reserved for invalid request schemas, unsupported parameters, and
+  server failures;
+- retry/repair is a later explicit policy, not the default.
 
 Exit gates:
 
@@ -829,9 +973,11 @@ Expose explicit controls instead of relying on implicit resident-session behavio
 
 Implement:
 
-- request/session commit modes: `append_all`, `append_visible_only`,
-  `append_none`, `append_prompt_only`;
+- request/session commit modes under `session.commit`: `append_all`,
+  `append_visible_only`, `append_none`, `append_prompt_only`;
 - default policy that does not retain hidden reasoning unless explicitly asked;
+- automatic downgrade from `append_visible_only` to `append_prompt_only` for
+  length/cancel/deadline/invalid-structure/synthetic-output finishes;
 - finish metadata recording the selected cache action.
 
 Exit gates:
@@ -839,6 +985,8 @@ Exit gates:
 - hidden `<think>` tokens and malformed/truncated tool-call attempts are not
   retained under `append_visible_only`;
 - `append_all` remains available for users who want raw transcript continuity;
+- stateless requests without `session.id` do not accidentally retain generated
+  tails;
 - state accounting remains exact across turns.
 
 #### P3.2 Visible-only re-prefill path
@@ -953,14 +1101,18 @@ Exit gates:
 
 #### P4.4 Logprobs parity
 
-Current state: non-streaming completion/chat logprobs are partially implemented
-through the host-logits metadata path. Remaining work is parity and native-path
-coverage.
+Current state: host-logits logprobs are implemented for non-streaming
+completions/chat, buffered streaming completions/chat, and completion
+`echo+logprobs` with the echoed prompt represented as one prefix entry with
+`null` prompt logprob. Remaining work is true prompt-token logprobs, native-path
+coverage, and live token-stream parity.
 
 Implement:
 
-- streaming `logprobs` / `top_logprobs` deltas;
-- completion `echo+logprobs` prompt-token metadata;
+- optional live streaming `logprobs` / `top_logprobs` deltas that do not buffer
+  the whole response when the engine can provide token metadata incrementally;
+- completion `echo+logprobs` prompt-token metadata with real prompt-token
+  logprobs when the model/session can score prompt tokens;
 - clear rejection/fallback policy for paths that cannot provide logprobs;
 - native/GPU sampler logprob output when those paths are promoted.
 
@@ -992,7 +1144,9 @@ Exit gates:
 
 Implement:
 
-- `/v1/hipengine/capabilities` or enriched `/v1/models` metadata;
+- `GET /v1/hipengine/capabilities` as the canonical manifest; keep `/v1/models`
+  OpenAI-minimal, with only optional links/summary fields that do not require
+  clients to parse model-list internals;
 - context sizes, effective chat default, tokenizer name, chat template family,
   tool support, reasoning controls, sampling modes, logprobs support,
   continuation support, cache/session support, loaded-model count, routing

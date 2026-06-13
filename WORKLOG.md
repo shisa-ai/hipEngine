@@ -87003,3 +87003,24 @@ Validation on GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`):
 - `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `3 passed`.
 - `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `7 passed`.
 - Post-doc targeted bundle: `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/kernels/hip_gfx1100/sampling/__init__.py hipengine/kernels/hip_gfx1151/__init__.py tests/test_gpu_sampler_kernel.py && python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q && HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed` + `7 passed`.
+
+## 2026-06-14 - AGENTIC roadmap code-reality cleanup
+
+Updated `docs/AGENTIC.md` against the current server/generation code.  The doc
+now records buffered streaming logprob and completion `echo+logprobs` support,
+keeps real prompt-token logprobs/live logprob streaming as remaining work,
+separates pre-selection logit processors from post-accept DFA/telemetry updates,
+and adds the MTP/speculative sampler rule: speculative routes stay restricted to
+`GREEDY_FAST` requests until verifier-side processed token selection applies the
+same logit bias, penalties, constraints, forced tokens, and RNG semantics as AR.
+
+Filled in previously underspecified agent API defaults: `stream_options` opt-in
+metadata shape, `/v1/hipengine/*` diagnostics endpoints, `timeout_ms`,
+thinking-budget precedence and `allow_unbounded`, continuation TTL/single-use
+scope, strict tool-call policy, `session.commit` defaults/downgrades, and
+`GET /v1/hipengine/capabilities` as the canonical manifest endpoint.
+
+Validation:
+- `git diff --check -- docs/AGENTIC.md`.
+- `python3 - <<'PY' ... required-section coverage check ... PY` -> `lines=1363`, no missing sections.
+- `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_echo_logprobs_shift_generated_offsets tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_chat_completion_accepts_reasoning_effort_controls tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options tests/test_sampling.py::test_sampler_plan_uses_processed_argmax_for_logprobs tests/test_sampling.py::test_stop_token_sequences_are_active_processors -q` -> `9 passed`.
