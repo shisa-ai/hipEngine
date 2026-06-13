@@ -57,8 +57,10 @@ PARO and GGUF while native GPU sampling remains incomplete:
   token id/logprob, retained-count reporting, and optional bounded-candidate
   logprobs. `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` routes supported c=1 PARO
   temperature requests through these kernels with tiny selected-id/logprob/logit
-  readbacks; c>N PARO, GGUF, `top_logprobs`, and unsupported filter
-  combinations still use the host sampler.
+  readbacks; a GPU1 synthetic resident-session smoke covers full-vocab,
+  top-k+processor, and top-p route dispatch against CPU references. c>N PARO,
+  GGUF, `top_logprobs`, and unsupported filter combinations still use the host
+  sampler.
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
 is fixed for the host-logits path. Remaining implementation work is native GPU
@@ -384,7 +386,8 @@ HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. \
 ```
 
 The test above is the current standalone native sampler unit/integration
-coverage. For profiler evidence, prebuild JIT libraries before `rocprofv3` and
+coverage plus a synthetic resident-session c=1 route smoke for the opt-in PARO
+native sampler. For profiler evidence, prebuild JIT libraries before `rocprofv3` and
 run only a narrow sampling smoke under the profiler. Do not wrap a parent harness
 that spawns nested Python children.
 
@@ -432,8 +435,8 @@ fully vectorized at first:
 | S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | **Done for host sampler:** synthetic-logit processor tests and fixed-seed generator fixtures pass. |
 | S4: token-level stop | Lower stop token IDs/sequences where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Done for host sampler:** single-token IDs and multi-token server stop sequences finish PARO/GGUF host-sampled rows; native c>N/GPU execution still consumes this later. |
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Done for PARO host sampler:** sampled prompt batches use scheduler-owned state, native packed prefill, and serial host-sampled decode; GGUF remains serial by design until it gets a c>N resident scheduler. |
-| S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Partial:** standalone FP32 logits processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` temperature samplers pass GPU1 CPU-reference filtering/logprob parity and fixed-seed determinism. Supported c=1 PARO requests can opt in with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N/GGUF and `top_logprobs` still fall back. |
-| S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | **Partial:** standalone correctness-first GPU top-p/min-p sampler matches CPU retain counts, selected tokens, logprobs, tie order, and fixed-seed determinism on GPU1 boundary fixtures. Supported c=1 PARO `top_k=0` requests can opt in; not performance-promoted. |
+| S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Partial:** standalone FP32 logits processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` temperature samplers pass GPU1 CPU-reference filtering/logprob parity and fixed-seed determinism; a synthetic resident-session c=1 route smoke covers full-vocab and top-k+processor dispatch. Supported c=1 PARO requests can opt in with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N/GGUF and `top_logprobs` still fall back. |
+| S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | **Partial:** standalone correctness-first GPU top-p/min-p sampler matches CPU retain counts, selected tokens, logprobs, tie order, and fixed-seed determinism on GPU1 boundary fixtures; the synthetic resident-session c=1 route smoke covers top-p dispatch. Supported c=1 PARO `top_k=0` requests can opt in; not performance-promoted. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Done for host-logits server/library paths:** completion/chat response tests pass for selected logprob/top-logprobs cases, completion `echo+logprobs`, and buffered streaming logprobs. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+from types import MethodType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -305,6 +306,181 @@ def test_logits_processors_match_host_order() -> None:
     finally:
         for buf in reversed(bufs):
             free(buf)
+
+
+def _request_params(**overrides):
+    values = {
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "top_k": 0,
+        "min_p": 0.0,
+        "repetition_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "logit_bias": (),
+        "logprobs": True,
+        "top_logprobs": 0,
+        "stop_token_ids": (),
+        "stop_token_sequences": (),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+@pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
+def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() -> None:
+    from hipengine.core.dtype import DType
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.generation.sampling import RowSamplingState
+    from hipengine.kernels.backends import hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.sampling import build_sampler
+    from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
+
+    logits = np.array(
+        [[2.0, 0.5, 1.5, -np.inf, 4.0, 3.0, np.nan, 2.5, -1.0, 0.0, 1.0, 3.5]],
+        dtype=np.float32,
+    )
+    vocab_size = int(logits.shape[1])
+    compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
+    with hip_target_arch_environment("gfx1100"):
+        lib = build_sampler(load=True, compiler_version=compiler_version)
+
+    runtime = None
+    buffers = []
+
+    def alloc(nbytes: int):
+        buf = malloc(max(int(nbytes), 4), runtime=runtime)
+        buffers.append(buf)
+        return buf
+
+    session = object.__new__(Qwen35ParoResidentSession)
+    try:
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        session.runtime = runtime
+        session.vocab_size = vocab_size
+        session.buffers = buffers
+        session.lm_logits = alloc(logits.nbytes)
+        session.lm_out_index = alloc(DType.INT64.itemsize)
+        session.lm_out_value = alloc(DType.FP32.itemsize)
+        session._native_sampler_library = lib
+        session._native_sampling_params = None
+        session._native_sampling_state = None
+        session._host_sampling_params = None
+        session._host_sampling_state = None
+        session._host_sampling_states_by_slot = None
+        session.tokenizer = SimpleNamespace(decode=lambda ids: f"T{int(ids[0])}")
+        session._project_logits_device_from_hidden = MethodType(lambda self, hidden: None, session)
+
+        def run_case(params, state, expected_id: int, expected_logprob: np.float32, expected_logit: np.float32):
+            copy_host_to_device(session.lm_logits, host_array_ptr(logits), logits.nbytes, runtime=runtime)
+            session.configure_native_sampler(params, state)
+            result = session._sample_from_hidden(SimpleNamespace())
+            observed_index = np.empty((1,), dtype=np.int64)
+            observed_value = np.empty((1,), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(observed_index), session.lm_out_index, runtime=runtime)
+            copy_device_to_host(host_array_ptr(observed_value), session.lm_out_value, runtime=runtime)
+
+            assert result.token_id == int(expected_id)
+            assert result.token_text == f"T{int(expected_id)}"
+            np.testing.assert_allclose(np.array([result.logprob], dtype=np.float32), np.array([expected_logprob], dtype=np.float32), rtol=0, atol=2e-5)
+            np.testing.assert_allclose(np.array([result.logit], dtype=np.float32), np.array([expected_logit], dtype=np.float32), rtol=0, atol=1e-6)
+            assert int(observed_index[0]) == int(expected_id)
+            np.testing.assert_allclose(observed_value, np.array([expected_logit], dtype=np.float32), rtol=0, atol=1e-6)
+            assert state.generated_tokens[-1] == int(expected_id)
+            return result
+
+        seed = 0x100
+        step_index = 4
+        full_params = _request_params(temperature=0.9, top_k=0)
+        full_state = RowSamplingState(prompt_tokens=(0, 1), seed=seed, step_index=step_index)
+        full_expected = _cpu_full_vocab_reference(
+            logits,
+            np.array([0.9], dtype=np.float32),
+            np.array([seed], dtype=np.uint64),
+            step_index=step_index,
+        )
+        full_first = run_case(
+            full_params,
+            full_state,
+            int(full_expected[0][0]),
+            full_expected[1][0],
+            logits[0, int(full_expected[0][0])],
+        )
+        full_second = run_case(
+            full_params,
+            RowSamplingState(prompt_tokens=(0, 1), seed=seed, step_index=step_index),
+            int(full_expected[0][0]),
+            full_expected[1][0],
+            logits[0, int(full_expected[0][0])],
+        )
+        assert full_second.token_id == full_first.token_id
+        assert full_state.step_index == step_index + 1
+
+        proc_seed = 0x200
+        proc_step = 3
+        proc_params = _request_params(
+            temperature=0.75,
+            top_k=4,
+            logit_bias=((1, 3.0), (4, -2.0)),
+            repetition_penalty=1.2,
+            presence_penalty=0.25,
+            frequency_penalty=0.1,
+        )
+        proc_state = RowSamplingState(prompt_tokens=(4, 4, 8), generated_tokens=(1,), seed=proc_seed, step_index=proc_step)
+        proc_logits = _cpu_process_reference(
+            logits,
+            np.array([0, 2], dtype=np.int32),
+            np.array([1, 4], dtype=np.int32),
+            np.array([3.0, -2.0], dtype=np.float32),
+            np.array([0, 3], dtype=np.int32),
+            np.array([1, 4, 8], dtype=np.int32),
+            np.array([1, 2, 1], dtype=np.int32),
+            np.array([1.2], dtype=np.float32),
+            np.array([0.25], dtype=np.float32),
+            np.array([0.1], dtype=np.float32),
+        )
+        proc_expected = _cpu_reference(
+            proc_logits,
+            np.array([0.75], dtype=np.float32),
+            np.array([proc_seed], dtype=np.uint64),
+            top_k=4,
+            step_index=proc_step,
+        )
+        run_case(
+            proc_params,
+            proc_state,
+            int(proc_expected[0][0]),
+            proc_expected[1][0],
+            proc_logits[0, int(proc_expected[0][0])],
+        )
+        assert proc_state.step_index == proc_step + 1
+
+        top_p_seed = 0x300
+        top_p_step = 5
+        top_p_params = _request_params(temperature=1.0, top_p=0.7, top_k=0)
+        top_p_state = RowSamplingState(prompt_tokens=(2,), seed=top_p_seed, step_index=top_p_step)
+        top_p_expected = _cpu_top_p_reference(
+            logits,
+            np.array([1.0], dtype=np.float32),
+            np.array([0.7], dtype=np.float32),
+            np.array([0.0], dtype=np.float32),
+            np.array([top_p_seed], dtype=np.uint64),
+            step_index=top_p_step,
+        )
+        run_case(
+            top_p_params,
+            top_p_state,
+            int(top_p_expected[0][0]),
+            top_p_expected[1][0],
+            logits[0, int(top_p_expected[0][0])],
+        )
+        assert top_p_state.step_index == top_p_step + 1
+    finally:
+        for buf in reversed(buffers):
+            free(buf, runtime=runtime)
 
 
 def _cpu_top_p_reference(

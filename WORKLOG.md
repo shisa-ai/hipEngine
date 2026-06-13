@@ -87047,3 +87047,25 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q` -> `35 passed`.
 - GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`): `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `7 passed`.
 - `git diff --check` clean.
+
+## 2026-06-14 - C1 native sampler route GPU1 smoke
+
+Added a GPU1-guarded synthetic resident-session smoke for the opt-in c=1 PARO
+native sampler route.  The test constructs a minimal `Qwen35ParoResidentSession`
+object with real HIP device buffers, seeds FP32 logits, monkeypatches projection
+to a no-op, calls `_sample_from_hidden(...)`, and verifies the actual native
+sampler kernels through the route for three supported shapes: full-vocab
+`top_k=0`, bounded top-k with logit-bias/history processors, and exact top-p.
+Each case checks selected token, selected logprob, processed/original selected
+logit, device scalar updates, and `RowSamplingState` history advancement against
+CPU references; the full-vocab case is rerun from a fresh state to prove fixed
+seed determinism.
+
+Updated `docs/SAMPLING.md` and `docs/KERNELS.md` to record the c=1 route-smoke
+evidence while keeping c>N/GGUF, `top_logprobs`, and performance promotion open.
+
+Validation:
+- `python3 -m py_compile tests/test_gpu_sampler_kernel.py`.
+- `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `1 passed`.
+- GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`): `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py::test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state -q` -> `1 passed`.
+- GPU1 full sampler file: `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `8 passed`.
