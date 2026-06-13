@@ -1166,6 +1166,7 @@ hipengine/
 │   ├── BENCHMARK.md             # Evidence policy and benchmark procedures
 │   ├── KERNELS.md               # Kernel catalog and port playbook
 │   ├── PREFILL.md               # Native bulk prefill plan/evidence
+│   ├── SAMPLING.md              # Normal sampling parameter support plan
 │   ├── ROOFLINE.md
 │   ├── LESSONS-LEARNED.md
 │   └── API.md

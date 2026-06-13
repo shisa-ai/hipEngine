@@ -86334,3 +86334,23 @@ Validation:
 - `python3 -m pytest tests/test_qwen35_gguf_mtp_mapping.py tests/test_qwen35_gguf_mapping.py -q` -> `1 passed, 5 skipped`.
 - `python3 -m py_compile hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py`.
 - `git diff --check`.
+
+## 2026-06-14 - Sampling design doc
+
+Documented the normal sampling support plan in `docs/SAMPLING.md` after the
+server surfaced the existing Qwen3.5/PARO greedy-only guard for non-greedy
+requests.  The design records current guard/runtime state, target sampler
+parameters, a canonical per-row sampler-state contract, processor ordering,
+RNG policy, and staged implementation tracks using low/medium/high complexity
+plus approximate LoC ranges rather than time estimates.  It keeps greedy graph
+replay as the retained fast path, makes host-logits sampling the first functional
+compatibility milestone, and treats GPU top-k/top-p sampling as later native
+performance work.
+
+Index updates: added `docs/SAMPLING.md` to `docs/README.md`, the root `README.md`
+documentation table, and the `docs/PLAN.md` file-tree index.
+
+Validation:
+- Re-read `docs/SAMPLING.md` end to end.
+- `grep -nEi '\\b(day|days|week|weeks|hour|hours|time-based|2-4|1-2|1-3)\\b' docs/SAMPLING.md || true` -> no output.
+- `git diff --check`.

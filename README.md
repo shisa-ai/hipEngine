@@ -438,6 +438,7 @@ current limitations.
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
 | [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
+| [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
 | [`docs/DFLASH.md`](docs/DFLASH.md) | DFlash draft-model speculative decode plan |
 | [`benchmarks/README.md`](benchmarks/README.md) | Current-fastest rollup and external comparison baselines |
