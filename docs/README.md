@@ -24,6 +24,7 @@ working on.
 | --- | --- |
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
 | [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
+| [`THEROCK.md`](THEROCK.md) | Retained TheRock ROCm setup, `gfx110X-all` package choice, verification commands, and ROCm 7.14 regression notes. |
 | [`../benchmarks/README.md`](../benchmarks/README.md) | Current benchmark rollup, source-lineage targets, external baselines, and diagnostic rows. |
 | [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md) | Reverse-chronological summary of benchmark rollup updates. |
 
@@ -61,6 +62,8 @@ working on.
   [`ROOFLINE.md`](ROOFLINE.md) to decide whether the proposed change matches the
   measured bottleneck.
 - **Before making a performance claim:** read [`BENCHMARK.md`](BENCHMARK.md),
+  verify the ROCm environment against [`THEROCK.md`](THEROCK.md) for W7900
+  TheRock rows,
   update [`../benchmarks/README.md`](../benchmarks/README.md) and
   [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md), and write a compact
   artifact under [`../benchmarks/results/`](../benchmarks/results/).

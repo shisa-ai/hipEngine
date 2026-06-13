@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-05-31
+Last updated: 2026-06-14
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -22,6 +22,10 @@ false unless the variable says otherwise.
 - Leave `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS` unset.
 
 ### TheRock ROCm process setup
+
+For the retained W7900 benchmark stack, package install/repair commands, and
+ROCm 7.14 regression notes, see [`THEROCK.md`](THEROCK.md). This section only
+covers the process environment wrapper.
 
 TheRock installs ROCm pieces inside the Python environment. Activate it by
 building a clean process environment around the TheRock root rather than mixing

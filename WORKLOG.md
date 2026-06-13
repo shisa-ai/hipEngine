@@ -86933,3 +86933,28 @@ Validation on GPU1 (AMD Radeon RX 7900 XTX, `gfx1100`):
 - `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip -q` -> `3 passed`.
 - `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `5 passed`.
 - Post-doc targeted bundle: `python3 -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/kernels/hip_gfx1100/sampling/__init__.py hipengine/kernels/hip_gfx1151/__init__.py tests/test_gpu_sampler_kernel.py && python3 -m pytest tests/test_gpu_sampler_kernel.py::test_sampler_build_plan_uses_native_arch tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_dflash_accept_kernels.py::test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases -q && HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `4 passed` + `5 passed`.
+
+## 2026-06-14 - TheRock setup page and 7.14 no-promote notes
+
+Added `docs/THEROCK.md` as the canonical setup page for the retained W7900
+TheRock environment.  The doc records the ROCm 7.13 / `gfx110X-all` package
+pins, install/repair commands, stale 7.14 helper-package cleanup
+(`amd-torch-device-*`, `amd-torchvision-device-*`, `rocm-sdk-device-gfx1100`,
+`rocm-sdk-libraries`), verification commands, clean-process wrapper, and the
+ROCm 7.14 diagnostic no-promote table for PARO, GGUF, MTP, and concurrency.
+
+Also linked `docs/THEROCK.md` from `docs/README.md` and added a pointer from
+`docs/ENVS.md` so environment-variable docs do not duplicate the package setup.
+
+Environment repair just completed in `/home/lhl/mambaforge/envs/therock`:
+`rocm`, `rocm-sdk-core`, `rocm-sdk-devel`, and
+`rocm-sdk-libraries-gfx110X-all` are `7.13.0a20260423`; `torch` is
+`2.11.0+rocm7.13.0a20260423`; `torchvision` is
+`0.26.0+rocm7.13.0a20260423`; `torchaudio` is
+`2.11.0+rocm7.13.0a20260423`; `triton` is
+`3.6.0+rocm7.13.0a20260423`; `numpy`/`fsspec` restored to `2.1.3`/`2026.2.0`.
+Verification: `hipcc --version` reports `HIP version:
+7.13.26162-1140233ffe`, `ctypes.CDLL("libamdhip64.so")` succeeds, and torch
+reports `torch.version.hip 7.13.26162` with `torch.cuda.is_available() == True`.
+`pip check` still reports unrelated `minisgl` dependency conflicts, but the
+stale ROCm/PyTorch 7.14 helper-package conflicts are gone.
