@@ -33,9 +33,9 @@ PARO and GGUF while native GPU sampling remains incomplete:
   logits to host for the functional sampler when configured.
 - c>N public requests can use the host sampler by serializing rows through the
   c=1 PARO path. Native c>N stochastic sampling is still future work.
-- `PerRowSamplingParams` / `SamplerParamsBlock` still carry only part of the
-  canonical sampler metadata for scheduler/native-sampler shape and need S5
-  expansion before native c>N sampling is complete.
+- `PerRowSamplingParams` / `SamplerParamsBlock` carry the canonical scalar
+  sampler metadata and logit-bias rows for scheduler/native-sampler shape, but
+  generated-token history and native c>N stochastic execution remain S5/S6 work.
 - `lm_head.hip` has a row-wise top-k helper capped at `k <= 8`, useful for
   drafter/verifier diagnostics but not enough for normal user sampling.
 
@@ -401,7 +401,7 @@ fully vectorized at first:
 | S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO and GGUF c=1 plus serial multi-row host sampling.** |
 | S3: token-history processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | Synthetic-logit processor tests and fixed-seed generator fixtures pass. |
 | S4: token-level stop | Lower stop token IDs where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | Rows finish on EOS/stop-token fixtures without overrun. |
-| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | c>N fixed-seed rows are deterministic and per-row state is isolated. |
+| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Partial:** canonical sampler metadata is columnar in `SamplerParamsBlock`; generated-token history/native execution still open. |
 | S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | GPU1 smoke passes CPU-reference filtering and fixed-seed determinism. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | GPU top-p matches CPU retain set on boundary fixtures and removes full-vocab D2H copies. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | OpenAI-compatible response tests pass for selected logprob/top-logprobs cases. |

@@ -12,11 +12,12 @@ import time
 from collections import Counter, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from math import ceil
+from math import ceil, isfinite
 from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
+from hipengine.generation.sampling import normalize_logit_bias_pairs
 from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
@@ -39,7 +40,11 @@ class PerRowSamplingParams:
     temperature: float = 0.0
     top_k: int = 0
     top_p: float = 1.0
+    min_p: float = 0.0
     repetition_penalty: float = 1.0
+    presence_penalty: float = 0.0
+    frequency_penalty: float = 0.0
+    logit_bias: tuple[tuple[int, float], ...] = ()
     seed: int | None = None
     stop_tokens: tuple[int, ...] = ()
 
@@ -50,17 +55,28 @@ class PerRowSamplingParams:
             raise ValueError("top_k must be non-negative")
         if self.top_p < 0.0 or self.top_p > 1.0:
             raise ValueError("top_p must be between 0 and 1")
+        if self.min_p < 0.0 or self.min_p > 1.0:
+            raise ValueError("min_p must be between 0 and 1")
         if self.repetition_penalty <= 0.0:
             raise ValueError("repetition_penalty must be positive")
+        if not isfinite(float(self.presence_penalty)):
+            raise ValueError("presence_penalty must be finite")
+        if not isfinite(float(self.frequency_penalty)):
+            raise ValueError("frequency_penalty must be finite")
         if self.seed is not None and self.seed < 0:
             raise ValueError("seed must be non-negative")
         stops = tuple(int(token) for token in self.stop_tokens)
         if any(token < 0 for token in stops):
             raise ValueError("stop_tokens must be non-negative")
+        logit_bias = normalize_logit_bias_pairs(self.logit_bias)
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_k", int(self.top_k))
         object.__setattr__(self, "top_p", float(self.top_p))
+        object.__setattr__(self, "min_p", float(self.min_p))
         object.__setattr__(self, "repetition_penalty", float(self.repetition_penalty))
+        object.__setattr__(self, "presence_penalty", float(self.presence_penalty))
+        object.__setattr__(self, "frequency_penalty", float(self.frequency_penalty))
+        object.__setattr__(self, "logit_bias", logit_bias)
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "stop_tokens", stops)
 
@@ -77,7 +93,11 @@ class SamplerParamsBlock:
     temperatures: tuple[float, ...]
     top_ks: tuple[int, ...]
     top_ps: tuple[float, ...]
+    min_ps: tuple[float, ...]
     repetition_penalties: tuple[float, ...]
+    presence_penalties: tuple[float, ...]
+    frequency_penalties: tuple[float, ...]
+    logit_bias_rows: tuple[tuple[tuple[int, float], ...], ...]
     seeds: tuple[int, ...]
     stop_token_rows: tuple[tuple[int, ...], ...]
 
@@ -88,9 +108,18 @@ class SamplerParamsBlock:
         _check_len("temperatures", self.temperatures, rows)
         _check_len("top_ks", self.top_ks, rows)
         _check_len("top_ps", self.top_ps, rows)
+        _check_len("min_ps", self.min_ps, rows)
         _check_len("repetition_penalties", self.repetition_penalties, rows)
+        _check_len("presence_penalties", self.presence_penalties, rows)
+        _check_len("frequency_penalties", self.frequency_penalties, rows)
+        _check_len("logit_bias_rows", self.logit_bias_rows, rows)
         _check_len("seeds", self.seeds, rows)
         _check_len("stop_token_rows", self.stop_token_rows, rows)
+        object.__setattr__(
+            self,
+            "logit_bias_rows",
+            tuple(normalize_logit_bias_pairs(row) for row in self.logit_bias_rows),
+        )
         if len(set(self.request_ids)) != rows:
             raise ValueError("sampler params block request_ids must be unique")
 
@@ -107,8 +136,15 @@ class SamplerParamsBlock:
             temperatures=tuple(row.temperature for row in params),
             top_ks=tuple(row.top_k for row in params),
             top_ps=tuple(row.top_p for row in params),
+            min_ps=tuple(row.min_p for row in params),
             repetition_penalties=tuple(row.repetition_penalty for row in params),
-            seeds=tuple(row.resolved_seed(request_id=request_id, row_index=index) for index, (request_id, row) in enumerate(zip(ids, params, strict=True))),
+            presence_penalties=tuple(row.presence_penalty for row in params),
+            frequency_penalties=tuple(row.frequency_penalty for row in params),
+            logit_bias_rows=tuple(row.logit_bias for row in params),
+            seeds=tuple(
+                row.resolved_seed(request_id=request_id, row_index=index)
+                for index, (request_id, row) in enumerate(zip(ids, params, strict=True))
+            ),
             stop_token_rows=tuple(row.stop_tokens for row in params),
         )
 
@@ -118,7 +154,11 @@ class SamplerParamsBlock:
             temperature=self.temperatures[index],
             top_k=self.top_ks[index],
             top_p=self.top_ps[index],
+            min_p=self.min_ps[index],
             repetition_penalty=self.repetition_penalties[index],
+            presence_penalty=self.presence_penalties[index],
+            frequency_penalty=self.frequency_penalties[index],
+            logit_bias=self.logit_bias_rows[index],
             seed=self.seeds[index],
             stop_tokens=self.stop_token_rows[index],
         )

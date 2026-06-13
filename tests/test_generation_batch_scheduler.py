@@ -16124,12 +16124,32 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     r1 = scheduler.submit(
         [20],
         max_new_tokens=2,
-        sampling=PerRowSamplingParams(temperature=0.7, top_k=40, top_p=0.9, repetition_penalty=1.1, seed=7),
+        sampling=PerRowSamplingParams(
+            temperature=0.7,
+            top_k=40,
+            top_p=0.9,
+            min_p=0.05,
+            repetition_penalty=1.1,
+            presence_penalty=0.2,
+            frequency_penalty=0.3,
+            logit_bias={"12": -1.5},
+            seed=7,
+        ),
     )
     r2 = scheduler.submit(
         [30],
         max_new_tokens=2,
-        sampling=PerRowSamplingParams(temperature=1.0, top_k=0, top_p=0.8, repetition_penalty=1.2, seed=99),
+        sampling=PerRowSamplingParams(
+            temperature=1.0,
+            top_k=0,
+            top_p=0.8,
+            min_p=0.1,
+            repetition_penalty=1.2,
+            presence_penalty=-0.1,
+            frequency_penalty=0.4,
+            logit_bias=((7, 0.25),),
+            seed=99,
+        ),
     )
     scheduler.admit_pending()
     for _ in range(3):
@@ -16146,11 +16166,17 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.temperatures == (0.0, 0.7, 1.0)
     assert block.top_ks == (1, 40, 0)
     assert block.top_ps == (1.0, 0.9, 0.8)
+    assert block.min_ps == (0.0, 0.05, 0.1)
     assert block.repetition_penalties == (1.0, 1.1, 1.2)
+    assert block.presence_penalties == (0.0, 0.2, -0.1)
+    assert block.frequency_penalties == (0.0, 0.3, 0.4)
+    assert block.logit_bias_rows == ((), ((12, -1.5),), ((7, 0.25),))
     assert block.stop_token_rows == ((99,), (), ())
     assert block.seeds == again.seeds
     assert len(set(block.seeds)) == 3
     assert block.params_for(r1).temperature == 0.7
+    assert block.params_for(r1).min_p == 0.05
+    assert block.params_for(r1).logit_bias == ((12, -1.5),)
 
     scheduler.record_generated([GeneratedToken(r0, 100, finished=True)])
     with pytest.raises(KeyError, match="sampler params"):

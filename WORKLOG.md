@@ -86521,3 +86521,23 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_gguf_generate_path.py tests/test_server_api.py -q` -> `39 passed, 4 skipped`.
 - `python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py`.
 - `git diff --check`.
+
+## 2026-06-14 - Scheduler sampler metadata expansion
+
+Expanded `PerRowSamplingParams` and `SamplerParamsBlock` toward the S5 scheduler
+state target in `docs/SAMPLING.md`.  The scheduler row now carries canonical
+sampler metadata beyond the earlier temperature/top-k/top-p/repetition subset:
+`min_p`, `presence_penalty`, `frequency_penalty`, and normalized token-id
+`logit_bias` rows.  `SamplerParamsBlock` exposes columnar `min_ps`,
+`presence_penalties`, `frequency_penalties`, and `logit_bias_rows`, and
+`params_for()` reconstructs the full row.  Existing seed derivation and
+stop-token rows remain unchanged.
+
+This is an S5 partial, not native c>N sampling completion: generated-token
+history and native c>N stochastic execution still need to be wired through the
+scheduler/runner boundary.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_sampling.py tests/test_server_api.py -q` -> `38 passed`.
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py`.
+- `git diff --check`.
