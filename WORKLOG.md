@@ -87543,3 +87543,24 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json`.
+
+## 2026-06-14 - AGENTIC MTP sampler compatibility guard
+
+Closed the enforcement gap behind the documented MTP sampling policy. The shared
+`speculative_mtp_sampling_blockers()` helper now recognizes scheduler
+`stop_tokens` as token-stop blockers, and `ResidentBatchScheduler` rejects
+speculative target-verification work for rows with active processors before
+materializing raw top-1 verification metadata. This keeps `logit_bias`,
+penalties, token stops, and sampled requests on AR paths until processed target
+verification exists.
+
+Updated `docs/AGENTIC.md` and `docs/SAMPLING.md` to state that the guard is
+applied at scheduler admission, not only advertised for future serving.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py tests/test_sampling.py tests/test_generation_batch_scheduler.py`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `19 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_emits_speculative_verify_work tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_accept_over_budget -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q` -> `279 passed`.
+- `git diff --check -- hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py tests/test_sampling.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md docs/SAMPLING.md`.

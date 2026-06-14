@@ -17,7 +17,12 @@ from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
-from hipengine.generation.sampling import RowSamplingState, normalize_logit_bias_pairs, normalize_stop_token_sequences
+from hipengine.generation.sampling import (
+    RowSamplingState,
+    normalize_logit_bias_pairs,
+    normalize_stop_token_sequences,
+    speculative_mtp_sampling_blockers,
+)
 from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
@@ -865,6 +870,13 @@ class ResidentBatchScheduler:
                 raise ValueError("speculative verification requires completed prefill")
             if request.remaining_decode <= 0 or request.finished:
                 raise ValueError("speculative verification requires an active decode request")
+            blockers = speculative_mtp_sampling_blockers(self._sampling[request_id])
+            if blockers:
+                joined = ", ".join(blockers)
+                raise ValueError(
+                    "speculative verification requires greedy-fast sampling; "
+                    f"request_id {request_id} has incompatible fields: {joined}"
+                )
         target = TargetVerifyBatch.from_draft(draft, root_tokens=root_tokens, root_positions=root_positions)
         return SpeculativeVerifyWork(target_batch=target, work_item=target.to_work_item())
 

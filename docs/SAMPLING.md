@@ -155,7 +155,9 @@ same processed-logit policy as autoregressive generation.
 `supports_speculative_mtp_sampling()` returns true only for `GREEDY_FAST`
 requests; `speculative_mtp_sampling_blockers()` reports the fields that require
 AR fallback today, including `logit_bias`, penalties, token stops,
-`temperature > 0`, and requested logprobs.
+`temperature > 0`, and requested logprobs. The resident scheduler applies this
+guard before emitting speculative target-verification work, so rows that need
+processed logits cannot silently enter the raw-argmax MTP path.
 
 ### Server/API mapping
 

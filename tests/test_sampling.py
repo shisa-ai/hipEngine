@@ -128,6 +128,24 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     assert speculative_mtp_sampling_blockers(_params(stop_token_sequences=((10, 11),))) == (
         "stop_token_sequences",
     )
+    assert speculative_mtp_sampling_blockers(
+        SimpleNamespace(
+            temperature=0.0,
+            top_p=1.0,
+            top_k=0,
+            min_p=0.0,
+            repetition_penalty=1.0,
+            presence_penalty=0.0,
+            frequency_penalty=0.0,
+            logit_bias=(),
+            seed=None,
+            row_seeds=(),
+            stop_tokens=(99,),
+            stop_token_sequences=(),
+            logprobs=False,
+            top_logprobs=0,
+        )
+    ) == ("stop_token_ids",)
     assert speculative_mtp_sampling_blockers(_params(temperature=0.7, logprobs=True, top_logprobs=2)) == (
         "temperature",
         "logprobs",

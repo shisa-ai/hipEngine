@@ -16703,6 +16703,51 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert scheduler.active_batch.slot_to_request == (None, None)
 
 
+def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling() -> None:
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    biased = scheduler.submit(
+        [10],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(logit_bias={101: 5.0}),
+    )
+    stopped = scheduler.submit(
+        [20],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(stop_tokens=(99,)),
+    )
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    scheduler.next_prefill_work(chunk_size=8)
+
+    biased_draft = DraftBatch(
+        request_ids=(biased,),
+        candidate_tokens=(101,),
+        parent_positions=(0,),
+        draft_depths=(1,),
+        row_to_request=(biased,),
+    )
+    stopped_draft = DraftBatch(
+        request_ids=(stopped,),
+        candidate_tokens=(201,),
+        parent_positions=(0,),
+        draft_depths=(1,),
+        row_to_request=(stopped,),
+    )
+
+    with pytest.raises(ValueError, match="incompatible fields: logit_bias"):
+        scheduler.next_speculative_verify_work(
+            biased_draft,
+            root_tokens=(10,),
+            root_positions=(0,),
+        )
+    with pytest.raises(ValueError, match="incompatible fields: stop_token_ids"):
+        scheduler.next_speculative_verify_work(
+            stopped_draft,
+            root_tokens=(20,),
+            root_positions=(0,),
+        )
+
+
 def test_resident_batch_scheduler_rejects_speculative_accept_over_budget() -> None:
     scheduler = ResidentBatchScheduler(capacity=1)
     r0 = scheduler.submit([10], max_new_tokens=1)

@@ -198,7 +198,7 @@ def validate_sampling_params(params: Any) -> None:
     top_logprobs = int(getattr(params, "top_logprobs", 0))
     if top_logprobs < 0:
         raise ValueError("top_logprobs must be non-negative")
-    for token_id in getattr(params, "stop_token_ids", ()):
+    for token_id in _stop_token_ids(params):
         if int(token_id) < 0:
             raise ValueError("stop_token_ids must be non-negative")
     normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None))
@@ -217,11 +217,18 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("presence_penalty")
     if float(getattr(params, "frequency_penalty", 0.0)) != 0.0:
         names.append("frequency_penalty")
-    if tuple(int(token) for token in getattr(params, "stop_token_ids", ())):
+    if _stop_token_ids(params):
         names.append("stop_token_ids")
     if normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)):
         names.append("stop_token_sequences")
     return tuple(names)
+
+
+def _stop_token_ids(params: Any) -> tuple[int, ...]:
+    raw_ids = getattr(params, "stop_token_ids", None)
+    if raw_ids is None:
+        raw_ids = getattr(params, "stop_tokens", ())
+    return tuple(int(token) for token in raw_ids)
 
 
 def supports_native_gpu_sampling(params: Any) -> bool:

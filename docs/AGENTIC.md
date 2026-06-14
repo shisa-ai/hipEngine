@@ -312,9 +312,10 @@ Current code reality:
   covered by standalone native sampler tests. It is not compatible with MTP
   verification yet because verify top-1 is raw argmax.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
-  `speculative_mtp_sampling_blockers()` now encode that policy for future
-  serving integration. The capabilities manifest advertises this guard and the
-  blocker fields instead of relying only on prose.
+  `speculative_mtp_sampling_blockers()` encode that policy. The resident
+  scheduler rejects speculative verify work for rows with active blocker fields
+  before materializing target verification metadata. The capabilities manifest
+  advertises this guard and the blocker fields instead of relying only on prose.
 
 Default rule:
 
