@@ -248,6 +248,95 @@ def test_agentic_conformance_visible_session_replays_tool_loop_without_reasoning
     assert "<think>need file</think>" not in prompt
 
 
+def test_agentic_conformance_snapshot_restore_replays_tool_loop_without_reasoning() -> None:
+    llm = AgenticFakeLLM(
+        outputs=[
+            (
+                "<think>need file</think>"
+                '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+            ),
+            "README says hello after restore.",
+        ]
+    )
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=llm,
+    )
+    client = TestClient(app)
+    tools = [_read_tool()]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read README.md."}],
+            "tools": tools,
+            "session": {"id": "sess_agentic_restore", "commit": "append_visible_only"},
+            "max_tokens": 64,
+        },
+    )
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    assert first_choice["finish_reason"] == "tool_calls"
+    first_message = first_choice["message"]
+    assert first_message["reasoning_content"] == "need file"
+    tool_call = first_message["tool_calls"][0]
+
+    exported = client.get("/v1/hipengine/sessions/sess_agentic_restore/snapshot")
+    deleted = client.delete("/v1/hipengine/sessions/sess_agentic_restore")
+    restored = client.post(
+        "/v1/hipengine/sessions/sess_agentic_restore/snapshot",
+        json=exported.json(),
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": "hello",
+                }
+            ],
+            "tools": tools,
+            "session": {"id": "sess_agentic_restore", "commit": "append_none"},
+            "max_tokens": 64,
+        },
+    )
+
+    assert exported.status_code == 200
+    snapshot = exported.json()
+    assert snapshot["messages"] == [
+        {"role": "user", "content": "Read README.md."},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [tool_call],
+        },
+    ]
+    assert "need file" not in json.dumps(snapshot)
+    assert deleted.json()["deleted"] is True
+    assert restored.status_code == 200
+    assert restored.json()["message_count"] == 2
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["message"] == {
+        "role": "assistant",
+        "content": "README says hello after restore.",
+    }
+
+    rendered_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+    )
+    prompt = llm.calls[1][0][0]
+    assert prompt.count(rendered_call) == 1
+    assert prompt.count("<tool_response>\nhello\n</tool_response>") == 1
+    assert "need file" not in prompt
+    assert "<think>need file</think>" not in prompt
+
+
 def test_agentic_conformance_permissive_duplicated_tool_start_recovers_call() -> None:
     raw_tool_markup = (
         "<tool_call>\n"

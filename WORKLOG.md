@@ -90171,3 +90171,21 @@ continuation-handle ineligibility for active thinking-budget controls.
 
 Validation:
 - Re-read the changed `docs/AGENTIC.md` P1.4 current-reality section.
+
+## 2026-06-15 - AGENTIC server conformance snapshot tool loop
+
+Added a focused server-conformance regression for the restored-session agentic
+tool loop: a visible-only session stores an assistant tool call produced after
+hidden reasoning, exports/restores its snapshot, then continues from a tool
+response. The fixture verifies the snapshot keeps only visible tool-call state,
+omits hidden reasoning, and renders the restored tool call/tool response exactly
+once on the next request. Existing local/pi-agent config tests continue to
+guard the `reasoning: true`/Qwen thinking-format config and raw `<tool_call>`
+response failures.
+
+Validation:
+- `python3 -m py_compile tests/test_agentic_server_conformance.py`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py::test_agentic_conformance_snapshot_restore_replays_tool_loop_without_reasoning -q` -> `1 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `31 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_local_agent_config.py scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
