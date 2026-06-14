@@ -150,9 +150,21 @@ Post-change GPU0 smoke results (W7900 48GB, not the final 24GB gate; one run,
 | 4096/8 | 2858.327 | 105.026 | 19.128 GiB | 18.226 GiB | `linear=moe=1024`, `full_query=4096`, `full_post=full_rope=1024` |
 | 262k scratch smoke | n/a | n/a | n/a | live used 24.186 GiB on GPU0 | 1024/4096 chunks, `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.5 GiB` |
 
-The 24GB/GPU1 exact peak still needs rerun after the current GPU1 server process
-is stopped; that is the gate that should confirm whether min-free moves from
-`~0.61 GiB` to roughly `~1.1 GiB` before starting the BF16 int8 oracle work.
+The 24GB/GPU1 exact direct scratch gate was rerun after GPU1 became free. It
+confirmed compact tree scratch is active (`tree_rows=1`, `tree_saved=0.533 GiB`)
+and moved the observed live peak from the linear scratch phase to the
+full-attention scratch/oracle phase:
+
+```text
+GPU1 direct scratch gate, context=262144, int8 KV:
+linear_chunk_rows=256 full_chunk_rows=256 tree_rows=1 tree_saved=0.533 GiB int8_oracle=0.5 GiB
+peak_stage=full_prefill_scratch_live peak_used=23.320 GiB min_free=0.664 GiB scratch_probe_s=0.115
+artifact=/tmp/hipengine-gpu1-24gb-gate-20260614-200239/scratch-262k-gpu1.json
+```
+
+This is only a modest net min-free improvement vs the prior `0.61 GiB` because
+full-attention scratch plus the BF16 int8 prefill oracle is now the high-water
+phase. That makes the BF16 oracle reduction the next memory target.
 
 ## Current measurements
 
@@ -177,7 +189,7 @@ All runs used `HIP_VISIBLE_DEVICES=1`, model
 | ---: | ---: | ---: | --- | --- |
 | 65,536 | 5.088 GiB | 5.051 GiB | pass in 0.050s | `prefill_hidden_bytes=268,431,360`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=134,217,728` |
 | 131,072 | 4.199 GiB | 4.162 GiB | pass in 0.054s | `prefill_hidden_bytes=536,866,816`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=268,435,456` |
-| 262,144 | ~2.04 GiB | ~2.01 GiB | pass in 0.195s | low-memory/full-context auto chunks `linear=moe=full=256`; peak `linear_prefill_scratch_live` used 23.38 GiB, min-free 0.61 GiB |
+| 262,144 | ~2.04 GiB | ~2.01 GiB | pass in 0.115s after compact tree scratch | low-memory/full-context auto chunks `linear=moe=full=256`; `tree_rows=1`, `tree_saved=0.533 GiB`, `int8_oracle=0.5 GiB`; peak moved to `full_prefill_scratch_live`, used 23.320 GiB, min-free 0.664 GiB |
 
 Important implementation detail: the first raw warmup prompt is tiny, and the
 PARO session resolves prefill chunking based on the active prompt length. The

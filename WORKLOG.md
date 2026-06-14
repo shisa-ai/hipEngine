@@ -89103,3 +89103,27 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `24 passed`.
 - `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - GPU1 compact tree scratch gate rerun
+
+GPU1 is free again (`rocm-smi` showed no KFD PIDs; GPU1 used `64,876,544` bytes
+before launch), so reran the exact 24GB direct scratch gate after compact
+linear-prefill tree scratch.
+
+Command shape:
+`HIP_VISIBLE_DEVICES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-current.txt python3 - <<'PY' ... LLM(model=/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1, backend='hip_gfx1100', quant='w4_paro').prepare(max_sequence_length=262144, sampling_params=SamplingParams(max_tokens=1, kv_storage='int8_per_token_head')); warmup; prepare_request_scratch(max_prompt_tokens=262143) ... PY`
+
+Result artifact: `/tmp/hipengine-gpu1-24gb-gate-20260614-200239/scratch-262k-gpu1.json`.
+
+Result summary:
+- selected context `262144`; prepare `23.743s`, warmup `0.358s`, scratch probe `0.115s`, total `24.217s`.
+- chunk policy `low_memory_full_context_24gb`: `linear=moe=full_query=full_post=full_rope=256`.
+- compact tree scratch active: `linear_prefill_tree_state_rows=1`, tree bytes `0.002 GiB`, full-equivalent tree bytes `0.535 GiB`, saved `0.533 GiB`.
+- observed peak moved to `full_prefill_scratch_live`: used `23.320 GiB`, min-free `0.664 GiB`; `int8_oracle_bytes=0.5 GiB`.
+- Interpretation: compacting tree scratch helped the linear phase, but the live high-water phase is now full-attention scratch plus the BF16 int8 prefill oracle. Net min-free only improved modestly vs prior `~0.61 GiB`, so BF16 oracle reduction is the next memory target.
+
+ROCm stack check before the run:
+- `python3` is `/home/lhl/mambaforge/envs/therock/bin/python3` and `python3 -m rocm_sdk path --root` points at the TheRock 7.13 SDK package, but the active shell has `ROCM_PATH=/opt/rocm`, `HIP_PATH=/opt/rocm`, `LD_LIBRARY_PATH=/opt/rocm/lib:...`.
+- `hipcc --version` and `/opt/rocm/bin/hipcc --version` both report `HIP version: 7.2.53211-3d9ef42`.
+- `hipRuntimeGetVersion` from `ctypes.CDLL('libamdhip64.so')` reports `70253211`.
+- Therefore this GPU1 gate and the previous GPU0 smoke gates used the system `/opt/rocm` 7.2 runtime/compiler path, not the clean TheRock ROCm 7.13 environment. Use the README `env -i ... ROOT=$(python3 -m rocm_sdk path --root)` wrapper for 7.13-comparable performance rows.
