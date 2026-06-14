@@ -1782,7 +1782,9 @@ Current code reality:
   prompt tokens and reports the same session-prefix metadata as `/count_tokens`.
 - Generation `context_overflow` errors include `error.fit_context` with the same
   actionable shape, so clients can retry with a smaller `max_tokens` or run the
-  preflight endpoint without reverse-engineering the error message.
+  preflight endpoint without reverse-engineering the error message. For
+  session-backed chat requests, generation overflow errors also include the
+  same `session` prefix-count metadata as `/fit_context`.
 
 Exit gates:
 

@@ -91019,3 +91019,18 @@ aggregate diagnostic behavior.
 Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `25 passed`.
 - `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py && python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py && git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/AGENTIC.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC session fit-context overflow parity
+
+Threaded session-prefix diagnostic metadata into chat generation context-budget
+errors. Session-backed `/v1/chat/completions` requests that overflow now include
+the same `error.fit_context.session` prefix/request/rendered message counts as
+`/v1/hipengine/fit_context`, while raw completion overflow diagnostics remain
+unchanged. Added a regression test that creates a stored app-local transcript,
+preflights it with `/fit_context`, then verifies generation rejects the same
+payload without dropping the session metadata.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_use_session_prefix_for_chat tests/test_server_api.py::test_chat_context_overflow_reports_session_fit_context tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context tests/test_server_api.py::test_streaming_completion_context_overflow_preserves_error_diagnostics -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md` -> `All checks passed!` / clean.

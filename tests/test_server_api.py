@@ -1318,6 +1318,75 @@ def test_token_diagnostics_use_session_prefix_for_chat() -> None:
     assert fake.calls[1][0][0] == count_body["text"]
 
 
+def test_chat_context_overflow_reports_session_fit_context() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=20,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "remember alpha"}],
+            "max_tokens": 1,
+            "session": {"id": "overflow_session"},
+        },
+    )
+    diagnostic_payload = {
+        "messages": [{"role": "user", "content": "now beta"}],
+        "max_tokens": 64,
+        "session": {"id": "overflow_session"},
+    }
+    fit = client.post("/v1/hipengine/fit_context", json=diagnostic_payload)
+    overflow = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", **diagnostic_payload},
+    )
+
+    assert first.status_code == 200
+    assert fit.status_code == 200
+    assert overflow.status_code == 400
+    fit_body = fit.json()
+    error = overflow.json()["error"]
+    assert error["code"] == "context_length_exceeded"
+    assert error["hipengine"]["code"] == "context_overflow"
+    assert error["param"] == "max_tokens"
+    for key in (
+        "prompt_tokens",
+        "max_context_tokens",
+        "effective_max_tokens",
+        "max_allowed_max_tokens",
+        "recommended_max_tokens",
+        "required_context_tokens",
+        "overflow_tokens",
+        "fits",
+        "clear_policy",
+        "would_truncate",
+        "would_drop",
+        "session",
+    ):
+        assert error["fit_context"][key] == fit_body[key]
+    assert error["fit_context"]["session"] == {
+        "id": "overflow_session",
+        "stateful": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "prefix_message_count": 2,
+        "request_message_count": 1,
+        "rendered_message_count": 3,
+        "cache_action": "append_visible_only",
+    }
+    assert len(fake.calls) == 1
+
+
 def test_token_diagnostics_report_unsupported_model_hooks() -> None:
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),

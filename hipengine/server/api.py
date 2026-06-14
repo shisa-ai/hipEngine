@@ -2937,6 +2937,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         *,
         deadline_at: float | None = None,
         cancellation_token: GenerationCancellationToken | None = None,
+        fit_context_extra: Mapping[str, Any] | None = None,
     ) -> _GeneratedBatch:
         try:
             _validate_generation_request(config, request)
@@ -2960,6 +2961,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine,
                     prompts,
                     sampling,
+                    fit_context_extra=fit_context_extra,
                     error_extra={
                         "hipengine": {
                             "routing": _routing_rejection_metadata(
@@ -3033,6 +3035,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts: Sequence[str],
         request: CompletionRequest | ChatCompletionRequest,
         control: _RequestControl | None = None,
+        *,
+        fit_context_extra: Mapping[str, Any] | None = None,
     ) -> _GeneratedBatch:
         active_control = control or _request_control(config, request)
         try:
@@ -3042,6 +3046,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     request,
                     deadline_at=active_control.deadline_at,
                     cancellation_token=active_control.cancellation_token,
+                    fit_context_extra=fit_context_extra,
                 ),
                 active_control,
             )
@@ -4153,12 +4158,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             _apply_continuation_defaults(request, continuation)
             control = _request_control(config, request, raw_request)
 
-            async def prepare_prompt() -> str:
+            async def prepare_prompt() -> tuple[str, dict[str, Any] | None]:
                 async with session_lock:
                     engine = get_llm()
                     await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                     if continuation is not None:
-                        return continuation.resume_prompts()[0]
+                        return continuation.resume_prompts()[0], None
                     if not request.messages:
                         raise OpenAIHTTPError(
                             400,
@@ -4173,9 +4178,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             request,
                             (*session_messages, *request.messages),
                         )
-                    return chat_prompt_for_request(render_request, engine)
+                    session_payload = _diagnostic_session_payload(request, session_messages)
+                    fit_context_extra = None if session_payload is None else {"session": session_payload}
+                    return chat_prompt_for_request(render_request, engine), fit_context_extra
 
-            prompt = await _await_with_request_control(prepare_prompt(), control)
+            prompt, fit_context_extra = await _await_with_request_control(prepare_prompt(), control)
             if request.stream:
                 live_chat_logprobs = (
                     bool(request.logprobs)
@@ -4196,7 +4203,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             n = _request_n(request)
             prompts = tuple(prompt for _ in range(n))
             try:
-                batch = await generate_with_request_control(prompts, request, control)
+                batch = await generate_with_request_control(
+                    prompts,
+                    request,
+                    control,
+                    fit_context_extra=fit_context_extra,
+                )
             except OpenAIHTTPError as exc:
                 await commit_chat_session_error(
                     request,
@@ -6570,6 +6582,7 @@ def _validate_context_budget(
     prompts: Sequence[str],
     sampling: SamplingParams,
     *,
+    fit_context_extra: Mapping[str, Any] | None = None,
     error_extra: Mapping[str, Any] | None = None,
 ) -> None:
     if max_context_tokens is None:
@@ -6585,6 +6598,8 @@ def _validate_context_budget(
                 max_context_tokens=max_context,
                 max_tokens=max_tokens,
             )
+            if fit_context_extra is not None:
+                fit_context.update(dict(fit_context_extra))
             extra = {"fit_context": fit_context}
             if error_extra is not None:
                 extra.update(dict(error_extra))
