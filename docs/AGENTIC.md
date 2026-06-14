@@ -1263,14 +1263,14 @@ Current code reality:
 
 - app-local continuation handles are implemented for deterministic buffered
   `/v1/completions` and `/v1/chat/completions` length stops;
-- handles are scoped to the served model and endpoint, single-use, expire after
-  15 minutes, and return stable `invalid_continuation` /
-  `continuation_expired` errors;
+- handles are scoped to the served model, endpoint, and authenticated bearer
+  principal, single-use, expire after 15 minutes, and return stable
+  `invalid_continuation` / `continuation_expired` errors;
 - resume requests can omit the original completion prompt or chat messages, and
   inherit stored `response_format` when the follow-up omits it;
 - the implementation re-prefills the stored rendered prompt plus prior generated
   text and reports `resident_state_reuse=false`; it does not yet preserve
-  decode state, tokenizer id, auth principal, RNG state, or resident KV;
+  decode state, tokenizer id, RNG state, or resident KV;
 - streaming, logprobs, completion `echo`, `n != 1`, non-deterministic
   sampling/logit processors, OpenAI `stop` controls, chat tools, explicit
   `response_format` overrides, and thinking-budget controls
@@ -1875,9 +1875,10 @@ Current code reality:
   scheduler fairness policy, cache/session settings, loaded-model count, and
   unsupported fields.
 - Continuations are advertised as supported with `stateful=false`,
-  `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,
-  deterministic-buffered sampling scope, length-only finishes, and no streaming
-  support. Session commit policy is advertised as stateful app-local transcript
+  `resident_state_reuse=false`, `single_use=true`, authenticated-principal
+  scope, a 15-minute TTL, deterministic-buffered sampling scope, length-only
+  finishes, and no streaming support. Session commit policy is advertised as
+  stateful app-local transcript
   storage with `resident_state_reuse=false`, buffered chat-only scope,
   `append_visible_only` as the stateful default, and downgrade reasons for
   unsafe visible-only finishes. Multi-model routing and strict tool decoding

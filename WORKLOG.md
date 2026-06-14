@@ -90044,3 +90044,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 233`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC continuation auth-principal scope
+
+Scoped deterministic buffered continuation handles to the authenticated bearer
+principal in addition to served model and endpoint. The server now stores a
+hashed principal on each handle, rejects resumes from a different principal
+without consuming the handle, and advertises the scope in
+`sessions.continuations.scoped_to`. Updated `docs/API.md` and `docs/AGENTIC.md`
+so continuation handles no longer list auth-principal preservation as missing.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_is_scoped_to_auth_principal tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `234` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 234`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

@@ -1051,6 +1051,7 @@ def _session_continuation_capability() -> dict[str, Any]:
         "resident_state_reuse": False,
         "single_use": True,
         "ttl_seconds": _CONTINUATION_TTL_SECONDS,
+        "scoped_to": ["served_model", "endpoint", "auth_principal"],
         "supported_endpoints": ["completions", "chat_completions"],
         "supported_finishes": ["length"],
         "supported_streaming": False,
@@ -1816,6 +1817,7 @@ class _ContinuationRecord:
     id: str
     endpoint: str
     model_id: str
+    auth_principal: str
     prompts: tuple[str, ...]
     generated_texts: tuple[str, ...]
     created: float
@@ -2084,6 +2086,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         request: CompletionRequest | ChatCompletionRequest,
         *,
         endpoint: str,
+        auth_principal: str,
     ) -> _ContinuationRecord | None:
         raw_id = getattr(request, "continuation_id", None)
         if raw_id is None:
@@ -2129,6 +2132,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     code="invalid_continuation",
                     param="continuation_id",
                 )
+            if record.auth_principal != auth_principal:
+                raise OpenAIHTTPError(
+                    400,
+                    "continuation_id is scoped to a different auth principal",
+                    code="invalid_continuation",
+                    param="continuation_id",
+                )
             cleanup_expired_continuations()
             return continuations.pop(continuation_id)
 
@@ -2140,12 +2150,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_format: Any | None,
         guided_patch: Any | None,
         guided_diff: Any | None,
+        auth_principal: str,
     ) -> _ContinuationRecord:
         now = time.time()
         record = _ContinuationRecord(
             id=f"gen_{uuid.uuid4().hex}",
             endpoint=endpoint,
             model_id=config.model_id,
+            auth_principal=auth_principal,
             prompts=tuple(str(prompt) for prompt in prompts),
             generated_texts=tuple(str(text) for text in generated_texts),
             created=now,
@@ -2556,9 +2568,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     else:  # FastAPI-lite compatibility in minimal test/runtime environments.
         app.router.on_startup.append(eager_load_model)
 
-    async def require_auth(request: Request) -> None:
+    async def require_auth(request: Request) -> str:
         if not config.api_key:
-            return
+            return "anonymous"
         expected = f"Bearer {config.api_key}"
         if request.headers.get("authorization") != expected:
             raise OpenAIHTTPError(
@@ -2567,6 +2579,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type="authentication_error",
                 code="invalid_api_key",
             )
+        return f"bearer_sha256:{_sha256_text(config.api_key)}"
 
     @app.exception_handler(OpenAIHTTPError)
     async def openai_error_handler(request: Request, exc: OpenAIHTTPError) -> JSONResponse:
@@ -3633,12 +3646,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def completions(
         request: CompletionRequest,
         raw_request: Request,
-        _auth: None = Depends(require_auth),
+        auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
         _validate_generation_request(config, request)
         _validate_continuation_resume_request(request)
-        continuation = await pop_continuation(request, endpoint="completion")
+        continuation = await pop_continuation(
+            request,
+            endpoint="completion",
+            auth_principal=auth_principal,
+        )
         _apply_continuation_defaults(request, continuation)
         prompts = continuation.resume_prompts() if continuation is not None else _normalize_prompts(request.prompt)
         n = _request_n(request)
@@ -3699,6 +3716,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     response_format=request.response_format,
                     guided_patch=request.guided_patch,
                     guided_diff=request.guided_diff,
+                    auth_principal=auth_principal,
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
             _attach_choice_telemetry(choice, detail)
@@ -3755,14 +3773,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def chat_completions(
         request: ChatCompletionRequest,
         raw_request: Request,
-        _auth: None = Depends(require_auth),
+        auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
         _validate_generation_request(config, request)
         _validate_continuation_resume_request(request)
         admitted_session_id = await reserve_chat_session_if_needed(request)
         try:
-            continuation = await pop_continuation(request, endpoint="chat")
+            continuation = await pop_continuation(
+                request,
+                endpoint="chat",
+                auth_principal=auth_principal,
+            )
             _apply_continuation_defaults(request, continuation)
             control = _request_control(config, request, raw_request)
 
@@ -3881,6 +3903,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         response_format=request.response_format,
                         guided_patch=request.guided_patch,
                         guided_diff=request.guided_diff,
+                        auth_principal=auth_principal,
                     )
                     _attach_continuation_metadata(choice, continuation_id=record.id)
                 _attach_choice_telemetry(choice, detail)
