@@ -590,6 +590,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "hard_close_validation": True,
                 "hard_close_token_forcing": False,
                 "soft_close_bias": False,
+                "eos_suppression": False,
             },
             "request_timeouts": {
                 "timeout_ms": True,
@@ -2258,6 +2259,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "hard_close_validation": True,
                     "hard_close_token_forcing": tokenizer_caps["tokenize"],
                     "soft_close_bias": tokenizer_caps["tokenize"],
+                    "eos_suppression": tokenizer_caps["tokenize"],
                     "hard_close_marker": _THINKING_CLOSE_MARKER,
                     "diagnostic_close_token_lowering": tokenizer_caps["tokenize"],
                     "diagnostic_initial_state": tokenizer_caps["tokenize"],

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 from typing import Any
@@ -372,8 +372,9 @@ class Qwen35ParoOneTokenGenerator:
             max_sequence_length=session_capacity,
             kv_policy=kv_policy,
         )
-        state = _row_sampling_state(request, prompt_ids, row_index=row_index)
-        _configure_sampled_session(session, request, state, plan=plan)
+        sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
+        state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
+        _configure_sampled_session(session, sampling_request, state, plan=plan)
         generated_text: list[str] = []
         generated_token_ids: list[int] = []
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
@@ -702,8 +703,9 @@ class Qwen35ParoOneTokenGenerator:
             max_batch_size=batch_size,
             kv_policy=kv_policy,
         )
+        sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
         scheduler = ResidentBatchScheduler(capacity=batch_size)
-        sampling = _per_row_sampling_params(request)
+        sampling = _per_row_sampling_params(sampling_request)
         request_ids = tuple(
             scheduler.submit(
                 row,
@@ -744,7 +746,7 @@ class Qwen35ParoOneTokenGenerator:
                         "block_count": slab.block_count,
                     }
                 )
-                configure_rows(request, _slot_sampler_state_clones(scheduler, slab.request_ids, slab.physical_slot_ids))
+                configure_rows(sampling_request, _slot_sampler_state_clones(scheduler, slab.request_ids, slab.physical_slot_ids))
                 raise_if_generation_deadline_expired(request)
                 results = session.prefill_native_packed(slab, sample=True)
                 raise_if_generation_deadline_expired(request)
@@ -947,8 +949,9 @@ class Qwen35ParoOneTokenGenerator:
             max_sequence_length=session_capacity,
             kv_policy=kv_policy,
         )
-        state = _row_sampling_state(request, prompt_ids, row_index=row_index)
-        _configure_sampled_session(session, request, state, plan=plan)
+        sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
+        state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
+        _configure_sampled_session(session, sampling_request, state, plan=plan)
         generated_token_ids: list[int] = []
         try:
             raise_if_generation_deadline_expired(request)
@@ -1268,13 +1271,33 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _is_eos(tokenizer: Any | None, token_id: int) -> bool:
+    eos_id = _tokenizer_eos_id(tokenizer)
+    return eos_id is not None and int(token_id) == int(eos_id)
+
+
+def _tokenizer_eos_id(tokenizer: Any | None) -> int | None:
     if tokenizer is None:
-        return False
+        return None
     try:
-        eos_id = getattr(tokenizer, "token_to_id")("<|endoftext|>")
+        token_to_id = getattr(tokenizer, "token_to_id")
+        eos_id = token_to_id("<|endoftext|>")
     except Exception:
         eos_id = None
-    return eos_id is not None and int(token_id) == int(eos_id)
+    if eos_id is None:
+        eos_id = getattr(tokenizer, "eos_token_id", None)
+    return None if eos_id is None else int(eos_id)
+
+
+def _request_with_tokenizer_eos(
+    request: GenerationRequest,
+    tokenizer: Any | None,
+) -> GenerationRequest:
+    if request.eos_token_id is not None:
+        return request
+    eos_token_id = _tokenizer_eos_id(tokenizer)
+    if eos_token_id is None:
+        return request
+    return replace(request, eos_token_id=eos_token_id)
 
 
 def _is_finished(

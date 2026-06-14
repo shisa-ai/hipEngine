@@ -61,6 +61,42 @@ def test_qwen35_paro_row_sampling_state_binds_thinking_budget() -> None:
     assert cloned.forced_token_reason == "thinking_hard_close"
 
 
+def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: 99 if token == "<|endoftext|>" else None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def configure_host_sampler(self, params, state):
+            calls.append(("configure_host_sampler", None if params is None else params.eos_token_id))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            return _result(2, "C")
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(
+        _request(
+            max_tokens=1,
+            thinking_close_token_ids=(2,),
+            thinking_hard_token_cap=5,
+        )
+    )
+
+    assert out == ["C"]
+    assert calls == [("configure_host_sampler", 99), ("configure_host_sampler", None)]
+
+
 def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context() -> None:
     config = SimpleNamespace(
         layer_types=("linear_attention",) * 30 + ("full_attention",) * 10,

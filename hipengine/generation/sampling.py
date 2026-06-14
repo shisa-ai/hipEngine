@@ -48,7 +48,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
-    "thinking_budget": "thinking budget soft-close or hard-close control",
+    "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
 }
@@ -549,10 +549,11 @@ def select_token(
     _apply_suppression_processors(processed, params, row_state)
 
     row_state.prepare_for_selection()
+    eos_suppressed = _apply_thinking_budget_eos_suppression(processed, params, row_state)
     soft_close_biased = _apply_thinking_budget_soft_close_bias(processed, row_state)
     active_processors = active_processor_names(params)
     fast_path_blockers = sampler_fast_path_blockers(params)
-    if soft_close_biased:
+    if eos_suppressed or soft_close_biased:
         active_processors = _append_unique(active_processors, "thinking_budget")
         fast_path_blockers = _append_unique(fast_path_blockers, "thinking_budget")
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
@@ -683,6 +684,18 @@ def _apply_suppression_processors(logits: np.ndarray, params: Any, state: RowSam
         if token_id >= vocab:
             raise ValueError(f"eos_token_id {token_id} is outside vocab size {vocab}")
         logits[token_id] = -np.inf
+
+
+def _apply_thinking_budget_eos_suppression(logits: np.ndarray, params: Any, state: RowSamplingState) -> bool:
+    budget = state.thinking_budget
+    eos_token_id = getattr(params, "eos_token_id", None)
+    if budget is None or not budget.eos_suppression_active or budget.forced_tokens or eos_token_id is None:
+        return False
+    token_id = int(eos_token_id)
+    if token_id < 0 or token_id >= int(logits.size):
+        raise ValueError(f"eos_token_id {token_id} is outside vocab size {logits.size}")
+    logits[token_id] = -np.inf
+    return True
 
 
 def _apply_thinking_budget_soft_close_bias(logits: np.ndarray, state: RowSamplingState) -> bool:

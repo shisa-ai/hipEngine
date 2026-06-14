@@ -53,6 +53,40 @@ def _decode_state(output):
     return output.telemetry.to_json_dict()["decode_state"]
 
 
+def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> None:
+    logits = np.full((1, 100), -10.0, dtype=np.float32)
+    logits[0, 2] = 1.0
+    logits[0, 99] = 5.0
+
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            return SimpleNamespace(token_id=99, logits=logits)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(
+        _request(
+            max_tokens=1,
+            thinking_close_token_ids=(2,),
+            thinking_hard_token_cap=5,
+        )
+    )
+
+    assert outputs[0].text == "C"
+    assert outputs[0].finish_details is not None
+    assert outputs[0].finish_details.reason == "length"
+
+
 def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
     calls = []
 

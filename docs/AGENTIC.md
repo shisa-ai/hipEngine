@@ -91,8 +91,9 @@ Known baseline limitations:
   active.
 - Thinking control is still not constrained decoding. Tokenized thinking caps
   are enforced only on host-sampled PARO/GGUF rows: the soft window applies a
-  sparse close-token bias ramp, and the hard cap forces the close sequence. EOS
-  suppression until answer phase and native GPU/MTP parity remain future work.
+  sparse close-token bias ramp, EOS is suppressed until answer phase when an
+  EOS token id is available, and the hard cap forces the close sequence. Native
+  GPU/MTP parity remains future work.
 - Server-side reasoning/tool parsing lives above generation. PARO/GGUF
   generation loops emit final decode-state telemetry snapshots, but they do not
   yet expose canonical live token-level phase state for reasoning, answer,
@@ -1100,17 +1101,20 @@ Current code reality:
   inside the configured soft window. If that token is accepted, the remaining
   close suffix is queued as forced tokens so the close delimiter is emitted
   through the normal decode/KV path;
+- host sampling suppresses EOS while a tokenized thinking budget is still in
+  the reasoning or close-delimiter phase. Qwen PARO/GGUF host-sampled paths
+  resolve tokenizer EOS into the sampler when the request did not provide
+  `eos_token_id`;
 - chat token diagnostics can lower the configured hard close sequence (or the
   default `</think>` marker) into token ids and return an initialized
   `ThinkingBudgetState` payload for harness/debug verification;
 - sampler planning treats an active thinking budget as a fast-path blocker:
   host sampling is used, native GPU sampling falls back, and raw-argmax
   speculative/MTP verification is rejected until those paths implement the same
-  forced-close semantics;
-- not implemented: manual forced close from external controllers, EOS
-  suppression, native GPU thinking-budget enforcement,
-  speculative/MTP processed-target verification, and live backend-authored
-  per-token phase metadata.
+  soft-close, EOS-suppression, and hard-close semantics;
+- not implemented: manual forced close from external controllers, native GPU
+  thinking-budget enforcement, speculative/MTP processed-target verification,
+  and live backend-authored per-token phase metadata.
 
 Exit gates:
 
@@ -1573,8 +1577,9 @@ Current code reality:
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
   tokenizer-dependent `token_budget_enforced`, explicit
-  `hard_close_token_forcing`, and tokenizer-dependent `soft_close_bias`, the default-off PARO
-  c=1 native GPU sampler scope, speculative/MTP sampling compatibility,
+  `hard_close_token_forcing`, tokenizer-dependent `soft_close_bias`, and
+  tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
+  sampler scope, speculative/MTP sampling compatibility,
   request-timeout/client-disconnect support, cache/session settings,
   loaded-model count, and
   unsupported fields.

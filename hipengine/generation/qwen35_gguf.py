@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -161,17 +161,18 @@ class Qwen35GGUFBringupGenerator:
         *,
         row_index: int,
     ) -> GenerationOutput:
+        sampling_request = _request_with_tokenizer_eos(request, self.tokenizer)
         state = RowSamplingState(
             prompt_tokens=tuple(int(token) for token in prompt_ids),
-            seed=row_seed_for_index(request, row_index),
+            seed=row_seed_for_index(sampling_request, row_index),
             row_index=row_index,
-            thinking_budget=thinking_budget_state_from_params(request),
+            thinking_budget=thinking_budget_state_from_params(sampling_request),
         )
         samples = []
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
-        sample = _select_from_gguf_logits(result, request, state)
+        sample = _select_from_gguf_logits(result, sampling_request, state)
         samples.append(sample)
         generated_ids = [int(sample.token_id)]
         if _gguf_finished(generated_ids, self.tokenizer, request):
@@ -185,7 +186,7 @@ class Qwen35GGUFBringupGenerator:
             raise_if_generation_deadline_expired(request)
             step = session.step(generated_ids[-1], return_logits=True)
             raise_if_generation_deadline_expired(request)
-            sample = _select_from_gguf_logits(step, request, state)
+            sample = _select_from_gguf_logits(step, sampling_request, state)
             samples.append(sample)
             generated_ids.append(int(sample.token_id))
             if _gguf_finished(generated_ids, self.tokenizer, request):
@@ -207,6 +208,18 @@ def _select_from_gguf_logits(
     if logits is None:
         raise RuntimeError("GGUF sampled generation requires logits from the resident session")
     return select_token(logits.reshape(-1), request, state)
+
+
+def _request_with_tokenizer_eos(
+    request: GenerationRequest,
+    tokenizer: Qwen35GGUFTokenizer,
+) -> GenerationRequest:
+    if request.eos_token_id is not None:
+        return request
+    eos_token_id = getattr(tokenizer, "eos_token_id", None)
+    if eos_token_id is None:
+        return request
+    return replace(request, eos_token_id=int(eos_token_id))
 
 
 def _gguf_generation_output(

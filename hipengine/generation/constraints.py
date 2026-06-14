@@ -217,6 +217,12 @@ class ThinkingBudgetState:
             return "soft_close"
         return None
 
+    @property
+    def eos_suppression_active(self) -> bool:
+        """Return whether EOS should be suppressed until visible answer phase."""
+
+        return self.phase in {_PHASE_THINK, _PHASE_CLOSING_THINK}
+
     def force_close(self, *, reason: str = "manual_close") -> bool:
         """Queue the full close sequence if a close is possible and not pending."""
 

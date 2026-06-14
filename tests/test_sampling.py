@@ -358,6 +358,26 @@ def test_thinking_budget_soft_close_bias_changes_argmax_and_forces_suffix() -> N
     assert state.thinking_budget.phase == "answer"
 
 
+def test_thinking_budget_suppresses_eos_until_answer_phase() -> None:
+    params = _params(
+        eos_token_id=1,
+        thinking_close_token_ids=(2,),
+        thinking_hard_token_cap=5,
+    )
+    state = RowSamplingState(thinking_budget=thinking_budget_state_from_params(params))
+
+    reasoning = select_token(np.array([4.0, 5.0, 3.0], dtype=np.float32), params, state)
+    state.observe(2)
+    answer = select_token(np.array([4.0, 5.0, 3.0], dtype=np.float32), params, state)
+
+    assert reasoning.token_id == 0
+    assert reasoning.active_processors == ("thinking_budget",)
+    assert reasoning.fast_path_blockers == ("thinking_budget",)
+    assert state.thinking_budget is not None
+    assert state.thinking_budget.phase == "answer"
+    assert answer.token_id == 1
+
+
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:
     state = RowSamplingState(
         seed=123,

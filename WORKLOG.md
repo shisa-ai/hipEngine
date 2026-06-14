@@ -88365,3 +88365,24 @@ Validation:
 - `python3 -m py_compile tests/test_agentic_server_conformance.py`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `13 passed`.
 - `python3 -m ruff check tests/test_agentic_server_conformance.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC thinking EOS suppression
+
+Implemented host-sampler EOS suppression for tokenized thinking budgets. When a
+row is still in reasoning or close-delimiter phase and an EOS token id is known,
+`select_token()` now masks EOS before argmax/sampling and reports the active
+`thinking_budget` processor. Pending forced close tokens remain higher priority
+and skip EOS masking. Qwen PARO and GGUF host-sampled paths now resolve tokenizer
+EOS into the sampler request when the public request did not supply
+`eos_token_id`, so chat-lowered thinking budgets can suppress model EOS without
+requiring clients to know the token id. The capabilities manifest now reports
+tokenizer-dependent `reasoning_controls.eos_suppression`.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_sampling.py::test_thinking_budget_suppresses_eos_until_answer_phase tests/test_sampling.py::test_thinking_budget_soft_close_bias_changes_argmax_and_forces_suffix tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy -q` -> `3 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py::test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos tests/test_generation_qwen35_paro.py::test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget tests/test_generation_qwen35_paro.py::test_qwen35_paro_row_sampling_state_binds_thinking_budget -q` -> `3 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `27 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_constraints.py -q` -> `43 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_local_agent_config.py -q` -> `10 passed`.
+- `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.

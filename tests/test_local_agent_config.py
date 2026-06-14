@@ -90,6 +90,7 @@ def _capabilities(**overrides):
                 "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                 "hard_close_token_forcing": True,
                 "soft_close_bias": True,
+                "eos_suppression": True,
             },
             "request_timeouts": {
                 "timeout_ms": True,
