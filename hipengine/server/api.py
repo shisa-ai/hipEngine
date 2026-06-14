@@ -916,6 +916,7 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "guided_diff_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
         "strict_decoding": False,
         "strict_result_validation": True,
+        "length_finish_structural_validation": "root_object_json_prefix",
         "result_validation_failure_reasons": list(
             _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS
         ),

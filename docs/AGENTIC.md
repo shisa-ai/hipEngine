@@ -2171,6 +2171,8 @@ Current code reality:
   modes, strict tool result-validation support,
   JSON-object, JSON-schema, guided-JSON, guided-regex, and guided-choice
   structured-output result validation, the
+  root-object JSON length-finish structural guard under
+  `features.structured_outputs.length_finish_structural_validation`,
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
   tokenizer-dependent `token_budget_enforced`, explicit

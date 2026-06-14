@@ -473,6 +473,8 @@ This applies to JSON-object mode and JSON Schema/guided-JSON schema requests
 when the partial output has begun with `{`. The capabilities manifest reports
 this normal-response failure reason under
 `features.structured_outputs.result_validation_failure_reasons`.
+`features.structured_outputs.length_finish_structural_validation` is
+`"root_object_json_prefix"` when this structural length-finish guard is active.
 
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` / `required` /
