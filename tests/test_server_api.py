@@ -943,7 +943,10 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     assert fit_body["max_context_tokens"] == 512
     assert fit_body["requested_max_tokens"] == 32
     assert fit_body["effective_max_tokens"] == expected_max_tokens
+    assert fit_body["max_allowed_max_tokens"] == 512 - chat_body["token_count"] - 1
+    assert fit_body["recommended_max_tokens"] == expected_max_tokens
     assert fit_body["required_context_tokens"] == chat_body["token_count"] + expected_max_tokens + 1
+    assert fit_body["overflow_tokens"] == 0
     assert fit_body["fits"] is True
     assert fit_body["chat_default_max_tokens"] == 7
     assert fit_body["clear_policy"] == "reject"
@@ -1015,7 +1018,10 @@ def test_token_diagnostics_use_session_prefix_for_chat() -> None:
     fit_body = fit.json()
     assert fit_body["prompt_tokens"] == count_body["token_count"]
     assert fit_body["effective_max_tokens"] == 9
+    assert fit_body["max_allowed_max_tokens"] == 512 - count_body["token_count"] - 1
+    assert fit_body["recommended_max_tokens"] == 9
     assert fit_body["required_context_tokens"] == count_body["token_count"] + 9 + 1
+    assert fit_body["overflow_tokens"] == 0
     assert fit_body["session"] == count_body["session"]
     assert fake.calls[1][0][0] == count_body["text"]
 
@@ -6053,7 +6059,10 @@ def test_server_rejects_requests_beyond_preallocated_context() -> None:
         "prompt_tokens": 4,
         "max_context_tokens": 5,
         "effective_max_tokens": 2,
+        "max_allowed_max_tokens": 0,
+        "recommended_max_tokens": 0,
         "required_context_tokens": 7,
+        "overflow_tokens": 2,
         "fits": False,
         "clear_policy": "reject",
         "would_truncate": False,

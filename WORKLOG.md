@@ -89220,3 +89220,18 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `24 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC context-fit retry metadata
+
+Extended the shared context-fit payload used by `/v1/hipengine/fit_context` and
+generation `context_overflow` errors. Bounded-context responses now include
+`max_allowed_max_tokens`, `recommended_max_tokens`, and `overflow_tokens`, so
+clients can retry deterministically under the current reject policy without
+reverse-engineering the server's `prompt + max_tokens + 1` admission arithmetic.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_token_diagnostics_use_session_prefix_for_chat tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -1601,11 +1601,11 @@ Current code reality:
 - The current overflow policy is explicit `reject`: generation does not
   truncate, auto-clear, or drop request content.
 - `/fit_context` reports prompt tokens, effective max tokens, required context,
-  `fits`, `clear_policy="reject"`, `would_truncate=false`, and an empty
-  `would_drop` list using the same helper as generation admission. Chat
-  preflight with `session.id` includes the app-local stored transcript prefix
-  before computing prompt tokens and reports the same session-prefix metadata as
-  `/count_tokens`.
+  max allowed/recommended `max_tokens`, overflow tokens, `fits`,
+  `clear_policy="reject"`, `would_truncate=false`, and an empty `would_drop`
+  list using the same helper as generation admission. Chat preflight with
+  `session.id` includes the app-local stored transcript prefix before computing
+  prompt tokens and reports the same session-prefix metadata as `/count_tokens`.
 - Generation `context_overflow` errors include `error.fit_context` with the same
   actionable shape, so clients can retry with a smaller `max_tokens` or run the
   preflight endpoint without reverse-engineering the error message.

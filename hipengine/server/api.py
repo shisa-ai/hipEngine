@@ -5504,11 +5504,17 @@ def _context_fit_payload(
     effective_max_tokens = max(0, int(max_tokens))
     required_context = prompt_count + effective_max_tokens + 1
     max_context = None if max_context_tokens is None else max(1, int(max_context_tokens))
+    max_allowed = None if max_context is None else max(0, max_context - prompt_count - 1)
+    overflow_tokens = 0 if max_context is None else max(0, required_context - max_context)
+    recommended = effective_max_tokens if max_allowed is None else min(effective_max_tokens, max_allowed)
     return {
         "prompt_tokens": prompt_count,
         "max_context_tokens": max_context,
         "effective_max_tokens": effective_max_tokens,
+        "max_allowed_max_tokens": max_allowed,
+        "recommended_max_tokens": recommended,
         "required_context_tokens": required_context,
+        "overflow_tokens": overflow_tokens,
         "fits": True if max_context is None else required_context <= max_context,
         "clear_policy": "reject",
         "would_truncate": False,
