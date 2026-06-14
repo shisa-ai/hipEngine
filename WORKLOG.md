@@ -89716,3 +89716,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_choice_rejects_missing_tools_without_generation tests/test_server_api.py::test_chat_completion_specific_tool_choice_rejects_unknown_function_without_generation tests/test_server_api.py::test_chat_completion_malformed_tool_choice_rejects_without_generation -q` -> `7 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC single-model routing metadata
+
+Added explicit `hipengine.routing` metadata to successful non-streaming
+`/v1/completions` and `/v1/chat/completions` responses. The current single-model
+server now reports requested model, served model, `fallback_used=false`,
+`policy="single_model_exact"`, loaded model count, and `multiple_models=false`
+without adding any backend/quant dispatch branches.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_calls_llm_and_applies_stop tests/test_server_api.py::test_chat_completion_renders_messages_to_prompt -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

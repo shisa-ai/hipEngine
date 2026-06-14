@@ -241,6 +241,22 @@ def _stateless_finish_details(reason: str, **extra: Any) -> dict[str, Any]:
     return {"reason": reason, **extra, "cache_action": "append_none"}
 
 
+def _routing_metadata(
+    *,
+    requested_model: str = "fake-model",
+    served_model: str = "fake-model",
+    loaded_model_count: int = 1,
+) -> dict[str, Any]:
+    return {
+        "requested_model": requested_model,
+        "served_model": served_model,
+        "fallback_used": False,
+        "policy": "single_model_exact",
+        "loaded_model_count": loaded_model_count,
+        "multiple_models": False,
+    }
+
+
 def _continuation_capability() -> dict[str, Any]:
     return {
         "supported": True,
@@ -2207,6 +2223,7 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     body = response.json()
     assert body["object"] == "text_completion"
     assert body["model"] == "fake-model"
+    assert body["hipengine"]["routing"] == _routing_metadata()
     assert [choice["text"] for choice in body["choices"]] == ["alpha", "beta"]
     assert [choice["finish_reason"] for choice in body["choices"]] == ["stop", "stop"]
     assert [choice["finish_details"] for choice in body["choices"]] == [_stateless_finish_details("stop"), _stateless_finish_details("stop")]
@@ -3799,6 +3816,8 @@ def test_chat_completion_renders_messages_to_prompt() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["object"] == "chat.completion"
+    assert body["model"] == "fake-model"
+    assert body["hipengine"]["routing"] == _routing_metadata()
     assert body["choices"] == [
         {
             "index": 0,

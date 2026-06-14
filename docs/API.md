@@ -138,6 +138,14 @@ Streaming requests with logprobs use a buffered detailed-generation path so SSE
 chunks can carry logprob metadata; ordinary streams without logprobs remain
 live token/chunk streams.
 
+### Routing metadata
+
+Successful non-streaming `/v1/completions` and `/v1/chat/completions`
+responses include a top-level `hipengine.routing` extension. In the current
+single-model server it reports the requested model, served model,
+`fallback_used: false`, `policy: "single_model_exact"`, loaded model count, and
+`multiple_models: false`.
+
 ### Streaming usage and hipEngine metadata
 
 Both completion endpoints accept OpenAI-compatible `stream_options`. Set

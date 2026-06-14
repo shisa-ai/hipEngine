@@ -2120,6 +2120,10 @@ Current code reality:
   resident-context support, context defaults, KV policy/capacity estimate when
   available, a compact capability summary, a capabilities URL for the detailed
   manifest, and routing count metadata.
+- Successful non-streaming `/v1/completions` and `/v1/chat/completions`
+  responses include `hipengine.routing` metadata with the requested model,
+  served model, single-model exact policy, loaded model count,
+  `multiple_models=false`, and `fallback_used=false`.
 - Multiple resident models, per-model VRAM admission, unload/eviction, and
   cross-model request targeting remain future routing work.
 

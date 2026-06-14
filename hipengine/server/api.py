@@ -1048,6 +1048,22 @@ def _model_capability_summary() -> dict[str, Any]:
     }
 
 
+def _routing_response_metadata(
+    config: ServerConfig,
+    *,
+    requested_model: str | None,
+    engine: Any | None,
+) -> dict[str, Any]:
+    return {
+        "requested_model": requested_model or config.model_id,
+        "served_model": config.model_id,
+        "fallback_used": False,
+        "policy": "single_model_exact",
+        "loaded_model_count": 0 if engine is None else 1,
+        "multiple_models": False,
+    }
+
+
 def _choice_telemetry_capability() -> dict[str, Any]:
     return {
         "non_streaming": True,
@@ -3455,6 +3471,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "model": config.model_id,
             "choices": choices,
             "usage": batch.usage,
+            "hipengine": {
+                "routing": _routing_response_metadata(
+                    config,
+                    requested_model=request.model,
+                    engine=getattr(app.state, "hipengine_llm", None),
+                ),
+            },
         }
         await _maybe_write_agentic_result_replay_artifact(
             config,
@@ -3627,6 +3650,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "model": config.model_id,
                 "choices": choices,
                 "usage": batch.usage,
+                "hipengine": {
+                    "routing": _routing_response_metadata(
+                        config,
+                        requested_model=request.model,
+                        engine=getattr(app.state, "hipengine_llm", None),
+                    ),
+                },
             }
             await _maybe_write_agentic_result_replay_artifact(
                 config,
