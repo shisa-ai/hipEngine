@@ -7593,6 +7593,38 @@ def test_chat_completion_auto_tool_recovers_duplicated_start_marker() -> None:
     assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
 
 
+def test_chat_completion_auto_tool_rejects_unparseable_tool_markup() -> None:
+    raw_tool_markup = '<tool_call>{"name":"read","arguments":</tool_call>'
+    fake = FakeLLM(outputs=[raw_tool_markup])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert raw_tool_markup not in response.text
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
 def test_chat_completion_auto_tool_rejects_undeclared_function() -> None:
     fake = FakeLLM(
         outputs=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>']
@@ -8526,6 +8558,40 @@ def test_streaming_chat_completion_rejects_undeclared_auto_tool_name() -> None:
     assert response.status_code == 200
     assert "<tool_call>" not in response.text
     assert "write" not in response.text
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+
+
+def test_streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup() -> None:
+    raw_tool_markup = '<tool_call>{"name":"bash","arguments":</tool_call>'
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=[raw_tool_markup])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert raw_tool_markup not in response.text
     payloads = _sse_payloads(response.text)
     assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])

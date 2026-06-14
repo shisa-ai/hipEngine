@@ -373,7 +373,7 @@ def test_agentic_conformance_permissive_duplicated_tool_start_recovers_call() ->
     }
 
 
-def test_agentic_conformance_permissive_malformed_tool_json_remains_text() -> None:
+def test_agentic_conformance_permissive_malformed_tool_json_fails_closed() -> None:
     raw_tool_markup = '<tool_call>{"name":"read","arguments":</tool_call>'
     llm = AgenticFakeLLM(outputs=[raw_tool_markup])
     response = _client(llm).post(
@@ -389,8 +389,12 @@ def test_agentic_conformance_permissive_malformed_tool_json_remains_text() -> No
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
-    assert choice["message"] == {"role": "assistant", "content": raw_tool_markup}
+    assert choice["finish_details"] == {
+        "reason": "invalid_tool_call",
+        "cache_action": "append_none",
+    }
+    assert choice["message"] == {"role": "assistant", "content": ""}
+    assert "<tool_call>" not in response.text
 
 
 def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -> None:

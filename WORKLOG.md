@@ -91456,3 +91456,22 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC malformed tool-call fail-closed
+
+Tightened tool-enabled chat validation for malformed model tool-call markup.
+Non-strict auto-tool requests still recover a duplicated `<tool_call>` start
+marker when the wrapped inner JSON is valid, but unparseable or unclosed
+`<tool_call>` blocks now return a normal chat response with
+`finish_details.reason="invalid_tool_call"` and empty assistant content instead
+of surfacing raw tool markup as ordinary text. This matches the pi/local-agent
+smoke expectation that tool-enabled responses either produce parsed
+`message.tool_calls` or an explicit tool-call failure.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_auto_tool_recovers_duplicated_start_marker tests/test_server_api.py::test_chat_completion_auto_tool_rejects_unparseable_tool_markup tests/test_server_api.py::test_streaming_chat_completion_recovers_duplicated_tool_start_marker tests/test_server_api.py::test_streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json tests/test_agentic_server_conformance.py::test_agentic_conformance_permissive_duplicated_tool_start_recovers_call tests/test_agentic_server_conformance.py::test_agentic_conformance_permissive_malformed_tool_json_fails_closed -q` -> `7 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_auto_tool_recovers_duplicated_start_marker tests/test_server_api.py::test_chat_completion_auto_tool_rejects_unparseable_tool_markup tests/test_server_api.py::test_chat_completion_auto_tool_rejects_undeclared_function tests/test_server_api.py::test_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_streaming_chat_completion_recovers_duplicated_tool_start_marker tests/test_server_api.py::test_streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup tests/test_server_api.py::test_streaming_chat_completion_rejects_undeclared_auto_tool_name tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json -q` -> `8 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

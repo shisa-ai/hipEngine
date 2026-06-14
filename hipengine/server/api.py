@@ -9347,6 +9347,7 @@ def _validate_chat_tool_result(
     mode, required_name = _tool_choice_mode(request.tool_choice)
     strict = _strict_tool_validation_enabled(request)
     malformed_blocks = _malformed_tool_call_blocks(raw_text) if strict else ()
+    unparseable_blocks = _unparseable_tool_call_blocks(raw_text)
     if strict:
         if mode == "none":
             if parsed.tool_calls or malformed_blocks:
@@ -9354,6 +9355,8 @@ def _validate_chat_tool_result(
             return _ToolValidationResult(parsed)
         if malformed_blocks:
             return _tool_validation_failure("invalid_tool_call")
+    if unparseable_blocks:
+        return _tool_validation_failure("invalid_tool_call")
     if not parsed.tool_calls:
         if strict and mode in {"required", "function"}:
             return _tool_validation_failure("tool_required_not_satisfied")
@@ -9453,6 +9456,17 @@ def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
     malformed: list[str] = []
     for match in _TOOL_CALL_BLOCK_RE.finditer(text):
         if _parsed_tool_call_from_json(match.group(1).strip()) is None:
+            malformed.append(match.group(0))
+    if _has_unclosed_tool_call(text):
+        open_index = text.lower().rfind("<tool_call>")
+        malformed.append(text[open_index:] if open_index >= 0 else str(text))
+    return tuple(malformed)
+
+
+def _unparseable_tool_call_blocks(text: str) -> tuple[str, ...]:
+    malformed: list[str] = []
+    for match in _TOOL_CALL_BLOCK_RE.finditer(text):
+        if _parsed_tool_call_from_block_body(match.group(1), raw_text=match.group(0)) is None:
             malformed.append(match.group(0))
     if _has_unclosed_tool_call(text):
         open_index = text.lower().rfind("<tool_call>")

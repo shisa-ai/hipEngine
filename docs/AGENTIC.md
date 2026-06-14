@@ -108,10 +108,10 @@ Known baseline limitations:
 
 - Tool calling is prompt-and-parse plus limited marker repair, not full
   constrained decoding. A duplicated `<tool_call>` start marker wrapping valid
-  inner tool JSON is recovered in compatibility parsing, but malformed
-  `<tool_call>` JSON is otherwise treated as assistant text in compatibility mode
-  and as `finish_details.reason="invalid_tool_call"` when strict result
-  validation is active.
+  inner tool JSON is recovered in compatibility parsing. Tool-enabled requests
+  now fail closed on unparseable `<tool_call>` markup, including malformed or
+  unclosed JSON blocks, by returning a normal chat response with
+  `finish_details.reason="invalid_tool_call"` and no assistant content.
 - Thinking control is still not constrained decoding. Tokenized thinking caps
   are enforced only on host-sampled PARO/GGUF rows: the soft window applies a
   sparse close-token bias ramp, EOS is suppressed until answer phase when an
