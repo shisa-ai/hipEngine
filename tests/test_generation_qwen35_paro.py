@@ -32,6 +32,26 @@ def _decode_state(output):
     return output.telemetry.to_json_dict()["decode_state"]
 
 
+def test_qwen35_paro_row_sampling_state_binds_thinking_budget() -> None:
+    request = _request(
+        thinking_close_token_ids=(42, 43),
+        thinking_hard_token_cap=1,
+        thinking_soft_close_window=1,
+    )
+
+    state = qwen35._row_sampling_state(request, [1, 2], row_index=0)
+    assert state.thinking_budget is not None
+    assert state.thinking_budget.close_sequence == (42, 43)
+    assert state.thinking_budget.hard_token_cap == 1
+
+    state.observe(10)
+    cloned = qwen35._clone_row_sampling_state(state)
+    cloned.prepare_for_selection()
+
+    assert cloned.forced_tokens == (42, 43)
+    assert cloned.forced_token_reason == "thinking_hard_close"
+
+
 def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context() -> None:
     config = SimpleNamespace(
         layer_types=("linear_attention",) * 30 + ("full_attention",) * 10,

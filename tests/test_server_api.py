@@ -354,9 +354,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "thinking",
             "reasoning",
         ],
-        "budget_policy": "prompt_hint_only",
-        "token_budget": False,
-        "token_budget_enforced": False,
+        "budget_policy": "prompt_hint_plus_tokenized_hard_close",
+        "token_budget": True,
+        "token_budget_enforced": True,
         "effort_defaults": {
             "minimal": {"hard_think_cap": 256, "soft_close_window": 64, "min_answer_tokens": 256},
             "low": {"hard_think_cap": 512, "soft_close_window": 128, "min_answer_tokens": 512},
@@ -367,6 +367,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         },
         "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
         "hard_close_validation": True,
+        "hard_close_token_forcing": True,
+        "soft_close_bias": False,
         "hard_close_marker": "</think>",
         "diagnostic_close_token_lowering": True,
         "diagnostic_initial_state": True,
@@ -431,6 +433,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "top_logprobs",
             "suppress_token_ids",
             "min_tokens",
+            "thinking_budget",
             "combined_top_k_with_top_p_or_min_p",
         ],
     }
@@ -450,6 +453,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "stop_token_ids",
             "stop_token_sequences",
             "forced_tokens_pending",
+            "thinking_budget",
             "logprobs",
             "top_logprobs",
         ],
@@ -464,6 +468,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "stop_token_ids": "one or more token stop ids",
             "stop_token_sequences": "one or more multi-token stop sequences",
             "forced_tokens_pending": "one or more forced tokens pending",
+            "thinking_budget": "hard thinking budget with a forced close sequence",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
         },
@@ -1950,6 +1955,30 @@ def test_chat_completion_accepts_thinking_budget_prompt_hints() -> None:
     assert "exceeding 123 hidden reasoning tokens" not in prompt
 
 
+def test_chat_completion_lowers_thinking_budget_into_sampling_params() -> None:
+    fake = FakeLLM(outputs=["bounded answer"], token_map={"</think>": [42, 43]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think, then answer"}],
+            "max_tokens": 20,
+            "hard_think_cap": 12,
+            "soft_close_window": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["</think>"]
+    sampling = fake.calls[-1][1]
+    assert sampling.thinking_close_token_ids == (42, 43)
+    assert sampling.thinking_hard_token_cap == 12
+    assert sampling.thinking_soft_close_window == 3
+
+
 def test_chat_completion_preserves_string_thinking_budget_effort_alias() -> None:
     fake = FakeLLM(outputs=["answer"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -3350,6 +3379,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "stop_token_ids",
             "stop_token_sequences",
             "forced_tokens_pending",
+            "thinking_budget",
             "logprobs",
             "top_logprobs",
         ],
@@ -3364,6 +3394,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "stop_token_ids": "one or more token stop ids",
             "stop_token_sequences": "one or more multi-token stop sequences",
             "forced_tokens_pending": "one or more forced tokens pending",
+            "thinking_budget": "hard thinking budget with a forced close sequence",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
         },

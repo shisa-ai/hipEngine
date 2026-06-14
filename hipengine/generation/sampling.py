@@ -33,6 +33,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "stop_token_ids",
     "stop_token_sequences",
     "forced_tokens_pending",
+    "thinking_budget",
     "logprobs",
     "top_logprobs",
 )
@@ -47,6 +48,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
+    "thinking_budget": "hard thinking budget with a forced close sequence",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
 }
@@ -288,6 +290,17 @@ def validate_sampling_params(params: Any) -> None:
             raise ValueError("stop_token_ids must be non-negative")
     normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None))
     normalize_logit_bias_pairs(getattr(params, "logit_bias", None))
+    close_token_ids = _thinking_close_token_ids(params)
+    if any(token_id < 0 for token_id in close_token_ids):
+        raise ValueError("thinking_close_token_ids must be non-negative")
+    hard_token_cap = getattr(params, "thinking_hard_token_cap", None)
+    if hard_token_cap is not None and int(hard_token_cap) < 0:
+        raise ValueError("thinking_hard_token_cap must be non-negative")
+    if hard_token_cap is not None and not close_token_ids:
+        raise ValueError("thinking_hard_token_cap requires thinking_close_token_ids")
+    soft_close_window = int(getattr(params, "thinking_soft_close_window", 0))
+    if soft_close_window < 0:
+        raise ValueError("thinking_soft_close_window must be non-negative")
 
 
 def active_processor_names(params: Any) -> tuple[str, ...]:
@@ -310,6 +323,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("stop_token_ids")
     if normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)):
         names.append("stop_token_sequences")
+    if thinking_budget_active(params):
+        names.append("thinking_budget")
     if _forced_tokens_pending(params):
         names.append("forced_tokens_pending")
     return tuple(names)
@@ -353,6 +368,49 @@ def _forced_tokens_pending(params: Any) -> tuple[int, ...]:
     return tuple(int(token) for token in queue)
 
 
+def _thinking_close_token_ids(params: Any) -> tuple[int, ...]:
+    token_ids = getattr(params, "thinking_close_token_ids", ())
+    if token_ids is None:
+        return ()
+    return tuple(int(token) for token in token_ids)
+
+
+def thinking_budget_active(params: Any) -> bool:
+    """Return whether request params activate token-level thinking control."""
+
+    return bool(_thinking_close_token_ids(params)) and getattr(params, "thinking_hard_token_cap", None) is not None
+
+
+def thinking_budget_state_from_params(params: Any) -> ThinkingBudgetState | None:
+    """Build a fresh mutable thinking-budget state for one decode row."""
+
+    if not thinking_budget_active(params):
+        return None
+    return ThinkingBudgetState(
+        close_sequence=_thinking_close_token_ids(params),
+        hard_token_cap=getattr(params, "thinking_hard_token_cap", None),
+        soft_close_window=int(getattr(params, "thinking_soft_close_window", 0)),
+    )
+
+
+def clone_thinking_budget_state(state: ThinkingBudgetState | None) -> ThinkingBudgetState | None:
+    """Clone mutable thinking-budget state without sharing forced-token queues."""
+
+    if state is None:
+        return None
+    cloned = ThinkingBudgetState(
+        close_sequence=state.close_sequence,
+        hard_token_cap=state.hard_token_cap,
+        soft_close_window=state.soft_close_window,
+        phase=state.phase,
+        reasoning_tokens=state.reasoning_tokens,
+        answer_tokens=state.answer_tokens,
+        forced_tokens=ForcedTokenQueue(state.forced_tokens.pending_tokens, reason=state.forced_tokens.reason),
+    )
+    cloned.close_state = state.close_state
+    return cloned
+
+
 def supports_native_gpu_sampling(params: Any) -> bool:
     """Return whether current standalone GPU sampler kernels cover ``params``.
 
@@ -371,6 +429,8 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     if int(getattr(params, "min_tokens", 0)) > 0:
         return False
     if _forced_tokens_pending(params):
+        return False
+    if thinking_budget_active(params):
         return False
     top_k = int(getattr(params, "top_k", 0))
     if top_k > _MAX_NATIVE_GPU_TOP_K:
@@ -723,6 +783,7 @@ __all__ = [
     "SPECULATIVE_MTP_INCOMPATIBLE_FIELDS",
     "SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS",
     "active_processor_names",
+    "clone_thinking_budget_state",
     "derive_row_seed",
     "normalize_logit_bias_pairs",
     "normalize_stop_token_sequences",
@@ -731,6 +792,8 @@ __all__ = [
     "sampler_fast_path_blockers",
     "select_token",
     "speculative_mtp_sampling_blockers",
+    "thinking_budget_active",
+    "thinking_budget_state_from_params",
     "supports_native_gpu_sampling",
     "supports_speculative_mtp_sampling",
     "validate_sampling_params",

@@ -75,7 +75,9 @@ Already available or recently added:
   `chat_template_kwargs.thinking_budget`, `thinking.budget_tokens`,
   `thinking.max_tokens`, `max_think_tokens`, `min_answer_tokens`,
   `hard_think_cap`, `soft_close_window`, `hard_close_message`, and
-  `hard_close_sequence`.
+  `hard_close_sequence`. When the served engine exposes tokenization, chat
+  hard caps lower the close marker/string into token ids and host sampling
+  forces that close sequence at the cap.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 
 Known baseline limitations:
@@ -84,11 +86,10 @@ Known baseline limitations:
   `<tool_call>` JSON is treated as assistant text in compatibility mode and as
   `finish_details.reason="invalid_tool_call"` when strict result validation is
   active.
-- Thinking controls are prompt/template controls only. Generic
-  `suppress_token_ids` and `min_tokens`/`eos_token_id` sampling policies exist,
-  but there is no token-level thinking-budget controller, dynamic soft-close
-  processor, or forced close sequence yet. `hard_close_sequence` is validated to
-  contain `</think>`, but it is not forced during decode.
+- Thinking control is still not constrained decoding. Hard thinking caps are
+  enforced only on host-sampled PARO/GGUF rows when the close string can be
+  tokenized; dynamic soft-close bias, EOS suppression until answer phase, and
+  native GPU/MTP parity remain future work.
 - Server-side reasoning/tool parsing lives above generation. PARO/GGUF
   generation loops emit final decode-state telemetry snapshots, but they do not
   yet expose canonical live token-level phase state for reasoning, answer,
@@ -316,8 +317,10 @@ Current code reality:
   on host logits, and flow through scheduler per-row sampler blocks. `logit_bias`
   and penalty processors are also covered by standalone native sampler tests;
   suppress-token ids and min-token/EOS policy make the native sampler route fall
-  back to host. None of these processors are compatible with MTP verification
-  yet because verify top-1 is raw argmax.
+  back to host. Token-level thinking-budget hard close now follows the same
+  planning contract: it binds to host row state, blocks native GPU sampling, and
+  is reported as a speculative/MTP blocker. None of these processors are
+  compatible with MTP verification yet because verify top-1 is raw argmax.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
@@ -567,8 +570,9 @@ Precedence and disabling rules:
    `0`.
 
 Current server behavior is weaker than the final token-level target but stronger
-than a plain tone hint: it accepts these control surfaces only to render
-prompt/template hints or pre-close Qwen thinking. `reasoning_effort`
+than a plain tone hint: it accepts these control surfaces to render
+prompt/template hints, pre-close Qwen thinking, and host-sampler hard-close
+state when tokenization is available. `reasoning_effort`
 `minimal`/`low`/`medium`/`high`/`xhigh`/`max` maps to the default hard-cap,
 answer-reserve, and soft-close-window table above, clamped to request
 `max_tokens`, the configured chat default when bounded, and remaining admitted
@@ -580,15 +584,22 @@ act as effort aliases for compatibility. Explicit `max_think_tokens`,
 `min_answer_tokens`, `hard_think_cap`, `soft_close_window`,
 `hard_close_message`, and `hard_close_sequence` fields are accepted; numeric
 hard/min/soft hints are clamped to the same bounded generation budget, and
-`hard_close_sequence` is rejected unless it contains `</think>`. The server does
-not yet lower any of these controls into token-level decode policy.
+`hard_close_sequence` is rejected unless it contains `</think>`. For chat
+requests with an effective `hard_think_cap`, the server tokenizes
+`hard_close_sequence` or the default `</think>` marker and passes
+`thinking_close_token_ids`, `thinking_hard_token_cap`, and
+`thinking_soft_close_window` through `SamplingParams`, `GenerationRequest`, and
+`PerRowSamplingParams`. Host sampling binds those fields to a fresh
+`ThinkingBudgetState` per row and forces the close sequence when the hard cap is
+reached. If tokenization is unavailable, normal chat generation stays
+prompt-hint-only instead of failing.
 
 ### Hard-close sequence and overrides
 
 The default hard close should be deterministic and minimal:
 
 ```text
-</think>\n
+</think>
 ```
 
 This minimizes extra hidden tokens and avoids adding model-visible prose that
@@ -1053,13 +1064,25 @@ Current code reality:
 - host `RowSamplingState` / `select_token()` can enforce a supplied
   `ThinkingBudgetState` hard cap by forcing the close sequence before ordinary
   argmax/sampling, with forced-token metadata and normal row-history updates;
+- `SamplingParams`, `GenerationRequest`, and `PerRowSamplingParams` carry the
+  lowered `thinking_close_token_ids`, `thinking_hard_token_cap`, and
+  `thinking_soft_close_window` fields; PARO/GGUF host-sampled rows and
+  resident scheduler rows bind those fields into per-row
+  `ThinkingBudgetState` instances;
+- chat completions lower effective hard thinking caps into sampler fields when
+  the close string can be tokenized; if tokenization is unsupported, generation
+  remains prompt-hint-only rather than failing the request;
 - chat token diagnostics can lower the configured hard close sequence (or the
   default `</think>` marker) into token ids and return an initialized
   `ThinkingBudgetState` payload for harness/debug verification;
-- not implemented: server/runtime request-time lowering into
-  `RowSamplingState.thinking_budget`, dynamic soft-close bias, manual forced
-  close from external controllers, EOS suppression, and backend-authored
-  per-phase finish metadata.
+- sampler planning treats an active thinking budget as a fast-path blocker:
+  host sampling is used, native GPU sampling falls back, and raw-argmax
+  speculative/MTP verification is rejected until those paths implement the same
+  forced-close semantics;
+- not implemented: dynamic soft-close bias, manual forced close from external
+  controllers, EOS suppression, native GPU thinking-budget enforcement,
+  speculative/MTP processed-target verification, and backend-authored per-phase
+  finish metadata.
 
 Exit gates:
 
@@ -1519,10 +1542,13 @@ Current code reality:
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
   parameters and execution modes, strict tool result-validation support,
   JSON-object and JSON-schema structured-output result validation, the
-  reasoning-control field list with `budget_policy="prompt_hint_only"` and
-  `token_budget_enforced=false`, the default-off PARO c=1 native GPU sampler
-  scope, speculative/MTP sampling compatibility, request-timeout/client-disconnect
-  support, cache/session settings, loaded-model count, and
+  reasoning-control field list with
+  `budget_policy="prompt_hint_plus_tokenized_hard_close"`,
+  tokenizer-dependent `token_budget_enforced`, explicit
+  `hard_close_token_forcing`, and `soft_close_bias=false`, the default-off PARO
+  c=1 native GPU sampler scope, speculative/MTP sampling compatibility,
+  request-timeout/client-disconnect support, cache/session settings,
+  loaded-model count, and
   unsupported fields.
 - Continuations, stateful `session.id`, stateful `session.commit` modes,
   multi-model routing, and strict tool decoding are advertised as unsupported

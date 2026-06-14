@@ -76,9 +76,9 @@ def _capabilities(**overrides):
                     "thinking",
                     "reasoning",
                 ],
-                "budget_policy": "prompt_hint_only",
-                "token_budget": False,
-                "token_budget_enforced": False,
+                "budget_policy": "prompt_hint_plus_tokenized_hard_close",
+                "token_budget": True,
+                "token_budget_enforced": True,
                 "effort_defaults": {
                     "minimal": {"hard_think_cap": 256, "soft_close_window": 64, "min_answer_tokens": 256},
                     "low": {"hard_think_cap": 512, "soft_close_window": 128, "min_answer_tokens": 512},
@@ -88,6 +88,8 @@ def _capabilities(**overrides):
                     "max": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
                 },
                 "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
+                "hard_close_token_forcing": True,
+                "soft_close_bias": False,
             },
             "request_timeouts": {"timeout_ms": True},
             "token_diagnostics": {

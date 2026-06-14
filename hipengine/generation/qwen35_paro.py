@@ -21,9 +21,11 @@ from hipengine.generation.registry import (
 from hipengine.generation.sampling import (
     RowSamplingState,
     SamplingMode,
+    clone_thinking_budget_state,
     plan_sampler,
     row_seed_for_index,
     supports_native_gpu_sampling,
+    thinking_budget_state_from_params,
 )
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
@@ -989,6 +991,9 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         seed=request.seed,
         stop_tokens=request.stop_token_ids,
         stop_token_sequences=request.stop_token_sequences,
+        thinking_close_token_ids=request.thinking_close_token_ids,
+        thinking_hard_token_cap=request.thinking_hard_token_cap,
+        thinking_soft_close_window=request.thinking_soft_close_window,
     )
 
 
@@ -1004,6 +1009,17 @@ def _slot_sampler_state_clones(
 
 
 def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
+    thinking_budget = clone_thinking_budget_state(state.thinking_budget)
+    if thinking_budget is not None:
+        return RowSamplingState(
+            prompt_tokens=state.prompt_tokens,
+            seed=state.seed,
+            request_id=state.request_id,
+            row_index=state.row_index,
+            generated_tokens=tuple(state.generated_tokens),
+            step_index=state.step_index,
+            thinking_budget=thinking_budget,
+        )
     return RowSamplingState(
         prompt_tokens=state.prompt_tokens,
         seed=state.seed,
@@ -1084,6 +1100,7 @@ def _row_sampling_state(
         prompt_tokens=tuple(int(token) for token in prompt_ids),
         seed=row_seed_for_index(request, row_index),
         row_index=row_index,
+        thinking_budget=thinking_budget_state_from_params(request),
     )
 
 

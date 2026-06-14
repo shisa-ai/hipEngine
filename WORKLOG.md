@@ -88215,3 +88215,24 @@ Validation:
 - `python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_server_api.py tests/test_qwen35_resident_batch_layout.py` -> passed.
 - `uv run pytest -q tests/test_server_api.py tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget` -> passed.
 - Real GPU1 128000 and 262144 startup smokes reached readiness; timeout terminated them cleanly; `rocm-smi --showmeminfo vram --showpidgpus` showed no KFD PIDs afterward.
+
+## 2026-06-14 - AGENTIC thinking budget request lowering
+
+Completed the next P1.4 bridge: chat hard thinking caps now lower through
+`SamplingParams` / `GenerationRequest` / `PerRowSamplingParams` into per-row
+`ThinkingBudgetState` on PARO/GGUF host-sampled paths and resident scheduler
+rows. Active thinking budget now participates in sampler planning as a
+`thinking_budget` processor, blocks greedy/native fast paths that cannot enforce
+the close, and rejects current raw-argmax speculative/MTP compatibility. The
+server capabilities manifest now advertises tokenizer-dependent token-budget
+hard-close enforcement while keeping soft-close bias and native/MTP parity
+explicitly unsupported. `docs/AGENTIC.md` and `docs/API.md` were updated
+against this code reality.
+
+Validation:
+- `python3 -m py_compile hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_llm_generate.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_lowers_thinking_budget_into_sampling_params tests/test_generation_qwen35_paro.py::test_qwen35_paro_row_sampling_state_binds_thinking_budget tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params tests/test_local_agent_config.py -q` -> `44 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `113 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_local_agent_config.py -q` -> `315 passed`.
+- `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_llm_generate.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- Full touched-file ruff including `tests/test_generation_batch_scheduler.py` still reports pre-existing unrelated F811/F841 issues in that test file outside this change.

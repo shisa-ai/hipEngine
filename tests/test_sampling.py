@@ -20,6 +20,8 @@ from hipengine.generation.sampling import (
     sampler_fast_path_blockers,
     select_token,
     speculative_mtp_sampling_blockers,
+    thinking_budget_active,
+    thinking_budget_state_from_params,
     supports_native_gpu_sampling,
     supports_speculative_mtp_sampling,
 )
@@ -42,6 +44,9 @@ def _params(**overrides):
         "row_seeds": (),
         "stop_token_ids": (),
         "stop_token_sequences": (),
+        "thinking_close_token_ids": (),
+        "thinking_hard_token_cap": None,
+        "thinking_soft_close_window": 0,
         "logprobs": False,
         "top_logprobs": 0,
     }
@@ -144,6 +149,12 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, suppress_token_ids=(1,))) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, min_tokens=1, eos_token_id=2)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, forced_tokens_pending=(1,))) is False
+    assert (
+        supports_native_gpu_sampling(
+            _params(temperature=0.7, thinking_close_token_ids=(4, 5), thinking_hard_token_cap=8)
+        )
+        is False
+    )
     assert plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).mode is SamplingMode.HOST_LOGITS_SAMPLE
     assert (
         plan_sampler(_params(temperature=0.7, forced_tokens_pending=(1,)), native_gpu_available=True).mode
@@ -178,6 +189,10 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     assert speculative_mtp_sampling_blockers(_params(forced_tokens_pending=(10, 11))) == (
         "forced_tokens_pending",
     )
+    thinking_budget = _params(thinking_close_token_ids=(10, 11), thinking_hard_token_cap=2)
+    assert thinking_budget_active(thinking_budget) is True
+    assert thinking_budget_state_from_params(thinking_budget).close_sequence == (10, 11)
+    assert speculative_mtp_sampling_blockers(thinking_budget) == ("thinking_budget",)
     assert speculative_mtp_sampling_blockers(
         SimpleNamespace(
             temperature=0.0,
@@ -192,6 +207,9 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
             row_seeds=(),
             stop_tokens=(99,),
             stop_token_sequences=(),
+            thinking_close_token_ids=(),
+            thinking_hard_token_cap=None,
+            thinking_soft_close_window=0,
             logprobs=False,
             top_logprobs=0,
         )

@@ -159,6 +159,9 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
             eos_token_id=99,
             stop_token_ids=(99,),
             stop_token_sequences=((100, 101),),
+            thinking_close_token_ids=(102, 103),
+            thinking_hard_token_cap=8,
+            thinking_soft_close_window=2,
             seed=123,
         ),
     ) == ["ok"]
@@ -173,6 +176,9 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     assert calls["request"].eos_token_id == 99
     assert calls["request"].stop_token_ids == (99,)
     assert calls["request"].stop_token_sequences == ((100, 101),)
+    assert calls["request"].thinking_close_token_ids == (102, 103)
+    assert calls["request"].thinking_hard_token_cap == 8
+    assert calls["request"].thinking_soft_close_window == 2
     assert calls["request"].seed == 123
 
 

@@ -22,6 +22,7 @@ from hipengine.generation.sampling import (
     normalize_logit_bias_pairs,
     normalize_stop_token_sequences,
     speculative_mtp_sampling_blockers,
+    thinking_budget_state_from_params,
 )
 from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
@@ -56,6 +57,9 @@ class PerRowSamplingParams:
     seed: int | None = None
     stop_tokens: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
+    thinking_close_token_ids: tuple[int, ...] = ()
+    thinking_hard_token_cap: int | None = None
+    thinking_soft_close_window: int = 0
 
     def __post_init__(self) -> None:
         if self.temperature < 0.0:
@@ -87,6 +91,15 @@ class PerRowSamplingParams:
         if any(token < 0 for token in stops):
             raise ValueError("stop_tokens must be non-negative")
         stop_sequences = normalize_stop_token_sequences(self.stop_token_sequences)
+        close_token_ids = tuple(int(token) for token in self.thinking_close_token_ids)
+        if any(token < 0 for token in close_token_ids):
+            raise ValueError("thinking_close_token_ids must be non-negative")
+        if self.thinking_hard_token_cap is not None and int(self.thinking_hard_token_cap) < 0:
+            raise ValueError("thinking_hard_token_cap must be non-negative")
+        if self.thinking_hard_token_cap is not None and not close_token_ids:
+            raise ValueError("thinking_hard_token_cap requires thinking_close_token_ids")
+        if int(self.thinking_soft_close_window) < 0:
+            raise ValueError("thinking_soft_close_window must be non-negative")
         logit_bias = normalize_logit_bias_pairs(self.logit_bias)
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_k", int(self.top_k))
@@ -102,6 +115,13 @@ class PerRowSamplingParams:
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "stop_tokens", stops)
         object.__setattr__(self, "stop_token_sequences", stop_sequences)
+        object.__setattr__(self, "thinking_close_token_ids", close_token_ids)
+        object.__setattr__(
+            self,
+            "thinking_hard_token_cap",
+            None if self.thinking_hard_token_cap is None else int(self.thinking_hard_token_cap),
+        )
+        object.__setattr__(self, "thinking_soft_close_window", int(self.thinking_soft_close_window))
 
     def resolved_seed(self, *, request_id: int, row_index: int) -> int:
         base = int(self.seed) if self.seed is not None else 0
@@ -127,6 +147,9 @@ class SamplerParamsBlock:
     seeds: tuple[int, ...]
     stop_token_rows: tuple[tuple[int, ...], ...]
     stop_token_sequence_rows: tuple[tuple[tuple[int, ...], ...], ...]
+    thinking_close_token_rows: tuple[tuple[int, ...], ...] = ()
+    thinking_hard_token_caps: tuple[int | None, ...] = ()
+    thinking_soft_close_windows: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         rows = len(self.request_ids)
@@ -146,6 +169,18 @@ class SamplerParamsBlock:
         _check_len("seeds", self.seeds, rows)
         _check_len("stop_token_rows", self.stop_token_rows, rows)
         _check_len("stop_token_sequence_rows", self.stop_token_sequence_rows, rows)
+        if self.thinking_close_token_rows:
+            _check_len("thinking_close_token_rows", self.thinking_close_token_rows, rows)
+        else:
+            object.__setattr__(self, "thinking_close_token_rows", tuple(() for _ in range(rows)))
+        if self.thinking_hard_token_caps:
+            _check_len("thinking_hard_token_caps", self.thinking_hard_token_caps, rows)
+        else:
+            object.__setattr__(self, "thinking_hard_token_caps", tuple(None for _ in range(rows)))
+        if self.thinking_soft_close_windows:
+            _check_len("thinking_soft_close_windows", self.thinking_soft_close_windows, rows)
+        else:
+            object.__setattr__(self, "thinking_soft_close_windows", tuple(0 for _ in range(rows)))
         object.__setattr__(
             self,
             "logit_bias_rows",
@@ -170,6 +205,20 @@ class SamplerParamsBlock:
             "stop_token_sequence_rows",
             tuple(normalize_stop_token_sequences(row) for row in self.stop_token_sequence_rows),
         )
+        close_token_rows = tuple(tuple(int(token) for token in row) for row in self.thinking_close_token_rows)
+        if any(token < 0 for row in close_token_rows for token in row):
+            raise ValueError("thinking_close_token_rows must contain non-negative token ids")
+        hard_caps = tuple(None if value is None else int(value) for value in self.thinking_hard_token_caps)
+        if any(value is not None and value < 0 for value in hard_caps):
+            raise ValueError("thinking_hard_token_caps must be non-negative")
+        soft_windows = tuple(int(value) for value in self.thinking_soft_close_windows)
+        if any(value < 0 for value in soft_windows):
+            raise ValueError("thinking_soft_close_windows must be non-negative")
+        if any(cap is not None and not close for cap, close in zip(hard_caps, close_token_rows, strict=True)):
+            raise ValueError("thinking_hard_token_caps require thinking_close_token_rows")
+        object.__setattr__(self, "thinking_close_token_rows", close_token_rows)
+        object.__setattr__(self, "thinking_hard_token_caps", hard_caps)
+        object.__setattr__(self, "thinking_soft_close_windows", soft_windows)
         if len(set(self.request_ids)) != rows:
             raise ValueError("sampler params block request_ids must be unique")
 
@@ -204,6 +253,9 @@ class SamplerParamsBlock:
             ),
             stop_token_rows=tuple(row.stop_tokens for row in params),
             stop_token_sequence_rows=tuple(row.stop_token_sequences for row in params),
+            thinking_close_token_rows=tuple(row.thinking_close_token_ids for row in params),
+            thinking_hard_token_caps=tuple(row.thinking_hard_token_cap for row in params),
+            thinking_soft_close_windows=tuple(row.thinking_soft_close_window for row in params),
         )
 
     def params_for(self, request_id: int) -> PerRowSamplingParams:
@@ -223,6 +275,9 @@ class SamplerParamsBlock:
             seed=self.seeds[index],
             stop_tokens=self.stop_token_rows[index],
             stop_token_sequences=self.stop_token_sequence_rows[index],
+            thinking_close_token_ids=self.thinking_close_token_rows[index],
+            thinking_hard_token_cap=self.thinking_hard_token_caps[index],
+            thinking_soft_close_window=self.thinking_soft_close_windows[index],
         )
 
 
@@ -674,6 +729,7 @@ class ResidentBatchScheduler:
             seed=sampling_params.resolved_seed(request_id=rid, row_index=row_index),
             request_id=rid,
             row_index=row_index,
+            thinking_budget=thinking_budget_state_from_params(sampling_params),
         )
         self._observability[rid] = _RequestObservabilityState(
             submitted_at=self._clock(),

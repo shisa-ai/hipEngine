@@ -30,6 +30,9 @@ class SamplingParams:
     eos_token_id: int | None = None
     stop_token_ids: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
+    thinking_close_token_ids: tuple[int, ...] = ()
+    thinking_hard_token_cap: int | None = None
+    thinking_soft_close_window: int = 0
     ignore_eos: bool = False
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
@@ -56,6 +59,17 @@ class SamplingParams:
         object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
         object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
         object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
+        object.__setattr__(
+            self,
+            "thinking_close_token_ids",
+            tuple(int(token) for token in self.thinking_close_token_ids),
+        )
+        object.__setattr__(
+            self,
+            "thinking_hard_token_cap",
+            None if self.thinking_hard_token_cap is None else int(self.thinking_hard_token_cap),
+        )
+        object.__setattr__(self, "thinking_soft_close_window", int(self.thinking_soft_close_window))
         object.__setattr__(self, "ignore_eos", bool(self.ignore_eos))
         object.__setattr__(self, "kv_storage", str(self.kv_storage))
         object.__setattr__(self, "kv_scale_dtype", str(self.kv_scale_dtype))
@@ -295,6 +309,9 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         eos_token_id=params.eos_token_id,
         stop_token_ids=params.stop_token_ids,
         stop_token_sequences=params.stop_token_sequences,
+        thinking_close_token_ids=params.thinking_close_token_ids,
+        thinking_hard_token_cap=params.thinking_hard_token_cap,
+        thinking_soft_close_window=params.thinking_soft_close_window,
         ignore_eos=params.ignore_eos,
         kv_storage=params.kv_storage,
         kv_scale_dtype=params.kv_scale_dtype,

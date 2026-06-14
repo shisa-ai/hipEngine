@@ -21,6 +21,7 @@ from hipengine.generation.sampling import (
     plan_sampler,
     row_seed_for_index,
     select_token,
+    thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -152,6 +153,7 @@ class Qwen35GGUFBringupGenerator:
             prompt_tokens=tuple(int(token) for token in prompt_ids),
             seed=row_seed_for_index(request, row_index),
             row_index=row_index,
+            thinking_budget=thinking_budget_state_from_params(request),
         )
         samples = []
         result = session.prefill(prompt_ids, return_logits=True)

@@ -39,6 +39,9 @@ class GenerationRequest:
     eos_token_id: int | None = None
     stop_token_ids: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
+    thinking_close_token_ids: tuple[int, ...] = ()
+    thinking_hard_token_cap: int | None = None
+    thinking_soft_close_window: int = 0
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
@@ -66,6 +69,17 @@ class GenerationRequest:
         object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
         object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
         object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
+        object.__setattr__(
+            self,
+            "thinking_close_token_ids",
+            tuple(int(token) for token in self.thinking_close_token_ids),
+        )
+        object.__setattr__(
+            self,
+            "thinking_hard_token_cap",
+            None if self.thinking_hard_token_cap is None else int(self.thinking_hard_token_cap),
+        )
+        object.__setattr__(self, "thinking_soft_close_window", int(self.thinking_soft_close_window))
         object.__setattr__(self, "kv_storage", str(self.kv_storage))
         object.__setattr__(self, "kv_scale_dtype", str(self.kv_scale_dtype))
         object.__setattr__(self, "kv_scale_granularity", str(self.kv_scale_granularity))

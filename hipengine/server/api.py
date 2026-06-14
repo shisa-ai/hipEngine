@@ -579,12 +579,14 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "reasoning_controls": {
                 "enabled": True,
                 "fields": _reasoning_control_fields(),
-                "budget_policy": "prompt_hint_only",
+                "budget_policy": "prompt_hint_plus_tokenized_hard_close",
                 "token_budget": False,
                 "token_budget_enforced": False,
                 "effort_defaults": _thinking_effort_defaults_capability(),
                 "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                 "hard_close_validation": True,
+                "hard_close_token_forcing": False,
+                "soft_close_bias": False,
             },
             "request_timeouts": {"timeout_ms": True},
         },
@@ -1679,6 +1681,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         engine: Any,
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
+        thinking_budget = (
+            _thinking_budget_sampling_kwargs(
+                config,
+                request,
+                engine=engine,
+                max_context_tokens=effective_max_context_tokens(engine),
+            )
+            if isinstance(request, ChatCompletionRequest)
+            else {}
+        )
         return SamplingParams(
             max_tokens=_request_max_tokens(
                 request,
@@ -1707,6 +1719,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
             kv_scale_granularity=request.kv_scale_granularity or config.kv_scale_granularity,
             seed=request.seed,
+            **thinking_budget,
         )
 
     def chat_prompt_for_request(request: ChatCompletionRequest, engine: Any) -> str:
@@ -2145,12 +2158,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "reasoning_controls": {
                     "enabled": True,
                     "fields": _reasoning_control_fields(),
-                    "budget_policy": "prompt_hint_only",
-                    "token_budget": False,
-                    "token_budget_enforced": False,
+                    "budget_policy": "prompt_hint_plus_tokenized_hard_close",
+                    "token_budget": tokenizer_caps["tokenize"],
+                    "token_budget_enforced": tokenizer_caps["tokenize"],
                     "effort_defaults": _thinking_effort_defaults_capability(),
                     "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                     "hard_close_validation": True,
+                    "hard_close_token_forcing": tokenizer_caps["tokenize"],
+                    "soft_close_bias": False,
                     "hard_close_marker": _THINKING_CLOSE_MARKER,
                     "diagnostic_close_token_lowering": tokenizer_caps["tokenize"],
                     "diagnostic_initial_state": tokenizer_caps["tokenize"],
@@ -2213,6 +2228,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "top_logprobs",
                         "suppress_token_ids",
                         "min_tokens",
+                        "thinking_budget",
                         "combined_top_k_with_top_p_or_min_p",
                     ],
                 },
@@ -4494,6 +4510,35 @@ def _diagnostic_thinking_budget_payload(
         }
     )
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def _thinking_budget_sampling_kwargs(
+    config: ServerConfig,
+    request: ChatCompletionRequest,
+    *,
+    engine: Any,
+    max_context_tokens: int | None,
+) -> dict[str, Any]:
+    _prompt, thinking = _render_chat_prompt_for_request(
+        request,
+        chat_default_max_tokens=config.chat_default_max_tokens,
+        engine=engine,
+        max_context_tokens=max_context_tokens,
+    )
+    if thinking.enabled is False or thinking.hard_think_cap is None:
+        return {}
+    close_text = thinking.hard_close_sequence or _THINKING_CLOSE_MARKER
+    try:
+        close_token_ids = _tokenize_text(engine, close_text)
+    except OpenAIHTTPError:
+        return {}
+    if not close_token_ids:
+        return {}
+    return {
+        "thinking_close_token_ids": close_token_ids,
+        "thinking_hard_token_cap": thinking.hard_think_cap,
+        "thinking_soft_close_window": 0 if thinking.soft_close_window is None else thinking.soft_close_window,
+    }
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:
