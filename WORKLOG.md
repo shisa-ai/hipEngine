@@ -91171,6 +91171,26 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json WORKLOG.md` -> clean.
 
+## 2026-06-15 - AGENTIC guided-json result validation
+
+Implemented `guided_json` as result-validation-only structured output support
+for completions and chat. The server now accepts `true` for JSON-object
+validation, JSON Schema objects, `{"schema": ...}` wrappers, and strings
+containing JSON Schema objects; rejects malformed schemas before generation;
+adds the same JSON prompt hints as `response_format`; validates stop-finished
+visible output with the existing JSON object/schema subset; buffers streaming
+structured responses before validation; inherits the control across deterministic
+continuation handles; and advertises it under `features.structured_outputs` plus
+`features.grammars.result_validation_only` instead of unsupported fields. The
+local-agent example no longer blocklists the field.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_guided_json_true_validates_object_result tests/test_server_api.py::test_completions_guided_json_schema_validates_result tests/test_server_api.py::test_streaming_completion_guided_json_buffers_validation tests/test_server_api.py::test_chat_completion_guided_json_schema_validates_visible_content tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_json_and_inherits_validation tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_server_api.py::test_capabilities_advertised_unsupported_fields_are_rejected_before_generation tests/test_server_api.py::test_guided_output_request_validation_fails_before_generation -q` -> `37 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json WORKLOG.md` -> clean.
+
 ## 2026-06-15 - AGENTIC guided-regex result validation
 
 Implemented `guided_regex` as result-validation-only structured output support

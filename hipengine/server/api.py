@@ -113,6 +113,7 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "tool_choice",
     "parallel_tool_calls",
     "response_format",
+    "guided_json",
     "guided_regex",
     "guided_choice",
     "guided_patch",
@@ -185,10 +186,10 @@ _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
 _CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
-    "guided_json",
     "guided_grammar",
     "guided_decoding_backend",
 )
+_GUIDED_JSON_FIELD = "guided_json"
 _GUIDED_REGEX_FIELD = "guided_regex"
 _GUIDED_CHOICE_FIELD = "guided_choice"
 _NATIVE_GPU_SAMPLER_UNSUPPORTED = (
@@ -792,6 +793,7 @@ def _replay_sampling_payload(body_json: Any, *, redaction: str) -> dict[str, Any
         "logprobs",
         "top_logprobs",
         "response_format",
+        "guided_json",
         "guided_regex",
         "guided_choice",
         "guided_patch",
@@ -896,6 +898,8 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "response_format": True,
         "json_object": True,
         "json_schema": True,
+        "guided_json": True,
+        "guided_json_modes": ["json_object", "json_schema"],
         "guided_regex": True,
         "guided_regex_match": "fullmatch_after_strip",
         "guided_choice": True,
@@ -930,6 +934,7 @@ def _grammar_capability() -> dict[str, Any]:
         "result_validation_only": [
             "json_object",
             "json_schema",
+            _GUIDED_JSON_FIELD,
             _GUIDED_REGEX_FIELD,
             _GUIDED_CHOICE_FIELD,
             *_GUIDED_PATCH_FIELDS,
@@ -1297,6 +1302,7 @@ class CompletionRequest(_OpenAIBaseModel):
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
     response_format: Any | None = None
+    guided_json: Any | None = None
     guided_regex: Any | None = None
     guided_choice: Any | None = None
     guided_patch: Any | None = None
@@ -1356,6 +1362,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
     response_format: Any | None = None
+    guided_json: Any | None = None
     guided_regex: Any | None = None
     guided_choice: Any | None = None
     guided_patch: Any | None = None
@@ -1394,6 +1401,7 @@ class TokenDiagnosticRequest(_OpenAIBaseModel):
     chat_template_kwargs: dict[str, Any] | None = None
     thinking: str | dict[str, Any] | None = None
     reasoning: dict[str, Any] | None = None
+    guided_json: Any | None = None
     guided_regex: Any | None = None
     guided_choice: Any | None = None
     guided_patch: Any | None = None
@@ -1944,6 +1952,7 @@ class _ContinuationRecord:
     created: float
     expires_at: float
     response_format: Any | None = None
+    guided_json: Any | None = None
     guided_regex: Any | None = None
     guided_choice: Any | None = None
     guided_patch: Any | None = None
@@ -2282,6 +2291,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts: Sequence[str],
         generated_texts: Sequence[str],
         response_format: Any | None,
+        guided_json: Any | None,
         guided_regex: Any | None,
         guided_choice: Any | None,
         guided_patch: Any | None,
@@ -2300,6 +2310,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             created=now,
             expires_at=now + _CONTINUATION_TTL_SECONDS,
             response_format=response_format,
+            guided_json=guided_json,
             guided_regex=guided_regex,
             guided_choice=guided_choice,
             guided_patch=guided_patch,
@@ -4141,6 +4152,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     prompts=(base_prompt,),
                     generated_texts=(generated_text,),
                     response_format=request.response_format,
+                    guided_json=request.guided_json,
                     guided_regex=request.guided_regex,
                     guided_choice=request.guided_choice,
                     guided_patch=request.guided_patch,
@@ -4360,6 +4372,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         prompts=(base_prompt,),
                         generated_texts=(text,),
                         response_format=request.response_format,
+                        guided_json=request.guided_json,
                         guided_regex=request.guided_regex,
                         guided_choice=request.guided_choice,
                         guided_patch=request.guided_patch,
@@ -5610,6 +5623,7 @@ def _render_chat_prompt_for_request(
         tool_choice=request.tool_choice,
         thinking=thinking,
         response_format=request.response_format,
+        guided_json=request.guided_json,
         guided_regex=request.guided_regex,
         guided_choice=request.guided_choice,
         guided_patch=request.guided_patch,
@@ -5637,6 +5651,7 @@ def _render_chat_prompt_for_request(
             tool_choice=request.tool_choice,
             thinking=adjusted,
             response_format=request.response_format,
+            guided_json=request.guided_json,
             guided_regex=request.guided_regex,
             guided_choice=request.guided_choice,
             guided_patch=request.guided_patch,
@@ -5906,6 +5921,22 @@ def _render_response_format_prompt(response_format: Any | None) -> str:
     return ""
 
 
+def _render_guided_json_prompt(guided_json: Any | None) -> str:
+    mode = _guided_json_mode_from_value(guided_json, validate=False)
+    if mode is None:
+        return ""
+    if mode == "json_object":
+        return (
+            "Return only one valid JSON object in the final answer. Do not wrap it in "
+            "Markdown, prose, arrays, or scalar JSON values."
+        )
+    schema = _guided_json_schema_from_value(guided_json)
+    if schema is None:
+        return "Return only JSON that satisfies the requested JSON schema."
+    schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+    return f"Return only JSON that satisfies this JSON schema: {schema_text}"
+
+
 def _render_guided_choice_prompt(guided_choice: Any | None) -> str:
     if guided_choice is None:
         return ""
@@ -6009,6 +6040,7 @@ def render_chat_prompt(
     tool_choice: str | Mapping[str, Any] | None = None,
     thinking: _ThinkingControl | None = None,
     response_format: Any | None = None,
+    guided_json: Any | None = None,
     guided_regex: Any | None = None,
     guided_choice: Any | None = None,
     guided_patch: Any | None = None,
@@ -6029,6 +6061,7 @@ def render_chat_prompt(
         for item in (
             _render_thinking_prompt(thinking),
             _render_response_format_prompt(response_format),
+            _render_guided_json_prompt(guided_json),
             _render_guided_regex_prompt(guided_regex),
             _render_guided_choice_prompt(guided_choice),
             _render_guided_patch_prompt(guided_patch, guided_diff),
@@ -6679,6 +6712,7 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             param=unsupported_param,
         )
     _validate_response_format_request(request)
+    _validate_guided_json_request(request)
     _validate_guided_regex_request(request)
     _validate_guided_choice_request(request)
     _validate_guided_patch_request(request)
@@ -6942,6 +6976,7 @@ def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnostic
         chat_template_kwargs=request.chat_template_kwargs,
         thinking=request.thinking,
         reasoning=request.reasoning,
+        guided_json=request.guided_json,
         guided_regex=request.guided_regex,
         guided_choice=request.guided_choice,
         guided_patch=request.guided_patch,
@@ -7308,6 +7343,8 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
         return "frequency_penalty"
     if request.response_format is not None:
         return "response_format"
+    if getattr(request, "guided_json", None) is not None:
+        return "guided_json"
     if getattr(request, "guided_regex", None) is not None:
         return "guided_regex"
     if getattr(request, "guided_choice", None) is not None:
@@ -7436,6 +7473,8 @@ def _apply_continuation_defaults(
         return
     if getattr(request, "response_format", None) is None and record.response_format is not None:
         request.response_format = record.response_format
+    if getattr(request, "guided_json", None) is None and record.guided_json is not None:
+        request.guided_json = record.guided_json
     if getattr(request, "guided_regex", None) is None and record.guided_regex is not None:
         request.guided_regex = record.guided_regex
     if getattr(request, "guided_choice", None) is None and record.guided_choice is not None:
@@ -7801,6 +7840,122 @@ def _validate_response_format_request(request: CompletionRequest | ChatCompletio
                 raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
 
 
+def _validate_guided_json_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+    mode = _guided_json_mode(request)
+    if mode is None:
+        return
+    if mode in {"json_object", "json_schema"} and isinstance(request, CompletionRequest) and bool(request.echo):
+        raise OpenAIHTTPError(
+            400,
+            f"guided_json {mode} is incompatible with echo=true",
+            code="invalid_request",
+            param="echo",
+        )
+    response_mode = _response_format_mode(request)
+    if response_mode not in {None, "text"}:
+        raise OpenAIHTTPError(
+            400,
+            f"guided_json is incompatible with response_format {response_mode}",
+            code="invalid_request",
+            param="guided_json",
+        )
+    if getattr(request, "guided_regex", None) is not None:
+        raise OpenAIHTTPError(
+            400,
+            "guided_json is incompatible with guided_regex",
+            code="invalid_request",
+            param="guided_json",
+        )
+    if getattr(request, "guided_choice", None) is not None:
+        raise OpenAIHTTPError(
+            400,
+            "guided_json is incompatible with guided_choice",
+            code="invalid_request",
+            param="guided_json",
+        )
+    guided_patch_field = _guided_patch_field(
+        getattr(request, "guided_patch", None),
+        getattr(request, "guided_diff", None),
+    )
+    if guided_patch_field is not None:
+        raise OpenAIHTTPError(
+            400,
+            f"guided_json is incompatible with {guided_patch_field}",
+            code="invalid_request",
+            param="guided_json",
+        )
+    if mode == "json_schema":
+        schema = _guided_json_schema(request)
+        if schema is None:
+            raise OpenAIHTTPError(
+                400,
+                "guided_json schema must be an object",
+                code="invalid_request",
+                param="guided_json",
+            )
+        schema_error = _validate_json_schema_subset(schema, path=_guided_json_schema_param(request.guided_json))
+        if schema_error is not None:
+            param, message = schema_error
+            raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
+
+
+def _guided_json_mode(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    return _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=True)
+
+
+def _guided_json_mode_from_value(value: Any, *, validate: bool) -> str | None:
+    if value is None or value is False:
+        return None
+    if value is True:
+        return "json_object"
+    if _guided_json_schema_from_value(value) is not None:
+        return "json_schema"
+    if validate:
+        raise OpenAIHTTPError(
+            400,
+            "guided_json must be true, a JSON schema object, or a JSON schema string",
+            code="invalid_request",
+            param="guided_json",
+        )
+    return None
+
+
+def _guided_json_schema(request: CompletionRequest | ChatCompletionRequest) -> Mapping[str, Any] | None:
+    return _guided_json_schema_from_value(getattr(request, "guided_json", None))
+
+
+def _guided_json_schema_from_value(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        wrapped = value.get("schema")
+        if isinstance(wrapped, Mapping):
+            return wrapped
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+        if isinstance(parsed, Mapping):
+            wrapped = parsed.get("schema")
+            if isinstance(wrapped, Mapping):
+                return wrapped
+            return parsed
+    return None
+
+
+def _guided_json_schema_param(value: Any) -> str:
+    if isinstance(value, Mapping) and isinstance(value.get("schema"), Mapping):
+        return "guided_json.schema"
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return "guided_json"
+        if isinstance(parsed, Mapping) and isinstance(parsed.get("schema"), Mapping):
+            return "guided_json.schema"
+    return "guided_json"
+
+
 def _validate_guided_choice_request(request: CompletionRequest | ChatCompletionRequest) -> None:
     if getattr(request, "guided_choice", None) is None:
         return
@@ -8049,6 +8204,13 @@ def _guided_patch_result_validation(request: CompletionRequest | ChatCompletionR
     ) is not None
 
 
+def _guided_json_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    return _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False) in {
+        "json_object",
+        "json_schema",
+    }
+
+
 def _guided_regex_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
     return getattr(request, "guided_regex", None) is not None
 
@@ -8182,6 +8344,7 @@ def _response_format_result_validation(request: CompletionRequest | ChatCompleti
 def _structured_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
     return (
         _response_format_result_validation(request)
+        or _guided_json_result_validation(request)
         or _guided_regex_result_validation(request)
         or _guided_choice_result_validation(request)
         or _guided_patch_result_validation(request)
@@ -8426,6 +8589,9 @@ def _structured_output_failure_reason(
     response_format_failure = _response_format_failure_reason(request, text, finish_reason)
     if response_format_failure is not None:
         return response_format_failure
+    guided_json_failure = _guided_json_failure_reason(request, text, finish_reason)
+    if guided_json_failure is not None:
+        return guided_json_failure
     guided_regex_failure = _guided_regex_failure_reason(request, text, finish_reason)
     if guided_regex_failure is not None:
         return guided_regex_failure
@@ -8433,6 +8599,28 @@ def _structured_output_failure_reason(
     if guided_choice_failure is not None:
         return guided_choice_failure
     return _guided_patch_failure_reason(request, text, finish_reason)
+
+
+def _guided_json_failure_reason(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+    finish_reason: str,
+) -> str | None:
+    mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
+    if mode not in {"json_object", "json_schema"}:
+        return None
+    if str(finish_reason).strip().lower() == "length":
+        return None
+    try:
+        value = json.loads(str(text).strip())
+    except Exception:
+        return "schema_violation"
+    if mode == "json_object":
+        return None if isinstance(value, dict) else "schema_violation"
+    schema = _guided_json_schema(request)
+    if schema is None:
+        return "schema_violation"
+    return None if _validate_json_schema_value(value, schema, path="$") is None else "schema_violation"
 
 
 def _guided_regex_failure_reason(

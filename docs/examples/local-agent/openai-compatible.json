@@ -37,7 +37,6 @@
       "parallel_tool_calls",
       "top_logprobs",
       "grammar",
-      "guided_json",
       "guided_grammar",
       "guided_decoding_backend"
     ]

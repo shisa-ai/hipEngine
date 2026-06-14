@@ -67,6 +67,7 @@ def _capabilities(**overrides):
                 "response_format": True,
                 "json_object": True,
                 "json_schema": True,
+                "guided_json": True,
                 "guided_regex": True,
                 "guided_choice": True,
                 "strict_decoding": False,
@@ -150,7 +151,7 @@ def test_local_agent_config_matches_capabilities() -> None:
     assert "parallel_tool_calls" in summary["blocked_fields"]
     assert "top_logprobs" in summary["blocked_fields"]
     assert "grammar" in summary["blocked_fields"]
-    assert "guided_json" in summary["blocked_fields"]
+    assert "guided_json" not in summary["blocked_fields"]
     for unsupported in _capabilities()["unsupported_fields"]:
         assert unsupported in summary["blocked_fields"]
 

@@ -1501,6 +1501,14 @@ Current state:
   validation. Valid visible JSON is returned normally; invalid stop-finished
   outputs return `finish_details.reason="schema_violation"`, advertised under
   `features.structured_outputs.result_validation_failure_reasons`.
+- `guided_json` is accepted for completion and chat requests as a
+  post-generation validation-only JSON guidance field. `true` uses JSON-object
+  validation; schema objects, `{"schema": ...}` wrappers, and JSON strings
+  containing schema objects use the same fail-closed JSON Schema subset as
+  `response_format` and strict tool schemas. Invalid stop-finished outputs are
+  suppressed with `finish_details.reason="schema_violation"`. Length-finished
+  partial JSON keeps its text and may use deterministic buffered continuation
+  handles.
 - `guided_regex` is accepted for completion and chat requests as
   post-generation result validation. It accepts a non-empty Python regular
   expression string, adds a chat prompt hint, and accepts stop-finished visible
@@ -1600,6 +1608,9 @@ Current code reality:
   keywords are rejected before generation, and annotation keys are ignored by
   validation;
 - `response_format={"type":"text"}` is a no-op;
+- `guided_json` is implemented as a validation-only alternate request field for
+  JSON-object and JSON-schema result validation, with identical schema subset,
+  streaming buffering, continuation inheritance, and failure semantics;
 - `guided_regex` is implemented as prompt-hint plus Python `re.fullmatch()`
   post-generation result validation against a non-empty regex string. Streaming
   requests use buffered response paths so invalid regex results are not emitted
@@ -1630,15 +1641,15 @@ Current code reality:
 
 - `/v1/hipengine/capabilities` reports `features.grammars.enabled=false`,
   `strict_decoding=false`, an empty supported grammar list, and known
-  unsupported grammar/guidance fields (`grammar`, `guided_json`,
-  `guided_grammar`, and `guided_decoding_backend`).
-  Regex, choice, and patch/diff guidance are reported separately under
+  unsupported grammar/guidance fields (`grammar`, `guided_grammar`, and
+  `guided_decoding_backend`).
+  JSON, regex, choice, and patch/diff guidance are reported separately under
   `features.grammars.result_validation_only` because they are validation-only,
   not grammar decoding.
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
-  set to the rejected field. JSON-object / JSON-schema / regex / choice /
-  patch-diff support remains result-validation-only, not grammar decoding.
+  set to the rejected field. JSON-object / JSON-schema / guided JSON / regex /
+  choice / patch-diff support remains result-validation-only, not grammar decoding.
   Tests cover every advertised unsupported grammar/guidance field.
 
 #### P2.5 Patch/diff constrained mode
@@ -2069,8 +2080,8 @@ Current code reality:
   repairs, declared-tool-name validation, parallel-tool opt-in enforcement, and
   malformed-JSON strict/permissive policy, sampling parameters and execution
   modes, strict tool result-validation support,
-  JSON-object, JSON-schema, guided-regex, and guided-choice structured-output
-  result validation, the
+  JSON-object, JSON-schema, guided-JSON, guided-regex, and guided-choice
+  structured-output result validation, the
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
   tokenizer-dependent `token_budget_enforced`, explicit
@@ -2138,9 +2149,9 @@ Current code reality:
   per request, and keeps stateful `session.id` out of the default streaming
   payload plus intentionally unused tool-policy/logprob fields
   (`parallel_tool_calls`, `top_logprobs`) and unsupported grammar/guidance
-  fields in `do_not_send`. `guided_regex`, `guided_choice`, `guided_patch`, and
-  `guided_diff` are no longer in `do_not_send` because they are supported as
-  result-validation controls.
+  fields in `do_not_send`. `guided_json`, `guided_regex`, `guided_choice`,
+  `guided_patch`, and `guided_diff` are no longer in `do_not_send` because they
+  are supported as result-validation controls.
 - `docs/examples/pi-agent/models.json` is a checked-in pi config example for the
   Qwen 3.6 PARO endpoint. It enables pi's thinking UI with `reasoning=true` and
   `compat.thinkingFormat="qwen"` while leaving `supportsReasoningEffort=false`

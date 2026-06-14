@@ -474,6 +474,13 @@ keywords are rejected before generation instead of being silently ignored;
 annotation keys are accepted but ignored by validation. This is result
 validation, not grammar-constrained decoding.
 
+`guided_json` is a validation-only alias for the same JSON result paths. It
+accepts `true` for JSON-object validation, a JSON Schema object, a
+`{"schema": ...}` wrapper, or a string containing a JSON Schema object. It uses
+the same prompt hints, schema subset, buffered streaming behavior, length-finish
+continuation behavior, and `schema_violation` failure reason as
+`response_format`.
+
 Regex guidance is also result-validation only. `guided_regex` accepts a
 non-empty Python regular-expression string. Chat requests add a prompt hint that
 asks the model to fully match the expression. Stop-finished visible output is
@@ -509,9 +516,9 @@ reports the supported unified-diff format, accepted fence labels, allowed
 
 Grammar-constrained decoding is not currently supported. The capabilities
 manifest reports `features.grammars.enabled=false`, lists true grammar fields
-such as `grammar`, `guided_json`, `guided_grammar`, and
-`guided_decoding_backend` under unsupported fields, and reports
-`guided_regex` / `guided_choice` / `guided_patch` / `guided_diff` under
+such as `grammar`, `guided_grammar`, and `guided_decoding_backend` under
+unsupported fields, and reports `guided_json` / `guided_regex` /
+`guided_choice` / `guided_patch` / `guided_diff` under
 `features.grammars.result_validation_only`.
 
 ### Thinking / no-think controls
@@ -620,8 +627,8 @@ explicitly sends `session.commit="append_none"` as the current stateless
 no-retain policy, and keeps stateful `session.id` out of the default streaming
 payload plus intentionally unused tool-policy fields and unsupported
 grammar/guidance fields in `do_not_send`. Validation-only controls such as
-`guided_regex`, `guided_choice`, `guided_patch`, and `guided_diff` are not
-blocklisted.
+`guided_json`, `guided_regex`, `guided_choice`, `guided_patch`, and
+`guided_diff` are not blocklisted.
 
 When `--chat-smoke` is used and the config enables tools, the validator sends a
 specific `record_result` tool choice and requires the server response to contain

@@ -389,6 +389,7 @@ def _continuation_capability() -> dict[str, Any]:
             "tool_choice",
             "parallel_tool_calls",
             "response_format",
+            "guided_json",
             "guided_regex",
             "guided_choice",
             "guided_patch",
@@ -720,6 +721,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "response_format": True,
         "json_object": True,
         "json_schema": True,
+        "guided_json": True,
+        "guided_json_modes": ["json_object", "json_schema"],
         "guided_regex": True,
         "guided_regex_match": "fullmatch_after_strip",
         "guided_choice": True,
@@ -771,13 +774,13 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "supported": [],
         "unsupported_fields": [
             "grammar",
-            "guided_json",
             "guided_grammar",
             "guided_decoding_backend",
         ],
         "result_validation_only": [
             "json_object",
             "json_schema",
+            "guided_json",
             "guided_regex",
             "guided_choice",
             "guided_patch",
@@ -1065,7 +1068,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "response_format" not in body["unsupported_fields"]
     assert "continuation_id" not in body["unsupported_fields"]
     assert "grammar" in body["unsupported_fields"]
-    assert "guided_json" in body["unsupported_fields"]
+    assert "guided_json" not in body["unsupported_fields"]
+    assert "guided_json" in body["features"]["grammars"]["result_validation_only"]
     assert "guided_patch" not in body["unsupported_fields"]
     assert "guided_diff" not in body["unsupported_fields"]
 
@@ -4115,6 +4119,63 @@ def test_completions_response_format_json_schema_validates_result() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_guided_json_true_validates_object_result() -> None:
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true}']),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=["[true]"]),
+        )
+    )
+    payload = {"model": "fake-model", "prompt": "return json", "guided_json": True}
+
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"ok":true}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
+def test_completions_guided_json_schema_validates_result() -> None:
+    schema = _response_json_schema()["schema"]
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true,"path":"README.md"}']),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":"yes","path":"README.md"}']),
+        )
+    )
+    payload = {"model": "fake-model", "prompt": "return json", "guided_json": schema}
+
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"ok":true,"path":"README.md"}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_rejects_unsupported_modes() -> None:
     fake = FakeLLM(outputs=['{"ok":true}'])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -5140,6 +5201,34 @@ def test_streaming_completion_response_format_buffers_validation() -> None:
             "prompt": "json",
             "stream": True,
             "response_format": {"type": "json_object"},
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "structured",
+        "finish_details": _stateless_finish_details("schema_violation"),
+    }
+    assert fake.stream_calls == []
+
+
+def test_streaming_completion_guided_json_buffers_validation() -> None:
+    fake = FakeLLM(outputs=["not json"], stream_chunks=['{"ok":true}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "stream": True,
+            "guided_json": True,
             "stream_options": {"include_hipengine": True},
         },
     )
@@ -6295,6 +6384,38 @@ def test_chat_completion_response_format_json_schema_validates_visible_content()
     assert "Return only JSON that satisfies this JSON schema" in invalid_fake.calls[0][0][0]
 
 
+def test_chat_completion_guided_json_schema_validates_visible_content() -> None:
+    valid_fake = FakeLLM(outputs=['<think>check</think>{"ok":true,"path":"README.md"}'])
+    invalid_fake = FakeLLM(outputs=['{"ok":true,"path":""}'])
+    valid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=valid_fake)
+    )
+    invalid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=invalid_fake)
+    )
+    schema_text = json.dumps(_response_json_schema()["schema"])
+
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "return json"}],
+        "guided_json": schema_text,
+    }
+    valid = valid_client.post("/v1/chat/completions", json=payload)
+    invalid = invalid_client.post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["message"]["content"] == '{"ok":true,"path":"README.md"}'
+    assert valid_choice["message"]["reasoning_content"] == "check"
+    assert valid_choice["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["message"] == {"role": "assistant", "content": ""}
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "Return only JSON that satisfies this JSON schema" in valid_fake.calls[0][0][0]
+
+
 def test_chat_completion_guided_choice_validates_visible_content() -> None:
     valid_fake = FakeLLM(outputs=["<think>choose</think>no"])
     invalid_fake = FakeLLM(outputs=["<think>choose</think>maybe"])
@@ -6529,6 +6650,55 @@ def test_chat_continuation_resumes_partial_json_and_inherits_response_format() -
             "model": "fake-model",
             "messages": [{"role": "user", "content": "return json"}],
             "response_format": {"type": "json_object"},
+            "max_tokens": 6,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert first_choice["message"] == {"role": "assistant", "content": '{"ok":'}
+    assert first_choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=6,
+        phase="structured",
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["message"] == {"role": "assistant", "content": '{"ok":true}'}
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["finish_details"] == _stateless_finish_details("eos", eos_token_id=151645)
+    assert fake.calls[1][0][0].endswith('{"ok":')
+
+
+def test_chat_continuation_resumes_partial_guided_json_and_inherits_validation() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text='{"ok":',
+                finish_details=FinishDetails(reason="length", length_limit=6),
+            ),
+            GenerationOutput(text="true}", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "guided_json": True,
             "max_tokens": 6,
             "temperature": 0.0,
         },
@@ -9974,15 +10144,6 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
             {
                 "model": "fake-model",
                 "messages": [{"role": "user", "content": "hello"}],
-                "guided_json": {"type": "object"},
-            },
-            "guided_json",
-        ),
-        (
-            "/v1/chat/completions",
-            {
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "hello"}],
                 "guided_grammar": "root ::= 'ok'",
             },
             "guided_grammar",
@@ -10022,7 +10183,6 @@ def test_capabilities_advertised_unsupported_fields_are_rejected_before_generati
 
     field_values = {
         "grammar": {"type": "json"},
-        "guided_json": {"type": "object"},
         "guided_grammar": "root ::= 'ok'",
         "guided_decoding_backend": "outlines",
     }
@@ -10049,6 +10209,66 @@ def test_capabilities_advertised_unsupported_fields_are_rejected_before_generati
 @pytest.mark.parametrize(
     ("payload", "param", "code"),
     [
+        (
+            {
+                "guided_json": 7,
+            },
+            "guided_json",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": "{not json}",
+            },
+            "guided_json",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": {"oneOf": [{"required": ["ok"]}]},
+            },
+            "guided_json.oneOf",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": {"schema": {"oneOf": [{"required": ["ok"]}]}},
+            },
+            "guided_json.schema.oneOf",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": True,
+                "response_format": {"type": "json_object"},
+            },
+            "guided_json",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": True,
+                "guided_regex": "[a-z]+",
+            },
+            "guided_json",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": True,
+                "guided_choice": ["yes", "no"],
+            },
+            "guided_json",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_json": True,
+                "guided_patch": True,
+            },
+            "guided_json",
+            "invalid_request",
+        ),
         (
             {
                 "guided_regex": "",
