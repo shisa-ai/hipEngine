@@ -89687,3 +89687,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `30 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC session reasoning/tool trace
+
+Added a deterministic golden AGENTIC trace for a stateful chat session that
+returns hidden reasoning plus an OpenAI tool call on the first turn, then sends
+the tool result on the next turn using the same `session.id`. The trace proves
+the client-facing response keeps structured `reasoning_content`/`tool_calls`,
+while the retained visible transcript renders the tool call/tool response and
+does not leak hidden reasoning into the next prompt.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `27 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `52 passed`.

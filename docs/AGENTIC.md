@@ -1937,10 +1937,12 @@ Current code reality:
   tool calls, strict malformed/missing/wrong/no-tool/parallel-call tool
   rejection, JSON-schema result-validation failure, stateless
   `session.commit="append_none"` finish metadata, no-thinking prompt rendering,
-  completion length finish metadata, chat reasoning/closing-think/answer/
-  structured/tool-call length phase metadata, continuation-eligible answer and
-  structured length stops, a multi-request continuation-resume sequence,
-  deadline error metadata, and request-control cancellation.
+  session-backed reasoning/tool-call retention that strips hidden reasoning
+  from the next prompt, completion length finish metadata, chat reasoning/
+  closing-think/answer/structured/tool-call length phase metadata,
+  continuation-eligible answer and structured length stops, a multi-request
+  continuation-resume sequence, deadline error metadata, and request-control
+  cancellation.
 - `tests/test_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,

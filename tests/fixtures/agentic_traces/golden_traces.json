@@ -508,6 +508,84 @@
       }
     },
     {
+      "name": "session_reasoning_tool_loop_sequence",
+      "kind": "http_sequence",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<think>hidden plan</think><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>",
+        "README says hello from a session."
+      ],
+      "steps": [
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read the README with hidden reasoning."}],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "read",
+                  "description": "Read a file",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                    "additionalProperties": false
+                  },
+                  "strict": true
+                }
+              }
+            ],
+            "session": {"id": "sess_reasoning_tool"}
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "tool_calls",
+            "finish_details": {
+              "reason": "tool_calls",
+              "cache_action": "append_visible_only",
+              "phase": "tool_call",
+              "reasoning_tokens": 2,
+              "tool_call_tokens": 1
+            },
+            "message_content": "",
+            "reasoning_content": "hidden plan",
+            "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+            "response_excludes": ["<think>", "<tool_call>"]
+          }
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "tool", "tool_call_id": "call_1", "content": "hello from README"}],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "read",
+                  "description": "Read a file",
+                  "parameters": {"type": "object"}
+                }
+              }
+            ],
+            "session": {"id": "sess_reasoning_tool", "commit": "append_none"}
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "README says hello from a session.",
+            "finish_details": {"reason": "stop", "cache_action": "append_none"},
+            "prompt_contains": [
+              "Read the README with hidden reasoning.",
+              "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>",
+              "<tool_response>\nhello from README\n</tool_response>"
+            ],
+            "prompt_excludes": ["hidden plan", "<think>"]
+          }
+        }
+      ]
+    },
+    {
       "name": "length_finish_completion",
       "kind": "http",
       "endpoint": "/v1/completions",
