@@ -91082,3 +91082,21 @@ Validation:
 - `python3 -m py_compile tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_local_agent_config.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC buffered delta backend metadata
+
+Buffered SSE paths now carry safe backend decode-state metadata on opt-in
+delta chunks when detailed final telemetry and tokenizer counting are available.
+The bridge keeps per-delta phase and token counts server-derived, but copies
+stable backend sampler/execution fields such as active processors, fast-path
+blockers, sampler fallback/mode, logits readback state, and scheduler execution
+flags. Token-specific final fields such as forced-token state, stop suffixes,
+budget pressure, backend timing, and usage stay on backend-authored/final chunks.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -46,6 +46,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationOutput,
     GenerationStreamChunk,
+    GenerationTelemetry,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     ThinkingBudgetState,
@@ -3797,7 +3798,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         if tokenizer_caps["count_tokens"]
                         else []
                     ),
-                    "backend_telemetry_scopes": ["live_chunk", "buffered_done"],
+                    "backend_telemetry_scopes": [
+                        "live_chunk",
+                        "buffered_delta_safe_decode_state",
+                        "buffered_done",
+                    ],
                     "routing": "stream_options.include_hipengine",
                     "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
                 },
@@ -6392,6 +6397,52 @@ def _stream_chunk_from_detail(text: str, detail: GenerationOutput | None) -> Gen
     if telemetry is None:
         return None
     return GenerationStreamChunk(text=str(text), telemetry=telemetry)
+
+
+def _buffered_delta_stream_chunk(
+    text: str,
+    final_chunk: GenerationStreamChunk | None,
+    *,
+    phase: str,
+    tokens: Mapping[str, int] | None,
+) -> GenerationStreamChunk | None:
+    telemetry = None if final_chunk is None else final_chunk.telemetry
+    if telemetry is None or tokens is None:
+        return None
+    backend_state = telemetry.decode_state
+    token_state = DecodeState.from_stream_tokens(
+        phase=phase,
+        tokens=tokens,
+        row_index=backend_state.row_index,
+    )
+    return GenerationStreamChunk(
+        text=str(text),
+        telemetry=GenerationTelemetry(
+            decode_state=DecodeState(
+                request_id=backend_state.request_id,
+                row_index=backend_state.row_index,
+                step_index=token_state.step_index,
+                prompt_tokens=token_state.prompt_tokens,
+                generated_tokens=token_state.generated_tokens,
+                phase=token_state.phase,
+                reasoning_tokens=token_state.reasoning_tokens,
+                answer_tokens=token_state.answer_tokens,
+                tool_call_tokens=token_state.tool_call_tokens,
+                structured_tokens=token_state.structured_tokens,
+                active_processors=backend_state.active_processors,
+                sampler_fast_path_blockers=backend_state.sampler_fast_path_blockers,
+                sampler_fallback_reason=backend_state.sampler_fallback_reason,
+                sampler_mode=backend_state.sampler_mode,
+                full_vocab_logits_d2h=backend_state.full_vocab_logits_d2h,
+                logits_d2h_bytes=backend_state.logits_d2h_bytes,
+                execution_path=backend_state.execution_path,
+                native_compact_prefill=backend_state.native_compact_prefill,
+                native_caware_decode=backend_state.native_caware_decode,
+                serial_decode_fallback=backend_state.serial_decode_fallback,
+                continuation_eligible=token_state.continuation_eligible,
+            )
+        ),
+    )
 
 
 def _validate_logprob_details(details: Sequence[GenerationOutput], outputs: Sequence[str]) -> None:
@@ -9466,6 +9517,7 @@ def _completion_stream(
     )
     for index, text in enumerate(texts):
         choice = choices_by_index.get(index, {})
+        final_stream_chunk = _stream_chunk_from_detail("", details_by_index.get(index))
         phase = "structured" if done_phase == "structured" else "answer"
         token_payload = (
             token_accounting.observe(phase, text)
@@ -9480,6 +9532,12 @@ def _completion_stream(
             index=index,
             logprobs=choice.get("logprobs"),
             tokens=token_payload,
+            stream_chunk=_buffered_delta_stream_chunk(
+                text,
+                final_stream_chunk,
+                phase=phase,
+                tokens=token_payload,
+            ),
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
@@ -9709,6 +9767,12 @@ def _chat_stream_parsed(
             split.reasoning_content,
             index=index,
             tokens=token_payload,
+            stream_chunk=_buffered_delta_stream_chunk(
+                split.reasoning_content,
+                stream_chunk,
+                phase="think",
+                tokens=token_payload,
+            ),
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
@@ -9729,6 +9793,12 @@ def _chat_stream_parsed(
             index=index,
             logprobs=logprobs,
             tokens=token_payload,
+            stream_chunk=_buffered_delta_stream_chunk(
+                split.content,
+                stream_chunk,
+                phase=content_phase,
+                tokens=token_payload,
+            ),
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
@@ -9751,6 +9821,12 @@ def _chat_stream_parsed(
                 argument_chunk=argument_chunk,
                 include_name=chunk_index == 0,
                 tokens=token_payload,
+                stream_chunk=_buffered_delta_stream_chunk(
+                    argument_chunk,
+                    stream_chunk,
+                    phase="tool_call",
+                    tokens=token_payload,
+                ),
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing,

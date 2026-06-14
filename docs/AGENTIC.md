@@ -126,9 +126,11 @@ Known baseline limitations:
   state. Buffered streaming preserves final backend
   telemetry on choice `done` chunks and, when tokenizer/counting hooks are
   available, emits server-derived per-delta token/decode-state snapshots for
-  parsed answer/reasoning/tool/structured chunks. Backend-authored buffered
-  per-token snapshots and canonical live reasoning/tool-call/structured phases
-  still need lower-loop signals.
+  parsed answer/reasoning/tool/structured chunks while inheriting stable backend
+  sampler/execution metadata such as processor blockers, sampler fallback,
+  logits-readback state, and scheduler execution flags. Backend-authored
+  buffered per-token snapshots and canonical live reasoning/tool-call/structured
+  phases still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
   phase/counts, and host-sampled thinking-budget forced close. Backend
@@ -269,6 +271,10 @@ class DecodeState:
     sampler_mode: str | None = None
     full_vocab_logits_d2h: bool | None = None
     logits_d2h_bytes: int | None = None
+    execution_path: str | None = None
+    native_compact_prefill: bool | None = None
+    native_caware_decode: bool | None = None
+    serial_decode_fallback: bool | None = None
     continuation_eligible: bool = False
 ```
 
@@ -912,9 +918,12 @@ Current code reality:
   Buffered streaming preserves backend final telemetry on choice `done` chunks
   and now emits server-derived token/decode-state snapshots for opt-in buffered
   answer/reasoning/tool/structured deltas when tokenizer counting is available.
-  Backend-authored buffered per-token snapshots, live c>N/scheduler stream
-  chunks, canonical tool/structured phases, and real continuation eligibility
-  remain future lower-loop work.
+  Those buffered deltas inherit stable backend sampler/execution metadata from
+  the final telemetry, but keep token-specific fields such as forced-token state,
+  stop suffixes, budget pressure, timing, and usage on the final/backend-authored
+  snapshots. Backend-authored buffered per-token snapshots, live c>N/scheduler
+  stream chunks, canonical tool/structured phases, and real continuation
+  eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -994,7 +1003,10 @@ Current code reality:
   Final choice chunks include usage-derived prompt/completion/total token counts
   plus those streamed phase counters. Token-bearing chunks also include a
   canonical `choices[].hipengine.decode_state` snapshot unless backend
-  telemetry supplies an authoritative decode-state snapshot.
+  telemetry supplies an authoritative decode-state snapshot. Buffered deltas that
+  have final backend telemetry inherit safe backend sampler/execution fields in
+  that decode-state snapshot while retaining server-derived phase and token
+  counts.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
   usage chunks mirror `usage` under top-level `hipengine.usage`.
 - Final done/usage chunks include top-level `hipengine.kv_pool` with sanitized
@@ -1002,8 +1014,8 @@ Current code reality:
 - `/v1/hipengine/capabilities` advertises the stream metadata scopes separately:
   token-accounting/decode-state scopes cover `live_delta`, `buffered_delta`, and
   `final_choice` when tokenizer counting is available, while backend telemetry
-  scopes cover `live_chunk` and `buffered_done` when generation telemetry is
-  emitted.
+  scopes cover `live_chunk`, `buffered_delta_safe_decode_state`, and
+  `buffered_done` when generation telemetry is emitted.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
@@ -2494,13 +2506,14 @@ session transcript commit policy, deterministic continuations, host processor
 stack, thinking-budget hard/soft close, strict tool result validation, and
 golden harness traces are now implemented. Good next logical units, in order:
 
-1. **Live backend DecodeState telemetry:** extend buffered streaming beyond
-   final `done`-chunk telemetry and extend c>N/native scheduler paths from
-   their current final execution-path/fallback snapshots to per-token
-   `GenerationStreamChunk` snapshots for phase, forced-token state, budget
-   pressure, and continuation eligibility instead of relying on server
-   post-parse inference. PARO/GGUF c=1 true streaming already emits
-   greedy/sampled answer-token snapshots.
+1. **Live backend DecodeState telemetry:** buffered streaming now carries safe
+   backend sampler/execution metadata on opt-in deltas, but still needs
+   backend-authored per-token snapshots for forced-token state, budget pressure,
+   stop suffixes, and continuation eligibility. Extend c>N/native scheduler
+   paths from their current final execution-path/fallback snapshots to per-token
+   `GenerationStreamChunk` snapshots instead of relying on server post-parse
+   inference. PARO/GGUF c=1 true streaming already emits greedy/sampled
+   answer-token snapshots.
 2. **Native/scheduler controlled-decoding parity:** extend c>N/GGUF/native GPU
    sampler paths to emit the same processor metadata, fallback reasons, and
    logprob semantics as host AR sampling, or reject clearly.

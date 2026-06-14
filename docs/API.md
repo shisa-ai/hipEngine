@@ -214,10 +214,15 @@ the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.
 Buffered SSE paths that run detailed generation, such as completion `echo`
 streaming, chat `n>1`, logprob streaming, and result-validation buffering,
-preserve backend `GenerationOutput.telemetry` on the final choice `done` chunk
-when it is present. Buffered tool/reasoning/structured delta token counts are
-server-derived from the parsed chunks the server emits, not authoritative
-decode-loop grammar state.
+preserve backend `GenerationOutput.telemetry` on the final choice `done` chunk.
+When tokenizer counting is available, buffered deltas also inherit stable backend
+decode-state metadata from that final telemetry, including sampler mode,
+processor/fallback blockers, logits-readback state, and scheduler execution-path
+flags, while keeping phase and token counts server-derived for the emitted
+chunk. Buffered tool/reasoning/structured delta token counts are parsed from the
+chunks the server emits, not authoritative decode-loop grammar state; token-specific
+final fields such as forced-token state, stop suffixes, budget pressure,
+and backend timing/usage remain final-chunk metadata.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final
@@ -232,9 +237,10 @@ The `/v1/hipengine/capabilities` manifest reports the same extension under
 `features.stream_metadata`, including metadata version, event names, timing
 field names, token-accounting/decode-state scopes (`live_delta`,
 `buffered_delta`, and `final_choice` when tokenizer counting is available), and
-backend telemetry scopes (`live_chunk` and `buffered_done`) for engines that
-emit `GenerationStreamChunk` or `GenerationOutput` telemetry. It also reports
-the optional backend-authored field vocabulary under
+backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
+`buffered_done`) for engines that emit `GenerationStreamChunk` or
+`GenerationOutput` telemetry. It also reports the optional backend-authored
+field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
 
 Cache hit/miss, backend prefill timing, budget pressure, per-request KV-byte
