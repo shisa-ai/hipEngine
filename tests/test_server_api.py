@@ -213,17 +213,51 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     response = client.get("/v1/models", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert response.json() == {
-        "object": "list",
-        "data": [
-            {
-                "id": "fake-model",
-                "object": "model",
-                "created": app.state.hipengine_config.created,
-                "owned_by": "hipengine",
-            }
-        ],
+    body = response.json()
+    assert body["object"] == "list"
+    assert len(body["data"]) == 1
+    model = body["data"][0]
+    assert model["id"] == "fake-model"
+    assert model["object"] == "model"
+    assert model["created"] == app.state.hipengine_config.created
+    assert model["owned_by"] == "hipengine"
+    assert model["hipengine"] == {
+        "path": "/models/fake",
+        "backend": "auto",
+        "quant": "w4_paro",
+        "loaded": True,
+        "resident_context": True,
+        "context": {
+            "configured_max_context_tokens": None,
+            "effective_max_context_tokens": None,
+            "chat_default_max_tokens": 4096,
+        },
+        "kv_capacity": {
+            "storage": "auto",
+            "scale_dtype": "fp16",
+            "scale_granularity": "per_token_head",
+            "estimate": None,
+        },
+        "capabilities_url": "/v1/hipengine/capabilities",
+        "routing": {"loaded_model_count": 1, "multiple_models": False},
     }
+
+
+def test_models_endpoint_reports_lazy_model_not_loaded() -> None:
+    app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", eager_load=False),
+        llm=None,
+    )
+    client = TestClient(app)
+
+    response = client.get("/v1/models")
+
+    assert response.status_code == 200
+    model = response.json()["data"][0]
+    assert model["id"] == "fake-model"
+    assert model["hipengine"]["loaded"] is False
+    assert model["hipengine"]["routing"] == {"loaded_model_count": 0, "multiple_models": False}
+    assert model["hipengine"]["kv_capacity"]["estimate"] is None
 
 
 def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:

@@ -82,7 +82,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready. |
-| `GET /v1/models` | Built in | Returns the single served model id. |
+| `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, context defaults, KV policy/estimate, routing count, and capabilities URL. |
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |

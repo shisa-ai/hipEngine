@@ -88138,6 +88138,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive tests/test_server_api.py::test_metrics_endpoint_filters_malformed_graph_bucket_scalars tests/test_server_api.py::test_generation_batcher_rejects_when_queue_cap_is_full -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 
+## 2026-06-14 - AGENTIC model endpoint status metadata
+
+Filled the first P6.1 `/v1/models` gap for the current single-model server by
+adding a `hipengine` extension to each OpenAI-compatible model entry. The
+extension reports backend/quant/path, loaded state, resident-context support,
+context defaults, KV policy/capacity estimate when available, the canonical
+capabilities URL, and routing count metadata without lazy-loading the model.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_models_endpoint_reports_served_model_name_and_auth tests/test_server_api.py::test_models_endpoint_reports_lazy_model_not_loaded tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
 ## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
 
 Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).

@@ -2044,6 +2044,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     @app.get("/v1/models")
     async def list_models(_auth: None = Depends(require_auth)) -> dict[str, Any]:
+        engine = getattr(app.state, "hipengine_llm", None)
+        readiness: _ReadinessState = app.state.hipengine_readiness
+        configured_context = configured_max_context_tokens()
+        effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         return {
             "object": "list",
             "data": [
@@ -2052,6 +2056,31 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "object": "model",
                     "created": config.created,
                     "owned_by": "hipengine",
+                    "hipengine": {
+                        "path": config.model,
+                        "backend": config.backend,
+                        "quant": config.quant,
+                        "loaded": bool(readiness.model_loaded),
+                        "resident_context": True,
+                        "context": {
+                            "configured_max_context_tokens": configured_context,
+                            "effective_max_context_tokens": (
+                                None if effective_context is None else int(effective_context)
+                            ),
+                            "chat_default_max_tokens": config.chat_default_max_tokens,
+                        },
+                        "kv_capacity": {
+                            "storage": config.kv_storage,
+                            "scale_dtype": config.kv_scale_dtype,
+                            "scale_granularity": config.kv_scale_granularity,
+                            "estimate": _kv_capacity_estimate_payload(engine),
+                        },
+                        "capabilities_url": "/v1/hipengine/capabilities",
+                        "routing": {
+                            "loaded_model_count": 0 if engine is None else 1,
+                            "multiple_models": False,
+                        },
+                    },
                 }
             ],
         }
