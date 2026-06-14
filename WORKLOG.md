@@ -88995,3 +88995,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC fail-closed schema subset validation
+
+Added request-time JSON Schema subset validation for `response_format` schemas
+and strict tool schemas. Unsupported validation keywords such as `oneOf` and
+`pattern` now return `invalid_request` / canonical `schema_violation` before
+generation instead of being silently ignored. Annotation keys such as
+`description` remain accepted and ignored by validation. Capabilities now
+advertise unsupported-keyword rejection and ignored annotation keywords for both
+tools and structured outputs.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_rejects_unsupported_schema_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_unsupported_keywords tests/test_server_api.py::test_completions_response_format_json_schema_validates_result tests/test_server_api.py::test_chat_completion_strict_tool_schema_accepts_bounded_subset -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `41 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

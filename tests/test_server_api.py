@@ -488,6 +488,34 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "strict_decoding": False,
         "strict_result_validation": True,
         "result_validation_failure_reasons": ["schema_violation"],
+        "schema_validation": "json_schema_subset",
+        "schema_subset": [
+            "type",
+            "enum",
+            "const",
+            "object.properties",
+            "object.required",
+            "object.additionalProperties=false",
+            "array.items",
+            "array.minItems",
+            "array.maxItems",
+            "string.minLength",
+            "string.maxLength",
+            "number.minimum",
+            "number.maximum",
+            "number.exclusiveMinimum",
+            "number.exclusiveMaximum",
+        ],
+        "unsupported_schema_keywords_rejected": True,
+        "annotation_keywords_ignored": [
+            "title",
+            "description",
+            "default",
+            "examples",
+            "deprecated",
+            "readOnly",
+            "writeOnly",
+        ],
     }
     assert body["features"]["grammars"] == {
         "enabled": False,
@@ -536,6 +564,16 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "number.maximum",
             "number.exclusiveMinimum",
             "number.exclusiveMaximum",
+        ],
+        "unsupported_schema_keywords_rejected": True,
+        "annotation_keywords_ignored": [
+            "title",
+            "description",
+            "default",
+            "examples",
+            "deprecated",
+            "readOnly",
+            "writeOnly",
         ],
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
@@ -2281,6 +2319,38 @@ def test_completions_response_format_rejects_unsupported_modes() -> None:
     assert fake.calls == []
 
 
+def test_completions_response_format_rejects_unsupported_schema_keywords() -> None:
+    fake = FakeLLM(outputs=['{"ok":true}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_result",
+                    "schema": {
+                        "type": "object",
+                        "oneOf": [{"required": ["ok"]}],
+                    },
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "response_format.json_schema.schema.oneOf"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
+
+
 def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
     fake = FakeLLM(outputs=["alpha!tail"], token_map={"!": [99], "two tokens": [10, 11]})
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -3990,6 +4060,49 @@ def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert "tool_calls" not in choice["message"]
+
+
+def test_chat_completion_strict_tool_schema_rejects_unsupported_keywords() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "string",
+                                    "description": "Repository path",
+                                    "pattern": "^README",
+                                }
+                            },
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "tools[0].function.parameters.properties.path.pattern"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
 
 
 @pytest.mark.parametrize(

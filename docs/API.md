@@ -346,8 +346,12 @@ left partially emitted.
 The current post-generation schema subset covers `type`, `enum`, `const`,
 object `properties` / `required` / `additionalProperties: false`, array `items`
 with `minItems` / `maxItems`, string `minLength` / `maxLength`, and numeric
-`minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`. This is result
-validation only; decode-time JSON/schema constraints remain unsupported.
+`minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`. Unsupported
+validation keywords such as `oneOf`, `anyOf`, `$ref`, `pattern`, and `format`
+are rejected before generation when strict tool validation would use the schema;
+annotation keys such as `title`, `description`, and `default` are accepted but
+ignored by validation. This is result validation only; decode-time JSON/schema
+constraints remain unsupported.
 
 ### Structured outputs
 
@@ -365,7 +369,9 @@ this normal-response failure reason under
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` / `required` /
 `additionalProperties: false`, array `items` / `minItems` / `maxItems`, string
-`minLength` / `maxLength`, and numeric min/max bounds. This is result
+`minLength` / `maxLength`, and numeric min/max bounds. Unsupported validation
+keywords are rejected before generation instead of being silently ignored;
+annotation keys are accepted but ignored by validation. This is result
 validation, not grammar-constrained decoding.
 
 Grammar/guidance request fields are not currently supported. The capabilities

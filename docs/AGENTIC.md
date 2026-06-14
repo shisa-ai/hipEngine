@@ -1281,7 +1281,10 @@ Current state:
   function `parameters` JSON schema subset: scalar types, `enum`, `const`,
   object `properties` / `required` / `additionalProperties=false`, array
   `items` / `minItems` / `maxItems`, string `minLength` / `maxLength`, and
-  numeric min/max bounds.
+  numeric min/max bounds. Unsupported validation keywords are rejected before
+  generation when strict validation would use the schema; annotation keys such
+  as `title`, `description`, and `default` are accepted but ignored by
+  validation.
 - Strict failures return normal chat responses with no successful `tool_calls`,
   stable `finish_details.reason` values (`invalid_tool_call`,
   `tool_required_not_satisfied`, or `schema_violation`), and coarse
@@ -1357,6 +1360,8 @@ Current code reality:
 - post-generation strict validation covers selected tool names, malformed tool
   blocks, required/extra arguments, scalar types, `enum`, `const`, nested
   objects, arrays, array length bounds, string length bounds, and numeric bounds;
+- strict schemas reject unsupported validation keywords before generation rather
+  than silently ignoring constraints;
 - decode-time schema constraints and retry/repair remain future grammar work.
 
 Exit gates:
@@ -1388,6 +1393,10 @@ Current code reality:
   implemented as prompt-hint plus post-generation result validation for
   completion and chat outputs. Streaming requests use buffered response paths so
   invalid JSON is not emitted as successful deltas;
+- JSON-schema requests use the same fail-closed subset validation as strict tool
+  schemas: supported validation keywords are enforced, unsupported validation
+  keywords are rejected before generation, and annotation keys are ignored by
+  validation;
 - `response_format={"type":"text"}` is a no-op;
 - decode-time close-brace/quote enforcement and schema-constrained generation
   remain future grammar work.

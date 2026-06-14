@@ -113,6 +113,46 @@ _TOOL_RESULT_VALIDATION_FAILURE_REASONS = (
     "schema_violation",
 )
 _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS = ("schema_violation",)
+_JSON_SCHEMA_ANNOTATION_KEYWORDS = (
+    "title",
+    "description",
+    "default",
+    "examples",
+    "deprecated",
+    "readOnly",
+    "writeOnly",
+)
+_JSON_SCHEMA_SUPPORTED_TYPES = frozenset(
+    {
+        "array",
+        "boolean",
+        "integer",
+        "null",
+        "number",
+        "object",
+        "string",
+    }
+)
+_JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
+    {
+        "type",
+        "enum",
+        "const",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "minItems",
+        "maxItems",
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        *_JSON_SCHEMA_ANNOTATION_KEYWORDS,
+    }
+)
 _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     (
         *_TOOL_RESULT_VALIDATION_FAILURE_REASONS,
@@ -715,6 +755,8 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "result_validation_failure_reasons": list(_TOOL_RESULT_VALIDATION_FAILURE_REASONS),
         "schema_validation": "function_strict",
         "schema_subset": _tool_schema_subset(),
+        "unsupported_schema_keywords_rejected": True,
+        "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
         "no_tool_start_suppression": tokenizer_backed,
@@ -737,6 +779,10 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "result_validation_failure_reasons": list(
             _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS
         ),
+        "schema_validation": "json_schema_subset",
+        "schema_subset": _tool_schema_subset(),
+        "unsupported_schema_keywords_rejected": True,
+        "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
     }
 
 
@@ -5210,6 +5256,7 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             param=unsupported_param,
         )
     _validate_response_format_request(request)
+    _validate_tool_schema_requests(request)
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
@@ -5999,6 +6046,35 @@ def _validate_response_format_request(request: CompletionRequest | ChatCompletio
             code="invalid_request",
             param="response_format.json_schema.schema",
         )
+    if mode == "json_schema":
+        schema = _response_format_json_schema(request)
+        if schema is not None:
+            schema_error = _validate_json_schema_subset(
+                schema,
+                path="response_format.json_schema.schema",
+            )
+            if schema_error is not None:
+                param, message = schema_error
+                raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
+
+
+def _validate_tool_schema_requests(request: CompletionRequest | ChatCompletionRequest) -> None:
+    if not isinstance(request, ChatCompletionRequest) or not request.tools:
+        return
+    if not _strict_tool_validation_enabled(request):
+        return
+    for index, tool in enumerate(request.tools):
+        schema = _tool_parameters_schema(tool)
+        if schema is None:
+            continue
+        schema_error = _validate_json_schema_subset(
+            schema,
+            path=f"tools[{index}].function.parameters",
+        )
+        if schema_error is None:
+            continue
+        param, message = schema_error
+        raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
 
 
 def _response_format_mode(request: CompletionRequest | ChatCompletionRequest) -> str | None:
@@ -6736,6 +6812,71 @@ def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
         open_index = text.lower().rfind("<tool_call>")
         malformed.append(text[open_index:] if open_index >= 0 else str(text))
     return tuple(malformed)
+
+
+def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tuple[str, str] | None:
+    for raw_key in schema:
+        key = str(raw_key)
+        if key not in _JSON_SCHEMA_SUPPORTED_KEYS:
+            param = f"{path}.{key}"
+            return (param, f"{param} is not supported by hipEngine JSON schema subset")
+
+    expected = schema.get("type")
+    if expected is not None:
+        if isinstance(expected, str):
+            expected_types = (expected,)
+        elif isinstance(expected, Sequence) and not isinstance(expected, (str, bytes)):
+            expected_types = tuple(expected)
+        else:
+            return (f"{path}.type", f"{path}.type must be a string or list of strings")
+        for item in expected_types:
+            if not isinstance(item, str) or item not in _JSON_SCHEMA_SUPPORTED_TYPES:
+                return (f"{path}.type", f"{path}.type contains unsupported type {item!r}")
+
+    enum = schema.get("enum")
+    if enum is not None and (not isinstance(enum, Sequence) or isinstance(enum, (str, bytes))):
+        return (f"{path}.enum", f"{path}.enum must be an array")
+
+    properties = schema.get("properties")
+    if properties is not None:
+        if not isinstance(properties, Mapping):
+            return (f"{path}.properties", f"{path}.properties must be an object")
+        for raw_key, subschema in properties.items():
+            property_path = f"{path}.properties.{raw_key}"
+            if not isinstance(subschema, Mapping):
+                return (property_path, f"{property_path} must be an object")
+            error = _validate_json_schema_subset(subschema, path=property_path)
+            if error is not None:
+                return error
+
+    required = schema.get("required")
+    if required is not None:
+        if not isinstance(required, Sequence) or isinstance(required, (str, bytes)):
+            return (f"{path}.required", f"{path}.required must be an array of strings")
+        if any(not isinstance(item, str) for item in required):
+            return (f"{path}.required", f"{path}.required must contain only strings")
+
+    if "additionalProperties" in schema and not isinstance(schema.get("additionalProperties"), bool):
+        return (
+            f"{path}.additionalProperties",
+            f"{path}.additionalProperties must be a boolean in hipEngine JSON schema subset",
+        )
+
+    items = schema.get("items")
+    if items is not None:
+        if not isinstance(items, Mapping):
+            return (f"{path}.items", f"{path}.items must be an object")
+        error = _validate_json_schema_subset(items, path=f"{path}.items")
+        if error is not None:
+            return error
+
+    for key in ("minItems", "maxItems", "minLength", "maxLength"):
+        if key in schema and _schema_nonnegative_int(schema.get(key)) is None:
+            return (f"{path}.{key}", f"{path}.{key} must be a non-negative integer")
+    for key in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
+        if key in schema and _schema_finite_number(schema.get(key)) is None:
+            return (f"{path}.{key}", f"{path}.{key} must be a finite number")
+    return None
 
 
 def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> str | None:
