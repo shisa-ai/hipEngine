@@ -164,6 +164,29 @@ def test_agentic_conformance_tool_result_replay_renders_once() -> None:
     assert prompt.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
 
 
+def test_agentic_conformance_permissive_malformed_tool_call_remains_text() -> None:
+    raw_tool_markup = (
+        "<tool_call>\n"
+        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+    )
+    llm = AgenticFakeLLM(outputs=[raw_tool_markup])
+    response = _client(llm).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read README.md."}],
+            "tools": [_read_tool(strict=False)],
+            "max_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "stop"}
+    assert choice["message"] == {"role": "assistant", "content": raw_tool_markup}
+
+
 def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -> None:
     llm = AgenticFakeLLM(
         stream_chunks=[

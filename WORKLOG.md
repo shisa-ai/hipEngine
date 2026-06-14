@@ -88350,3 +88350,18 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_row_sampling_state_binds_thinking_budget tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/server/api.py tests/test_generation_constraints.py tests/test_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC permissive malformed tool conformance
+
+Added server conformance coverage for the permissive tool-call compatibility
+path: when a request sends tools in `auto` mode with no strict function schema,
+no explicit `tool_choice`, and no explicit `parallel_tool_calls`, malformed
+nested Qwen `<tool_call>` markup remains assistant text rather than being
+converted into an OpenAI `tool_calls` response. This documents the behavior that
+can look like a broken tool call in local-agent transcripts when the model emits
+invalid nested markup and strict validation was not requested.
+
+Validation:
+- `python3 -m py_compile tests/test_agentic_server_conformance.py`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `13 passed`.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py` -> `All checks passed!`.

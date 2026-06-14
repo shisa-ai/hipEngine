@@ -1675,8 +1675,9 @@ Current code reality:
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
   rendering exactly once, `enable_thinking=false` pre-close rendering,
-  `session.commit="append_none"` finish metadata, and streaming tool-call parity
-  without raw `<tool_call>` leakage.
+  permissive malformed-tool compatibility, `session.commit="append_none"`
+  finish metadata, and streaming tool-call parity without raw `<tool_call>`
+  leakage.
 
 Exit gates:
 
