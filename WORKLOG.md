@@ -89609,3 +89609,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC local/pi tool-smoke argument validation
+
+Tightened the adapter-neutral local-agent and pi-agent chat smoke validators.
+The smoke now proves the parsed `record_result` tool call carries
+`{"result":"ok"}` instead of accepting any valid JSON string argument. Wrong
+tool arguments now fail validation alongside raw `<tool_call>` text and missing
+`tool_calls`, which better catches client/server tool-protocol drift.
+
+Validation:
+- `python3 -m py_compile scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py tests/test_local_agent_config.py`.
+- `git diff --check -- scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_requires_tool_call_when_enabled tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_rejects_wrong_tool_argument tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_requires_tool_call tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_rejects_wrong_tool_argument -q` -> `4 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `50 passed`.
+- `python3 -m ruff check scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> passed.

@@ -473,8 +473,9 @@ python3 scripts/validate_pi_agent_models.py \
 ```
 
 The `--chat-smoke` check requires the response to finish with a parsed
-`record_result` tool call and valid JSON arguments; ordinary assistant text, raw
-`<tool_call>` markup, or a missing `tool_calls` payload fails validation.
+`record_result` tool call whose JSON arguments set `result` to `"ok"`;
+ordinary assistant text, raw `<tool_call>` markup, a missing `tool_calls`
+payload, or the wrong tool argument fails validation.
 
 ### Local-agent config validation
 
@@ -490,8 +491,8 @@ payload plus intentionally unused tool-policy and grammar/guidance fields in
 
 When `--chat-smoke` is used and the config enables tools, the validator sends a
 specific `record_result` tool choice and requires the server response to contain
-that parsed tool call with valid JSON arguments. If tools are disabled, the
-smoke only requires a valid chat completion response.
+that parsed tool call with JSON arguments that set `result` to `"ok"`. If tools
+are disabled, the smoke only requires a valid chat completion response.
 
 Known agent fields that are advertised as unsupported are rejected before
 generation work starts. Stateless requests without a `session` object default

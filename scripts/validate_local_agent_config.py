@@ -16,6 +16,9 @@ class ConfigValidationError(ValueError):
     """Raised when a local-agent config does not match server capabilities."""
 
 
+_EXPECTED_CHAT_SMOKE_RESULT = "ok"
+
+
 def load_config(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -124,7 +127,7 @@ def build_chat_smoke_payload(
         "messages": [
             {
                 "role": "user",
-                "content": "Reply with ok. If a tool call is appropriate, use the provided tool.",
+                "content": f"Use the provided tool to record {_EXPECTED_CHAT_SMOKE_RESULT}.",
             }
         ],
         **defaults,
@@ -227,12 +230,19 @@ def validate_chat_smoke_response(
         raise ConfigValidationError(f"chat smoke tool arguments are not valid JSON: {exc}") from exc
     if not isinstance(decoded_args, dict):
         raise ConfigValidationError("chat smoke tool arguments must decode to a JSON object")
-    if "result" not in decoded_args or not isinstance(decoded_args["result"], str):
+    result = decoded_args.get("result")
+    if not isinstance(result, str):
         raise ConfigValidationError("chat smoke tool arguments must include string field 'result'")
+    if result != _EXPECTED_CHAT_SMOKE_RESULT:
+        raise ConfigValidationError(
+            "chat smoke tool arguments must set "
+            f"'result' to {_EXPECTED_CHAT_SMOKE_RESULT!r}, got {result!r}"
+        )
     return {
         "finish_reason": "tool_calls",
         "tool_name": "record_result",
         "argument_keys": sorted(str(key) for key in decoded_args),
+        "result": result,
     }
 
 

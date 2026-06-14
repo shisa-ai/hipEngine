@@ -16,6 +16,9 @@ class PiConfigValidationError(ValueError):
     """Raised when a pi-agent models.json does not match hipEngine guidance."""
 
 
+_EXPECTED_CHAT_SMOKE_RESULT = "ok"
+
+
 def load_config(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -134,7 +137,7 @@ def build_pi_chat_smoke_payload(config: dict[str, Any], capabilities: dict[str, 
         "messages": [
             {
                 "role": "user",
-                "content": "Use the provided tool to record ok.",
+                "content": f"Use the provided tool to record {_EXPECTED_CHAT_SMOKE_RESULT}.",
             }
         ],
         "temperature": 0,
@@ -224,12 +227,19 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
         raise PiConfigValidationError(f"chat smoke tool arguments are not valid JSON: {exc}") from exc
     if not isinstance(decoded_args, dict):
         raise PiConfigValidationError("chat smoke tool arguments must decode to a JSON object")
-    if "result" not in decoded_args or not isinstance(decoded_args["result"], str):
+    result = decoded_args.get("result")
+    if not isinstance(result, str):
         raise PiConfigValidationError("chat smoke tool arguments must include string field 'result'")
+    if result != _EXPECTED_CHAT_SMOKE_RESULT:
+        raise PiConfigValidationError(
+            "chat smoke tool arguments must set "
+            f"'result' to {_EXPECTED_CHAT_SMOKE_RESULT!r}, got {result!r}"
+        )
     return {
         "finish_reason": "tool_calls",
         "tool_name": "record_result",
         "argument_keys": sorted(str(key) for key in decoded_args),
+        "result": result,
     }
 
 
