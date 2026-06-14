@@ -6995,7 +6995,8 @@ def test_server_rejects_request_kv_policy_mismatch() -> None:
 
 def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     caplog.set_level(logging.WARNING, logger="uvicorn.error")
-    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=FakeLLM())
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
     wrong_model = client.post(
@@ -7009,7 +7010,27 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
         "status_code": 404,
         "legacy_code": "model_not_found",
         "retryable": False,
+        "routing": {
+            "requested_model": "other",
+            "served_model": None,
+            "configured_model": "fake-model",
+            "fallback_used": False,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": False,
+            "matched": False,
+            "reason": "model_unavailable",
+        },
     }
+
+    chat_wrong_model = client.post(
+        "/v1/chat/completions",
+        json={"model": "other", "messages": [{"role": "user", "content": "hello"}]},
+    )
+    assert chat_wrong_model.status_code == 404
+    assert chat_wrong_model.json()["error"]["code"] == "model_not_found"
+    assert chat_wrong_model.json()["error"]["hipengine"]["routing"] == wrong_model.json()["error"]["hipengine"]["routing"]
+    assert fake.calls == []
 
     schema_violation = client.post(
         "/v1/completions",

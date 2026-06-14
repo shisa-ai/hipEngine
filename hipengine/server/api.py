@@ -404,7 +404,15 @@ def _error_payload(
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
     if extra is not None:
-        payload.update(dict(extra))
+        extra_payload = dict(extra)
+        extra_hipengine = extra_payload.pop("hipengine", None)
+        if isinstance(extra_hipengine, Mapping):
+            existing = payload.get("hipengine")
+            if isinstance(existing, Mapping):
+                payload["hipengine"] = {**dict(existing), **dict(extra_hipengine)}
+            else:
+                payload["hipengine"] = dict(extra_hipengine)
+        payload.update(extra_payload)
     return payload
 
 
@@ -1061,6 +1069,26 @@ def _routing_response_metadata(
         "policy": "single_model_exact",
         "loaded_model_count": 0 if engine is None else 1,
         "multiple_models": False,
+    }
+
+
+def _routing_failure_metadata(
+    config: ServerConfig,
+    *,
+    requested_model: str | None,
+    reason: str,
+    engine: Any | None = None,
+) -> dict[str, Any]:
+    return {
+        **_routing_response_metadata(
+            config,
+            requested_model=requested_model,
+            engine=engine,
+        ),
+        "served_model": None,
+        "configured_model": config.model_id,
+        "matched": False,
+        "reason": str(reason),
     }
 
 
@@ -3421,7 +3449,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         raw_request: Request,
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
-        _validate_model(config, request.model)
+        _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
         _validate_generation_request(config, request)
         _validate_continuation_resume_request(request)
         continuation = await pop_continuation(request, endpoint="completion")
@@ -3541,7 +3569,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         raw_request: Request,
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
-        _validate_model(config, request.model)
+        _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
         _validate_generation_request(config, request)
         _validate_continuation_resume_request(request)
         admitted_session_id = await reserve_chat_session_if_needed(request)
@@ -5156,13 +5184,23 @@ def render_chat_prompt(
     return "\n".join(rendered)
 
 
-def _validate_model(config: ServerConfig, requested: str | None) -> None:
+def _validate_model(config: ServerConfig, requested: str | None, *, engine: Any | None = None) -> None:
     if requested is not None and requested != config.model_id:
         raise OpenAIHTTPError(
             404,
             f"model {requested!r} is not served by this hipEngine instance",
             code="model_not_found",
             param="model",
+            extra={
+                "hipengine": {
+                    "routing": _routing_failure_metadata(
+                        config,
+                        requested_model=requested,
+                        reason="model_unavailable",
+                        engine=engine,
+                    )
+                }
+            },
         )
 
 

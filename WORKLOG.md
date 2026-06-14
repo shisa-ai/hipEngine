@@ -89745,3 +89745,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC model-unavailable routing diagnostics
+
+Added failed-route metadata for the current single-model exact router. Wrong
+model requests now return `model_unavailable` with `error.hipengine.routing`
+showing requested model, configured model, no served model, exact-match policy,
+loaded-model count, `matched=false`, and the failure reason before any backend
+generation work starts.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

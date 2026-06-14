@@ -146,6 +146,10 @@ single-model server it reports the requested model, served model,
 `fallback_used: false`, `policy: "single_model_exact"`, loaded model count, and
 `multiple_models: false`.
 
+Wrong-model requests fail before generation with `model_unavailable` and include
+the same single-model route policy under `error.hipengine.routing`, plus
+`matched: false`, `configured_model`, and `reason: "model_unavailable"`.
+
 ### Streaming usage and hipEngine metadata
 
 Both completion endpoints accept OpenAI-compatible `stream_options`. Set
@@ -589,7 +593,7 @@ strict tool result-validation emits it as a normal chat
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation. |
-| `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`. |
+| `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`; `error.hipengine.routing` describes the failed single-model match. |
 | `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
 
 The same table is advertised programmatically under
