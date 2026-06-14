@@ -87646,3 +87646,18 @@ fairness remain future runtime work.
 Validation:
 - Re-read changed `docs/API.md` sections.
 - `git diff --check -- docs/API.md`.
+
+## 2026-06-14 - AGENTIC local-agent policy blocklist clarity
+
+Aligned the local-agent config test fixture with the real capabilities manifest:
+`parallel_tool_calls` is supported, but the checked-in adapter config keeps it
+in `do_not_send` because explicit tool-policy fields can change strict
+result-validation behavior. `top_logprobs` is likewise policy-blocked by the
+example rather than advertised as unsupported. Updated `docs/AGENTIC.md` to
+distinguish unsupported/session fields from intentionally unused
+tool-policy/logprob fields.
+
+Validation:
+- `python3 -m py_compile tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- tests/test_local_agent_config.py docs/AGENTIC.md`.

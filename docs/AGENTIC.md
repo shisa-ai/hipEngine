@@ -1418,7 +1418,9 @@ Current code reality:
   to deterministic Qwen-friendly chat (`temperature=0`, `reasoning_effort=none`),
   bounds ordinary generations to `max_tokens=4096`, enables SSE usage and
   hipEngine extension metadata, sets a request `timeout_ms`, sends tools
-  per request, and keeps unsupported/session fields in `do_not_send`.
+  per request, and keeps unsupported/session fields plus intentionally unused
+  tool-policy/logprob fields (`parallel_tool_calls`, `top_logprobs`) in
+  `do_not_send`.
 - `scripts/validate_local_agent_config.py` validates the snippet against a
   running server capability manifest and can optionally POST a small
   chat/tools smoke request:

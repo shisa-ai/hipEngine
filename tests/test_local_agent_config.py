@@ -46,7 +46,12 @@ def _capabilities(**overrides):
                 "strict_decoding": False,
                 "strict_result_validation": True,
             },
-            "tools": {"enabled": True, "strict_decoding": False},
+            "tools": {
+                "enabled": True,
+                "strict_decoding": False,
+                "strict_result_validation": True,
+                "parallel_tool_calls": True,
+            },
             "reasoning_controls": {
                 "enabled": True,
                 "fields": [
@@ -87,7 +92,6 @@ def _capabilities(**overrides):
         "unsupported_fields": [
             "continuation_id",
             "session.commit",
-            "parallel_tool_calls",
         ],
     }
     payload.update(overrides)
@@ -104,6 +108,8 @@ def test_local_agent_config_matches_capabilities() -> None:
     assert summary["model"] == "fake-model"
     assert summary["streaming"] is True
     assert summary["tools"] is True
+    assert "parallel_tool_calls" in summary["blocked_fields"]
+    assert "top_logprobs" in summary["blocked_fields"]
     for unsupported in _capabilities()["unsupported_fields"]:
         assert unsupported in summary["blocked_fields"]
 
