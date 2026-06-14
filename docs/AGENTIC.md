@@ -440,6 +440,13 @@ Current code reality:
   before materializing target verification metadata. The capabilities manifest
   advertises this guard, the blocker fields, and condition strings such as
   `temperature > 0` instead of relying only on prose.
+- Result-validation-only controls (`response_format`, `guided_json`,
+  `guided_regex`, `guided_choice`, `guided_patch`, and `guided_diff`) are not
+  MTP blockers in the current contract because they do not alter target token
+  selection; they add prompt hints and validate visible output after generation.
+  If any of these are promoted to decode-time grammar masks or forced-token
+  repair, that promoted path must be represented as an explicit processor
+  blocker until target verification applies the same constraint.
 
 Default rule:
 

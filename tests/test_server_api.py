@@ -1054,6 +1054,15 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         },
         "processed_target_verification": False,
     }
+    mtp_incompatible = set(body["sampling"]["speculative_mtp"]["incompatible_fields"])
+    assert {
+        "response_format",
+        "guided_json",
+        "guided_regex",
+        "guided_choice",
+        "guided_patch",
+        "guided_diff",
+    }.isdisjoint(mtp_incompatible)
     assert body["sessions"] == {
         "resident_context": True,
         "commit_policy": _session_commit_policy_capability(),

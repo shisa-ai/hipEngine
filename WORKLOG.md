@@ -91222,3 +91222,20 @@ and guided regex completion mismatch suppression.
 Validation:
 - `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null` -> passed.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `51 passed`.
+
+## 2026-06-15 - AGENTIC MTP result-validation boundary
+
+Pinned the distinction between token-selection processors and post-generation
+result-validation controls for the speculative/MTP contract. The capabilities
+test now asserts `response_format`, `guided_json`, `guided_regex`,
+`guided_choice`, `guided_patch`, and `guided_diff` do not appear in the
+advertised MTP incompatible field list while they remain validation-only; AGENTIC
+now documents that promoting any of them to decode-time masks or forced-token
+repair must add an explicit processor blocker until target verification matches
+that constraint.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
