@@ -326,12 +326,15 @@ A minimal OpenAI-compatible local-agent config is checked in at
 model id from `/v1/hipengine/capabilities`, uses deterministic Qwen-friendly
 defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
 hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
-and keeps unsupported/session fields plus intentionally unused tool-policy fields
-in `do_not_send`.
+explicitly sends `session.commit="append_none"` as the current stateless
+no-retain policy, and keeps unsupported stateful-session fields plus
+intentionally unused tool-policy fields in `do_not_send`.
 
 Known agent fields that are advertised as unsupported are rejected before
-generation work starts. `continuation_id`, `session.commit`, and other
-`session` payloads return HTTP 400 with
+generation work starts. `session.commit="append_none"` is accepted and final
+choice metadata reports `finish_details.cache_action="append_none"`.
+`continuation_id`, stateful `session.id`, unsupported `session.commit` modes,
+and other `session` payloads return HTTP 400 with
 `error.code: "unsupported_parameter"` and `error.param` set to the rejected
 field.
 

@@ -87991,3 +87991,21 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `1 passed`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC stateless session no-retain policy
+
+Accepted `session.commit="append_none"` as an explicit stateless session policy
+for completions and chat while continuing to reject stateful `session.id` and
+stateful commit modes before generation work. Capabilities now advertise the
+single supported no-retain mode, final choice metadata reports
+`finish_details.cache_action="append_none"`, and the local-agent config sends the
+no-retain marker while blocklisting stateful session ids.
+
+While linting the touched server file, fixed an existing Python 3.11 Ruff parse
+failure by moving a newline join out of an f-string expression.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_session_append_none_reports_cache_action tests/test_server_api.py::test_streaming_session_append_none_reports_cache_action tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_local_agent_config.py -q` -> `14 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

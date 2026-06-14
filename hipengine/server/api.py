@@ -567,12 +567,26 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
         },
         "sessions": {
             "resident_context": True,
-            "commit_policy": False,
+            "commit_policy": _session_commit_policy_capability(),
             "continuations": False,
         },
         "unsupported_fields": [
             "continuation_id",
-            "session.commit",
+            "session.id",
+        ],
+    }
+
+
+def _session_commit_policy_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "stateful": False,
+        "default": "append_none",
+        "modes": ["append_none"],
+        "unsupported_stateful_modes": [
+            "append_all",
+            "append_visible_only",
+            "append_prompt_only",
         ],
     }
 
@@ -1835,6 +1849,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         text, finish_reason = _apply_stop(raw_text, request.stop)
         usage = _usage(engine, (prompt,), [text])
         app.state.hipengine_server_metrics.record_success(usage)
+        cache_action = _session_cache_action(request)
         final_tokens = (
             _stream_usage_token_payload(usage, token_accounting)
             if include_hipengine and token_accounting is not None
@@ -1845,6 +1860,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             created,
             config.model_id,
             finish_reason,
+            finish_details=_finish_details_payload(
+                None,
+                finish_reason,
+                cache_action=cache_action,
+            ),
             tokens=final_tokens,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
@@ -2110,7 +2130,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "sessions": {
                 "resident_context": True,
-                "commit_policy": False,
+                "commit_policy": _session_commit_policy_capability(),
                 "continuations": False,
             },
             "routing": {
@@ -2120,7 +2140,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "errors": _error_taxonomy_manifest(),
             "unsupported_fields": [
                 "continuation_id",
-                "session.commit",
+                "session.id",
             ],
         }
 
@@ -2249,6 +2269,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         choices = []
         final_texts: list[str] = []
+        cache_action = _session_cache_action(request)
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
             generated_text, finish_reason = _apply_stop(output, request.stop)
             server_stop = generated_text != output
@@ -2272,6 +2293,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     detail,
                     finish_reason,
                     reason_override=response_format_failure or ("stop" if server_stop else None),
+                    cache_action=cache_action,
                 ),
             }
             if n > 1:
@@ -2335,6 +2357,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
+        cache_action = _session_cache_action(request)
         for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
             text, finish_reason = _apply_stop(output, request.stop)
             server_stop = text != output
@@ -2378,6 +2401,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason,
                     text,
                     reason_override=finish_reason_override,
+                    cache_action=cache_action,
                 ),
             }
             if request.logprobs:
@@ -2463,6 +2487,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         finish_reason,
                         text,
                         reason_override=finish_reason_override,
+                        cache_action=_session_cache_action(request),
                     ),
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
@@ -2716,6 +2741,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             finish_reason = "stop"
         usage = _usage(engine, (prompt,), [text])
         app.state.hipengine_server_metrics.record_success(usage)
+        cache_action = _session_cache_action(request)
         final_tokens = (
             _stream_usage_token_payload(usage, token_accounting)
             if include_hipengine and token_accounting is not None
@@ -2736,6 +2762,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     None,
                     stream_finish_reason,
                     reason_override=tool_validation.failure_reason if tool_validation.failed else None,
+                    cache_action=cache_action,
                 ),
                 done_tokens=final_tokens,
                 include_hipengine=include_hipengine,
@@ -2748,6 +2775,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 created,
                 config.model_id,
                 finish_reason,
+                finish_details=_finish_details_payload(
+                    None,
+                    finish_reason,
+                    cache_action=cache_action,
+                ),
                 tokens=final_tokens,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
@@ -3521,7 +3553,8 @@ def render_chat_prompt(
         if item
     ]
     if control_prompts:
-        rendered.append(f"<|im_start|>system\n{'\n\n'.join(control_prompts)}<|im_end|>")
+        control_block = "\n\n".join(control_prompts)
+        rendered.append(f"<|im_start|>system\n{control_block}<|im_end|>")
     for index, message in enumerate(messages):
         if isinstance(message, Mapping):
             role_value = message.get("role", "")
@@ -4278,9 +4311,34 @@ def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompleti
         return "continuation_id"
     session = getattr(request, "session", None)
     if session is not None:
-        if isinstance(session, Mapping) and "commit" in session:
-            return "session.commit"
+        if isinstance(session, Mapping):
+            if _session_cache_action(request) is not None:
+                return None
+            if "id" in session:
+                return "session.id"
+            if "commit" in session:
+                return "session.commit"
         return "session"
+    return None
+
+
+def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    """Return the explicit stateless session cache action for a request.
+
+    hipEngine does not yet own stateful server-side session ids. The one
+    accepted policy is a no-retain marker so clients can explicitly request the
+    current safe behavior and see it reflected in finish metadata.
+    """
+
+    session = getattr(request, "session", None)
+    if not isinstance(session, Mapping):
+        return None
+    commit = session.get("commit")
+    if commit is None:
+        return None
+    mode = str(commit).strip().lower()
+    if mode == "append_none" and set(session.keys()) == {"commit"}:
+        return "append_none"
     return None
 
 
@@ -4439,11 +4497,15 @@ def _finish_details_payload(
     finish_reason: str,
     *,
     reason_override: str | None = None,
+    cache_action: str | None = None,
 ) -> dict[str, Any]:
     finish = None if detail is None else detail.finish_details
     if finish is None:
         finish = FinishDetails(reason=finish_reason)
-    return finish.to_json_dict(reason=reason_override)
+    payload = finish.to_json_dict(reason=reason_override)
+    if cache_action is not None:
+        payload.setdefault("cache_action", str(cache_action))
+    return payload
 
 
 def _chat_finish_details_payload(
@@ -4452,8 +4514,14 @@ def _chat_finish_details_payload(
     text: str,
     *,
     reason_override: str | None = None,
+    cache_action: str | None = None,
 ) -> dict[str, Any]:
-    payload = _finish_details_payload(detail, finish_reason, reason_override=reason_override)
+    payload = _finish_details_payload(
+        detail,
+        finish_reason,
+        reason_override=reason_override,
+        cache_action=cache_action,
+    )
     if _is_length_finish_payload(payload):
         payload.setdefault("phase", _classify_chat_length_phase(text))
         payload.setdefault("continuation_eligible", False)

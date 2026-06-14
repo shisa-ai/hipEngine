@@ -91,7 +91,7 @@ def _capabilities(**overrides):
         },
         "unsupported_fields": [
             "continuation_id",
-            "session.commit",
+            "session.id",
         ],
     }
     payload.update(overrides)
@@ -143,6 +143,7 @@ def test_local_agent_chat_smoke_payload_avoids_unsupported_fields() -> None:
     assert payload["model"] == "fake-model"
     assert payload["stream"] is False
     assert payload["max_tokens"] == 8
+    assert payload["session"] == {"commit": "append_none"}
     assert payload["tool_choice"] == "auto"
     assert payload["tools"][0]["function"]["name"] == "record_result"
     for unsupported in config["chat_completions"]["do_not_send"]:

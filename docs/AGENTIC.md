@@ -1292,6 +1292,18 @@ Exit gates:
   tails;
 - state accounting remains exact across turns.
 
+Current code reality:
+
+- `session.commit="append_none"` is accepted for completions and chat as an
+  explicit stateless no-retain policy. Final choice metadata includes
+  `finish_details.cache_action="append_none"` so client harnesses can record the
+  selected cache behavior.
+- Stateful session ids and stateful commit modes (`append_all`,
+  `append_visible_only`, `append_prompt_only`) remain unsupported and are
+  rejected before generation work starts.
+- There is no resident session transcript/KV commit, visible-only re-prefill, or
+  continuation handle yet.
+
 #### P3.2 Visible-only re-prefill path
 
 Implement:
@@ -1503,14 +1515,17 @@ Current code reality:
   the default-off PARO c=1 native GPU sampler scope, speculative/MTP sampling
   compatibility, request-timeout/client-disconnect support, cache/session
   settings, loaded-model count, and unsupported fields.
-- Continuations, `session.commit`, multi-model routing, and strict tool decoding
-  are advertised as unsupported until their runtime paths exist. Request
-  timeouts and client-disconnect cancellation are advertised as supported with
-  `preemptive_decode_cancel=false`; token diagnostics are advertised from
-  current tokenizer/counting callables.
+- Continuations, stateful `session.id`, stateful `session.commit` modes,
+  multi-model routing, and strict tool decoding are advertised as unsupported
+  until their runtime paths exist. Stateless `session.commit="append_none"` is
+  advertised as the only supported session policy. Request timeouts and
+  client-disconnect cancellation are advertised as supported with
+  `preemptive_decode_cancel=false`; token diagnostics are advertised from current
+  tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
-  `continuation_id`, `session.commit`, and other `session` payloads return
-  `unsupported_parameter` with `error.param` set to the rejected field.
+  `continuation_id`, stateful `session.id`, unsupported `session.commit` modes,
+  and other `session` payloads return `unsupported_parameter` with `error.param`
+  set to the rejected field.
 
 Exit gates:
 
@@ -1534,9 +1549,10 @@ Current code reality:
   `/v1`, reads the served model id from `/v1/hipengine/capabilities`, defaults
   to deterministic Qwen-friendly chat (`temperature=0`, `reasoning_effort=none`),
   bounds ordinary generations to `max_tokens=4096`, enables SSE usage and
-  hipEngine extension metadata, sets a request `timeout_ms`, sends tools
-  per request, and keeps unsupported/session fields plus intentionally unused
-  tool-policy/logprob fields (`parallel_tool_calls`, `top_logprobs`) in
+  hipEngine extension metadata, sets a request `timeout_ms`, explicitly sends
+  `session.commit="append_none"` for stateless no-retain behavior, sends tools
+  per request, and keeps unsupported stateful-session fields plus intentionally
+  unused tool-policy/logprob fields (`parallel_tool_calls`, `top_logprobs`) in
   `do_not_send`.
 - `scripts/validate_local_agent_config.py` validates the snippet against a
   running server capability manifest and can optionally POST a small

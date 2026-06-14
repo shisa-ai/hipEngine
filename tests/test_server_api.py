@@ -436,7 +436,17 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     }
     assert body["sessions"] == {
         "resident_context": True,
-        "commit_policy": False,
+        "commit_policy": {
+            "supported": True,
+            "stateful": False,
+            "default": "append_none",
+            "modes": ["append_none"],
+            "unsupported_stateful_modes": [
+                "append_all",
+                "append_visible_only",
+                "append_prompt_only",
+            ],
+        },
         "continuations": False,
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
@@ -1011,6 +1021,68 @@ def test_completions_preserve_structured_finish_details() -> None:
         "length_limit": 2,
         "budget_pressure": "answer_budget",
     }
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "payload"),
+    [
+        (
+            "/v1/completions",
+            {"model": "fake-model", "prompt": "hello", "max_tokens": 1},
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "max_tokens": 1,
+            },
+        ),
+    ],
+)
+def test_session_append_none_reports_cache_action(endpoint, payload) -> None:
+    fake = FakeLLM(outputs=["reply"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(endpoint, json={**payload, "session": {"commit": "append_none"}})
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_details"]["cache_action"] == "append_none"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "payload"),
+    [
+        (
+            "/v1/completions",
+            {"model": "fake-model", "prompt": "hello", "max_tokens": 1},
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "max_tokens": 1,
+            },
+        ),
+    ],
+)
+def test_streaming_session_append_none_reports_cache_action(endpoint, payload) -> None:
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["reply"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        endpoint,
+        json={**payload, "stream": True, "session": {"commit": "append_none"}},
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(item for item in payloads if item["choices"][0]["finish_reason"] == "stop")
+    assert done["choices"][0]["finish_details"]["cache_action"] == "append_none"
 
 
 def test_completions_response_format_json_object_validates_result() -> None:
@@ -2916,7 +2988,17 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     }
     assert artifact["capabilities"]["sessions"] == {
         "resident_context": True,
-        "commit_policy": False,
+        "commit_policy": {
+            "supported": True,
+            "stateful": False,
+            "default": "append_none",
+            "modes": ["append_none"],
+            "unsupported_stateful_modes": [
+                "append_all",
+                "append_visible_only",
+                "append_prompt_only",
+            ],
+        },
         "continuations": False,
     }
     assert "secret prompt" not in serialized
@@ -3274,7 +3356,7 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
                 "messages": [{"role": "user", "content": "hello"}],
                 "session": {"id": "session_123"},
             },
-            "session",
+            "session.id",
         ),
     ],
 )

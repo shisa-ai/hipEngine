@@ -20,7 +20,10 @@
         "include_hipengine": true
       },
       "timeout_ms": 120000,
-      "reasoning_effort": "none"
+      "reasoning_effort": "none",
+      "session": {
+        "commit": "append_none"
+      }
     },
     "tool_calling": {
       "enabled": true,
@@ -30,7 +33,7 @@
     },
     "do_not_send": [
       "continuation_id",
-      "session.commit",
+      "session.id",
       "parallel_tool_calls",
       "top_logprobs"
     ]
