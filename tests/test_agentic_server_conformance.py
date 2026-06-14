@@ -96,7 +96,12 @@ def test_agentic_conformance_strict_reasoning_tool_call_response_shape() -> None
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["finish_details"] == {"reason": "tool_calls"}
+    assert choice["finish_details"] == {
+        "reason": "tool_calls",
+        "reasoning_tokens": 2,
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
     message = choice["message"]
     assert message["role"] == "assistant"
     assert message["content"] == ""
@@ -231,9 +236,19 @@ def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -
 
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["finish_reason"] == "tool_calls"
-    assert done["choices"][0]["finish_details"] == {"reason": "tool_calls"}
+    assert done["choices"][0]["finish_details"] == {
+        "reason": "tool_calls",
+        "reasoning_tokens": 2,
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
     assert done["choices"][0]["hipengine"]["phase"] == "done"
-    assert done["choices"][0]["hipengine"]["finish_details"] == {"reason": "tool_calls"}
+    assert done["choices"][0]["hipengine"]["finish_details"] == {
+        "reason": "tool_calls",
+        "reasoning_tokens": 2,
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
     assert llm.stream_calls
 
 

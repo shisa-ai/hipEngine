@@ -88484,3 +88484,24 @@ Validation:
 - `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 -m ruff check tests/test_generation_batch_scheduler.py --ignore F811,F841` -> `All checks passed!` (full-file ruff still has pre-existing F811/F841 outside this change).
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC tool-call finish phase counts
+
+Added best-effort server post-parse phase/count enrichment for successful chat
+tool-call finishes. Parsed tool calls now retain their raw generated span
+internally, and `_chat_finish_details_payload()` adds
+`phase="tool_call"`, `reasoning_tokens`, `answer_tokens`, and
+`tool_call_tokens` when the served engine exposes `count_tokens`. Backend
+finish details still win through `setdefault`, so future generation-loop
+telemetry can override the server estimate. The API/AGENTIC docs and agentic
+golden traces were updated to distinguish this final-response metadata from
+canonical live decode-state accounting.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_chat_completion_preserves_reasoning_with_openai_tool_call tests/test_server_api.py::test_chat_completion_strict_tool_schema_accepts_bounded_subset tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_reasoning_with_tool_call tests/test_server_api.py::test_streaming_chat_completion_preserves_parallel_tool_call_indexes -q` -> `6 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py::test_agentic_conformance_strict_reasoning_tool_call_response_shape tests/test_agentic_server_conformance.py::test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `124 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

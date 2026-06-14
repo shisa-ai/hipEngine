@@ -179,7 +179,10 @@ backend `reason: "eos"` is exposed as `finish_reason: "stop"` with
 `finish_reason: "length"`. Tool-call parsing reports
 `finish_reason: "tool_calls"` and `finish_details.reason: "tool_calls"`.
 Streaming responses include `finish_details` on the final choice chunk;
-ordinary delta chunks are unchanged.
+ordinary delta chunks are unchanged. When chat tool calls are parsed and the
+served engine exposes token counting, tool-call finish details also include
+best-effort server post-parse `phase: "tool_call"` plus `reasoning_tokens`,
+`answer_tokens`, and `tool_call_tokens` for the final parsed response.
 
 For chat length stops, the server adds best-effort post-parse metadata:
 `phase` is one of `reasoning`, `closing_think`, `tool_call`, `structured`, or

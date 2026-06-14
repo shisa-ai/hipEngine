@@ -105,9 +105,10 @@ Known baseline limitations:
   yet expose canonical live token-level phase state for reasoning, answer,
   tool-call, or structured-output spans.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
-  token stop, stop sequence, length, and sampler mode. Forced-token, backend
+  token stop, stop sequence, length, sampler mode, server post-parse tool-call
+  phase/counts, and host-sampled thinking-budget forced close. Backend
   cancellation/deadline, cache behavior, sampler fallback, budget pressure, and
-  per-phase token counts still need generation-loop signals.
+  canonical live per-phase token counts still need generation-loop signals.
 - Streaming logprobs are buffered detailed responses, not live per-token engine
   streams. Completion `echo+logprobs` does not compute real prompt-token
   logprobs yet; the echoed prompt is represented as a prefix entry with `null`
@@ -238,6 +239,10 @@ Current code reality:
 - Chat length stops get best-effort post-parse `finish_details.phase` metadata
   (`reasoning`, `closing_think`, `tool_call`, `structured`, or `answer`) plus
   explicit `continuation_eligible=false` until continuation handles exist.
+- Parsed chat tool-call finishes get best-effort server post-parse
+  `finish_details.phase="tool_call"` plus `reasoning_tokens`, `answer_tokens`,
+  and `tool_call_tokens` when the served engine exposes token counting. This is
+  final-response count metadata, not canonical live decode-state telemetry yet.
 - PARO/GGUF detailed generation now emits backend finish details for EOS, token
   stop, stop sequence, length, sampler mode, and host-sampled thinking-budget
   forced close. When a `ThinkingBudgetState` forced the close sequence, finish

@@ -100,7 +100,12 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "tool_calls",
-        "finish_details": {"reason": "tool_calls"},
+        "finish_details": {
+          "reason": "tool_calls",
+          "phase": "tool_call",
+          "reasoning_tokens": 2,
+          "tool_call_tokens": 1
+        },
         "message_content": "",
         "reasoning_content": "need file",
         "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
@@ -202,7 +207,12 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "tool_calls",
-        "finish_details": {"reason": "tool_calls"},
+        "finish_details": {
+          "reason": "tool_calls",
+          "phase": "tool_call",
+          "reasoning_tokens": 2,
+          "tool_call_tokens": 1
+        },
         "reasoning_content": "need shell",
         "tool_call": {"name": "bash", "arguments": {"command": "pwd"}},
         "response_excludes": ["<tool_call>"]
@@ -240,7 +250,11 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "tool_calls",
-        "finish_details": {"reason": "tool_calls"},
+        "finish_details": {
+          "reason": "tool_calls",
+          "phase": "tool_call",
+          "tool_call_tokens": 2
+        },
         "tool_calls": [
           {"index": 0, "name": "read", "arguments": {"path": "README.md"}},
           {"index": 1, "name": "read", "arguments": {"path": "WORKLOG.md"}}

@@ -1232,6 +1232,7 @@ class _ParsedToolCall:
     id: str
     name: str
     arguments: str
+    raw_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -2661,6 +2662,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     text,
                     reason_override=finish_reason_override,
                     cache_action=cache_action,
+                    parsed=parsed,
+                    token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                 ),
             }
             if request.logprobs:
@@ -2747,6 +2750,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         text,
                         reason_override=finish_reason_override,
                         cache_action=_session_cache_action(request),
+                        parsed=parsed,
+                        token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                     ),
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
@@ -3073,11 +3078,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.model_id,
                 parsed,
                 stream_finish_reason,
-                finish_details=_finish_details_payload(
+                finish_details=_chat_finish_details_payload(
                     None,
                     stream_finish_reason,
+                    text,
                     reason_override=tool_validation.failure_reason if tool_validation.failed else None,
                     cache_action=cache_action,
+                    parsed=parsed,
+                    token_counter=getattr(engine, "count_tokens", None),
                 ),
                 done_tokens=final_tokens,
                 include_hipengine=include_hipengine,
@@ -5063,6 +5071,8 @@ def _chat_finish_details_payload(
     *,
     reason_override: str | None = None,
     cache_action: str | None = None,
+    parsed: _ParsedChatOutput | None = None,
+    token_counter: Any | None = None,
 ) -> dict[str, Any]:
     payload = _finish_details_payload(
         detail,
@@ -5070,10 +5080,39 @@ def _chat_finish_details_payload(
         reason_override=reason_override,
         cache_action=cache_action,
     )
+    _enrich_chat_tool_finish_details(payload, parsed=parsed, token_counter=token_counter)
     if _is_length_finish_payload(payload):
         payload.setdefault("phase", _classify_chat_length_phase(text))
         payload.setdefault("continuation_eligible", False)
     return payload
+
+
+def _enrich_chat_tool_finish_details(
+    payload: dict[str, Any],
+    *,
+    parsed: _ParsedChatOutput | None,
+    token_counter: Any | None,
+) -> None:
+    if parsed is None or not parsed.tool_calls or not callable(token_counter):
+        return
+    split = _split_reasoning(parsed.text)
+    reasoning_tokens = _safe_count(token_counter, split.reasoning_content)
+    answer_tokens = _safe_count(token_counter, split.content)
+    tool_call_tokens = sum(
+        _safe_count(token_counter, call.raw_text or _tool_call_count_text(call))
+        for call in parsed.tool_calls
+    )
+    payload.setdefault("phase", "tool_call")
+    if reasoning_tokens:
+        payload.setdefault("reasoning_tokens", reasoning_tokens)
+    if answer_tokens:
+        payload.setdefault("answer_tokens", answer_tokens)
+    if tool_call_tokens:
+        payload.setdefault("tool_call_tokens", tool_call_tokens)
+
+
+def _tool_call_count_text(call: _ParsedToolCall) -> str:
+    return f'<tool_call>{{"name":{json.dumps(call.name)},"arguments":{call.arguments}}}</tool_call>'
 
 
 def _response_format_failure_reason(
@@ -5389,7 +5428,7 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     last_end = 0
     for match in _TOOL_CALL_BLOCK_RE.finditer(text):
         text_parts.append(text[last_end : match.start()])
-        parsed = _parsed_tool_call_from_json(match.group(1).strip())
+        parsed = _parsed_tool_call_from_json(match.group(1).strip(), raw_text=match.group(0))
         if parsed is None:
             text_parts.append(match.group(0))
         else:
@@ -5397,13 +5436,14 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
         last_end = match.end()
     text_parts.append(text[last_end:])
     if not calls:
-        parsed = _parsed_tool_call_from_json(text.strip())
+        stripped = text.strip()
+        parsed = _parsed_tool_call_from_json(stripped, raw_text=stripped)
         if parsed is not None:
             return _ParsedChatOutput(text="", tool_calls=(parsed,))
     return _ParsedChatOutput(text="".join(text_parts).strip(), tool_calls=tuple(calls))
 
 
-def _parsed_tool_call_from_json(raw: str) -> _ParsedToolCall | None:
+def _parsed_tool_call_from_json(raw: str, *, raw_text: str = "") -> _ParsedToolCall | None:
     if not raw:
         return None
     try:
@@ -5412,10 +5452,10 @@ def _parsed_tool_call_from_json(raw: str) -> _ParsedToolCall | None:
         return None
     if not isinstance(payload, Mapping):
         return None
-    return _parsed_tool_call_from_mapping(payload)
+    return _parsed_tool_call_from_mapping(payload, raw_text=raw_text)
 
 
-def _parsed_tool_call_from_mapping(payload: Mapping[str, Any]) -> _ParsedToolCall | None:
+def _parsed_tool_call_from_mapping(payload: Mapping[str, Any], *, raw_text: str = "") -> _ParsedToolCall | None:
     function = payload.get("function")
     if isinstance(function, Mapping):
         name = function.get("name")
@@ -5429,6 +5469,7 @@ def _parsed_tool_call_from_mapping(payload: Mapping[str, Any]) -> _ParsedToolCal
         id=f"call_{uuid.uuid4().hex[:24]}",
         name=name,
         arguments=_tool_arguments_json(arguments),
+        raw_text=str(raw_text),
     )
 
 

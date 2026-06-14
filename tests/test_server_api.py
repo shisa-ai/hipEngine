@@ -2530,7 +2530,11 @@ def test_chat_completion_returns_openai_tool_calls() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["finish_details"] == {"reason": "tool_calls"}
+    assert choice["finish_details"] == {
+        "reason": "tool_calls",
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
     message = choice["message"]
     assert message["content"] == ""
     tool_call = message["tool_calls"][0]
@@ -2569,7 +2573,12 @@ def test_chat_completion_preserves_reasoning_with_openai_tool_call() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["finish_details"] == {"reason": "tool_calls"}
+    assert choice["finish_details"] == {
+        "reason": "tool_calls",
+        "reasoning_tokens": 2,
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
     message = choice["message"]
     assert message["content"] == ""
     assert message["reasoning_content"] == "need file"
@@ -2929,7 +2938,9 @@ def test_chat_completion_strict_tool_schema_accepts_bounded_subset() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["finish_details"] == {"reason": "tool_calls"}
+    assert choice["finish_details"]["reason"] == "tool_calls"
+    assert choice["finish_details"]["phase"] == "tool_call"
+    assert choice["finish_details"]["tool_call_tokens"] > 0
     assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == arguments
 
 
@@ -3076,7 +3087,11 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert tool_call["function"]["name"] == "bash"
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
-    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
+    assert payloads[-1]["choices"][0]["finish_details"] == {
+        "reason": "tool_calls",
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
 
 
 def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
@@ -3118,7 +3133,12 @@ def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
     assert tool_call["function"]["name"] == "bash"
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
-    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
+    assert payloads[-1]["choices"][0]["finish_details"] == {
+        "reason": "tool_calls",
+        "reasoning_tokens": 2,
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
 
 
 def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:
@@ -3205,7 +3225,11 @@ def test_streaming_chat_completion_preserves_parallel_tool_call_indexes() -> Non
     ]
     assert tool_calls[0]["id"] != tool_calls[1]["id"]
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
-    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
+    assert payloads[-1]["choices"][0]["finish_details"] == {
+        "reason": "tool_calls",
+        "tool_call_tokens": 2,
+        "phase": "tool_call",
+    }
 
 
 def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
