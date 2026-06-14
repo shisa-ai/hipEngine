@@ -223,6 +223,23 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "strict_decoding": False,
         "strict_result_validation": True,
         "schema_validation": "function_strict",
+        "schema_subset": [
+            "type",
+            "enum",
+            "const",
+            "object.properties",
+            "object.required",
+            "object.additionalProperties=false",
+            "array.items",
+            "array.minItems",
+            "array.maxItems",
+            "string.minLength",
+            "string.maxLength",
+            "number.minimum",
+            "number.maximum",
+            "number.exclusiveMinimum",
+            "number.exclusiveMaximum",
+        ],
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
     }
@@ -1649,6 +1666,134 @@ def test_chat_completion_strict_tool_schema_rejects_missing_and_extra_arguments(
 
     assert response.status_code == 200
     assert response.json()["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+
+
+def _bounded_tool_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "kind": {"const": "file"},
+            "path": {"type": "string", "minLength": 1, "maxLength": 64},
+            "mode": {"type": "string", "enum": ["raw", "summary"]},
+            "tags": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {"type": "string", "minLength": 1, "maxLength": 16},
+            },
+            "filters": {
+                "type": "array",
+                "maxItems": 2,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "field": {"type": "string", "enum": ["ext", "name"]},
+                        "value": {"type": "string", "minLength": 1},
+                    },
+                    "required": ["field", "value"],
+                    "additionalProperties": False,
+                },
+            },
+            "limit": {"type": "integer", "minimum": 1, "maximum": 3},
+        },
+        "required": ["kind", "path", "mode", "tags", "limit"],
+        "additionalProperties": False,
+    }
+
+
+def test_chat_completion_strict_tool_schema_accepts_bounded_subset() -> None:
+    arguments = {
+        "kind": "file",
+        "path": "README.md",
+        "mode": "summary",
+        "tags": ["docs"],
+        "filters": [{"field": "ext", "value": "md"}],
+        "limit": 2,
+    }
+    fake = FakeLLM(outputs=[f'<tool_call>{{"name":"read","arguments":{json.dumps(arguments)}}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": _bounded_tool_schema(),
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"] == {"reason": "tool_calls"}
+    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == arguments
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"kind": "directory", "path": "README.md", "mode": "summary", "tags": ["docs"], "limit": 2},
+        {"kind": "file", "path": "", "mode": "summary", "tags": ["docs"], "limit": 2},
+        {"kind": "file", "path": "README.md", "mode": "binary", "tags": ["docs"], "limit": 2},
+        {"kind": "file", "path": "README.md", "mode": "summary", "tags": [], "limit": 2},
+        {"kind": "file", "path": "README.md", "mode": "summary", "tags": ["a", "b", "c"], "limit": 2},
+        {"kind": "file", "path": "README.md", "mode": "summary", "tags": ["docs"], "limit": 4},
+        {
+            "kind": "file",
+            "path": "README.md",
+            "mode": "summary",
+            "tags": ["docs"],
+            "filters": [{"field": "suffix", "value": "md"}],
+            "limit": 2,
+        },
+        {
+            "kind": "file",
+            "path": "README.md",
+            "mode": "summary",
+            "tags": ["docs"],
+            "filters": [{"field": "ext"}],
+            "limit": 2,
+        },
+    ],
+)
+def test_chat_completion_strict_tool_schema_rejects_bounded_subset_violations(arguments) -> None:
+    fake = FakeLLM(outputs=[f'<tool_call>{{"name":"read","arguments":{json.dumps(arguments)}}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": _bounded_tool_schema(),
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "schema_violation"}
+    assert "tool_calls" not in choice["message"]
 
 
 def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:

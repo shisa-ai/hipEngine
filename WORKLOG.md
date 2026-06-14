@@ -87484,3 +87484,23 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC strict tool schema subset
+
+Broadened post-generation strict tool argument validation to cover common
+bounded JSON Schema fields used by local-agent tools. The validator now handles
+`const`, string `minLength` / `maxLength`, array `minItems` / `maxItems`, and
+numeric `minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`, in
+addition to the existing type, enum, nested object, required property,
+additionalProperties=false, and array item checks.
+
+`/v1/hipengine/capabilities` now advertises the exact result-validation schema
+subset under `features.tools.schema_subset`. Decode-time constrained JSON/schema
+generation remains future grammar work and is still documented as unsupported.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> 81 tests completed successfully.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

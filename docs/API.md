@@ -244,6 +244,12 @@ normal chat response with no successful `tool_calls`, `finish_reason: "stop"`,
 and `finish_details.reason` set to `invalid_tool_call`,
 `tool_required_not_satisfied`, or `schema_violation`.
 
+The current post-generation schema subset covers `type`, `enum`, `const`,
+object `properties` / `required` / `additionalProperties: false`, array `items`
+with `minItems` / `maxItems`, string `minLength` / `maxLength`, and numeric
+`minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`. This is result
+validation only; decode-time JSON/schema constraints remain unsupported.
+
 ### Thinking / no-think controls
 
 Chat requests accept common OpenAI/Qwen thinking controls:

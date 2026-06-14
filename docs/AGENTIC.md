@@ -1027,7 +1027,10 @@ Current state:
   a specific function, when any tool function declares `"strict": true`, or when
   `parallel_tool_calls` is explicitly supplied. It validates selected tool
   names, one-call-vs-parallel policy, malformed tool-call blocks, and a minimal
-  function `parameters` JSON schema subset.
+  function `parameters` JSON schema subset: scalar types, `enum`, `const`,
+  object `properties` / `required` / `additionalProperties=false`, array
+  `items` / `minItems` / `maxItems`, string `minLength` / `maxLength`, and
+  numeric min/max bounds.
 - Strict failures return normal chat responses with no successful `tool_calls`,
   coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
   `invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
@@ -1061,6 +1064,13 @@ Implement:
 - broaden the current minimal schema subset only when tests and compatibility
   fixtures require it;
 - retry/repair is a later explicit policy, not the default.
+
+Current code reality:
+
+- post-generation strict validation covers selected tool names, malformed tool
+  blocks, required/extra arguments, scalar types, `enum`, `const`, nested
+  objects, arrays, array length bounds, string length bounds, and numeric bounds;
+- decode-time schema constraints and retry/repair remain future grammar work.
 
 Exit gates:
 

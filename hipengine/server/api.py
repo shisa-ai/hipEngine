@@ -423,6 +423,26 @@ def _reasoning_control_fields() -> list[str]:
     ]
 
 
+def _tool_schema_subset() -> list[str]:
+    return [
+        "type",
+        "enum",
+        "const",
+        "object.properties",
+        "object.required",
+        "object.additionalProperties=false",
+        "array.items",
+        "array.minItems",
+        "array.maxItems",
+        "string.minLength",
+        "string.maxLength",
+        "number.minimum",
+        "number.maximum",
+        "number.exclusiveMinimum",
+        "number.exclusiveMaximum",
+    ]
+
+
 def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
     return {
         "model": {
@@ -444,6 +464,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "strict_decoding": False,
                 "strict_result_validation": True,
                 "schema_validation": "function_strict",
+                "schema_subset": _tool_schema_subset(),
             },
             "reasoning_controls": {
                 "enabled": True,
@@ -1749,6 +1770,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "strict_decoding": False,
                     "strict_result_validation": True,
                     "schema_validation": "function_strict",
+                    "schema_subset": _tool_schema_subset(),
                     "format": "qwen_tool_call_json",
                     "parallel_tool_calls": True,
                 },
@@ -4148,6 +4170,8 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
     enum = schema.get("enum")
     if isinstance(enum, Sequence) and not isinstance(enum, (str, bytes)) and value not in enum:
         return f"{path} is not one of the allowed enum values"
+    if "const" in schema and value != schema.get("const"):
+        return f"{path} does not match const"
     expected = schema.get("type")
     if expected is not None and not _json_schema_type_matches(value, expected):
         return f"{path} does not match schema type {expected!r}"
@@ -4175,13 +4199,55 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
     elif schema_type == "array":
         if not isinstance(value, list):
             return f"{path} must be an array"
+        min_items = _schema_nonnegative_int(schema.get("minItems"))
+        if min_items is not None and len(value) < min_items:
+            return f"{path} must have at least {min_items} items"
+        max_items = _schema_nonnegative_int(schema.get("maxItems"))
+        if max_items is not None and len(value) > max_items:
+            return f"{path} must have at most {max_items} items"
         items = schema.get("items")
         if isinstance(items, Mapping):
             for index, item in enumerate(value):
                 error = _validate_json_schema_value(item, items, path=f"{path}[{index}]")
                 if error is not None:
                     return error
+    elif schema_type == "string":
+        if isinstance(value, str):
+            min_length = _schema_nonnegative_int(schema.get("minLength"))
+            if min_length is not None and len(value) < min_length:
+                return f"{path} must have at least {min_length} characters"
+            max_length = _schema_nonnegative_int(schema.get("maxLength"))
+            if max_length is not None and len(value) > max_length:
+                return f"{path} must have at most {max_length} characters"
+    elif schema_type in {"integer", "number"}:
+        numeric = float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        if numeric is not None:
+            minimum = _schema_finite_number(schema.get("minimum"))
+            if minimum is not None and numeric < minimum:
+                return f"{path} must be >= {minimum:g}"
+            maximum = _schema_finite_number(schema.get("maximum"))
+            if maximum is not None and numeric > maximum:
+                return f"{path} must be <= {maximum:g}"
+            exclusive_minimum = _schema_finite_number(schema.get("exclusiveMinimum"))
+            if exclusive_minimum is not None and numeric <= exclusive_minimum:
+                return f"{path} must be > {exclusive_minimum:g}"
+            exclusive_maximum = _schema_finite_number(schema.get("exclusiveMaximum"))
+            if exclusive_maximum is not None and numeric >= exclusive_maximum:
+                return f"{path} must be < {exclusive_maximum:g}"
     return None
+
+
+def _schema_nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value >= 0 else None
+
+
+def _schema_finite_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    return numeric if math.isfinite(numeric) else None
 
 
 def _json_schema_type_matches(value: Any, expected: Any) -> bool:
