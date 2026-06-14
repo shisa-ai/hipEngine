@@ -841,7 +841,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         ],
         "format": "qwen_tool_call_json",
         "compatibility_parser_repairs": ["duplicated_tool_call_start"],
-        "malformed_json_compatibility": "assistant_text_when_not_strict",
+        "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
         "parallel_tool_calls_requires_opt_in": True,
@@ -9686,7 +9686,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     ]
     assert (
         artifact["capabilities"]["features"]["tools"]["malformed_json_compatibility"]
-        == "assistant_text_when_not_strict"
+        == "invalid_tool_call_when_tools_enabled"
     )
     assert artifact["capabilities"]["features"]["tools"]["strict_malformed_blocks_rejected"] is True
     assert artifact["capabilities"]["features"]["tools"]["declared_tool_name_validation"] is True

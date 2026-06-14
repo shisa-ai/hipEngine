@@ -91475,3 +91475,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC tool fail-closed capability sync
+
+Updated `/v1/hipengine/capabilities` to advertise the actual malformed tool
+JSON policy after the fail-closed change:
+`features.tools.malformed_json_compatibility =
+"invalid_tool_call_when_tools_enabled"`. API and AGENTIC docs now use that
+manifest value instead of the old permissive assistant-text wording, and replay
+artifacts assert the synchronized capability.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_captures_agentic_result_validation_failure -q` -> `2 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

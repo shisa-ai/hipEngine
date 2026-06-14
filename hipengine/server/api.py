@@ -877,7 +877,7 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
         "format": "qwen_tool_call_json",
         "compatibility_parser_repairs": ["duplicated_tool_call_start"],
-        "malformed_json_compatibility": "assistant_text_when_not_strict",
+        "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
         "parallel_tool_calls_requires_opt_in": True,
