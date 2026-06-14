@@ -91678,3 +91678,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC response-shape conformance cases
+
+Added compact FastAPI conformance coverage for reasoning-only final answers and
+reasoning plus structured JSON responses. These tests pin the public
+`message.content` / `message.reasoning_content` shape, assert raw `<think>`
+markup stays out of the response payload, and verify the prompt contains the
+expected JSON-object and thinking-budget instructions.
+
+Validation:
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `36 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `91 passed`.
+- `python3 -m py_compile tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_server_conformance.py docs/AGENTIC.md WORKLOG.md` -> clean.

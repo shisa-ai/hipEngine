@@ -174,6 +174,62 @@ def test_agentic_conformance_tool_result_replay_renders_once() -> None:
     assert prompt.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
 
 
+def test_agentic_conformance_reasoning_final_answer_response_shape() -> None:
+    llm = AgenticFakeLLM(outputs=["<think>plan first</think>final answer"])
+    response = _client(llm).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Answer directly."}],
+            "reasoning": {"enabled": True, "effort": "minimal"},
+            "max_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
+    message = choice["message"]
+    assert message == {
+        "role": "assistant",
+        "content": "final answer",
+        "reasoning_content": "plan first",
+    }
+    assert "<think>" not in json.dumps(message)
+    prompt = llm.calls[0][0][0]
+    assert "close </think> before exceeding 32 hidden reasoning tokens" in prompt
+    assert "reserve at least 32 tokens for the final answer or tool call" in prompt
+
+
+def test_agentic_conformance_reasoning_structured_json_response_shape() -> None:
+    llm = AgenticFakeLLM(outputs=['<think>shape it</think>{"result":"ok"}'])
+    response = _client(llm).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Return status."}],
+            "response_format": {"type": "json_object"},
+            "reasoning": {"enabled": True, "effort": "minimal"},
+            "max_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
+    message = choice["message"]
+    assert message["role"] == "assistant"
+    assert message["reasoning_content"] == "shape it"
+    assert json.loads(message["content"]) == {"result": "ok"}
+    assert "<think>" not in json.dumps(message)
+    prompt = llm.calls[0][0][0]
+    assert "Return only one valid JSON object in the final answer." in prompt
+    assert "close </think> before exceeding 32 hidden reasoning tokens" in prompt
+    assert "reserve at least 32 tokens for the final answer or tool call" in prompt
+
+
 def test_agentic_conformance_visible_session_replays_tool_loop_without_reasoning() -> None:
     llm = AgenticFakeLLM(
         outputs=[
