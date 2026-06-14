@@ -796,8 +796,9 @@ in local, non-sensitive debugging sessions.
   c=1 also has a default-off native GPU sampler route for supported sampled
   requests behind
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`,
-  suppress-token ids, min-token/EOS policy, and unsupported native filter
-  combinations fall back to the host path.
+  suppress-token ids, min-token/EOS policy, forced-token queues,
+  sequence-completion repair, thinking-budget controls, and unsupported native
+  filter combinations fall back to the host path.
 - The capabilities manifest reports `sampling.speculative_mtp` with
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token

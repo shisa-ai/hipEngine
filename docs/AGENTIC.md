@@ -1895,7 +1895,10 @@ Current state:
   but when `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` requested native sampling, their
   decode-state telemetry reports
   `sampler_fallback_reason="native_gpu_unsupported_request"` instead of the
-  generic host fallback reason;
+  generic host fallback reason. The capabilities manifest now advertises the
+  same current native-sampler blockers enforced by `supports_native_gpu_sampling`,
+  including forced-token queues, post-thinking forced-token queues, and
+  sequence-completion repairs;
 - c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
   default-path promotion remain unimplemented.
 

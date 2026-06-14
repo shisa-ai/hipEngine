@@ -91122,3 +91122,17 @@ processor/blocker telemetry, and compact stop-suffix decode state.
 
 Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_processed_batch_honors_stop_tokens_per_row -q` -> `1 passed`.
+
+## 2026-06-15 - AGENTIC native sampler capability blockers
+
+Aligned `/v1/hipengine/capabilities` native GPU sampler metadata with the
+actual `supports_native_gpu_sampling()` guard. The advertised unsupported list
+now includes forced-token queues, post-thinking forced-token queues, and
+token-sequence completion repair, so agent clients do not assume tool/thinking
+forced-token paths can stay on the default-off native PARO c=1 sampler.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_api_error_taxonomy_table_matches_capabilities_manifest -q` -> `2 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

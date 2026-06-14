@@ -189,6 +189,18 @@ _UNSUPPORTED_GRAMMAR_FIELDS = (
     "guided_grammar",
     "guided_decoding_backend",
 )
+_NATIVE_GPU_SAMPLER_UNSUPPORTED = (
+    "c_gt_1",
+    "gguf",
+    "top_logprobs",
+    "suppress_token_ids",
+    "min_tokens",
+    "forced_tokens_pending",
+    "post_thinking_forced_tokens_pending",
+    "force_sequence_completion_token_sequences",
+    "thinking_budget",
+    "combined_top_k_with_top_p_or_min_p",
+)
 _GUIDED_PATCH_FIELDS = ("guided_patch", "guided_diff")
 _GUIDED_PATCH_FORMATS = ("unified_diff",)
 _GUIDED_PATCH_FENCED_POLICIES = ("optional", "required", "forbidden")
@@ -3897,15 +3909,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "presence_penalty",
                         "frequency_penalty",
                     ],
-                    "unsupported": [
-                        "c_gt_1",
-                        "gguf",
-                        "top_logprobs",
-                        "suppress_token_ids",
-                        "min_tokens",
-                        "thinking_budget",
-                        "combined_top_k_with_top_p_or_min_p",
-                    ],
+                    "unsupported": list(_NATIVE_GPU_SAMPLER_UNSUPPORTED),
                 },
                 "speculative_mtp": {
                     "serving_route": False,
