@@ -1405,6 +1405,12 @@ Current code reality:
   the reasoning or close-delimiter phase. Qwen PARO/GGUF host-sampled paths
   resolve tokenizer EOS into the sampler when the request did not provide
   `eos_token_id`;
+- `ThinkingBudgetState.force_close(reason=...)` is the controller-facing
+  primitive for manual hard-stop/force requests. It queues the full lowered
+  close sequence with caller-supplied reason metadata, emits the close tokens
+  through the same normal decode/KV path as hard-cap and soft-close forcing,
+  and refuses to queue after answer/done phase or while another forced sequence
+  is pending;
 - if host-sampled hard-close enforcement consumes the entire generation budget
   before any visible answer token is emitted, PARO/GGUF finish metadata reports
   `finish_details.reason="thinking_budget_exhausted"` with
@@ -1418,8 +1424,8 @@ Current code reality:
   host sampling is used, native GPU sampling falls back, and raw-argmax
   speculative/MTP verification is rejected until those paths implement the same
   soft-close, EOS-suppression, and hard-close semantics;
-- not implemented: manual forced close from external controllers, native GPU
-  thinking-budget enforcement, speculative/MTP processed-target verification,
+- not implemented: native GPU thinking-budget enforcement, speculative/MTP
+  processed-target verification, public HTTP external-controller close requests,
   and live backend-authored per-token phase metadata.
 
 Exit gates:

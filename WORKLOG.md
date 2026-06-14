@@ -91693,3 +91693,17 @@ Validation:
 - `python3 -m py_compile tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_server_conformance.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC manual thinking close fixture
+
+Added a sampler fixture for `ThinkingBudgetState.force_close(reason=...)` to
+pin the manual controller hook documented in AGENTIC P1.4. The test proves an
+early controller close queues the lowered close sequence with caller-supplied
+reason metadata, emits those tokens through normal selection/history updates,
+transitions to answer phase, and refuses a late second close after answer phase.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py -q` -> `48 passed`.
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> passed.
+- `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_sampling.py docs/AGENTIC.md WORKLOG.md` -> clean.

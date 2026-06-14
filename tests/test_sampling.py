@@ -479,6 +479,28 @@ def test_thinking_budget_hard_close_queues_forced_tokens_before_selection() -> N
     assert state.thinking_budget.reasoning_tokens == 3
 
 
+def test_thinking_budget_manual_force_close_queues_controller_tokens() -> None:
+    budget = ThinkingBudgetState(close_sequence=(2, 1), hard_token_cap=None)
+    state = RowSamplingState(thinking_budget=budget)
+
+    assert budget.force_close(reason="controller_close") is True
+    first_close = select_token(np.array([5.0, 1.0, 0.0], dtype=np.float32), _params(), state)
+    second_close = select_token(np.array([5.0, 1.0, 0.0], dtype=np.float32), _params(), state)
+
+    assert first_close.token_id == 2
+    assert first_close.forced is True
+    assert first_close.forced_reason == "controller_close"
+    assert first_close.forced_tokens_remaining == 1
+    assert second_close.token_id == 1
+    assert second_close.forced is True
+    assert second_close.forced_reason == "controller_close"
+    assert second_close.forced_tokens_remaining == 0
+    assert state.generated_tokens == [2, 1]
+    assert budget.phase == "answer"
+    assert budget.reasoning_tokens == 2
+    assert budget.force_close(reason="late_controller_close") is False
+
+
 def test_thinking_budget_soft_close_bias_changes_argmax_and_forces_suffix() -> None:
     state = RowSamplingState(
         thinking_budget=ThinkingBudgetState(
