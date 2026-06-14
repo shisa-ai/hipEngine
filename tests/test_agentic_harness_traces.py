@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import FinishDetails, GenerationOutput
+from hipengine.generation import FinishDetails, GenerationCancelled, GenerationOutput
 from hipengine.server import ServerConfig, create_app
 from hipengine.server.api import OpenAIHTTPError, _RequestControl, _await_with_request_control
 
@@ -29,6 +30,7 @@ class TraceLLM:
             )
             for item in trace.get("fake_detailed_outputs", ())
         ]
+        self.fake_exception = str(trace.get("fake_exception") or "")
         self.generate_delay_s = float(trace.get("generate_delay_s", 0.0))
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
         self.stream_calls: list[tuple[str, SamplingParams]] = []
@@ -38,6 +40,11 @@ class TraceLLM:
         self.calls.append((prompts, sampling_params))
         if self.generate_delay_s > 0.0:
             time.sleep(self.generate_delay_s)
+        if self.fake_exception == "cancelled":
+            if sampling_params.cancellation_token is None:
+                raise AssertionError("cancelled trace expected a cancellation token")
+            sampling_params.cancellation_token.cancel()
+            raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
         if self.detailed_outputs:
             if len(self.detailed_outputs) < len(prompts):
                 raise AssertionError("not enough fake detailed outputs for trace request")
@@ -55,6 +62,11 @@ class TraceLLM:
     def stream(self, prompt: str, sampling_params: SamplingParams):
         self.stream_calls.append((str(prompt), sampling_params))
         self.calls.append(((str(prompt),), sampling_params))
+        if self.fake_exception == "cancelled":
+            if sampling_params.cancellation_token is None:
+                raise AssertionError("cancelled trace expected a cancellation token")
+            sampling_params.cancellation_token.cancel()
+            raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
         yield from self.stream_chunks or self.outputs or [f"generated:{prompt}"]
 
     def count_tokens(self, text: str) -> int:
@@ -94,6 +106,12 @@ def _assert_http_sequence_trace(trace: dict[str, Any]) -> None:
     client = TestClient(app)
     context: dict[str, Any] = {}
     for step in trace["steps"]:
+        action = str(step.get("action") or "")
+        if action == "expire_continuation":
+            _expire_continuation(app, context[str(step.get("continuation_id", "continuation_id")).removeprefix("$")])
+            continue
+        if action:
+            raise AssertionError(f"unsupported trace action {action!r}")
         endpoint = str(step.get("endpoint") or trace.get("endpoint"))
         method = str(step.get("method", "POST")).upper()
         request_payload = _resolve_trace_values(step.get("request", {}), context)
@@ -107,6 +125,11 @@ def _assert_http_sequence_trace(trace: dict[str, Any]) -> None:
             expected=expected,
         )
         _capture_trace_values(payload, expected=expected, context=context)
+
+
+def _expire_continuation(app: Any, continuation_id: str) -> None:
+    record = app.state.hipengine_continuations[continuation_id]
+    app.state.hipengine_continuations[continuation_id] = replace(record, expires_at=0.0)
 
 
 def _server_config(trace: dict[str, Any]) -> ServerConfig:

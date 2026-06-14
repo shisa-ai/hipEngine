@@ -90248,3 +90248,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC golden cancellation and expiry traces
+
+Expanded the deterministic golden trace bundle to cover backend-observed
+cancellation through both buffered HTTP and streaming SSE paths, plus
+`continuation_expired` resume behavior. The trace runner can now raise a
+backend cancellation from the fake model and can deterministically expire a
+captured continuation handle without wall-clock sleeps. Updated
+`docs/AGENTIC.md` P5.3 current-reality text to call out backend cancellation
+and expired continuation coverage.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_trace[backend_cancelled_completion_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[backend_cancelled_completion_stream_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[continuation_expired_completion_sequence] -q` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `42 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.

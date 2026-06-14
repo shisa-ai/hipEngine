@@ -2006,7 +2006,9 @@ Current code reality:
   fail-closed rejection paths, context-overflow fit data, wrong-model routing
   errors, unsupported parameter/feature errors, request schema-validation
   errors, streaming context-overflow SSE error chunks, chat-session-cap
-  `engine_busy`, deadline error metadata, and request-control cancellation.
+  `engine_busy`, invalid and expired continuation handles, deadline error
+  metadata, backend cancellation HTTP/SSE errors, and request-control
+  cancellation.
 - `tests/test_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,

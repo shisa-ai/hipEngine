@@ -1213,6 +1213,44 @@
       }
     },
     {
+      "name": "backend_cancelled_completion_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_exception": "cancelled",
+      "request": {
+        "model": "fake-model",
+        "prompt": "cancel",
+        "max_tokens": 4
+      },
+      "expected": {
+        "status_code": 499,
+        "error_code": "cancelled",
+        "hipengine_error_code": "cancelled",
+        "finish_details": {"reason": "cancelled", "cancelled": true}
+      }
+    },
+    {
+      "name": "backend_cancelled_completion_stream_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_exception": "cancelled",
+      "request": {
+        "model": "fake-model",
+        "prompt": "cancel",
+        "max_tokens": 4,
+        "stream": true,
+        "stream_options": {"include_hipengine": true}
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "error",
+        "error_code": "cancelled",
+        "hipengine_error_code": "cancelled",
+        "hipengine_event": "error",
+        "finish_details": {"reason": "cancelled", "cancelled": true}
+      }
+    },
+    {
       "name": "invalid_continuation_id_chat",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
@@ -1226,6 +1264,54 @@
         "error_param": "continuation_id",
         "hipengine_error_code": "invalid_continuation"
       }
+    },
+    {
+      "name": "continuation_expired_completion_sequence",
+      "kind": "http_sequence",
+      "endpoint": "/v1/completions",
+      "fake_detailed_outputs": [
+        {"text": "partial", "finish_details": {"reason": "length", "length_limit": 1}}
+      ],
+      "steps": [
+        {
+          "request": {
+            "model": "fake-model",
+            "prompt": "Say: ",
+            "max_tokens": 1,
+            "temperature": 0.0
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "length",
+            "text": "partial",
+            "continuation_id": true,
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 1,
+              "cache_action": "append_none",
+              "continuation_eligible": true,
+              "continuation_id": "$continuation_id"
+            }
+          }
+        },
+        {
+          "action": "expire_continuation",
+          "continuation_id": "$continuation_id"
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "continuation_id": "$continuation_id",
+            "max_tokens": 4
+          },
+          "expected": {
+            "status_code": 410,
+            "error_code": "continuation_expired",
+            "error_param": "continuation_id",
+            "hipengine_error_code": "continuation_expired"
+          }
+        }
+      ]
     },
     {
       "name": "request_control_cancelled",
