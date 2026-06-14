@@ -88069,3 +88069,18 @@ Validation:
 - `uv run pytest -q tests/test_server_api.py::test_startup_memory_summary_counts_live_scratch_probe_peak tests/test_server_api.py::test_server_eager_loads_model_on_startup tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics` -> `3 passed`.
 - `uv run pytest -q tests/test_server_api.py` -> passed.
 - `rocm-smi --showmeminfo vram --showpidgpus` after the real startup smoke showed no KFD PIDs and GPU1 idle.
+
+## 2026-06-14 - AGENTIC golden trace expansion
+
+Expanded the deterministic agentic harness trace suite beyond the original
+tool-loop/deadline/cancellation cases. The golden traces now cover reasoning
+content adjacent to parsed tool calls, streaming reasoning plus tool-call
+deltas, strict malformed-tool rejection without raw tag leakage, JSON-schema
+result-validation failure, and stateless `session.commit="append_none"` finish
+metadata. The trace runner now asserts finish details, expected absence of tool
+calls, streaming reasoning deltas, and response exclusions for raw tool markup.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/golden_traces.pretty`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `13 passed`.

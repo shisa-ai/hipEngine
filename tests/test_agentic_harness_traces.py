@@ -75,6 +75,7 @@ def test_agentic_golden_trace(trace: dict[str, Any]) -> None:
     expected = trace["expected"]
 
     assert response.status_code == expected["status_code"]
+    _assert_response_exclusions(response.text, expected)
     if response.status_code >= 400:
         _assert_error_response(response.json(), expected)
         return
@@ -91,11 +92,15 @@ def _assert_chat_response(payload: dict[str, Any], expected: dict[str, Any]) -> 
     choice = payload["choices"][0]
     if "finish_reason" in expected:
         assert choice["finish_reason"] == expected["finish_reason"]
+    if "finish_details" in expected:
+        assert choice["finish_details"] == expected["finish_details"]
     message = choice["message"]
     if "message_content" in expected:
         assert message["content"] == expected["message_content"]
     if "reasoning_content" in expected:
         assert message["reasoning_content"] == expected["reasoning_content"]
+    if expected.get("no_tool_calls"):
+        assert "tool_calls" not in message
     if "tool_call" in expected:
         tool_call = message["tool_calls"][0]
         assert tool_call["type"] == "function"
@@ -114,6 +119,15 @@ def _assert_stream_response(text: str, expected: dict[str, Any]) -> None:
     payloads = _sse_payloads(text)
     final = payloads[-1]
     assert final["choices"][0]["finish_reason"] == expected["finish_reason"]
+    if "finish_details" in expected:
+        assert final["choices"][0]["finish_details"] == expected["finish_details"]
+    if "reasoning_content" in expected:
+        reasoning_delta = next(
+            payload
+            for payload in payloads
+            if payload["choices"][0]["delta"].get("reasoning_content")
+        )
+        assert reasoning_delta["choices"][0]["delta"]["reasoning_content"] == expected["reasoning_content"]
     if "tool_call" in expected:
         tool_delta = next(
             payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls")
@@ -128,6 +142,11 @@ def _assert_error_response(payload: dict[str, Any], expected: dict[str, Any]) ->
     assert error["code"] == expected["error_code"]
     assert error["hipengine"]["code"] == expected["hipengine_error_code"]
     assert error["finish_details"] == expected["finish_details"]
+
+
+def _assert_response_exclusions(text: str, expected: dict[str, Any]) -> None:
+    for needle in expected.get("response_excludes", ()):
+        assert str(needle) not in text
 
 
 def _assert_prompt_expectations(fake: TraceLLM, expected: dict[str, Any]) -> None:

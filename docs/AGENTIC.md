@@ -1595,12 +1595,16 @@ Current code reality:
 
 - `tests/fixtures/agentic_traces/golden_traces.json` defines normalized
   deterministic traces for a two-turn assistant -> tool call -> tool result ->
-  final-answer loop, streaming tool-call deltas, reasoning extraction,
-  no-thinking prompt rendering, length finish metadata, deadline error metadata,
-  and request-control cancellation.
+  final-answer loop, streaming tool-call deltas, reasoning extraction next to
+  tool calls, strict malformed-tool rejection, JSON-schema result-validation
+  failure, stateless `session.commit="append_none"` finish metadata, no-thinking
+  prompt rendering, length finish metadata, deadline error metadata, and
+  request-control cancellation.
 - `tests/test_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
-  dynamic IDs/timestamps from assertions.
+  dynamic IDs/timestamps from assertions. The runner asserts visible transcript,
+  parsed tool calls, reasoning deltas, finish details, and expected absence of
+  raw tool markup where strict validation handles malformed output.
 
 Exit gates:
 

@@ -71,6 +71,79 @@
       }
     },
     {
+      "name": "reasoning_tool_call_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<think>need file</think><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read after thinking."}],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "finish_details": {"reason": "tool_calls"},
+        "message_content": "",
+        "reasoning_content": "need file",
+        "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
+      "name": "strict_malformed_tool_call_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read strictly."}],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "invalid_tool_call"},
+        "message_content": "",
+        "no_tool_calls": true,
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
       "name": "tool_call_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
@@ -96,6 +169,43 @@
         "status_code": 200,
         "finish_reason": "tool_calls",
         "tool_call": {"name": "bash", "arguments": {"command": "pwd"}}
+      }
+    },
+    {
+      "name": "reasoning_tool_call_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_stream_chunks": [
+        "<think>need shell</think><tool_call>{\"name\":\"bash\",\"arguments\":{\"command\":\"pwd\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Think, then run pwd."}],
+        "stream": true,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "bash",
+              "description": "Run a command",
+              "parameters": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "finish_details": {"reason": "tool_calls"},
+        "reasoning_content": "need shell",
+        "tool_call": {"name": "bash", "arguments": {"command": "pwd"}},
+        "response_excludes": ["<tool_call>"]
       }
     },
     {
@@ -128,6 +238,55 @@
         "status_code": 200,
         "message_content": "direct answer",
         "prompt_endswith": "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "json_schema_violation_chat",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["{\"ok\":\"yes\",\"path\":\"README.md\"}"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Return structured output."}],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "agent_result",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "ok": {"type": "boolean"},
+                "path": {"type": "string", "minLength": 1}
+              },
+              "required": ["ok", "path"],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "schema_violation"},
+        "message_content": "",
+        "prompt_contains": ["Return only JSON that satisfies this JSON schema"]
+      }
+    },
+    {
+      "name": "stateless_session_append_none_completion",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_outputs": ["stateless answer"],
+      "request": {
+        "model": "fake-model",
+        "prompt": "answer without retaining",
+        "session": {"commit": "append_none"}
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "text": "stateless answer",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"}
       }
     },
     {
