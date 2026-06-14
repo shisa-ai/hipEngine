@@ -89838,3 +89838,18 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `21 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json` -> clean.
+
+## 2026-06-14 - AGENTIC guided patch golden traces
+
+Added golden harness coverage for the coding-agent patch path. The deterministic
+trace fixture now includes a chat `guided_patch` response that splits hidden
+reasoning from a fenced unified diff and a completion `guided_diff` response
+that fail-closes a prose-prefaced patch with
+`finish_details.reason="schema_violation"`. `docs/AGENTIC.md` P5.3 now names
+guided patch/diff validation in the current trace matrix.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `29 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `25 passed`.
+- `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md` -> clean.

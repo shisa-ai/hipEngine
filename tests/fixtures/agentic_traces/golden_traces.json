@@ -491,6 +491,47 @@
       }
     },
     {
+      "name": "guided_patch_chat_reasoning_fenced_diff",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<think>patch</think>```diff\ndiff --git a/README.md b/README.md\nindex 1111111..2222222 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n```"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "edit README"}],
+        "guided_patch": {"format": "unified_diff"}
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "message_content": "```diff\ndiff --git a/README.md b/README.md\nindex 1111111..2222222 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n```",
+        "reasoning_content": "patch",
+        "prompt_contains": ["Return only a valid unified diff patch"],
+        "response_excludes": ["<think>"]
+      }
+    },
+    {
+      "name": "guided_diff_completion_rejects_prefaced_patch",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_outputs": [
+        "Here is the patch:\ndiff --git a/README.md b/README.md\nindex 1111111..2222222 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,2 @@\n hello\n-old\n+new"
+      ],
+      "request": {
+        "model": "fake-model",
+        "prompt": "patch README",
+        "guided_diff": true
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "schema_violation", "cache_action": "append_none"},
+        "text": ""
+      }
+    },
+    {
       "name": "stateless_session_append_none_completion",
       "kind": "http",
       "endpoint": "/v1/completions",

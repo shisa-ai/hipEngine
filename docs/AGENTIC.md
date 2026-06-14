@@ -1957,7 +1957,8 @@ Current code reality:
   from the next prompt, completion length finish metadata, chat reasoning/
   closing-think/answer/structured/tool-call length phase metadata,
   continuation-eligible answer and structured length stops, a multi-request
-  continuation-resume sequence, deadline error metadata, and request-control
+  continuation-resume sequence, guided patch/diff validation success and
+  fail-closed rejection paths, deadline error metadata, and request-control
   cancellation.
 - `tests/test_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
