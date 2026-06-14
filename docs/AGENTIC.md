@@ -943,6 +943,16 @@ Exit gates:
 Current host PARO/GGUF suffix matching exists; make it a first-class decode
 primitive.
 
+Current code reality:
+
+- `hipengine.generation.constraints.TokenSequenceDFAState` is a torch-free
+  tokenizer-agnostic DFA primitive for exact token-sequence matches and partial
+  suffix reporting.
+- PARO/GGUF stop checks and final decode telemetry now use this shared helper
+  for multi-token stop match state.
+- Native c>N/GPU sampler parity and grammar/forced-delimiter reuse remain future
+  work.
+
 Implement:
 
 - move stop suffix state into decode state / DFA helper;

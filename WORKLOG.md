@@ -87825,3 +87825,18 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry -q` -> `19 passed`.
 - `python3 -m pytest tests/test_generation_registry.py tests/test_agentic_harness_traces.py tests/test_model_quant_and_imports.py -q` -> `20 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
+
+## 2026-06-14 - AGENTIC token stop DFA primitive
+
+Advanced P1.3 groundwork by adding
+`hipengine.generation.constraints.TokenSequenceDFAState`, a torch-free
+token-sequence matcher that tracks exact matches plus partial suffix candidates.
+PARO and GGUF stop detection and final decode telemetry now use this shared
+primitive instead of local suffix scans, so stop details and telemetry derive
+from one state machine. Native c>N/GPU sampler stop parity and grammar/forced
+delimiter reuse remain future work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/__init__.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_constraints.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_generation_constraints.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `22 passed`.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_model_quant_and_imports.py -q` -> `12 passed`.

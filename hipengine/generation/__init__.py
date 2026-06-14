@@ -19,6 +19,11 @@ from hipengine.generation.batch_scheduler import (
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
 )
+from hipengine.generation.constraints import (
+    TokenSequenceDFAState,
+    normalize_token_sequences,
+    token_sequence_state_for_tokens,
+)
 from hipengine.generation.engine_loop import (
     PREFILL_DECODE_POLICIES,
     EngineLoopConfig,
@@ -125,6 +130,7 @@ __all__ = [
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
     "TextGenerator",
+    "TokenSequenceDFAState",
     "TokenLogprob",
     "active_processor_names",
     "add_engine_loop_config_args",
@@ -132,6 +138,7 @@ __all__ = [
     "derive_row_seed",
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
+    "normalize_token_sequences",
     "normalize_logit_bias_pairs",
     "plan_sampler",
     "register_builtin_generators",
@@ -143,5 +150,6 @@ __all__ = [
     "speculative_mtp_sampling_blockers",
     "supports_native_gpu_sampling",
     "supports_speculative_mtp_sampling",
+    "token_sequence_state_for_tokens",
     "validate_sampling_params",
 ]

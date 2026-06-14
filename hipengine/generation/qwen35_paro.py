@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
+from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -1022,27 +1023,8 @@ def _stop_suffix_state(
     generated_token_ids: list[int] | tuple[int, ...],
     stop_token_sequences: tuple[tuple[int, ...], ...],
 ) -> dict[str, Any] | None:
-    if not generated_token_ids or not stop_token_sequences:
-        return None
-    matched = _matched_stop_sequence(generated_token_ids, stop_token_sequences)
-    if matched:
-        return {"matched_sequence": list(matched)}
-    generated = tuple(int(token) for token in generated_token_ids)
-    best: tuple[int, ...] = ()
-    candidates: list[list[int]] = []
-    for sequence in stop_token_sequences:
-        normalized = tuple(int(token) for token in sequence)
-        for length in range(1, min(len(normalized), len(generated)) + 1):
-            suffix = generated[-length:]
-            if suffix == normalized[:length] and len(suffix) > len(best):
-                best = suffix
-    if best:
-        for sequence in stop_token_sequences:
-            normalized = tuple(int(token) for token in sequence)
-            if normalized[: len(best)] == best:
-                candidates.append(list(normalized))
-        return {"partial_suffix": list(best), "candidate_sequences": candidates}
-    return None
+    payload = token_sequence_state_for_tokens(generated_token_ids, stop_token_sequences).to_json_dict()
+    return payload or None
 
 
 def _row_sampling_state(
@@ -1201,25 +1183,14 @@ def _matched_stop_sequence(
     generated_token_ids: list[int] | tuple[int, ...],
     stop_token_sequences: tuple[tuple[int, ...], ...],
 ) -> tuple[int, ...]:
-    for sequence in stop_token_sequences:
-        if len(sequence) <= 0 or len(sequence) > len(generated_token_ids):
-            continue
-        normalized = tuple(int(token) for token in sequence)
-        if tuple(int(token) for token in generated_token_ids[-len(normalized) :]) == normalized:
-            return normalized
-    return ()
+    return token_sequence_state_for_tokens(generated_token_ids, stop_token_sequences).matched_sequence
 
 
 def _ends_with_stop_sequence(
     generated_token_ids: list[int] | tuple[int, ...],
     stop_token_sequences: tuple[tuple[int, ...], ...],
 ) -> bool:
-    for sequence in stop_token_sequences:
-        if len(sequence) <= 0 or len(sequence) > len(generated_token_ids):
-            continue
-        if tuple(int(token) for token in generated_token_ids[-len(sequence) :]) == sequence:
-            return True
-    return False
+    return token_sequence_state_for_tokens(generated_token_ids, stop_token_sequences).matched
 
 
 def make_qwen35_paro_one_token_generator(
