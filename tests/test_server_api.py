@@ -3353,6 +3353,52 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert "secret prompt" not in serialized
 
 
+def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret chat prompt"}],
+            "top_logprobs": 1,
+        },
+    )
+
+    assert response.status_code == 400
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+
+    assert artifact["request"]["path"] == "/v1/chat/completions"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.messages[0].content",
+            "sha256": artifact["request"]["json"]["messages"][0]["content"]["sha256"],
+            "length": len("secret chat prompt"),
+        }
+    ]
+    assert artifact["token_counts"]["available"] is True
+    assert artifact["token_counts"]["source"] == "chat_prompt"
+    assert artifact["token_counts"]["entries"][0]["path"] == "$.messages"
+    assert artifact["token_counts"]["entries"][0]["token_count"] == artifact["token_counts"]["prompt_tokens"]
+    assert artifact["token_counts"]["prompt_tokens"] > 0
+    assert artifact["error"]["param"] == "top_logprobs"
+    assert "secret chat prompt" not in serialized
+
+
 def test_debug_mode_logs_full_request_and_response_payloads(caplog) -> None:
     caplog.set_level(logging.INFO, logger="uvicorn.error")
     fake = FakeLLM(outputs=["debug reply"])

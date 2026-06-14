@@ -424,10 +424,10 @@ Failed-request replay artifacts are separately opt-in. Pass `--replay-dir
 for failed HTTP requests. Artifacts use `schema: "hipengine.replay.v1"` and
 include the request method/path, redacted request JSON, prompt/tool-result
 hashes, served model id, requested sampler fields, seed fields, error metadata,
-finish details when available, completion prompt token counts when the engine is
-already loaded and supports counting, explicit unavailable reasons otherwise,
-and a compact capability snapshot including sampler/MTP compatibility plus
-cache/session support.
+finish details when available, completion/chat prompt token counts when the
+engine is already loaded and supports counting, explicit unavailable reasons
+otherwise, and a compact capability snapshot including sampler/MTP compatibility
+plus cache/session support.
 
 The default `--replay-redaction hash` replaces every string value in the request
 JSON with SHA-256 and length metadata. `--replay-redaction none` stores raw

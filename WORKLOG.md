@@ -88112,6 +88112,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifacts_are_default_off tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 
+## 2026-06-14 - AGENTIC replay chat token counts
+
+Extended failed-request replay artifacts to count rendered chat prompts as well
+as completion prompts when an engine is already loaded and supports token
+counting. Chat artifacts continue to hash/redact raw message content while
+recording stable token-count metadata with `source="chat_prompt"` and the
+request path used for the rendered prompt.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifact_counts_chat_prompt_when_engine_loaded tests/test_server_api.py::test_replay_artifacts_are_default_off -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
 ## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
 
 Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).

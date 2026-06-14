@@ -303,7 +303,7 @@ def _build_replay_artifact(
         },
         "sampling": _replay_sampling_payload(body_json),
         "seeds": _replay_seed_payload(body_json),
-        "token_counts": _replay_token_counts(body_json, engine),
+        "token_counts": _replay_token_counts(body_json, engine, config),
         "finish_details": error_payload.get("finish_details"),
         "error": {
             "type": error_payload.get("type"),
@@ -381,7 +381,7 @@ def _prompt_hash(path: str, text: str) -> dict[str, Any]:
     }
 
 
-def _replay_token_counts(body_json: Any, engine: Any | None) -> dict[str, Any]:
+def _replay_token_counts(body_json: Any, engine: Any | None, config: ServerConfig) -> dict[str, Any]:
     unavailable = {
         "prompt_tokens": None,
         "completion_tokens": None,
@@ -390,13 +390,19 @@ def _replay_token_counts(body_json: Any, engine: Any | None) -> dict[str, Any]:
     }
     if engine is None:
         return {**unavailable, "unavailable_reason": "engine_not_loaded"}
-    prompt_entries = _replay_completion_prompt_texts(body_json)
-    if prompt_entries is None:
+    count_entries = _replay_completion_prompt_texts(body_json)
+    source = "completion_prompt"
+    if count_entries is None:
+        chat_prompt = _replay_chat_prompt_text(body_json, engine, config)
+        if chat_prompt is not None:
+            count_entries = [("$.messages", chat_prompt)]
+            source = "chat_prompt"
+    if count_entries is None:
         return {**unavailable, "unavailable_reason": "unsupported_request_shape"}
     try:
         entries = [
             {"path": path, "token_count": _count_tokens_strict(engine, text)}
-            for path, text in prompt_entries
+            for path, text in count_entries
         ]
     except Exception:
         return {**unavailable, "unavailable_reason": "token_count_failed"}
@@ -406,7 +412,7 @@ def _replay_token_counts(body_json: Any, engine: Any | None) -> dict[str, Any]:
         "completion_tokens": None,
         "total_tokens": None,
         "available": True,
-        "source": "completion_prompt",
+        "source": source,
         "entries": entries,
     }
 
@@ -420,6 +426,22 @@ def _replay_completion_prompt_texts(body_json: Any) -> list[tuple[str, str]] | N
     if isinstance(prompt, list) and all(isinstance(item, str) for item in prompt):
         return [(f"$.prompt[{index}]", item) for index, item in enumerate(prompt)]
     return None
+
+
+def _replay_chat_prompt_text(body_json: Any, engine: Any, config: ServerConfig) -> str | None:
+    if not isinstance(body_json, Mapping) or "messages" not in body_json:
+        return None
+    try:
+        request = ChatCompletionRequest(**dict(body_json))
+        prompt, _thinking = _render_chat_prompt_for_request(
+            request,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+            engine=engine,
+            max_context_tokens=config.max_context_tokens,
+        )
+    except Exception:
+        return None
+    return prompt
 
 
 def _sha256_text(text: str) -> str:
