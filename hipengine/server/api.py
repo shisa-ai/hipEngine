@@ -2067,12 +2067,26 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         }
 
     def restore_chat_session_from_snapshot(session_id: str, snapshot: Mapping[str, Any]) -> _ChatSessionRecord:
+        if snapshot.get("object") != "hipengine.session.snapshot":
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot object must be hipengine.session.snapshot",
+                code="invalid_request",
+                param="object",
+            )
         if snapshot.get("schema") != _CHAT_SESSION_SNAPSHOT_SCHEMA:
             raise OpenAIHTTPError(
                 400,
                 f"session snapshot schema must be {_CHAT_SESSION_SNAPSHOT_SCHEMA!r}",
                 code="invalid_request",
                 param="schema",
+            )
+        if snapshot.get("resident_state_reuse") is not False:
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot resident_state_reuse must be false",
+                code="invalid_request",
+                param="resident_state_reuse",
             )
         model = snapshot.get("model")
         if not isinstance(model, Mapping):
@@ -2115,6 +2129,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "session snapshot resident_state_reuse must be false",
                 code="invalid_request",
                 param="session.resident_state_reuse",
+            )
+        if session.get("includes_transcript") is not True:
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot includes_transcript must be true",
+                code="invalid_request",
+                param="session.includes_transcript",
             )
         snapshot_id = session.get("id")
         if snapshot_id != session_id:

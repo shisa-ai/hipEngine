@@ -1995,11 +1995,12 @@ Current code reality:
   visible transcript messages, served model id, backend, quant, tokenizer
   compatibility metadata, storage, and timestamps, and explicitly report
   `resident_state_reuse=false`.
-- Restore validates snapshot schema, same session id, model id, backend, quant,
-  storage, resident-state flag, tokenizer metadata when the model is loaded,
-  timestamps, message shape, text content parts, message string metadata, and
-  nested assistant `tool_calls` shape, including valid JSON
-  `function.arguments` strings, before creating or replacing the app-local
+- Restore validates the snapshot object/schema envelope, top-level
+  resident-state flag, same session id, model id, backend, quant, storage,
+  transcript-inclusion flag, session resident-state flag, tokenizer metadata
+  when the model is loaded, timestamps, message shape, text content parts,
+  message string metadata, and nested assistant `tool_calls` shape, including
+  valid JSON `function.arguments` strings, before creating or replacing the app-local
   transcript session. Incompatible snapshots fail with stable `invalid_request`
   errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and

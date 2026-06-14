@@ -91707,3 +91707,20 @@ Validation:
 - `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> passed.
 - `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_sampling.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC snapshot envelope validation
+
+Session snapshot restore now validates the v1 envelope fields before creating
+or replacing an app-local transcript session: `object`, top-level
+`resident_state_reuse`, nested `session.resident_state_reuse`, and
+`session.includes_transcript`. Corrupted envelope fields fail with stable
+`invalid_request` params and leave no partial session state behind.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_snapshot_export_restore_round_trips_visible_transcript tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_incompatible_model tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_incompatible_tokenizer tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_envelope tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_shape tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_fields tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_new_session_when_cap_full -q` -> `24 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

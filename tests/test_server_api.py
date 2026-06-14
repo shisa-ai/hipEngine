@@ -2326,6 +2326,71 @@ def test_chat_session_snapshot_restore_rejects_incompatible_tokenizer() -> None:
     assert "sess_bad_tokenizer" not in app.state.hipengine_chat_sessions
 
 
+@pytest.mark.parametrize(
+    ("corruption", "param"),
+    [
+        ("object", "object"),
+        ("resident_state_reuse", "resident_state_reuse"),
+        ("session_resident_state_reuse", "session.resident_state_reuse"),
+        ("session_includes_transcript", "session.includes_transcript"),
+    ],
+)
+def test_chat_session_snapshot_restore_rejects_corrupted_envelope(
+    corruption: str,
+    param: str,
+) -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "snapshot prompt"}],
+            "session": {"id": "sess_corrupt_envelope"},
+            "max_tokens": 4,
+        },
+    )
+    snapshot = client.get(
+        "/v1/hipengine/sessions/sess_corrupt_envelope/snapshot",
+        headers=headers,
+    ).json()
+    if corruption == "object":
+        snapshot["object"] = "hipengine.session.other"
+    elif corruption == "resident_state_reuse":
+        snapshot["resident_state_reuse"] = True
+    elif corruption == "session_resident_state_reuse":
+        snapshot["session"]["resident_state_reuse"] = True
+    elif corruption == "session_includes_transcript":
+        snapshot["session"]["includes_transcript"] = False
+    else:
+        raise AssertionError(f"unhandled corruption case: {corruption}")
+    client.delete("/v1/hipengine/sessions/sess_corrupt_envelope", headers=headers)
+
+    restored = client.post(
+        "/v1/hipengine/sessions/sess_corrupt_envelope/snapshot",
+        headers=headers,
+        json=snapshot,
+    )
+
+    assert created.status_code == 200
+    assert restored.status_code == 400
+    assert restored.json()["error"]["code"] == "invalid_request"
+    assert restored.json()["error"]["param"] == param
+    assert "sess_corrupt_envelope" not in app.state.hipengine_chat_sessions
+
+
 def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None:
     fake = SequentialFakeLLM(["stored answer"])
     app = create_app(
