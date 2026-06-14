@@ -1,0 +1,181 @@
+{
+  "schema": "hipengine.agentic_traces.v1",
+  "traces": [
+    {
+      "name": "tool_loop_turn_1_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read the README."}],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "message_content": "",
+        "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+        "prompt_contains": ["<tools>", "\"name\":\"read\""]
+      }
+    },
+    {
+      "name": "tool_loop_turn_2_non_streaming_final_answer",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["The README says hello."],
+      "request": {
+        "model": "fake-model",
+        "messages": [
+          {"role": "user", "content": "Read the README."},
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "read", "arguments": "{\"path\":\"README.md\"}"}
+              }
+            ]
+          },
+          {"role": "tool", "tool_call_id": "call_1", "content": "hello"}
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "message_content": "The README says hello.",
+        "prompt_contains": ["<tool_response>\nhello\n</tool_response>"]
+      }
+    },
+    {
+      "name": "tool_call_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_stream_chunks": [
+        "<tool_call>{\"name\":\"bash\",\"arguments\":{\"command\":\"pwd\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Run pwd."}],
+        "stream": true,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "bash",
+              "description": "Run a command",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "tool_call": {"name": "bash", "arguments": {"command": "pwd"}}
+      }
+    },
+    {
+      "name": "reasoning_split_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["<think>scratch pad</think>visible answer"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Think briefly."}]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "message_content": "visible answer",
+        "reasoning_content": "scratch pad"
+      }
+    },
+    {
+      "name": "no_think_prompt_rendering",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["direct answer"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Answer directly."}],
+        "enable_thinking": false
+      },
+      "expected": {
+        "status_code": 200,
+        "message_content": "direct answer",
+        "prompt_endswith": "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "length_finish_completion",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_detailed_outputs": [
+        {"text": "partial", "finish_details": {"reason": "length", "length_limit": 1}}
+      ],
+      "request": {
+        "model": "fake-model",
+        "prompt": "cut short",
+        "max_tokens": 1
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "length",
+        "text": "partial",
+        "finish_details": {"reason": "length", "length_limit": 1}
+      }
+    },
+    {
+      "name": "deadline_error_completion",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_outputs": ["late"],
+      "generate_delay_s": 0.03,
+      "request": {
+        "model": "fake-model",
+        "prompt": "slow",
+        "max_tokens": 1,
+        "timeout_ms": 1
+      },
+      "expected": {
+        "status_code": 408,
+        "error_code": "deadline_exceeded",
+        "hipengine_error_code": "deadline_exceeded",
+        "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": true}
+      }
+    },
+    {
+      "name": "request_control_cancelled",
+      "kind": "request_control_cancelled",
+      "expected": {
+        "status_code": 499,
+        "error_code": "cancelled",
+        "finish_details": {"reason": "cancelled", "cancelled": true}
+      }
+    }
+  ]
+}

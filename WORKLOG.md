@@ -87332,3 +87332,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_ready_reports_lazy_server_ready_without_loaded_model -q` -> `2 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `52 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC golden harness traces
+
+Added `tests/fixtures/agentic_traces/golden_traces.json` with normalized
+deterministic request/response expectations for a two-turn tool loop,
+streaming tool-call deltas, reasoning extraction, no-thinking prompt rendering,
+length finish metadata, deadline error metadata, and request-control
+cancellation.
+
+Added `tests/test_agentic_harness_traces.py` to run the fixture against the
+OpenAI-compatible server with deterministic fake generation. The runner ignores
+only dynamic IDs/timestamps and keeps parsed tool calls, final visible text,
+reasoning content, finish metadata, and error details pinned for regression.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/hipengine-agentic-traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `git diff --check -- docs/AGENTIC.md tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json`.

@@ -1344,6 +1344,17 @@ Implement:
 - reasoning/no-thinking variants;
 - length/cancellation/error variants.
 
+Current code reality:
+
+- `tests/fixtures/agentic_traces/golden_traces.json` defines normalized
+  deterministic traces for a two-turn assistant -> tool call -> tool result ->
+  final-answer loop, streaming tool-call deltas, reasoning extraction,
+  no-thinking prompt rendering, length finish metadata, deadline error metadata,
+  and request-control cancellation.
+- `tests/test_agentic_harness_traces.py` runs those traces against the
+  OpenAI-compatible server with deterministic fake generation and strips only
+  dynamic IDs/timestamps from assertions.
+
 Exit gates:
 
 - traces are deterministic under fixed fake logits or fixed seeds;
