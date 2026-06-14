@@ -1471,16 +1471,19 @@ Implement:
 Current code reality:
 
 - streaming chat prompt-and-parse paths buffer the generated stream text until it
-  can be parsed, then emit one complete `delta.tool_calls` chunk per parsed
-  call with a stable generated id, preserved `index`, function name, and full
-  JSON argument string;
+  can be parsed and validated. Parsed tool-call argument strings are then
+  streamed as one or more `delta.tool_calls` chunks with a stable generated id
+  and preserved `index`; clients concatenate `function.arguments` chunks to
+  recover the same JSON argument string as non-streaming responses. The first
+  chunk carries the function name, and later chunks carry argument fragments.
 - final streaming chunks report `finish_reason="tool_calls"` and
   `finish_details.reason="tool_calls"` for parsed tool calls, or the same
   strict-result failure details as non-streaming when validation rejects the
   parsed call;
 - covered fixtures include single-call streaming, malformed JSON strict failure,
-  strict schema failure, and multi-call streaming with preserved indexes. True
-  token-incremental argument chunking remains future decode/streaming work.
+  strict schema failure, multi-call streaming with preserved indexes, and long
+  argument chunk concatenation. True token-live argument chunking before full
+  parse/validation remains future decode/streaming work.
 
 Exit gates:
 

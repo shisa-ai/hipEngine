@@ -611,6 +611,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         ],
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
+        "streaming_argument_chunks": True,
+        "streaming_argument_chunk_chars": 128,
         "no_tool_start_suppression": True,
         "required_tool_start_forcing": True,
         "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
@@ -4686,6 +4688,52 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     )
 
 
+def test_streaming_chat_completion_chunks_long_tool_call_arguments() -> None:
+    command = "x" * 300
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[f'<tool_call>{{"name":"bash","arguments":{{"command":{json.dumps(command)}}}}}</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run a long command"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    chunks = [
+        payload["choices"][0]["delta"]["tool_calls"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert len(chunks) > 1
+    assert {chunk["id"] for chunk in chunks} == {chunks[0]["id"]}
+    assert {chunk["index"] for chunk in chunks} == {0}
+    assert chunks[0]["function"]["name"] == "bash"
+    assert all("name" not in chunk["function"] for chunk in chunks[1:])
+    argument_text = "".join(chunk["function"]["arguments"] for chunk in chunks)
+    assert json.loads(argument_text) == {"command": command}
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
 def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],
@@ -5371,6 +5419,8 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     )
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing"] is True
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
+    assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunks"] is True
+    assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunk_chars"] == 128
     assert artifact["capabilities"]["features"]["reasoning_controls"]["token_budget_enforced"] is True
     assert artifact["capabilities"]["features"]["reasoning_controls"]["hard_close_token_forcing"] is True
     assert artifact["capabilities"]["features"]["reasoning_controls"]["soft_close_bias"] is True

@@ -89201,3 +89201,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC tool-call argument stream chunks
+
+Implemented post-parse streaming chunks for long tool-call argument JSON. The
+server still buffers tool-capable chat output until a Qwen `<tool_call>` block
+is parsed and strict validation can run, but long validated
+`function.arguments` strings now emit as multiple `delta.tool_calls` chunks
+with the same id and index. Clients can concatenate the argument fragments to
+recover the non-streaming payload, while raw `<tool_call>` markup remains
+suppressed.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_chunks_long_tool_call_arguments tests/test_server_api.py::test_streaming_chat_completion_preserves_parallel_tool_call_indexes tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `5 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `19 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `24 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.

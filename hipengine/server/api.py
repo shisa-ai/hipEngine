@@ -59,6 +59,7 @@ _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
+_TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
 _CONTINUATION_TTL_SECONDS = 15 * 60
 _SESSION_COMMIT_MODES = (
     "append_none",
@@ -762,6 +763,8 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
+        "streaming_argument_chunks": True,
+        "streaming_argument_chunk_chars": _TOOL_CALL_ARGUMENT_STREAM_CHARS,
         "no_tool_start_suppression": tokenizer_backed,
         "required_tool_start_forcing": tokenizer_backed,
         "required_tool_start_forcing_scope": (
@@ -7753,10 +7756,15 @@ def _chat_stream_tool_call(
     *,
     index: int = 0,
     tool_index: int = 0,
+    argument_chunk: str | None = None,
+    include_name: bool = True,
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
 ) -> str:
+    function: dict[str, Any] = {"arguments": call.arguments if argument_chunk is None else str(argument_chunk)}
+    if include_name:
+        function["name"] = call.name
     choice = {
         "index": int(index),
         "delta": {
@@ -7765,7 +7773,7 @@ def _chat_stream_tool_call(
                     "index": int(tool_index),
                     "id": call.id,
                     "type": "function",
-                    "function": {"name": call.name, "arguments": call.arguments},
+                    "function": function,
                 }
             ]
         },
@@ -7788,6 +7796,16 @@ def _chat_stream_tool_call(
             tokens=tokens,
             token_event=True,
         )
+    )
+
+
+def _tool_call_argument_stream_chunks(arguments: str) -> tuple[str, ...]:
+    text = str(arguments)
+    if len(text) <= _TOOL_CALL_ARGUMENT_STREAM_CHARS:
+        return (text,)
+    return tuple(
+        text[start : start + _TOOL_CALL_ARGUMENT_STREAM_CHARS]
+        for start in range(0, len(text), _TOOL_CALL_ARGUMENT_STREAM_CHARS)
     )
 
 
@@ -7830,16 +7848,19 @@ def _chat_stream_parsed(
             stream_started_at=stream_started_at,
         )
     for tool_index, call in enumerate(parsed.tool_calls):
-        yield _chat_stream_tool_call(
-            response_id,
-            created,
-            model,
-            call,
-            index=index,
-            tool_index=tool_index,
-            include_hipengine=include_hipengine,
-            stream_started_at=stream_started_at,
-        )
+        for chunk_index, argument_chunk in enumerate(_tool_call_argument_stream_chunks(call.arguments)):
+            yield _chat_stream_tool_call(
+                response_id,
+                created,
+                model,
+                call,
+                index=index,
+                tool_index=tool_index,
+                argument_chunk=argument_chunk,
+                include_name=chunk_index == 0,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
     done_reason = "tool_calls" if parsed.tool_calls else finish_reason
     yield _chat_stream_done(
         response_id,

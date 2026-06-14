@@ -306,7 +306,10 @@ emit tool calls as:
 
 The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
-`finish_reason: "tool_calls"`. Prior assistant `tool_calls` and `role: "tool"`
+`finish_reason: "tool_calls"`. Long streaming `function.arguments` strings are
+split into concatenable fragments after the full tool-call block has been parsed
+and validated; the first chunk carries the function name, and all chunks carry
+the same tool-call id and index. Prior assistant `tool_calls` and `role: "tool"`
 messages are also replayed into the prompt as `<tool_call>` and
 `<tool_response>` blocks so multi-turn tool loops can continue.
 

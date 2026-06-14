@@ -59,6 +59,8 @@ def _capabilities(**overrides):
                 "strict_decoding": False,
                 "strict_result_validation": True,
                 "parallel_tool_calls": True,
+                "streaming_argument_chunks": True,
+                "streaming_argument_chunk_chars": 128,
                 "no_tool_start_suppression": True,
                 "required_tool_start_forcing": True,
                 "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
