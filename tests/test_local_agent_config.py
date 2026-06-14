@@ -442,7 +442,14 @@ def test_pi_agent_chat_smoke_response_rejects_missing_tool_call() -> None:
         )
 
 
-def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup() -> None:
+@pytest.mark.parametrize(
+    "content",
+    [
+        '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+        '<tool_call>\n<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+    ],
+)
+def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup(content: str) -> None:
     with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="raw <tool_call> text"):
         validate_pi_agent_models.validate_pi_chat_smoke_response(
             {
@@ -452,7 +459,7 @@ def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup() -> None:
                         "finish_reason": "stop",
                         "message": {
                             "role": "assistant",
-                            "content": '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+                            "content": content,
                         },
                     }
                 ],
@@ -501,3 +508,32 @@ def test_pi_agent_models_validator_rejects_missing_qwen_thinking_format() -> Non
 
     with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="thinkingFormat"):
         validate_pi_agent_models.validate_pi_models_config(config)
+
+
+def test_pi_agent_models_validator_rejects_streaming_usage_disabled() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    config["providers"]["hipengine-local"]["compat"]["supportsUsageInStreaming"] = False
+
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="supportsUsageInStreaming"):
+        validate_pi_agent_models.validate_pi_models_config(config)
+
+
+def test_pi_agent_models_validator_rejects_context_window_above_server() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="contextWindow exceeds"):
+        validate_pi_agent_models.validate_pi_models_against_capabilities(
+            config,
+            {
+                "model": {"id": model_id},
+                "context": {"effective_max_context_tokens": 65536},
+                "features": {
+                    "chat_completions": True,
+                    "streaming": True,
+                    "stream_options": {"include_usage": True},
+                    "tools": {"enabled": True},
+                    "reasoning_controls": {"enabled": True, "fields": ["enable_thinking"]},
+                },
+            },
+        )

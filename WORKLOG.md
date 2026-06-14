@@ -89938,3 +89938,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 228`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC pi config regression coverage
+
+Added pi-agent regression coverage for misconfigurations observed in local
+`models.json` files: disabled streaming usage metadata, context windows above
+the served capability limit, and raw doubled `<tool_call>` text in the chat
+smoke response. Updated `docs/API.md` and `docs/AGENTIC.md` so the guidance
+names the enforced pi fields.
+
+Validation:
+- `python3 -m py_compile tests/test_local_agent_config.py scripts/validate_pi_agent_models.py`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `24 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py --collect-only -q` -> `tests/test_local_agent_config.py: 24`.
+- `python3 -m ruff check tests/test_local_agent_config.py scripts/validate_pi_agent_models.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
