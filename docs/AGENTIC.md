@@ -662,6 +662,9 @@ requests with an effective `hard_think_cap`, the server tokenizes
 `ThinkingBudgetState` per row and forces the close sequence when the hard cap is
 reached. If tokenization is unavailable, normal chat generation stays
 prompt-hint-only instead of failing.
+Nested `thinking.allow_unbounded=true` disables effort-derived default hard-cap
+injection when no explicit hard cap is present; explicit budget/cap fields still
+set the hard cap and lower into sampler params as usual.
 
 ### Hard-close sequence and overrides
 

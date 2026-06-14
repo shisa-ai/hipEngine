@@ -716,6 +716,7 @@ def _reasoning_control_fields() -> list[str]:
         "hard_close_message",
         "hard_close_sequence",
         "thinking_token_budget",
+        "thinking.allow_unbounded",
         "chat_template_kwargs",
         "thinking",
         "reasoning",
@@ -1629,6 +1630,7 @@ class _ToolValidationResult:
 class _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
+    allow_unbounded: bool = False
     max_think_tokens: int | None = None
     min_answer_tokens: int | None = None
     hard_think_cap: int | None = None
@@ -4368,6 +4370,7 @@ def _thinking_control_from_request(
     soft_close_window: int | None = None
     hard_close_message: str | None = None
     hard_close_sequence: str | None = None
+    allow_unbounded = False
 
     if isinstance(request.chat_template_kwargs, Mapping):
         enabled = _maybe_bool(request.chat_template_kwargs.get("enable_thinking"), enabled)
@@ -4420,6 +4423,7 @@ def _thinking_control_from_request(
         elif thinking_type in {"enabled", "enable", "on"}:
             enabled = True
         enabled = _maybe_bool(request.thinking.get("enabled"), enabled)
+        allow_unbounded = bool(_maybe_bool(request.thinking.get("allow_unbounded"), allow_unbounded))
         effort = _maybe_effort(request.thinking.get("effort"), effort)
         budget_tokens = request.thinking.get("budget_tokens")
         budget_cap = _coerce_nonnegative_int(
@@ -4486,16 +4490,28 @@ def _thinking_control_from_request(
                 request,
                 chat_default_max_tokens=chat_default_max_tokens,
             )
-        hard_think_cap, min_answer_tokens, soft_close_window = _apply_thinking_effort_defaults(
-            effort,
-            generation_budget=None if generation_budget is None else int(generation_budget),
-            hard_think_cap=hard_think_cap,
-            min_answer_tokens=min_answer_tokens,
-            soft_close_window=soft_close_window,
-        )
+        if allow_unbounded and hard_think_cap is None:
+            defaults = _THINKING_EFFORT_DEFAULTS.get(str(effort or "").strip().lower())
+            if defaults is not None and min_answer_tokens is None:
+                min_answer_tokens = int(defaults["min_answer_tokens"])
+            hard_think_cap, min_answer_tokens, soft_close_window = _clamp_thinking_budget_hints(
+                generation_budget=None if generation_budget is None else int(generation_budget),
+                hard_think_cap=None,
+                min_answer_tokens=min_answer_tokens,
+                soft_close_window=None,
+            )
+        else:
+            hard_think_cap, min_answer_tokens, soft_close_window = _apply_thinking_effort_defaults(
+                effort,
+                generation_budget=None if generation_budget is None else int(generation_budget),
+                hard_think_cap=hard_think_cap,
+                min_answer_tokens=min_answer_tokens,
+                soft_close_window=soft_close_window,
+            )
     control = _ThinkingControl(
         enabled=enabled,
         effort=effort,
+        allow_unbounded=allow_unbounded,
         max_think_tokens=max_think_tokens,
         min_answer_tokens=min_answer_tokens,
         hard_think_cap=hard_think_cap,

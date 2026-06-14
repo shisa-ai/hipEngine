@@ -636,6 +636,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "hard_close_message",
             "hard_close_sequence",
             "thinking_token_budget",
+            "thinking.allow_unbounded",
             "chat_template_kwargs",
             "thinking",
             "reasoning",
@@ -3819,6 +3820,60 @@ def test_chat_completion_preserves_string_thinking_budget_effort_alias() -> None
     assert "close </think> before exceeding 2048 hidden reasoning tokens" in prompt
     assert "reserve at least 2048 tokens for the final answer or tool call" in prompt
     assert "begin closing during the final 1024 hidden reasoning tokens" in prompt
+
+
+def test_chat_completion_allow_unbounded_skips_default_hard_thinking_cap() -> None:
+    fake = FakeLLM(outputs=["answer"], token_map={"</think>": [42, 43]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "reasoning_effort": "low",
+            "thinking": {"allow_unbounded": True},
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = fake.calls[-1][0][0]
+    assert "keep it very brief" in prompt
+    assert "reserve at least 50 tokens for the final answer or tool call" in prompt
+    assert "close </think> before exceeding" not in prompt
+    assert "begin closing during the final" not in prompt
+    sampling = fake.calls[-1][1]
+    assert sampling.thinking_hard_token_cap is None
+    assert sampling.thinking_close_token_ids == ()
+    assert fake.tokenize_calls == []
+
+
+def test_chat_completion_allow_unbounded_preserves_explicit_hard_cap() -> None:
+    fake = FakeLLM(outputs=["answer"], token_map={"</think>": [42, 43]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "reasoning_effort": "low",
+            "thinking": {"allow_unbounded": True, "hard_think_cap": 12},
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = fake.calls[-1][0][0]
+    assert "close </think> before exceeding 12 hidden reasoning tokens" in prompt
+    assert "begin closing during the final 12 hidden reasoning tokens" in prompt
+    sampling = fake.calls[-1][1]
+    assert sampling.thinking_hard_token_cap == 12
+    assert sampling.thinking_close_token_ids == (42, 43)
+    assert fake.tokenize_calls == ["</think>"]
 
 
 def test_chat_completion_rejects_hard_close_without_think_marker() -> None:
