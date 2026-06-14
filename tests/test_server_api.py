@@ -710,6 +710,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert errors_by_code["engine_busy"]["emitted"] is True
     assert errors_by_code["engine_busy"]["status_code"] == 429
     assert errors_by_code["unsupported_feature"]["status_code"] == 501
+    assert errors_by_code["invalid_continuation"]["status_code"] == 400
+    assert errors_by_code["continuation_expired"]["status_code"] == 410
+    assert errors_by_code["routing_failed"]["status_code"] == 502
+    assert errors_by_code["routing_failed"]["retryable"] is True
+    assert errors_by_code["routing_failed"]["emitted"] is False
     assert errors_by_code["invalid_tool_call"]["emitted"] is True
     assert "finish_details.reason" in errors_by_code["invalid_tool_call"]["description"]
     assert "response_format result" in errors_by_code["schema_violation"]["description"]

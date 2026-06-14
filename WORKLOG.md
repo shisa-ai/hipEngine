@@ -89371,3 +89371,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `45 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC continuation error taxonomy
+
+Aligned the stable AGENTIC/API error taxonomy with the runtime capabilities
+manifest for continuation handles. `invalid_continuation` and
+`continuation_expired` are now listed alongside the other canonical client
+errors, and the capabilities test pins their status codes plus the reserved
+`routing_failed` retry/emitted metadata.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `git diff --check -- tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_server_rejects_unknown_continuation_id_without_generation -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -k "continuation and (expired or resumes or unknown)" -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `45 passed`.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
