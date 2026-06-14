@@ -10,6 +10,7 @@ from typing import Any
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
@@ -68,6 +69,7 @@ class Qwen35ParoOneTokenGenerator:
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
+        raise_if_generation_deadline_expired(request)
         native_gpu_available = _native_gpu_sampler_available(request, prompt_count=len(request.prompts))
         plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
@@ -104,6 +106,7 @@ class Qwen35ParoOneTokenGenerator:
                     ignore_eos=request.ignore_eos,
                     kv_policy=kv_policy,
                     sampler_mode=plan.mode.value,
+                    deadline_at=request.deadline_at,
                 )
                 self.last_generation_outputs = (output,)
                 return list(self.last_generation_outputs)
@@ -138,6 +141,7 @@ class Qwen35ParoOneTokenGenerator:
             ignore_eos=request.ignore_eos,
             kv_policy=kv_policy,
             sampler_mode=plan.mode.value,
+            deadline_at=request.deadline_at,
         )
         self.last_generation_outputs = tuple(outputs)
         return list(self.last_generation_outputs)
@@ -216,6 +220,7 @@ class Qwen35ParoOneTokenGenerator:
             raise ValueError("streaming currently supports exactly one prompt")
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
+        raise_if_generation_deadline_expired(request)
         native_gpu_available = _native_gpu_sampler_available(request, prompt_count=1)
         plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
@@ -233,6 +238,7 @@ class Qwen35ParoOneTokenGenerator:
                 request.max_tokens,
                 ignore_eos=request.ignore_eos,
                 kv_policy=kv_policy,
+                deadline_at=request.deadline_at,
             )
             return
         yield from self._stream_one_sampled(
@@ -255,8 +261,11 @@ class Qwen35ParoOneTokenGenerator:
         ignore_eos: bool,
         kv_policy,
         sampler_mode: str,
+        deadline_at: float | None,
     ) -> GenerationOutput:
+        raise_if_generation_deadline_expired(deadline_at)
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        raise_if_generation_deadline_expired(deadline_at)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         required_sequence_length = len(prompt_ids) + max_tokens + 1
@@ -268,7 +277,9 @@ class Qwen35ParoOneTokenGenerator:
             max_sequence_length=session_capacity,
             kv_policy=kv_policy,
         )
+        raise_if_generation_deadline_expired(deadline_at)
         next_result = session.prefill_native(prompt_ids, sample=True)
+        raise_if_generation_deadline_expired(deadline_at)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
         generated_text.append(next_result.token_text)
@@ -296,14 +307,18 @@ class Qwen35ParoOneTokenGenerator:
 
         remaining = max_tokens - 1
         if remaining:
+            raise_if_generation_deadline_expired(deadline_at)
             with session.capture_decode_graph(
                 position=len(prompt_ids),
                 steps_per_replay=1,
                 max_replay_steps=remaining,
                 record_steps=remaining,
             ) as graph:
+                raise_if_generation_deadline_expired(deadline_at)
                 graph.replay(remaining)
+                raise_if_generation_deadline_expired(deadline_at)
                 token_ids = graph.read_generated_token_ids(remaining)
+                raise_if_generation_deadline_expired(deadline_at)
             for token_id in token_ids:
                 generated_text.append(_decode_token_cached(session.tokenizer, token_id))
                 generated_token_ids.append(int(token_id))
@@ -341,7 +356,9 @@ class Qwen35ParoOneTokenGenerator:
         kv_policy,
         plan,
     ) -> GenerationOutput:
+        raise_if_generation_deadline_expired(request)
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         required_sequence_length = len(prompt_ids) + max_tokens + 1
@@ -357,7 +374,9 @@ class Qwen35ParoOneTokenGenerator:
         generated_token_ids: list[int] = []
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
         try:
+            raise_if_generation_deadline_expired(request)
             next_result = session.prefill_native(prompt_ids, sample=True)
+            raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
             generated_text.append(next_result.token_text)
@@ -396,7 +415,9 @@ class Qwen35ParoOneTokenGenerator:
 
             current_token_id = int(next_result.token_id)
             for position in range(len(prompt_ids), len(prompt_ids) + max_tokens - 1):
+                raise_if_generation_deadline_expired(request)
                 result = session.step(current_token_id, position=position, sample=True)
+                raise_if_generation_deadline_expired(request)
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
                 generated_text.append(result.token_text)
@@ -446,6 +467,7 @@ class Qwen35ParoOneTokenGenerator:
         ignore_eos: bool,
         kv_policy,
         sampler_mode: str,
+        deadline_at: float | None,
     ) -> list[GenerationOutput]:
         """Generate a prompt list through the scheduler-owned c>N path.
 
@@ -458,7 +480,9 @@ class Qwen35ParoOneTokenGenerator:
 
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
+            raise_if_generation_deadline_expired(deadline_at)
             _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            raise_if_generation_deadline_expired(deadline_at)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
             prompt_rows.append([int(token) for token in prompt_ids])
@@ -499,7 +523,9 @@ class Qwen35ParoOneTokenGenerator:
                     "block_count": slab.block_count,
                 }
             )
+            raise_if_generation_deadline_expired(deadline_at)
             results = session.prefill_native_packed(slab, sample=True)
+            raise_if_generation_deadline_expired(deadline_at)
             if len(results) != slab.request_count:
                 raise RuntimeError(
                     "packed prefill returned "
@@ -524,6 +550,7 @@ class Qwen35ParoOneTokenGenerator:
         native_decode_steps = 0
         serial_decode_fallback = False
         while next_token_by_request:
+            raise_if_generation_deadline_expired(deadline_at)
             work = scheduler.next_decode_work()
             if work is None:
                 raise RuntimeError("scheduler did not emit decode work")
@@ -545,29 +572,35 @@ class Qwen35ParoOneTokenGenerator:
             use_native_decode = compact_slots and len(slots_for_step) > 1 and hasattr(session, "step_batch_native")
             if use_native_decode:
                 try:
+                    raise_if_generation_deadline_expired(deadline_at)
                     results = session.step_batch_native(
                         token_ids_for_step,
                         positions=positions_for_step,
                         slots=slots_for_step,
                         sample=True,
                     )
+                    raise_if_generation_deadline_expired(deadline_at)
                     native_decode_steps += 1
                 except NotImplementedError:
                     serial_decode_fallback = True
+                    raise_if_generation_deadline_expired(deadline_at)
                     results = session.step_batch_serial(
                         token_ids_for_step,
                         positions=positions_for_step,
                         slots=slots_for_step,
                         sample=True,
                     )
+                    raise_if_generation_deadline_expired(deadline_at)
             else:
                 serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
+                raise_if_generation_deadline_expired(deadline_at)
                 results = session.step_batch_serial(
                     token_ids_for_step,
                     positions=positions_for_step,
                     slots=slots_for_step,
                     sample=True,
                 )
+                raise_if_generation_deadline_expired(deadline_at)
             generated: list[GeneratedToken] = []
             for request_id, result in zip(request_ids_for_step, results, strict=True):
                 if result is None:
@@ -649,7 +682,9 @@ class Qwen35ParoOneTokenGenerator:
 
         prompt_rows: list[list[int]] = []
         for prompt in prompts:
+            raise_if_generation_deadline_expired(request)
             _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            raise_if_generation_deadline_expired(request)
             if not prompt_ids:
                 raise ValueError("prompt produced no tokens")
             prompt_rows.append([int(token) for token in prompt_ids])
@@ -705,7 +740,9 @@ class Qwen35ParoOneTokenGenerator:
                     }
                 )
                 configure_rows(request, _slot_sampler_state_clones(scheduler, slab.request_ids, slab.physical_slot_ids))
+                raise_if_generation_deadline_expired(request)
                 results = session.prefill_native_packed(slab, sample=True)
+                raise_if_generation_deadline_expired(request)
                 if len(results) != slab.request_count:
                     raise RuntimeError(
                         "packed prefill returned "
@@ -742,6 +779,7 @@ class Qwen35ParoOneTokenGenerator:
             decode_steps = 0
             serial_decode_fallback = False
             while next_token_by_request:
+                raise_if_generation_deadline_expired(request)
                 work = scheduler.next_decode_work()
                 if work is None:
                     raise RuntimeError("scheduler did not emit decode work")
@@ -757,12 +795,14 @@ class Qwen35ParoOneTokenGenerator:
                 ]
                 slots_for_step = [scheduler.active_batch.slot_for(request_id) for request_id in request_ids_for_step]
                 configure_rows(request, _slot_sampler_state_clones(scheduler, request_ids_for_step, slots_for_step))
+                raise_if_generation_deadline_expired(request)
                 results = session.step_batch_serial(
                     token_ids_for_step,
                     positions=positions_for_step,
                     slots=slots_for_step,
                     sample=True,
                 )
+                raise_if_generation_deadline_expired(request)
                 serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
                 generated = []
                 for request_id, result in zip(request_ids_for_step, results, strict=True):
@@ -842,8 +882,11 @@ class Qwen35ParoOneTokenGenerator:
         *,
         ignore_eos: bool,
         kv_policy,
+        deadline_at: float | None,
     ) -> Iterator[str]:
+        raise_if_generation_deadline_expired(deadline_at)
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        raise_if_generation_deadline_expired(deadline_at)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         required_sequence_length = len(prompt_ids) + max_tokens + 1
@@ -853,7 +896,9 @@ class Qwen35ParoOneTokenGenerator:
             max_sequence_length=session_capacity,
             kv_policy=kv_policy,
         )
+        raise_if_generation_deadline_expired(deadline_at)
         next_result = session.prefill_native(prompt_ids, sample=True)
+        raise_if_generation_deadline_expired(deadline_at)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
         yield next_result.token_text
@@ -862,7 +907,9 @@ class Qwen35ParoOneTokenGenerator:
 
         current_token_id = next_result.token_id
         for position in range(len(prompt_ids), len(prompt_ids) + max_tokens - 1):
+            raise_if_generation_deadline_expired(deadline_at)
             result = session.step(current_token_id, position=position, sample=True)
+            raise_if_generation_deadline_expired(deadline_at)
             if result is None:
                 raise RuntimeError("decode step did not produce next-token logits")
             yield result.token_text
@@ -882,7 +929,9 @@ class Qwen35ParoOneTokenGenerator:
         kv_policy,
         plan,
     ) -> Iterator[str]:
+        raise_if_generation_deadline_expired(request)
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+        raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         required_sequence_length = len(prompt_ids) + max_tokens + 1
@@ -896,7 +945,9 @@ class Qwen35ParoOneTokenGenerator:
         _configure_sampled_session(session, request, state, plan=plan)
         generated_token_ids: list[int] = []
         try:
+            raise_if_generation_deadline_expired(request)
             next_result = session.prefill_native(prompt_ids, sample=True)
+            raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
             yield next_result.token_text
@@ -912,7 +963,9 @@ class Qwen35ParoOneTokenGenerator:
 
             current_token_id = int(next_result.token_id)
             for position in range(len(prompt_ids), len(prompt_ids) + max_tokens - 1):
+                raise_if_generation_deadline_expired(request)
                 result = session.step(current_token_id, position=position, sample=True)
+                raise_if_generation_deadline_expired(request)
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
                 yield result.token_text

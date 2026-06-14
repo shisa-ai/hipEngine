@@ -15,6 +15,7 @@ from hipengine import SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     FinishDetails,
+    GenerationDeadlineExceeded,
     GenerationOutput,
     GenerationTelemetry,
     TokenLogprob,
@@ -154,6 +155,21 @@ class DelayedFakeLLM(FakeLLM):
             if self.stream_delay_s > 0.0:
                 time.sleep(self.stream_delay_s)
             yield chunk
+
+
+class BackendDeadlineFakeLLM(FakeLLM):
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        prompts = tuple(prompts)
+        self.calls.append((prompts, sampling_params))
+        assert sampling_params.deadline_at is not None
+        raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
+        self.calls.append(((prompt,), sampling_params))
+        assert sampling_params.deadline_at is not None
+        raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
+        yield  # pragma: no cover - keeps this method a generator
 
 
 def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
@@ -968,6 +984,28 @@ def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_keeps_different_deadlines_separate() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        first_sampling = SamplingParams(max_tokens=2, deadline_at=100.0)
+        second_sampling = SamplingParams(max_tokens=2, deadline_at=101.0)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), first_sampling),
+            batcher.submit(("two",), second_sampling),
+        )
+
+        assert first == ["generated:one"]
+        assert second == ["generated:two"]
+        assert fake.calls == [(("one",), first_sampling), (("two",), second_sampling)]
+
+    asyncio.run(run())
+
+
 def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
     async def run() -> None:
         async def receive() -> dict[str, object]:
@@ -1437,6 +1475,54 @@ def test_completion_timeout_returns_deadline_error_and_server_reuses() -> None:
     assert reused.json()["choices"][0]["text"] == "ok"
 
 
+def test_backend_deadline_exception_maps_to_completion_408() -> None:
+    fake = BackendDeadlineFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "slow", "max_tokens": 4, "timeout_ms": 5000},
+    )
+
+    assert response.status_code == 408
+    assert fake.calls[0][1].deadline_at is not None
+    error = response.json()["error"]
+    assert error["type"] == "timeout_error"
+    assert error["code"] == "deadline_exceeded"
+    assert error["param"] == "timeout_ms"
+    assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+
+
+def test_backend_deadline_finish_detail_maps_to_chat_408() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="deadline_exceeded", deadline_exceeded=True),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "slow"}],
+            "max_tokens": 4,
+            "timeout_ms": 5000,
+        },
+    )
+
+    assert response.status_code == 408
+    assert fake.calls[0][1].deadline_at is not None
+    error = response.json()["error"]
+    assert error["code"] == "deadline_exceeded"
+    assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+
+
 def test_streaming_completion_timeout_emits_error_and_done() -> None:
     fake = DelayedFakeLLM(outputs=["ok"], stream_chunks=["late"], stream_delay_s=0.03)
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -1496,6 +1582,37 @@ def test_streaming_completion_timeout_can_include_hipengine_error_metadata() -> 
         "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": True},
     }
     assert payload["error"]["finish_details"] == payload["choices"][0]["finish_details"]
+
+
+def test_streaming_chat_backend_deadline_exception_emits_error_and_done() -> None:
+    fake = BackendDeadlineFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "slow"}],
+            "max_tokens": 4,
+            "stream": True,
+            "timeout_ms": 5000,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    assert fake.calls[0][1].deadline_at is not None
+    payloads = _sse_payloads(response.text)
+    payload = next(item for item in payloads if item.get("error"))
+    assert payload["choices"][0]["finish_reason"] == "error"
+    assert payload["choices"][0]["finish_details"] == {
+        "reason": "deadline_exceeded",
+        "deadline_exceeded": True,
+    }
+    assert payload["error"]["type"] == "timeout_error"
+    assert payload["error"]["code"] == "deadline_exceeded"
+    assert payload["error"]["param"] == "timeout_ms"
 
 
 def test_completions_endpoint_returns_openai_logprobs() -> None:

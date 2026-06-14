@@ -282,6 +282,9 @@ def validate_sampling_params(params: Any) -> None:
     for seed_value in getattr(params, "row_seeds", ()):
         if int(seed_value) < 0:
             raise ValueError("row_seeds must be non-negative")
+    deadline_at = getattr(params, "deadline_at", None)
+    if deadline_at is not None and not math.isfinite(float(deadline_at)):
+        raise ValueError("deadline_at must be finite when set")
     top_logprobs = int(getattr(params, "top_logprobs", 0))
     if top_logprobs < 0:
         raise ValueError("top_logprobs must be non-negative")

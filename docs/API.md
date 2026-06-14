@@ -218,7 +218,9 @@ deadline return HTTP 408 with:
 Streaming requests send HTTP `200 OK` when the SSE stream starts. If a deadline
 expires after that, the stream emits a final error SSE payload with
 `finish_reason: "error"` and the same `finish_details`, then emits
-`data: [DONE]`.
+`data: [DONE]`. The server also passes the absolute deadline into
+`SamplingParams.deadline_at`; PARO/GGUF generation checks it cooperatively at
+tokenization, prefill, decode, host-sampling, and graph-replay boundaries.
 
 Client disconnects are checked at the same server await/stream iteration
 boundaries. Detected disconnects cancel queued work and use structured
@@ -454,10 +456,10 @@ strings and should only be used in local, non-sensitive debugging sessions.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.
-- Request deadlines and detected client disconnects are enforced at server
-  await/iteration boundaries. They fail the HTTP/SSE request promptly, but
-  already-running backend calls or GPU kernels are not preempted until those
-  calls return.
+- Request deadlines are enforced at server await/iteration boundaries and at
+  PARO/GGUF cooperative decode boundaries. Already-running GPU kernels or a
+  captured graph replay are not preempted mid-call. Detected client disconnects
+  are still enforced at server await/stream iteration boundaries only.
 - HTTP generation requests route through the in-process generation batcher.
   Compatible queued prompts can coalesce into one prompt-list engine call, but
   true continuous decode, concurrent backend execution, max-active-session

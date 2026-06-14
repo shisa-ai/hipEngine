@@ -41,6 +41,7 @@ from hipengine.generation import (
     DecodeState,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    GenerationDeadlineExceeded,
     GenerationOutput,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
@@ -1679,6 +1680,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         request: CompletionRequest | ChatCompletionRequest,
         prompts: Sequence[str],
         engine: Any,
+        *,
+        deadline_at: float | None = None,
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
         thinking_budget = (
@@ -1719,6 +1722,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
             kv_scale_granularity=request.kv_scale_granularity or config.kv_scale_granularity,
             seed=request.seed,
+            deadline_at=deadline_at,
             **thinking_budget,
         )
 
@@ -1735,13 +1739,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def generate(
         prompts: Sequence[str],
         request: CompletionRequest | ChatCompletionRequest,
+        *,
+        deadline_at: float | None = None,
     ) -> _GeneratedBatch:
         try:
             _validate_generation_request(config, request)
             async with session_lock:
                 engine = get_llm()
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
-                sampling = sampling_params(request, prompts, engine)
+                sampling = sampling_params(request, prompts, engine, deadline_at=deadline_at)
                 if _request_n(request) > 1:
                     sampling = replace(
                         sampling,
@@ -1752,6 +1758,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
             else:
                 raw_outputs = await generation_batcher.submit(tuple(prompts), sampling, detailed=True)
+        except GenerationDeadlineExceeded as exc:
+            raise _deadline_exceeded_error(exc.finish_details) from exc
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
@@ -1771,6 +1779,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             ) from exc
 
         details = [_coerce_generation_output(item) for item in raw_outputs]
+        deadline_detail = _deadline_detail_from_outputs(details)
+        if deadline_detail is not None:
+            raise _deadline_exceeded_error(deadline_detail)
         outputs = [item.text for item in details]
         if len(outputs) != len(prompts):
             app.state.hipengine_server_metrics.record_failure()
@@ -1791,10 +1802,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         request: CompletionRequest | ChatCompletionRequest,
         control: _RequestControl | None = None,
     ) -> _GeneratedBatch:
+        active_control = control or _request_control(config, request)
         try:
             return await _await_with_request_control(
-                generate(prompts, request),
-                control or _request_control(config, request),
+                generate(prompts, request, deadline_at=active_control.deadline_at),
+                active_control,
             )
         except OpenAIHTTPError as exc:
             if exc.code in {"deadline_exceeded", "cancelled"}:
@@ -1818,7 +1830,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 async with session_lock:
                     engine = get_llm()
                     await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
-                    sampling = sampling_params(request, (prompt,), engine)
+                    sampling = sampling_params(request, (prompt,), engine, deadline_at=control.deadline_at)
                     _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
                     return engine, sampling
 
@@ -1839,6 +1851,31 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                 )
+        except GenerationDeadlineExceeded as exc:
+            openai_exc = _deadline_exceeded_error(exc.finish_details)
+            _record_openai_error(app.state.hipengine_server_metrics, openai_exc)
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                message=openai_exc.message,
+            )
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                openai_exc.message,
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                error_type=openai_exc.error_type,
+                finish_details=openai_exc.finish_details,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
+            yield "data: [DONE]\n\n"
+            return
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             _log_stream_failure(
@@ -2711,7 +2748,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 async with session_lock:
                     engine = get_llm()
                     await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
-                    sampling = sampling_params(request, (prompt,), engine)
+                    sampling = sampling_params(request, (prompt,), engine, deadline_at=control.deadline_at)
                     _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
                     return engine, sampling
 
@@ -2762,6 +2799,31 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
                     )
+        except GenerationDeadlineExceeded as exc:
+            openai_exc = _deadline_exceeded_error(exc.finish_details)
+            _record_openai_error(app.state.hipengine_server_metrics, openai_exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                message=openai_exc.message,
+            )
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                openai_exc.message,
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                error_type=openai_exc.error_type,
+                finish_details=openai_exc.finish_details,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+            )
+            yield "data: [DONE]\n\n"
+            return
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             _log_stream_failure(
@@ -4111,14 +4173,20 @@ def _cancelled_finish_details() -> dict[str, Any]:
     return FinishDetails(reason="cancelled", cancelled=True).to_json_dict()
 
 
-def _deadline_exceeded_error() -> OpenAIHTTPError:
+def _deadline_exceeded_error(finish_details: FinishDetails | Mapping[str, Any] | None = None) -> OpenAIHTTPError:
+    if isinstance(finish_details, FinishDetails):
+        details = finish_details.to_json_dict()
+    elif finish_details is not None:
+        details = dict(finish_details)
+    else:
+        details = _deadline_finish_details()
     return OpenAIHTTPError(
         408,
         "request deadline exceeded",
         error_type="timeout_error",
         code="deadline_exceeded",
         param="timeout_ms",
-        finish_details=_deadline_finish_details(),
+        finish_details=details,
     )
 
 
@@ -4190,6 +4258,14 @@ async def _iterate_with_request_control(
         closer = getattr(async_iterator, "aclose", None)
         if callable(closer):
             await closer()
+
+
+def _deadline_detail_from_outputs(details: Sequence[GenerationOutput]) -> FinishDetails | None:
+    for item in details:
+        finish = item.finish_details
+        if finish is not None and finish.deadline_exceeded:
+            return finish
+    return None
 
 
 def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
@@ -4916,6 +4992,7 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         str(sampling.kv_scale_granularity),
         None if sampling.seed is None else int(sampling.seed),
         tuple(int(seed) for seed in sampling.row_seeds),
+        None if sampling.deadline_at is None else float(sampling.deadline_at),
         bool(sampling.logprobs),
         int(sampling.top_logprobs),
     )

@@ -61,7 +61,10 @@ Already available or recently added:
 - Request deadlines are exposed as per-request `timeout_ms` and server default
   `--request-timeout-ms` / `HIPENGINE_REQUEST_TIMEOUT_MS`. Buffered requests
   return HTTP 408 with structured deadline finish details; live streams emit an
-  SSE error chunk with the same detail and then `[DONE]`.
+  SSE error chunk with the same detail and then `[DONE]`. The server lowers the
+  deadline into `SamplingParams.deadline_at` / `GenerationRequest.deadline_at`,
+  and PARO/GGUF generation checks it cooperatively around tokenization,
+  prefill, decode, host-sampled steps, and graph replay boundaries.
 - OpenAI-style chat `tools` / `tool_choice` prompt injection and output parsing
   for Qwen-style `<tool_call>{...}</tool_call>` blocks.
 - Strict tool result validation for `tool_choice="none"`, `"required"`,
@@ -891,6 +894,11 @@ Current code reality:
 - Server code lowers the relative timeout to a `time.perf_counter()` deadline
   and applies it to preparation, queued/buffered generation, token-stream
   iteration, and buffered `n>1` streaming.
+- The lowered deadline is carried through `SamplingParams.deadline_at` and
+  `GenerationRequest.deadline_at`. `GenerationDeadlineExceeded` carries
+  `FinishDetails(reason="deadline_exceeded", deadline_exceeded=true)`, and the
+  OpenAI server maps either that exception or a backend-authored deadline finish
+  detail to the same HTTP 408 / SSE error contract.
 - Buffered deadline expiry returns HTTP 408 with OpenAI-style
   `error.type="timeout_error"`, `error.code="deadline_exceeded"`, and
   `error.finish_details.reason="deadline_exceeded"`.
@@ -902,18 +910,23 @@ Current code reality:
   `cancelled` finish details and HTTP-style status 499 when the transport can
   still surface an error payload.
 - `_GenerationBatcher` marks abandoned stream items cancelled and skips queued
-  futures that were cancelled before dispatch. Already-running blocking
-  generator calls are not preempted inside the backend; the awaiting server task
-  fails fast on timeout/disconnect and later requests can reuse the server once
-  the worker unwinds.
+  futures that were cancelled before dispatch. Requests with different absolute
+  deadlines do not coalesce into the same batcher engine call.
+- PARO and GGUF resident generation paths check deadlines before and after
+  tokenization/prefill/decode calls, including host-sampled and scheduler-owned
+  PARO c>N loops. Captured graph replay and individual GPU kernels are not
+  preempted mid-call; the check happens immediately before and after the replay
+  or kernel-backed step.
 
 Remaining implementation:
 
-- resident decode / GPU loops still need explicit cooperative deadline checks
-  and row/session cleanup hooks for already-running kernels;
-- backend `GenerationOutput.finish_details` still needs native
-  `cancelled=true` / `deadline_exceeded=true` emission when lower layers stop a
-  row themselves.
+- backend cancellation still needs a cancellation token lowered past server
+  await/stream boundaries; already-running backend calls only observe
+  deadlines, not disconnect cancellation;
+- explicit row/session cleanup hooks for deadline/cancel exits still need
+  active-row leak tests on the resident scheduler paths;
+- native `cancelled=true` finish details remain future work when lower layers
+  stop a row themselves.
 
 Exit gates:
 

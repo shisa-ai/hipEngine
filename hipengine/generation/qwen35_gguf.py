@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.constraints import token_sequence_state_for_tokens
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
@@ -55,6 +56,7 @@ class Qwen35GGUFBringupGenerator:
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
+        raise_if_generation_deadline_expired(request)
         plan = plan_sampler(request)
         if request.max_tokens == 0:
             self.last_generation_outputs = tuple(
@@ -74,7 +76,9 @@ class Qwen35GGUFBringupGenerator:
         outputs: list[GenerationOutput] = []
         with Qwen35GGUFResidentSession(self.model_path) as session:
             for row_index, prompt in enumerate(request.prompts):
+                raise_if_generation_deadline_expired(request)
                 prompt_ids = self.tokenizer.encode(prompt)
+                raise_if_generation_deadline_expired(request)
                 if not prompt_ids:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 if plan.mode is SamplingMode.GREEDY_FAST:
@@ -111,14 +115,18 @@ class Qwen35GGUFBringupGenerator:
         request: GenerationRequest,
     ) -> list[int]:
         generated_ids: list[int] = []
+        raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=False)
+        raise_if_generation_deadline_expired(request)
         generated_ids.append(int(result.token_id))
         if request.ignore_eos or int(result.token_id) != self.tokenizer.eos_token_id:
             remaining = request.max_tokens - 1
             if remaining > 0:
                 if _session_uses_host_routed_decode(session):
                     for _ in range(remaining):
+                        raise_if_generation_deadline_expired(request)
                         step = session.step(generated_ids[-1], return_logits=False)
+                        raise_if_generation_deadline_expired(request)
                         generated_ids.append(int(step.token_id))
                         if (
                             not request.ignore_eos
@@ -132,8 +140,11 @@ class Qwen35GGUFBringupGenerator:
                         max_replay_steps=remaining,
                         record_steps=remaining,
                     ) as graph:
+                        raise_if_generation_deadline_expired(request)
                         graph.replay(remaining)
+                        raise_if_generation_deadline_expired(request)
                         for token_id in graph.read_generated_token_ids(remaining):
+                            raise_if_generation_deadline_expired(request)
                             generated_ids.append(int(token_id))
                             if (
                                 not request.ignore_eos
@@ -157,7 +168,9 @@ class Qwen35GGUFBringupGenerator:
             thinking_budget=thinking_budget_state_from_params(request),
         )
         samples = []
+        raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
+        raise_if_generation_deadline_expired(request)
         sample = _select_from_gguf_logits(result, request, state)
         samples.append(sample)
         generated_ids = [int(sample.token_id)]
@@ -169,7 +182,9 @@ class Qwen35GGUFBringupGenerator:
                 telemetry=_gguf_telemetry(prompt_ids, generated_ids, request, row_index=row_index),
             )
         for _ in range(request.max_tokens - 1):
+            raise_if_generation_deadline_expired(request)
             step = session.step(generated_ids[-1], return_logits=True)
+            raise_if_generation_deadline_expired(request)
             sample = _select_from_gguf_logits(step, request, state)
             samples.append(sample)
             generated_ids.append(int(sample.token_id))

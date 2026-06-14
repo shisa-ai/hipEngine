@@ -47,6 +47,7 @@ class GenerationRequest:
     kv_scale_granularity: str = "per_token_head"
     seed: int | None = None
     row_seeds: tuple[int, ...] = ()
+    deadline_at: float | None = None
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -85,6 +86,7 @@ class GenerationRequest:
         object.__setattr__(self, "kv_scale_granularity", str(self.kv_scale_granularity))
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "row_seeds", tuple(int(seed) for seed in self.row_seeds))
+        object.__setattr__(self, "deadline_at", None if self.deadline_at is None else float(self.deadline_at))
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)

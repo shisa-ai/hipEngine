@@ -3,9 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 import hipengine.generation.qwen35_paro as qwen35
-from hipengine.generation import GenerationRequest
+from hipengine.generation import GenerationDeadlineExceeded, GenerationRequest
 from hipengine.generation.sampling import select_token
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
@@ -317,6 +318,45 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
     assert calls[0][3] == (10, 11)
     assert ("step", 100, 2, True) in calls
     assert calls[-1] == ("configure_host_sampler", None, None, None)
+
+
+def test_qwen35_paro_generator_checks_deadline_after_prefill(monkeypatch) -> None:
+    calls = []
+
+    def check_deadline(value) -> None:
+        calls.append(("deadline", None if value is None else getattr(value, "deadline_at", value)))
+        if ("prefill_native", (10, 11), True) in calls:
+            raise GenerationDeadlineExceeded(deadline_at=getattr(value, "deadline_at", value))
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+        def capture_decode_graph(self, **kwargs):  # pragma: no cover - deadline should stop first
+            calls.append(("capture_decode_graph", kwargs))
+            raise AssertionError("deadline should stop before graph replay")
+
+    monkeypatch.setattr(qwen35, "raise_if_generation_deadline_expired", check_deadline)
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    with pytest.raises(GenerationDeadlineExceeded):
+        generator.generate(_request(max_tokens=2, deadline_at=123.0))
+
+    assert ("prefill_native", (10, 11), True) in calls
+    assert not any(call[0] == "capture_decode_graph" for call in calls)
 
 
 def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) -> None:

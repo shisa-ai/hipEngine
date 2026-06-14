@@ -26,6 +26,11 @@ from hipengine.generation.constraints import (
     normalize_token_sequences,
     token_sequence_state_for_tokens,
 )
+from hipengine.generation.deadline import (
+    GenerationDeadlineExceeded,
+    generation_deadline_expired,
+    raise_if_generation_deadline_expired,
+)
 from hipengine.generation.engine_loop import (
     PREFILL_DECODE_POLICIES,
     EngineLoopConfig,
@@ -109,6 +114,7 @@ __all__ = [
     "EngineLoopRunner",
     "FinishDetails",
     "ForcedTokenQueue",
+    "GenerationDeadlineExceeded",
     "GenerationTelemetry",
     "GeneratedToken",
     "GenerationKey",
@@ -147,6 +153,7 @@ __all__ = [
     "derive_row_seed",
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
+    "generation_deadline_expired",
     "normalize_token_sequences",
     "normalize_logit_bias_pairs",
     "plan_sampler",
@@ -154,6 +161,7 @@ __all__ = [
     "register_text_generator",
     "registered_text_generators",
     "resolve_text_generator",
+    "raise_if_generation_deadline_expired",
     "row_seed_for_index",
     "sampler_fast_path_blockers",
     "select_token",

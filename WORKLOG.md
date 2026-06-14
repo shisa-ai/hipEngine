@@ -88254,3 +88254,25 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `21 passed`.
 - `python3 -m pytest tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `134 passed`.
 - `python3 -m ruff check hipengine/generation/finish.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC cooperative backend deadlines
+
+Threaded request deadlines through `SamplingParams.deadline_at` and
+`GenerationRequest.deadline_at`, added a generation-layer
+`GenerationDeadlineExceeded` exception with structured deadline finish details,
+and mapped backend deadline exceptions or backend-authored deadline finish
+details to the existing HTTP 408 / SSE error contract. PARO and GGUF generation
+now check deadlines cooperatively before and after tokenization, prefill,
+host-sampled decode, scheduler-owned c>N decode, and graph replay boundaries.
+The OpenAI batcher keeps different absolute deadlines in separate engine calls.
+Docs now call out the remaining limitation: GPU kernels and captured graph
+replays are not preempted mid-call, and disconnect cancellation is still only
+checked at server await/stream boundaries.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/deadline.py hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py`.
+- `python3 -m pytest tests/test_server_api.py::test_backend_deadline_exception_maps_to_completion_408 tests/test_server_api.py::test_backend_deadline_finish_detail_maps_to_chat_408 tests/test_server_api.py::test_streaming_chat_backend_deadline_exception_emits_error_and_done tests/test_server_api.py::test_generation_batcher_keeps_different_deadlines_separate tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_checks_deadline_after_prefill tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_deadline_after_step tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params -q` -> `7 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `117 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py -q` -> `31 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `25 passed`.
+- `python3 -m ruff check hipengine/generation/deadline.py hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py` -> `All checks passed!`.

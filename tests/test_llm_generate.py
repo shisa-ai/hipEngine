@@ -163,6 +163,7 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
             thinking_hard_token_cap=8,
             thinking_soft_close_window=2,
             seed=123,
+            deadline_at=456.0,
         ),
     ) == ["ok"]
     assert calls["request"].top_k == 40
@@ -180,6 +181,7 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     assert calls["request"].thinking_hard_token_cap == 8
     assert calls["request"].thinking_soft_close_window == 2
     assert calls["request"].seed == 123
+    assert calls["request"].deadline_at == 456.0
 
 
 def test_llm_reuses_generator_across_generate_calls(monkeypatch) -> None:
