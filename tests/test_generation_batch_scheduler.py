@@ -16138,6 +16138,8 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
             eos_token_id=99,
             seed=7,
             stop_token_sequences=((12, 13),),
+            post_thinking_forced_tokens_pending=(44, 45),
+            post_thinking_forced_token_reason="tool_choice_required",
             thinking_close_token_ids=(42, 43),
             thinking_hard_token_cap=8,
             thinking_soft_close_window=2,
@@ -16187,6 +16189,8 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.stop_token_sequence_rows == ((), ((12, 13),), ())
     assert block.forced_token_rows == ((), (), (55, 56))
     assert block.forced_token_reasons == (None, None, "tool_choice_required")
+    assert block.post_thinking_forced_token_rows == ((), (44, 45), ())
+    assert block.post_thinking_forced_token_reasons == (None, "tool_choice_required", None)
     assert block.thinking_close_token_rows == ((), (42, 43), ())
     assert block.thinking_hard_token_caps == (None, 8, None)
     assert block.thinking_soft_close_windows == (0, 2, 0)
@@ -16199,6 +16203,8 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r1).min_tokens == 2
     assert block.params_for(r1).eos_token_id == 99
     assert block.params_for(r1).stop_token_sequences == ((12, 13),)
+    assert block.params_for(r1).post_thinking_forced_tokens_pending == (44, 45)
+    assert block.params_for(r1).post_thinking_forced_token_reason == "tool_choice_required"
     assert block.params_for(r1).thinking_close_token_ids == (42, 43)
     assert block.params_for(r1).thinking_hard_token_cap == 8
     assert block.params_for(r1).thinking_soft_close_window == 2
@@ -16206,6 +16212,8 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r2).forced_token_reason == "tool_choice_required"
     assert scheduler.sampler_state(r1).thinking_budget is not None
     assert scheduler.sampler_state(r1).thinking_budget.close_sequence == (42, 43)
+    assert scheduler.sampler_state(r1).post_thinking_forced_tokens_pending.pending_tokens == (44, 45)
+    assert scheduler.sampler_state(r1).post_thinking_forced_token_reason == "tool_choice_required"
     assert scheduler.sampler_state(r2).forced_tokens == (55, 56)
     assert scheduler.sampler_state(r2).forced_token_reason == "tool_choice_required"
 

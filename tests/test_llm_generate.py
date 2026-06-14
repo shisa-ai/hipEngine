@@ -162,6 +162,8 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
             stop_token_sequences=((100, 101),),
             forced_tokens_pending=(104, 105),
             forced_token_reason="tool_choice_required",
+            post_thinking_forced_tokens_pending=(106, 107),
+            post_thinking_forced_token_reason="post_think_tool",
             thinking_close_token_ids=(102, 103),
             thinking_hard_token_cap=8,
             thinking_soft_close_window=2,
@@ -183,6 +185,8 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     assert calls["request"].stop_token_sequences == ((100, 101),)
     assert calls["request"].forced_tokens_pending == (104, 105)
     assert calls["request"].forced_token_reason == "tool_choice_required"
+    assert calls["request"].post_thinking_forced_tokens_pending == (106, 107)
+    assert calls["request"].post_thinking_forced_token_reason == "post_think_tool"
     assert calls["request"].thinking_close_token_ids == (102, 103)
     assert calls["request"].thinking_hard_token_cap == 8
     assert calls["request"].thinking_soft_close_window == 2

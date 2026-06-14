@@ -263,13 +263,12 @@ and `finish_details.reason` set to `invalid_tool_call`,
 and tokenization is available, the sampler also suppresses the first token of
 the Qwen `<tool_call>` start marker; this is a no-tool guard, not full
 grammar-constrained tool decoding. When `tool_choice="required"` or a specific
-function is requested, tokenization is available, and no tokenized thinking
-budget is active, the sampler forces the tokenized `<tool_call>` start marker
-before ordinary token selection. This prevents ordinary prose from being
-selected as the first visible token, but it does not yet constrain the function
-name, arguments JSON, or closing tag. Requests that combine required tool choice
-with tokenized thinking budgets keep the reasoning budget controls and rely on
-post-generation strict validation until phase-aware tool forcing exists.
+function is requested and tokenization is available, the sampler forces the
+tokenized `<tool_call>` start marker before ordinary token selection. If a
+tokenized thinking budget is active, the same marker is queued until the
+`</think>` close sequence has moved the row into answer phase. This prevents
+ordinary prose from being selected as the first visible answer/tool token, but
+it does not yet constrain the function name, arguments JSON, or closing tag.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 object `properties` / `required` / `additionalProperties: false`, array `items`
@@ -498,7 +497,8 @@ strings and should only be used in local, non-sensitive debugging sessions.
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token
   suppressions, min-token/EOS policy, token stops, pending forced-token queues,
-  temperature sampling, and requested logprobs require autoregressive fallback.
+  post-thinking forced-token queues, temperature sampling, and requested
+  logprobs require autoregressive fallback.
   The manifest also includes `incompatible_conditions`, for example
   `temperature > 0`, so inert greedy `top_p` / `top_k` / `min_p` settings are
   not mistaken for MTP blockers.

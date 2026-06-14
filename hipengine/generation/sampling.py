@@ -33,6 +33,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "stop_token_ids",
     "stop_token_sequences",
     "forced_tokens_pending",
+    "post_thinking_forced_tokens_pending",
     "thinking_budget",
     "logprobs",
     "top_logprobs",
@@ -48,6 +49,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
+    "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
     "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
@@ -89,6 +91,8 @@ class RowSamplingState:
     step_index: int = 0
     forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
     forced_token_reason: str | None = None
+    post_thinking_forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
+    post_thinking_forced_token_reason: str | None = None
     thinking_budget: ThinkingBudgetState | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
 
@@ -106,6 +110,13 @@ class RowSamplingState:
                 self.forced_tokens_pending,
                 reason=self.forced_token_reason,
             )
+        if isinstance(self.post_thinking_forced_tokens_pending, ForcedTokenQueue):
+            post_thinking_forced = self.post_thinking_forced_tokens_pending
+        else:
+            post_thinking_forced = ForcedTokenQueue(
+                self.post_thinking_forced_tokens_pending,
+                reason=self.post_thinking_forced_token_reason,
+            )
         if self.thinking_budget is not None:
             budget_forced = self.thinking_budget.forced_tokens
             if forced is not budget_forced and forced.pending_tokens:
@@ -113,6 +124,8 @@ class RowSamplingState:
             forced = budget_forced
         self.forced_tokens_pending = forced
         self.forced_token_reason = forced.reason
+        self.post_thinking_forced_tokens_pending = post_thinking_forced
+        self.post_thinking_forced_token_reason = post_thinking_forced.reason
         if self.step_index < 0:
             raise ValueError("step_index must be non-negative")
         self._rng = np.random.Generator(np.random.PCG64(self.seed))
@@ -165,7 +178,18 @@ class RowSamplingState:
             return
         self.thinking_budget.ensure_hard_close()
         self.forced_tokens_pending = self.thinking_budget.forced_tokens
+        self._queue_post_thinking_forced_tokens_if_ready()
         self.forced_token_reason = self.forced_tokens_pending.reason
+
+    def _queue_post_thinking_forced_tokens_if_ready(self) -> None:
+        if self.thinking_budget is None or self.thinking_budget.phase != "answer":
+            return
+        pending = self.post_thinking_forced_tokens_pending
+        if not pending or self.forced_tokens_pending:
+            return
+        self.forced_tokens_pending.extend(pending.pending_tokens, reason=pending.reason)
+        self.post_thinking_forced_tokens_pending = ForcedTokenQueue()
+        self.post_thinking_forced_token_reason = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +295,10 @@ def validate_sampling_params(params: Any) -> None:
     for token_id in _forced_tokens_pending(params):
         if int(token_id) < 0:
             raise ValueError("forced_tokens_pending must be non-negative")
+    post_thinking_forced_tokens = _post_thinking_forced_tokens_pending(params)
+    for token_id in post_thinking_forced_tokens:
+        if int(token_id) < 0:
+            raise ValueError("post_thinking_forced_tokens_pending must be non-negative")
     min_tokens = int(getattr(params, "min_tokens", 0))
     if min_tokens < 0:
         raise ValueError("min_tokens must be non-negative")
@@ -304,6 +332,8 @@ def validate_sampling_params(params: Any) -> None:
         raise ValueError("thinking_hard_token_cap must be non-negative")
     if hard_token_cap is not None and not close_token_ids:
         raise ValueError("thinking_hard_token_cap requires thinking_close_token_ids")
+    if post_thinking_forced_tokens and (hard_token_cap is None or not close_token_ids):
+        raise ValueError("post_thinking_forced_tokens_pending requires a thinking budget")
     soft_close_window = int(getattr(params, "thinking_soft_close_window", 0))
     if soft_close_window < 0:
         raise ValueError("thinking_soft_close_window must be non-negative")
@@ -333,6 +363,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("thinking_budget")
     if _forced_tokens_pending(params):
         names.append("forced_tokens_pending")
+    if _post_thinking_forced_tokens_pending(params):
+        names.append("post_thinking_forced_tokens_pending")
     return tuple(names)
 
 
@@ -367,6 +399,15 @@ def _suppress_token_ids(params: Any) -> tuple[int, ...]:
 
 def _forced_tokens_pending(params: Any) -> tuple[int, ...]:
     queue = getattr(params, "forced_tokens_pending", ())
+    if isinstance(queue, ForcedTokenQueue):
+        return queue.pending_tokens
+    if queue is None:
+        return ()
+    return tuple(int(token) for token in queue)
+
+
+def _post_thinking_forced_tokens_pending(params: Any) -> tuple[int, ...]:
+    queue = getattr(params, "post_thinking_forced_tokens_pending", ())
     if isinstance(queue, ForcedTokenQueue):
         return queue.pending_tokens
     if queue is None:
@@ -541,6 +582,8 @@ def select_token(
             seed=derive_row_seed(getattr(params, "seed", None), 0),
             forced_tokens_pending=_forced_tokens_pending(params),
             forced_token_reason=getattr(params, "forced_token_reason", None),
+            post_thinking_forced_tokens_pending=_post_thinking_forced_tokens_pending(params),
+            post_thinking_forced_token_reason=getattr(params, "post_thinking_forced_token_reason", None),
         )
     )
     source = np.asarray(logits, dtype=np.float32)

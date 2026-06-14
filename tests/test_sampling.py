@@ -46,6 +46,8 @@ def _params(**overrides):
         "stop_token_sequences": (),
         "forced_tokens_pending": (),
         "forced_token_reason": None,
+        "post_thinking_forced_tokens_pending": (),
+        "post_thinking_forced_token_reason": None,
         "thinking_close_token_ids": (),
         "thinking_hard_token_cap": None,
         "thinking_soft_close_window": 0,
@@ -190,6 +192,16 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     )
     assert speculative_mtp_sampling_blockers(_params(forced_tokens_pending=(10, 11))) == (
         "forced_tokens_pending",
+    )
+    assert speculative_mtp_sampling_blockers(
+        _params(
+            thinking_close_token_ids=(10, 11),
+            thinking_hard_token_cap=4,
+            post_thinking_forced_tokens_pending=(12,),
+        )
+    ) == (
+        "thinking_budget",
+        "post_thinking_forced_tokens_pending",
     )
     thinking_budget = _params(thinking_close_token_ids=(10, 11), thinking_hard_token_cap=2)
     assert thinking_budget_active(thinking_budget) is True
@@ -393,6 +405,35 @@ def test_thinking_budget_suppresses_eos_until_answer_phase() -> None:
     assert answer.token_id == 1
 
 
+def test_post_thinking_forced_tokens_queue_after_close_sequence() -> None:
+    params = _params(
+        thinking_close_token_ids=(2,),
+        thinking_hard_token_cap=8,
+        post_thinking_forced_tokens_pending=(3, 4),
+        post_thinking_forced_token_reason="tool_choice_required",
+    )
+    state = RowSamplingState(
+        thinking_budget=thinking_budget_state_from_params(params),
+        post_thinking_forced_tokens_pending=params.post_thinking_forced_tokens_pending,
+        post_thinking_forced_token_reason=params.post_thinking_forced_token_reason,
+    )
+
+    close = select_token(np.array([0.0, 1.0, 5.0, 0.0, 0.0], dtype=np.float32), params, state)
+    first_tool = select_token(np.array([10.0, 9.0, 8.0, 0.0, 0.0], dtype=np.float32), params, state)
+    second_tool = select_token(np.array([10.0, 9.0, 8.0, 0.0, 0.0], dtype=np.float32), params, state)
+
+    assert close.token_id == 2
+    assert close.forced is False
+    assert first_tool.token_id == 3
+    assert first_tool.forced is True
+    assert first_tool.forced_reason == "tool_choice_required"
+    assert first_tool.forced_tokens_remaining == 1
+    assert second_tool.token_id == 4
+    assert second_tool.forced is True
+    assert second_tool.forced_tokens_remaining == 0
+    assert state.generated_tokens == [2, 3, 4]
+
+
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:
     state = RowSamplingState(
         seed=123,
@@ -460,6 +501,11 @@ def test_suppressions_validate_vocab_and_cannot_remove_every_token() -> None:
         select_token(np.array([1.0, 2.0], dtype=np.float32), _params(min_tokens=1))
     with pytest.raises(ValueError, match="forced_tokens_pending"):
         select_token(np.array([1.0, 2.0], dtype=np.float32), _params(forced_tokens_pending=(-1,)))
+    with pytest.raises(ValueError, match="post_thinking_forced_tokens_pending"):
+        select_token(
+            np.array([1.0, 2.0], dtype=np.float32),
+            _params(post_thinking_forced_tokens_pending=(1,)),
+        )
 
 
 def test_logit_bias_and_penalties_apply_before_processed_argmax() -> None:

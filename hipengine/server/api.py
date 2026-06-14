@@ -1715,9 +1715,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         forced_tool_token_ids = (
             _required_tool_sampling_forced_token_ids(request, engine)
-            if isinstance(request, ChatCompletionRequest) and not thinking_budget
+            if isinstance(request, ChatCompletionRequest)
             else ()
         )
+        initial_forced_tool_token_ids = () if thinking_budget else forced_tool_token_ids
+        post_thinking_forced_tool_token_ids = forced_tool_token_ids if thinking_budget else ()
         suppress_token_ids = tuple(
             dict.fromkeys(
                 (
@@ -1749,8 +1751,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
             stop_token_ids=stop_token_ids,
             stop_token_sequences=stop_token_sequences,
-            forced_tokens_pending=forced_tool_token_ids,
-            forced_token_reason="tool_choice_required" if forced_tool_token_ids else None,
+            forced_tokens_pending=initial_forced_tool_token_ids,
+            forced_token_reason="tool_choice_required" if initial_forced_tool_token_ids else None,
+            post_thinking_forced_tokens_pending=post_thinking_forced_tool_token_ids,
+            post_thinking_forced_token_reason="tool_choice_required" if post_thinking_forced_tool_token_ids else None,
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -2273,7 +2277,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "parallel_tool_calls": True,
                     "no_tool_start_suppression": tokenizer_caps["tokenize"],
                     "required_tool_start_forcing": tokenizer_caps["tokenize"],
-                    "required_tool_start_forcing_scope": "no_tokenized_thinking_budget",
+                    "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
                 },
                 "reasoning_controls": {
                     "enabled": True,

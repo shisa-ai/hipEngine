@@ -168,6 +168,8 @@ class Qwen35GGUFBringupGenerator:
             row_index=row_index,
             forced_tokens_pending=sampling_request.forced_tokens_pending,
             forced_token_reason=sampling_request.forced_token_reason,
+            post_thinking_forced_tokens_pending=sampling_request.post_thinking_forced_tokens_pending,
+            post_thinking_forced_token_reason=sampling_request.post_thinking_forced_token_reason,
             thinking_budget=thinking_budget_state_from_params(sampling_request),
         )
         samples = []

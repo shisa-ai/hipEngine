@@ -121,6 +121,49 @@ def test_gguf_sampled_request_forced_token_overrides_logits(monkeypatch) -> None
     assert _decode_state(outputs[0])["active_processors"] == ["forced_tokens_pending"]
 
 
+def test_gguf_sampled_post_thinking_forced_tokens_queue_after_close(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 2] = 5.0
+            return SimpleNamespace(token_id=2, logits=logits)
+
+        def step(self, token_id: int, *, return_logits=True):
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 1] = 10.0
+            return SimpleNamespace(token_id=1, logits=logits)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(
+        _request(
+            max_tokens=3,
+            thinking_close_token_ids=(2,),
+            thinking_hard_token_cap=8,
+            post_thinking_forced_tokens_pending=(3, 16),
+            post_thinking_forced_token_reason="tool_choice_required",
+        )
+    )
+
+    assert outputs[0].text == "CDQ"
+    assert outputs[0].finish_details is not None
+    assert outputs[0].finish_details.to_json_dict()["phase"] == "answer"
+    assert _decode_state(outputs[0])["active_processors"] == [
+        "thinking_budget",
+        "post_thinking_forced_tokens_pending",
+    ]
+
+
 def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
     calls = []
 

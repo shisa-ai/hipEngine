@@ -88430,3 +88430,30 @@ Validation:
 - `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 -m ruff check tests/test_generation_batch_scheduler.py --ignore F811,F841` -> `All checks passed!` (full-file ruff still has pre-existing F811/F841 outside this change).
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC post-thinking tool start forcing
+
+Implemented phase-aware required-tool start forcing for requests that also use
+tokenized thinking budgets. `RowSamplingState` now owns a dormant
+post-thinking forced-token queue that is promoted into the active forced queue
+only after the thinking close sequence moves the row into answer phase. The
+queue is plumbed through `SamplingParams`, `GenerationRequest`, scheduler
+per-row params/blocks, PARO row state cloning, and GGUF sampled decode. Chat
+requests with `tool_choice="required"` or a specific function now force
+`<tool_call>` immediately for non-thinking requests and after `</think>` for
+tokenized-thinking requests. The capabilities/MTP manifest now names
+`post_thinking_forced_tokens_pending` as an AR-fallback blocker, and docs/API.md,
+docs/AGENTIC.md, and docs/SAMPLING.md were updated accordingly.
+
+Validation:
+- `python3 -m py_compile hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_sampling.py::test_post_thinking_forced_tokens_queue_after_close_sequence tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy tests/test_sampling.py::test_suppressions_validate_vocab_and_cannot_remove_every_token tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params -q` -> `4 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_qwen35_paro.py::test_qwen35_paro_row_sampling_state_queues_post_thinking_forced_tokens tests/test_generation_qwen35_gguf_sampling.py::test_gguf_sampled_post_thinking_forced_tokens_queue_after_close -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_tool_call_start_tokens tests/test_server_api.py::test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_local_agent_config.py::test_local_agent_config_matches_capabilities tests/test_local_agent_config.py::test_local_agent_config_matches_server_capabilities_manifest -q` -> `6 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `73 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `124 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `9 passed`.
+- `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 -m ruff check tests/test_generation_batch_scheduler.py --ignore F811,F841` -> `All checks passed!` (full-file ruff still has pre-existing F811/F841 outside this change).
+- `git diff --check` -> clean.

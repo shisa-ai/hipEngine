@@ -1072,6 +1072,8 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         stop_token_sequences=request.stop_token_sequences,
         forced_tokens_pending=request.forced_tokens_pending,
         forced_token_reason=request.forced_token_reason,
+        post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
+        post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
         thinking_close_token_ids=request.thinking_close_token_ids,
         thinking_hard_token_cap=request.thinking_hard_token_cap,
         thinking_soft_close_window=request.thinking_soft_close_window,
@@ -1099,6 +1101,8 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
             row_index=state.row_index,
             generated_tokens=tuple(state.generated_tokens),
             step_index=state.step_index,
+            post_thinking_forced_tokens_pending=state.post_thinking_forced_tokens_pending.pending_tokens,
+            post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
             thinking_budget=thinking_budget,
         )
     return RowSamplingState(
@@ -1110,6 +1114,8 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
         step_index=state.step_index,
         forced_tokens_pending=state.forced_tokens,
         forced_token_reason=state.forced_token_reason,
+        post_thinking_forced_tokens_pending=state.post_thinking_forced_tokens_pending.pending_tokens,
+        post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
     )
 
 
@@ -1183,6 +1189,8 @@ def _row_sampling_state(
         row_index=row_index,
         forced_tokens_pending=request.forced_tokens_pending,
         forced_token_reason=request.forced_token_reason,
+        post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
+        post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 

@@ -32,6 +32,8 @@ class SamplingParams:
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
     forced_tokens_pending: tuple[int, ...] = ()
     forced_token_reason: str | None = None
+    post_thinking_forced_tokens_pending: tuple[int, ...] = ()
+    post_thinking_forced_token_reason: str | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -65,6 +67,16 @@ class SamplingParams:
         object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
         object.__setattr__(self, "forced_tokens_pending", tuple(int(token) for token in self.forced_tokens_pending))
         object.__setattr__(self, "forced_token_reason", None if self.forced_token_reason is None else str(self.forced_token_reason))
+        object.__setattr__(
+            self,
+            "post_thinking_forced_tokens_pending",
+            tuple(int(token) for token in self.post_thinking_forced_tokens_pending),
+        )
+        object.__setattr__(
+            self,
+            "post_thinking_forced_token_reason",
+            None if self.post_thinking_forced_token_reason is None else str(self.post_thinking_forced_token_reason),
+        )
         object.__setattr__(
             self,
             "thinking_close_token_ids",
@@ -319,6 +331,8 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         stop_token_sequences=params.stop_token_sequences,
         forced_tokens_pending=params.forced_tokens_pending,
         forced_token_reason=params.forced_token_reason,
+        post_thinking_forced_tokens_pending=params.post_thinking_forced_tokens_pending,
+        post_thinking_forced_token_reason=params.post_thinking_forced_token_reason,
         thinking_close_token_ids=params.thinking_close_token_ids,
         thinking_hard_token_cap=params.thinking_hard_token_cap,
         thinking_soft_close_window=params.thinking_soft_close_window,

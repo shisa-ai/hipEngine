@@ -61,7 +61,7 @@ def _capabilities(**overrides):
                 "parallel_tool_calls": True,
                 "no_tool_start_suppression": True,
                 "required_tool_start_forcing": True,
-                "required_tool_start_forcing_scope": "no_tokenized_thinking_budget",
+                "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
             },
             "reasoning_controls": {
                 "enabled": True,
