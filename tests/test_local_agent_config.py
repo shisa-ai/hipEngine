@@ -214,6 +214,68 @@ def test_pi_agent_models_config_validates_with_helper() -> None:
     assert summary["providers"][0]["models"][0]["reasoning"] is True
 
 
+def test_pi_agent_models_config_matches_server_capabilities_manifest() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+    app = create_app(
+        ServerConfig(
+            model="/models/fake",
+            served_model_name=model_id,
+            eager_load=False,
+            max_context_tokens=131072,
+        ),
+        llm=_FakeLLM(),
+    )
+    capabilities = TestClient(app).get("/v1/hipengine/capabilities").json()
+
+    summary = validate_pi_agent_models.validate_pi_models_against_capabilities(
+        config,
+        capabilities,
+    )
+
+    assert summary["capability_model"] == model_id
+    assert summary["qwen_thinking"] is True
+    assert summary["tools"] is True
+    assert summary["streaming_usage"] is True
+
+
+def test_pi_agent_models_validator_rejects_live_model_mismatch() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="not listed"):
+        validate_pi_agent_models.validate_pi_models_against_capabilities(
+            config,
+            {
+                "model": {"id": "other-model"},
+                "context": {"effective_max_context_tokens": 131072},
+                "features": {
+                    "chat_completions": True,
+                    "streaming": True,
+                    "stream_options": {"include_usage": True},
+                    "tools": {"enabled": True},
+                    "reasoning_controls": {"enabled": True, "fields": ["enable_thinking"]},
+                },
+            },
+        )
+
+
+def test_pi_agent_chat_smoke_payload_uses_qwen_tool_shape() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+
+    payload = validate_pi_agent_models.build_pi_chat_smoke_payload(
+        config,
+        {"model": {"id": model_id}},
+    )
+
+    assert payload["model"] == model_id
+    assert payload["temperature"] == 0
+    assert payload["enable_thinking"] is False
+    assert payload["session"] == {"commit": "append_none"}
+    assert payload["tool_choice"] == {"type": "function", "function": {"name": "record_result"}}
+    assert payload["tools"][0]["function"]["name"] == "record_result"
+
+
 def test_pi_agent_models_validator_rejects_reasoning_disabled() -> None:
     config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
     config["providers"]["hipengine-local"]["models"][0]["reasoning"] = False

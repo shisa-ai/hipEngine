@@ -426,6 +426,16 @@ python3 scripts/validate_pi_agent_models.py \
   --config docs/examples/pi-agent/models.json
 ```
 
+Validate the same snippet against a running server capability manifest, and
+optionally POST a small Qwen tool-call smoke request, with:
+
+```bash
+python3 scripts/validate_pi_agent_models.py \
+  --config docs/examples/pi-agent/models.json \
+  --base-url http://127.0.0.1:8000/v1 \
+  --chat-smoke
+```
+
 ### Local-agent config validation
 
 A minimal OpenAI-compatible local-agent config is checked in at

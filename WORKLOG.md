@@ -88739,3 +88739,21 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC pi live capability validation
+
+Extended `scripts/validate_pi_agent_models.py` beyond offline JSON-shape checks.
+With `--base-url`, it now fetches `/v1/hipengine/capabilities` and validates the
+configured pi model id, context window, streaming usage support, Qwen
+`enable_thinking` support, and tool support. `--chat-smoke` additionally POSTs a
+small Qwen-specific tool-call request using `enable_thinking=false`,
+`session.commit="append_none"`, and a specific `tool_choice`. API/AGENTIC docs
+now include the live validation command.
+
+Validation:
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `12 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
+- `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> success.
+- `git diff --check` -> clean.

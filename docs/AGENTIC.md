@@ -1802,8 +1802,11 @@ Current code reality:
 - `scripts/validate_pi_agent_models.py` validates the checked-in pi
   `models.json` shape offline and fails on the common `reasoning=false` or
   missing `compat.thinkingFormat="qwen"` misconfiguration that disables pi's
-  thinking UI for a Qwen endpoint.
-  Existing server fake-session tests cover parsed Qwen tool calls in
+  thinking UI for a Qwen endpoint. With `--base-url`, it also checks the config
+  model id, context window, streaming usage, Qwen thinking control, and tool
+  support against `/v1/hipengine/capabilities`; `--chat-smoke` additionally
+  POSTs a small Qwen tool-call request.
+- Existing server fake-session tests cover parsed Qwen tool calls in
   non-streaming and streaming responses; deterministic multi-turn golden traces
   remain P5.3.
 
