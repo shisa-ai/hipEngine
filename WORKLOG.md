@@ -90388,3 +90388,14 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- docs/TENSOR_PARALLEL.md docs/README.md docs/AGENTIC.md tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC baseline TP wording sync
+
+Updated the top-level AGENTIC known-limitation summary so it no longer says
+tensor parallelism is undesigned. TP now has a disabled manifest and the
+`docs/TENSOR_PARALLEL.md` design gate, but no runtime path.
+
+Validation:
+- Re-read the changed known-limitation paragraph in `docs/AGENTIC.md`.
+- `git diff --check -- docs/AGENTIC.md WORKLOG.md` -> clean.
+- `rg -n "not yet designed|tensor parallelism" docs/AGENTIC.md` -> no stale undesigned wording remains.

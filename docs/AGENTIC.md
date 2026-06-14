@@ -132,8 +132,10 @@ Known baseline limitations:
   resident KV continuation reuse is still future work. App-local buffered chat
   transcript sessions exist for explicit `session.id` requests, but they
   re-render the visible transcript rather than reusing resident KV state.
-- Server startup supports one loaded model at a time; routing, multiple resident
-  models, tensor parallelism, and model-family fallback are not yet designed.
+- Server startup supports one loaded model at a time. Multiple resident models,
+  capability-aware routing, and model-family fallback are not implemented.
+  Tensor parallelism has a disabled capability manifest and a design gate in
+  `docs/TENSOR_PARALLEL.md`, but no runtime path yet.
 
 ## Implementation principles
 
