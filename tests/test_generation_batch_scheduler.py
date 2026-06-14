@@ -16311,6 +16311,64 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
     assert scheduler.active_count == 0
 
 
+def test_resident_scheduler_control_exits_reclaim_active_rows_and_kv() -> None:
+    reclaimed: list[tuple[int, str]] = []
+    policy = FixedPagedKVPolicy(block_size=16, total_capacity_tokens=128)
+
+    def reclaim(done) -> None:
+        reclaimed.append((done.request_id, done.finish_reason))
+        policy.reclaim(done.request_id)
+
+    scheduler = ResidentBatchScheduler(capacity=4, context_bucket_size=4, reclaim_callback=reclaim)
+    request_ids = tuple(
+        scheduler.submit([10 + index], max_new_tokens=3)
+        for index in range(4)
+    )
+    assert scheduler.admit_pending() == request_ids
+    for request_id, ptr in zip(request_ids, (0x1000, 0x2000, 0x3000, 0x4000), strict=True):
+        policy.register(
+            request_id,
+            block_table=_tensor(ptr, (1,), "int32"),
+            live_counts=_tensor(ptr + 0x100, (1,), "int64"),
+            max_live_count=1,
+            capacity_tokens=16,
+        )
+    for _ in request_ids:
+        assert scheduler.next_prefill_work(chunk_size=8) is not None
+
+    r_cancel, r_timeout, r_disconnect, r_survivor = request_ids
+    assert scheduler.cancel(r_cancel) is not None
+    assert scheduler.timeout(r_timeout) is not None
+    assert scheduler.disconnect(r_disconnect) is not None
+
+    assert reclaimed == [
+        (r_cancel, "cancel"),
+        (r_timeout, "timeout"),
+        (r_disconnect, "disconnect"),
+    ]
+    assert set(policy.reservations) == {r_survivor}
+    assert scheduler.active_count == 1
+    assert scheduler.active_batch.slot_to_request == (None, None, None, r_survivor)
+    for request_id in (r_cancel, r_timeout, r_disconnect):
+        with pytest.raises(KeyError, match="sampler state"):
+            scheduler.sampler_state(request_id)
+
+    decode = scheduler.next_decode_work()
+    assert decode is not None
+    assert decode.request_ids == (r_survivor,)
+    completed = scheduler.record_generated([GeneratedToken(r_survivor, 500, finished=True)])
+
+    assert [(item.request_id, item.finish_reason) for item in completed] == [(r_survivor, "stop")]
+    assert reclaimed == [
+        (r_cancel, "cancel"),
+        (r_timeout, "timeout"),
+        (r_disconnect, "disconnect"),
+        (r_survivor, "stop"),
+    ]
+    assert policy.reservations == {}
+    assert scheduler.active_count == 0
+
+
 def test_resident_engine_loop_prefill_decode_policies() -> None:
     protect_runner = _FakeSerialBridgeRunner()
     protect_loop = ResidentEngineLoop(

@@ -918,6 +918,10 @@ Current code reality:
   futures that were cancelled before dispatch. Requests with different absolute
   deadlines or cancellation tokens do not coalesce into the same batcher engine
   call.
+- `ResidentBatchScheduler` has a unified pending/active reclaim path for
+  `cancel`, `disconnect`, and `timeout` exits. Active rows are removed from the
+  batch, scheduler-owned sampler state is dropped, and the reclaim callback runs
+  so KV reservations can be released while surviving rows continue decoding.
 - PARO and GGUF resident generation paths check deadlines before and after
   tokenization/prefill/decode calls and check cancellation tokens at the same
   cooperative boundaries, including host-sampled and scheduler-owned PARO c>N
@@ -927,8 +931,6 @@ Current code reality:
 
 Remaining implementation:
 
-- explicit row/session cleanup hooks for deadline/cancel exits still need
-  active-row leak tests on the resident scheduler paths;
 - native row-level `cancelled=true` finish details remain future work when a
   lower layer stops only one row inside a still-live batch.
 
@@ -938,7 +940,8 @@ Exit gates:
   server reuse;
 - cancellation tests cover queued work cleanup and request-control disconnect
   mapping;
-- active row/session leak tests cover lower decode loops;
+- active row/session leak tests cover lower decode loops and KV reservation
+  release;
 - streaming cancellation emits a final error/done event instead of hanging.
 
 ### P1 — Controlled decoding and thinking budgets

@@ -88312,3 +88312,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `16 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `12 passed`.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC scheduler control-exit cleanup tests
+
+Added resident scheduler coverage proving active `cancel`, `timeout`, and
+`disconnect` exits reclaim rows through the unified completion path, drop
+scheduler-owned sampler state, invoke the KV reclaim callback, and let surviving
+rows continue decoding. Updated `docs/AGENTIC.md` P0.5 to mark active-row/KV
+leak testing as covered and leave only native row-level cancelled finish details
+as remaining work in that slice.
+
+Validation:
+- `python3 -m py_compile tests/test_generation_batch_scheduler.py`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_control_exits_reclaim_active_rows_and_kv -q` -> `1 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_unified_reclaim_finish_reasons tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_eos_reclaims_finished_rows_only tests/test_generation_batch_scheduler.py::test_resident_scheduler_control_exits_reclaim_active_rows_and_kv tests/test_generation_batch_scheduler.py::test_resident_engine_loop_submit_poll_cancel_and_reclaim -q` -> `4 passed`.
+- `git diff --check` -> clean.
+- `python3 -m ruff check tests/test_generation_batch_scheduler.py` still reports pre-existing F811/F841 issues at lines 1377 and 11813 outside this change.
