@@ -89487,3 +89487,44 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -k replay -q` -> `8 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
+
+## 2026-06-14 - TheRock 7.13 GPU1 PARO speed smoke rerun
+
+Reran the same short/mid PARO int8-KV speed gates on GPU1 using the clean
+TheRock ROCm 7.13 wrapper and cached builds. GPU1 was free before/after; device
+reported by the artifact is `AMD Radeon RX 7900 XTX` (`HIP_VISIBLE_DEVICES=1`).
+Compiler line from the clean wrapper: `HIP version: 7.13.26162-1140233ffe`.
+
+Common command flags matched the GPU0 smoke: packed shisa PARO snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, `--backend hip_gfx1100`,
+`--max-layers 40`, `--shared-expert-format packed_paro_w4`,
+`--graph-replay-decode`, `--attn-aotriton-min-tokens 512`,
+`--kv-storage int8_per_token_head`, `--decode-tokens 8`,
+`--require-cached-build`. Artifacts:
+`/tmp/hipengine-prefill-gates-therock713-gpu1-20260614-211840/`.
+
+Results at clean artifact commit `2caae92b` (`dirty=false`):
+
+- `512/8`: prefill `2449.921 tok/s`, decode `116.800 tok/s`, median decode
+  step `8.562 ms`, tracked peak `18.138 GiB`, sampled HIP peak `18.186 GiB`,
+  chunks all `0`, preview IDs `[9707, 9707]`.
+- `4096/8`: prefill `3140.368 tok/s`, decode `117.324 tok/s`, median decode
+  step `8.523 ms`, tracked peak `19.128 GiB`, sampled HIP peak `18.261 GiB`,
+  chunks `linear=moe=1024`, `full_attn_query=4096`,
+  `full_attn_post=full_attn_rope=1024`, preview IDs `[9707, 9707]`.
+
+Comparison vs GPU0 TheRock 7.13 cached smoke:
+
+- `512/8`: prefill `+6.01%`, decode `+11.72%`.
+- `4096/8`: prefill `+9.08%`, decode `+13.16%`.
+
+Comparison vs the earlier `/opt/rocm` 7.2 GPU0 smoke:
+
+- `512/8`: prefill `+4.45%`, decode `+10.64%`.
+- `4096/8`: prefill `+9.87%`, decode `+11.71%`.
+
+Interpretation: the strong uplift comes from running on GPU1/RX 7900 XTX, not
+from a universal TheRock 7.13 uplift. GPU0/W7900 7.13 was mixed and mostly
+flat-to-slightly-lower decode; GPU1 is consistently faster for these gates while
+using the same tracked memory footprint. Treat as diagnostic/no-promote single
+runs unless repeated/correctness-gated.
