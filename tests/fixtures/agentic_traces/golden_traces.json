@@ -559,6 +559,32 @@
       }
     },
     {
+      "name": "length_finish_chat_closing_think_phase",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {"text": "<think>scratch</thi", "finish_details": {"reason": "length", "length_limit": 5}}
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "think briefly"}],
+        "max_tokens": 5
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "length",
+        "message_content": "",
+        "reasoning_content": "scratch</thi",
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 5,
+          "cache_action": "append_none",
+          "phase": "closing_think",
+          "continuation_eligible": false
+        }
+      }
+    },
+    {
       "name": "length_finish_chat_partial_tool_call",
       "kind": "http",
       "endpoint": "/v1/chat/completions",

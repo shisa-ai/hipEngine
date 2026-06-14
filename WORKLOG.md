@@ -89425,3 +89425,16 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `45 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC closing-think length golden trace
+
+Added a deterministic agentic golden trace for chat length exhaustion inside a
+partial `</think>` close delimiter. This promotes the existing lower-level
+`closing_think` server behavior into the harness trace matrix alongside
+reasoning and partial tool-call length stops.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `23 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `46 passed`.
