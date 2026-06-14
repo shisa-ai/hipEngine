@@ -2091,10 +2091,10 @@ Current code reality:
   explicit unavailable reasons otherwise, and a compact capability snapshot with
   current sampler/MTP compatibility, tokenizer-dependent tool/reasoning
   controls, and cache/session support.
-- Strict tool and structured-output result-validation failures that return
-  normal HTTP 200 responses also write replay artifacts when replay is enabled;
-  the artifact stores the failure `finish_details` and affected choice indexes,
-  not generated assistant text.
+- Strict tool, structured-output, and guided patch/diff result-validation
+  failures that return normal HTTP 200 responses also write replay artifacts
+  when replay is enabled; the artifact stores the failure `finish_details` and
+  affected choice indexes, not generated assistant text.
 - `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
   and replaces request strings plus compact sampler/agentic-control strings
   with SHA-256/length metadata. The explicit `none` mode stores raw strings for

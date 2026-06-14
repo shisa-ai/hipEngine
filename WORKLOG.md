@@ -89853,3 +89853,22 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `29 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `25 passed`.
 - `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC guided patch replay coverage
+
+Extended deterministic replay-artifact coverage to guided patch/diff
+result-validation failures. Replay-enabled chat `guided_patch` failures and
+streaming completion `guided_diff` failures now have tests proving the artifact
+records `schema_violation`, keeps request strings hashed, records the relevant
+guided control field, and does not include generated invalid patch text.
+`docs/AGENTIC.md` and `docs/API.md` now explicitly include guided patch/diff in
+the replay result-validation surface.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_captures_guided_patch_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_guided_diff_result_validation_failure -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifacts_are_default_off tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifact_counts_chat_prompt_when_engine_loaded tests/test_server_api.py::test_replay_artifact_captures_completion_structured_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_guided_patch_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_agentic_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_structured_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_guided_diff_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_agentic_result_validation_failure -q` -> `9 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults tests/test_server_api.py::test_agentic_replay_failure_reasons_match_capability_contract -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `218 passed`.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md docs/API.md` -> clean.

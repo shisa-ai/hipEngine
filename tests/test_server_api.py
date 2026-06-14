@@ -6672,6 +6672,70 @@ def test_replay_artifact_captures_completion_structured_result_validation_failur
     assert "not json" not in serialized
 
 
+def test_replay_artifact_captures_guided_patch_result_validation_failure(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    invalid_patch = "Here is the patch:\n" + _unified_diff_text()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(outputs=[invalid_patch]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret patch task"}],
+            "guided_patch": True,
+            "max_tokens": 16,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["request"]["path"] == "/v1/chat/completions"
+    assert artifact["request"]["json"]["messages"][0]["content"]["redacted"] == "sha256"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.messages[0].content",
+            "sha256": artifact["request"]["json"]["messages"][0]["content"]["sha256"],
+            "length": len("secret patch task"),
+        }
+    ]
+    assert artifact["sampling"]["guided_patch"] is True
+    assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
+    assert artifact["error"] is None
+    assert artifact["result"] == {
+        "type": "agentic_result_validation",
+        "finish_details": _stateless_finish_details("schema_violation"),
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "finish_details": _stateless_finish_details("schema_violation"),
+            }
+        ],
+    }
+    assert "secret patch task" not in serialized
+    assert "Here is the patch" not in serialized
+    assert "diff --git" not in serialized
+
+
 def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) -> None:
     replay_dir = tmp_path / "replay"
     app = create_app(
@@ -6795,6 +6859,58 @@ def test_replay_artifact_captures_streaming_structured_result_validation_failure
     ]
     assert "secret streaming structured task" not in serialized
     assert "not json" not in serialized
+
+
+def test_replay_artifact_captures_streaming_guided_diff_result_validation_failure(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(outputs=["not a diff"], stream_chunks=["not a diff"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "secret streaming patch prompt",
+            "guided_diff": True,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "max_tokens": 16,
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
+    assert done["choices"][0]["hipengine"]["finish_details"] == _stateless_finish_details("schema_violation")
+
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["request"]["path"] == "/v1/completions"
+    assert artifact["sampling"]["guided_diff"] is True
+    assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
+    assert artifact["error"] is None
+    assert artifact["result"]["choices"] == [
+        {
+            "index": 0,
+            "finish_reason": "stop",
+            "finish_details": _stateless_finish_details("schema_violation"),
+        }
+    ]
+    assert "secret streaming patch prompt" not in serialized
+    assert "not a diff" not in serialized
 
 
 def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tmp_path) -> None:
