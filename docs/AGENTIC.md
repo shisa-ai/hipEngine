@@ -1827,9 +1827,9 @@ Current state:
   route actually runs. PARO/GGUF host-logits fallback paths report
   `full_vocab_logits_d2h=true` plus known per-token vector bytes, so server
   metadata can distinguish native sampling from host readback selection. PARO
-  c>N sampled batches still run through scheduler-owned host sampling, but when
-  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` requested native sampling, their
-  decode-state telemetry now reports
+  c>N sampled batches and GGUF sampled requests still run through host sampling,
+  but when `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` requested native sampling, their
+  decode-state telemetry reports
   `sampler_fallback_reason="native_gpu_unsupported_request"` instead of the
   generic host fallback reason;
 - c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
@@ -1851,7 +1851,7 @@ Remaining implementation:
 
 - performance-oriented full-vocab nucleus selection without weakening
   retain-one and tie-break semantics;
-- GGUF routing and fallback metadata for unsupported native shapes.
+- c>N/GGUF native routing for unsupported native shapes.
 
 Exit gates:
 

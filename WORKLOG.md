@@ -90750,3 +90750,20 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py::test_sampler_plan_reports_requested_native_gpu_unavailable tests/test_sampling.py::test_native_gpu_sampler_support_rejects_unwired_shapes tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill -q` -> `4 passed`.
 - `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py -q` -> `76 passed`.
 - `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_qwen35_paro.py && python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q && python3 -m ruff check hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_qwen35_paro.py && git diff --check -- hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_qwen35_paro.py docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> `1 passed`, `All checks passed!`, clean.
+
+## 2026-06-15 - AGENTIC GGUF native fallback metadata
+
+GGUF sampled requests now use the same native-requested sampler planning signal
+as PARO c>N. The GGUF route still has no native GPU sampler path, but when
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=1` is set, non-streaming and live sampled
+decode-state telemetry report
+`sampler_fallback_reason="native_gpu_unsupported_request"` instead of ordinary
+`host_sampling_required`. This closes the remaining unsupported-native-route
+fallback metadata gap while keeping GGUF execution on the host sampler.
+Updated AGENTIC/SAMPLING docs to keep native GGUF execution itself as future
+work.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py::test_gguf_non_greedy_request_uses_host_logits_sampler tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry -q` -> `4 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_gpu_sampler_kernel.py -q` -> `93 passed`.
+- `python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py && python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q && python3 -m ruff check hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py && git diff --check -- hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> `1 passed`, `All checks passed!`, clean.

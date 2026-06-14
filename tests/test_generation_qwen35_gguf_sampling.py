@@ -268,7 +268,18 @@ def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
     assert ("graph_replay", 1) in calls
 
 
-def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("native_requested", "expected_fallback"),
+    [
+        (False, "host_sampling_required"),
+        (True, "native_gpu_unsupported_request"),
+    ],
+)
+def test_gguf_non_greedy_request_uses_host_logits_sampler(
+    monkeypatch,
+    native_requested: bool,
+    expected_fallback: str,
+) -> None:
     calls = []
 
     class FakeSession:
@@ -297,6 +308,10 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
             )
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    if native_requested:
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
 
     generator = _generator()
     out = generator.generate(_request(temperature=0.7, top_k=1, seed=5))
@@ -316,7 +331,7 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
         "phase": "done",
         "continuation_eligible": False,
         "sampler_fast_path_blockers": ["temperature"],
-        "sampler_fallback_reason": "host_sampling_required",
+        "sampler_fallback_reason": expected_fallback,
         "sampler_mode": "host_logits_sample",
         "full_vocab_logits_d2h": True,
         "logits_d2h_bytes": 12,
@@ -411,7 +426,18 @@ def test_gguf_stream_text_wrapper_preserves_plain_chunks(monkeypatch) -> None:
     assert list(generator.stream(_request(max_tokens=2))) == ["B", "C"]
 
 
-def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("native_requested", "expected_fallback"),
+    [
+        (False, "host_sampling_required"),
+        (True, "native_gpu_unsupported_request"),
+    ],
+)
+def test_gguf_stream_detailed_emits_live_sampled_telemetry(
+    monkeypatch,
+    native_requested: bool,
+    expected_fallback: str,
+) -> None:
     calls = []
 
     class FakeSession:
@@ -440,6 +466,10 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
             )
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    if native_requested:
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
 
     generator = _generator()
     chunks = list(generator.stream_detailed(_request(temperature=0.7, top_k=1, seed=5)))
@@ -454,7 +484,7 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
             "phase": "answer",
             "continuation_eligible": False,
             "sampler_fast_path_blockers": ["temperature"],
-            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_fallback_reason": expected_fallback,
             "sampler_mode": "host_logits_sample",
             "full_vocab_logits_d2h": True,
             "logits_d2h_bytes": 12,
@@ -467,7 +497,7 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
             "phase": "answer",
             "continuation_eligible": False,
             "sampler_fast_path_blockers": ["temperature"],
-            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_fallback_reason": expected_fallback,
             "sampler_mode": "host_logits_sample",
             "full_vocab_logits_d2h": True,
             "logits_d2h_bytes": 12,

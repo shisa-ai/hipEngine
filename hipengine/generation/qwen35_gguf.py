@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterator
@@ -70,7 +71,7 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         if not prompt_ids:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
-        plan = plan_sampler(request)
+        plan = _gguf_sampler_plan(request)
         with Qwen35GGUFResidentSession(self.model_path) as session:
             if plan.mode is SamplingMode.GREEDY_FAST:
                 yield from self._stream_greedy(session, prompt_ids, request)
@@ -86,7 +87,7 @@ class Qwen35GGUFBringupGenerator:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
         raise_if_generation_deadline_expired(request)
-        plan = plan_sampler(request)
+        plan = _gguf_sampler_plan(request)
         if request.max_tokens == 0:
             self.last_generation_outputs = tuple(
                 GenerationOutput(
@@ -444,7 +445,7 @@ def _gguf_telemetry(
     full_vocab_logits_d2h: bool | None = None,
     logits_d2h_bytes: int | None = None,
 ) -> GenerationTelemetry:
-    plan = plan_sampler(request)
+    plan = _gguf_sampler_plan(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
     return GenerationTelemetry.from_decode_counts(
         row_index=row_index,
@@ -546,7 +547,16 @@ def _gguf_stop_sequence_match(
 
 
 def _sampler_mode_value(request: GenerationRequest) -> str:
-    return plan_sampler(request).mode.value
+    return _gguf_sampler_plan(request).mode.value
+
+
+def _gguf_sampler_plan(request: GenerationRequest):
+    return plan_sampler(request, native_gpu_requested=_native_gpu_sampler_requested())
+
+
+def _native_gpu_sampler_requested() -> bool:
+    value = os.environ.get("HIPENGINE_QWEN35_NATIVE_SAMPLER")
+    return value is not None and value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
 def _session_uses_host_routed_decode(session: Qwen35GGUFResidentSession) -> bool:
