@@ -90649,3 +90649,18 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state -q` -> `45 passed`.
 - `python3 -m ruff check hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/API.md docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC continuation telemetry mirror
+
+Final non-streaming choice telemetry now mirrors server-created continuation
+eligibility into `choices[].hipengine.decode_state.continuation_eligible` when
+backend `GenerationTelemetry` is present. This keeps final `finish_details` and
+the exposed decode-state snapshot consistent after the server stores a
+deterministic buffered continuation handle; lower-loop generation still does
+not create or scope continuation handles itself.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_completion_length_finish_marks_sampled_continuation_ineligible tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `4 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

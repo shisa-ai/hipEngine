@@ -2740,6 +2740,11 @@ def test_completion_continuation_resumes_buffered_length_finish_once() -> None:
             GenerationOutput(
                 text="alpha",
                 finish_details=FinishDetails(reason="length", length_limit=1),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=1,
+                    sampler_mode="greedy_fast",
+                ),
             ),
             GenerationOutput(text=" beta", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
         ]
@@ -2764,6 +2769,15 @@ def test_completion_continuation_resumes_buffered_length_finish_once() -> None:
         continuation_eligible=True,
         continuation_id=continuation_id,
     )
+    assert first_choice["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "done",
+        "continuation_eligible": True,
+        "sampler_mode": "greedy_fast",
+    }
 
     second = client.post(
         "/v1/completions",

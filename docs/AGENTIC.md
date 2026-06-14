@@ -876,7 +876,11 @@ Current code reality:
   the decode-state snapshot when the native GPU sampler route actually runs.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
-  the final `finish_details` alongside the backend-authored `decode_state`.
+  the final `finish_details` alongside the backend-authored `decode_state`. If
+  the server creates a deterministic buffered continuation handle, the final
+  choice telemetry mirrors `finish_details.continuation_eligible=true` into the
+  exposed `decode_state` so clients do not see contradictory eligibility
+  metadata.
 - PARO and GGUF c=1 true streaming emit live per-token
   `GenerationStreamChunk` telemetry for greedy and sampled answer tokens,
   including host-sampled budget-pressure metadata when row state is available.
@@ -1340,6 +1344,10 @@ Current code reality:
 - the implementation re-prefills the stored rendered prompt plus prior generated
   text and reports `resident_state_reuse=false`; it does not yet preserve
   decode state, full tokenizer state, RNG state, or resident KV;
+- final choice telemetry mirrors stored-handle eligibility into
+  `choices[].hipengine.decode_state.continuation_eligible` when backend
+  telemetry is present, but live lower-loop decode states still do not create or
+  scope continuation handles themselves;
 - streaming, logprobs, completion `echo`, `n != 1`, non-deterministic
   sampling/logit processors, `ignore_eos=true`, OpenAI `stop` controls, chat
   tools, explicit `response_format` overrides, and thinking-budget controls

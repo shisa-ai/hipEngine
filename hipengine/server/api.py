@@ -8951,6 +8951,11 @@ def _attach_choice_telemetry(choice: dict[str, Any], detail: GenerationOutput | 
     finish_details = choice.get("finish_details")
     if isinstance(finish_details, Mapping):
         payload["finish_details"] = dict(finish_details)
+        decode_state = payload.get("decode_state")
+        if isinstance(decode_state, Mapping) and "continuation_eligible" in finish_details:
+            decode_state = dict(decode_state)
+            decode_state["continuation_eligible"] = bool(finish_details["continuation_eligible"])
+            payload["decode_state"] = decode_state
     existing = choice.get("hipengine")
     if isinstance(existing, Mapping):
         merged = dict(existing)
