@@ -88236,3 +88236,21 @@ Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_local_agent_config.py -q` -> `315 passed`.
 - `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_llm_generate.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - Full touched-file ruff including `tests/test_generation_batch_scheduler.py` still reports pre-existing unrelated F811/F841 issues in that test file outside this change.
+
+## 2026-06-14 - AGENTIC forced-close finish metadata
+
+Added a shared finish-details enrichment helper that derives thinking-budget
+metadata from the mutable row sampler state. PARO/GGUF host-sampled outputs now
+preserve their existing EOS/stop/length reasons while adding `forced_close`,
+reasoning/answer token counts, `budget_pressure="hard_close"`, and the current
+budget phase when a hard thinking cap forced the close sequence. Sampled c>N
+PARO batches keep cloned row-state snapshots so final metadata survives
+scheduler request reclamation. `docs/AGENTIC.md` and `docs/API.md` were updated
+to reflect the new code reality and remaining gaps.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/finish.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close -q` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `21 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `134 passed`.
+- `python3 -m ruff check hipengine/generation/finish.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.

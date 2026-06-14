@@ -167,6 +167,50 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
     assert not any(call[0] == "capture_decode_graph" for call in calls)
 
 
+def test_gguf_finish_details_report_forced_thinking_close(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):  # pragma: no cover - max_tokens=1
+            raise AssertionError("hard-close fixture should finish after prefill")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    out = generator.generate(
+        _request(
+            max_tokens=1,
+            thinking_close_token_ids=(2,),
+            thinking_hard_token_cap=0,
+        )
+    )
+
+    assert out == ["C"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 1,
+        "forced_close": True,
+        "reasoning_tokens": 1,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "processed_argmax",
+        "phase": "answer",
+    }
+
+
 def test_gguf_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
     calls = []
 

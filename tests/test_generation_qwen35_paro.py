@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
+
 import hipengine.generation.qwen35_paro as qwen35
 from hipengine.generation import GenerationRequest
+from hipengine.generation.sampling import select_token
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
     estimate_qwen35_paro_kv_capacity,
@@ -314,6 +317,61 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
     assert calls[0][3] == (10, 11)
     assert ("step", 100, 2, True) in calls
     assert calls[-1] == ("configure_host_sampler", None, None, None)
+
+
+def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) -> None:
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            self.params = None
+            self.state = None
+
+        def configure_host_sampler(self, params, state):
+            self.params = params
+            self.state = state
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            assert self.params is not None
+            assert self.state is not None
+            sample_result = select_token(
+                np.array([0.0, 5.0, 1.0], dtype=np.float32),
+                self.params,
+                self.state,
+            )
+            return _result(sample_result.token_id, "C")
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover - max_tokens=1
+            raise AssertionError("hard-close fixture should finish after prefill")
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(
+        _request(
+            max_tokens=1,
+            thinking_close_token_ids=(2,),
+            thinking_hard_token_cap=0,
+        )
+    )
+
+    assert out == ["C"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 1,
+        "forced_close": True,
+        "reasoning_tokens": 1,
+        "budget_pressure": "hard_close",
+        "sampler_mode": "processed_argmax",
+        "phase": "answer",
+    }
 
 
 

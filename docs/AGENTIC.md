@@ -228,11 +228,14 @@ Current code reality:
 - Chat length stops get best-effort post-parse `finish_details.phase` metadata
   (`reasoning`, `closing_think`, `tool_call`, `structured`, or `answer`) plus
   explicit `continuation_eligible=false` until continuation handles exist.
-- PARO/GGUF detailed generation now emits basic backend finish details for EOS,
-  token stop, stop sequence, length, and sampler mode. Normal backends still
-  need native cancellation/deadline, forced-close, budget, cache, sampler
-  fallback, and per-phase metadata; absent backend detail, the server falls back
-  to `{"reason": finish_reason}`. Server-side deadline errors already emit
+- PARO/GGUF detailed generation now emits backend finish details for EOS, token
+  stop, stop sequence, length, sampler mode, and host-sampled thinking-budget
+  forced close. When a `ThinkingBudgetState` forced the close sequence, finish
+  details include `forced_close=true`, reasoning/answer token counts,
+  `budget_pressure="hard_close"`, and the budget phase. Normal backends still
+  need native cancellation/deadline, cache, sampler fallback reason, and richer
+  per-phase metadata; absent backend detail, the server falls back to
+  `{"reason": finish_reason}`. Server-side deadline errors already emit
   `{"reason": "deadline_exceeded", "deadline_exceeded": true}`.
 
 ### Logit processor stack
@@ -1063,7 +1066,9 @@ Current code reality:
   matches;
 - host `RowSamplingState` / `select_token()` can enforce a supplied
   `ThinkingBudgetState` hard cap by forcing the close sequence before ordinary
-  argmax/sampling, with forced-token metadata and normal row-history updates;
+  argmax/sampling, with forced-token metadata, normal row-history updates, and
+  final `FinishDetails` fields for forced close, token counts, budget pressure,
+  and phase;
 - `SamplingParams`, `GenerationRequest`, and `PerRowSamplingParams` carry the
   lowered `thinking_close_token_ids`, `thinking_hard_token_cap`, and
   `thinking_soft_close_window` fields; PARO/GGUF host-sampled rows and
@@ -1081,8 +1086,8 @@ Current code reality:
   forced-close semantics;
 - not implemented: dynamic soft-close bias, manual forced close from external
   controllers, EOS suppression, native GPU thinking-budget enforcement,
-  speculative/MTP processed-target verification, and backend-authored per-phase
-  finish metadata.
+  speculative/MTP processed-target verification, and live backend-authored
+  per-token phase metadata.
 
 Exit gates:
 

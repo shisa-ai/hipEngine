@@ -10,6 +10,7 @@ from typing import Any
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
+from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -380,6 +381,7 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_sequences=request.stop_token_sequences,
                         max_tokens=max_tokens,
                         sampler_mode=plan.mode.value,
+                        sampling_state=state,
                     ),
                     telemetry=_telemetry_for_tokens(
                         prompt_ids,
@@ -420,6 +422,7 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                     max_tokens=max_tokens,
                     sampler_mode=plan.mode.value,
+                    sampling_state=state,
                 ),
                 telemetry=_telemetry_for_tokens(
                     prompt_ids,
@@ -677,6 +680,10 @@ class Qwen35ParoOneTokenGenerator:
 
         output_steps: dict[int, list[Qwen35ParoAutoregressiveStepResult]] = {request_id: [] for request_id in request_ids}
         generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
+        sampling_state_snapshots: dict[int, RowSamplingState] = {
+            request_id: _clone_row_sampling_state(scheduler.sampler_state(request_id))
+            for request_id in request_ids
+        }
         next_token_by_request: dict[int, int] = {}
         packed_slabs = scheduler.next_compact_prefill_slabs(
             chunk_size=max(len(row) for row in prompt_rows),
@@ -718,9 +725,15 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_sequences=request.stop_token_sequences,
                     )
                     if finished:
+                        snapshot = _clone_row_sampling_state(scheduler.sampler_state(request_id))
+                        snapshot.observe(result.token_id)
+                        sampling_state_snapshots[request_id] = snapshot
                         generated.append(GeneratedToken(request_id, result.token_id, finished=True))
                     else:
                         scheduler.sampler_state(request_id).observe(result.token_id)
+                        sampling_state_snapshots[request_id] = _clone_row_sampling_state(
+                            scheduler.sampler_state(request_id)
+                        )
                         next_token_by_request[request_id] = int(result.token_id)
                 if generated:
                     for done in scheduler.record_generated(generated):
@@ -764,6 +777,9 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_ids=request.stop_token_ids,
                         stop_token_sequences=request.stop_token_sequences,
                     )
+                    snapshot = _clone_row_sampling_state(scheduler.sampler_state(request_id))
+                    snapshot.observe(result.token_id)
+                    sampling_state_snapshots[request_id] = snapshot
                     generated.append(GeneratedToken(request_id, result.token_id, finished=finished))
                     if not finished:
                         next_token_by_request[request_id] = int(result.token_id)
@@ -802,6 +818,7 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                     max_tokens=request.max_tokens,
                     sampler_mode=sampler_mode,
+                    sampling_state=sampling_state_snapshots.get(request_id),
                 ),
                 telemetry=_telemetry_for_tokens(
                     prompt_rows_by_request[request_id],
@@ -1228,19 +1245,26 @@ def _finish_details_for_tokens(
     stop_token_sequences: tuple[tuple[int, ...], ...],
     max_tokens: int,
     sampler_mode: str,
+    sampling_state: RowSamplingState | None = None,
 ) -> FinishDetails:
+    details: FinishDetails
     if generated_token_ids:
         token_id = int(generated_token_ids[-1])
         if not ignore_eos and _is_eos(tokenizer, token_id):
-            return FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=sampler_mode)
+            details = FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=sampler_mode)
+            return finish_details_with_sampling_state(details, sampling_state)
         if token_id in {int(stop_id) for stop_id in stop_token_ids}:
-            return FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=sampler_mode)
+            details = FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=sampler_mode)
+            return finish_details_with_sampling_state(details, sampling_state)
         sequence = _matched_stop_sequence(generated_token_ids, stop_token_sequences)
         if sequence:
-            return FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=sampler_mode)
+            details = FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=sampler_mode)
+            return finish_details_with_sampling_state(details, sampling_state)
     if len(generated_token_ids) >= max(0, int(max_tokens)):
-        return FinishDetails(reason="length", length_limit=max_tokens, sampler_mode=sampler_mode)
-    return FinishDetails(reason="stop", sampler_mode=sampler_mode)
+        details = FinishDetails(reason="length", length_limit=max_tokens, sampler_mode=sampler_mode)
+        return finish_details_with_sampling_state(details, sampling_state)
+    details = FinishDetails(reason="stop", sampler_mode=sampler_mode)
+    return finish_details_with_sampling_state(details, sampling_state)
 
 
 def _matched_stop_sequence(

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.constraints import token_sequence_state_for_tokens
+from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -164,7 +165,7 @@ class Qwen35GGUFBringupGenerator:
             return _gguf_generation_output(
                 self.tokenizer,
                 samples,
-                finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
+                finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request, state),
                 telemetry=_gguf_telemetry(prompt_ids, generated_ids, request, row_index=row_index),
             )
         for _ in range(request.max_tokens - 1):
@@ -177,7 +178,7 @@ class Qwen35GGUFBringupGenerator:
         return _gguf_generation_output(
             self.tokenizer,
             samples,
-            finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
+            finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request, state),
             telemetry=_gguf_telemetry(prompt_ids, generated_ids, request, row_index=row_index),
         )
 
@@ -271,19 +272,26 @@ def _gguf_finish_details(
     generated_ids: list[int] | tuple[int, ...],
     tokenizer: Qwen35GGUFTokenizer,
     request: GenerationRequest,
+    state: RowSamplingState | None = None,
 ) -> FinishDetails:
+    details: FinishDetails
     if generated_ids:
         token_id = int(generated_ids[-1])
         if not request.ignore_eos and int(token_id) == int(tokenizer.eos_token_id):
-            return FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=_sampler_mode_value(request))
+            details = FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=_sampler_mode_value(request))
+            return finish_details_with_sampling_state(details, state)
         if token_id in {int(stop_id) for stop_id in request.stop_token_ids}:
-            return FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=_sampler_mode_value(request))
+            details = FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=_sampler_mode_value(request))
+            return finish_details_with_sampling_state(details, state)
         sequence = _gguf_stop_sequence_match(generated_ids, request.stop_token_sequences)
         if sequence:
-            return FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=_sampler_mode_value(request))
+            details = FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=_sampler_mode_value(request))
+            return finish_details_with_sampling_state(details, state)
     if len(generated_ids) >= max(0, int(request.max_tokens)):
-        return FinishDetails(reason="length", length_limit=request.max_tokens, sampler_mode=_sampler_mode_value(request))
-    return FinishDetails(reason="stop", sampler_mode=_sampler_mode_value(request))
+        details = FinishDetails(reason="length", length_limit=request.max_tokens, sampler_mode=_sampler_mode_value(request))
+        return finish_details_with_sampling_state(details, state)
+    details = FinishDetails(reason="stop", sampler_mode=_sampler_mode_value(request))
+    return finish_details_with_sampling_state(details, state)
 
 
 def _gguf_stop_sequence_match(

@@ -186,9 +186,11 @@ For chat length stops, the server adds best-effort post-parse metadata:
 `answer`; `continuation_eligible` is currently `false` because continuation
 handles are not implemented.
 
-PARO/GGUF detailed generation reports basic backend finish details for EOS,
-token stops, stop sequences, length limits, and sampler mode when those signals
-are available from the generation loop.
+PARO/GGUF detailed generation reports backend finish details for EOS, token
+stops, stop sequences, length limits, sampler mode, and host-sampled thinking
+hard-close enforcement. When the close sequence was forced, details include
+`forced_close: true`, `budget_pressure: "hard_close"`, reasoning/answer token
+counts, and the current budget phase.
 
 When a backend does not yet provide structured finish metadata, the server emits
 the conservative fallback `{"reason": finish_reason}`.
