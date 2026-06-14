@@ -170,6 +170,37 @@ class Qwen35ParoOneTokenGenerator:
         )
         return int(getattr(session, "max_sequence_length", self._session_capacity))
 
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: Any | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        params = sampling_params
+        runner = self._get_runner()
+        kv_policy = resolve_kv_policy(
+            getattr(params, "kv_storage", "auto"),
+            scale_dtype=getattr(params, "kv_scale_dtype", "fp16"),
+            scale_granularity=getattr(params, "kv_scale_granularity", "per_token_head"),
+        )
+        required_sequence_length = max(1, int(max_prompt_tokens)) + max(0, int(max_new_tokens)) + 1
+        session_capacity = _session_capacity_for(required_sequence_length)
+        session = self._get_session(
+            runner,
+            max_sequence_length=session_capacity,
+            kv_policy=kv_policy,
+            max_batch_size=max_batch_size,
+        )
+        return session.prepare_request_scratch(
+            max_prompt_tokens=max_prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            max_batch_size=max_batch_size,
+            release_after_probe=release_after_probe,
+        )
+
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
 

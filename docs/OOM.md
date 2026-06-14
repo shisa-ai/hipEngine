@@ -9,10 +9,17 @@ actually serve production requests, or fail at startup with an actionable reason
 
 ## TL;DR
 
-- Current startup proves **resident KV allocation** plus a one-token raw prompt
-  warmup. It does **not** prove every production chat request shape can run.
-- On the current tree, the exact command below can start at model max context
-  and serve a one-row chat request with the server default token budget:
+- Legacy startup proved **resident KV allocation** plus a one-token raw prompt
+  warmup. It did **not** prove every production chat request shape or long-prompt
+  prefill scratch could run.
+- Current startup now has a P0 fail-fast path: bounded raw warmup, max-prompt
+  scratch probe (`prepare_request_scratch(max_prompt_tokens=context-1)`), bounded
+  chat-shaped smoke through the generation batcher, GPU memory snapshots in
+  `/ready`, and optional `--startup-min-free-mib` headroom enforcement.
+- On the current tree, the exact command below can allocate model-max context and
+  serve a one-row `hello` request with the server default token budget, but the
+  new scratch probe correctly rejects 262k on the 24GB GPU before advertising the
+  server ready:
 
   ```bash
   HIP_VISIBLE_DEVICES=1 hipengine serve \
@@ -22,9 +29,9 @@ actually serve production requests, or fail at startup with an actionable reason
   ```
 
 - The same run leaves only about **2.0 GiB free** on GPU1 after a successful
-  `hello` request. That is thin enough that request-shape drift, allocator
-  fragmentation, lazy workspaces, or extra resident speculative/sampler buffers
-  can turn into immediate OOMs.
+  raw warmup / `hello` request. The max-prompt scratch probe then fails at 262k
+  with HIP OOM in chunked linear-attention scratch, while 128k passes. This is
+  now caught at startup instead of discovered by the first long prompt.
 - Streaming does **not** appear to add meaningful VRAM. It changes response and
   cancellation behavior, not retained device memory. The streamed hidden
   reasoning is emitted as separate `reasoning_content` chunks.
@@ -40,7 +47,39 @@ actually serve production requests, or fail at startup with an actionable reason
 All measurements below are from 2026-06-14 on GPU1 with a clean GPU before
 launch unless noted.
 
-### Exact full-context server startup
+### Startup max-prompt scratch probe (new P0 gate)
+
+Direct probe command shape used for the measurements below:
+
+```python
+llm.prepare(max_sequence_length=N, sampling_params=SamplingParams(max_tokens=1, kv_storage="int8_per_token_head"))
+llm.generate(("one two three four",), sampling)
+llm.prepare_request_scratch(max_prompt_tokens=N - 1, max_new_tokens=0, sampling_params=sampling)
+```
+
+All runs used `HIP_VISIBLE_DEVICES=1`, model
+`shisa-ai/Qwen3.6-35B-A3B-PARO-packed`, backend `hip_gfx1100`, quant `w4_paro`,
+`kv_storage=int8_per_token_head`, and a clean GPU1 before launch.
+
+| Context | Free after prepare | Free after raw warmup | Scratch probe | Evidence |
+| ---: | ---: | ---: | --- | --- |
+| 65,536 | 5.088 GiB | 5.051 GiB | pass in 0.050s | `prefill_hidden_bytes=268,431,360`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=134,217,728` |
+| 131,072 | 4.199 GiB | 4.162 GiB | pass in 0.054s | `prefill_hidden_bytes=536,866,816`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=268,435,456` |
+| 262,144 | 2.045 GiB | 2.008 GiB | **fails** | `HipError: out of memory` while allocating chunked `linear_attn.tree_recurrent_state` |
+
+Important implementation detail: the first raw warmup prompt is tiny, and the
+PARO session resolves prefill chunking based on the active prompt length. The
+scratch probe must therefore re-resolve `prefill_config` for `max_prompt_tokens`
+before allocating; otherwise it incorrectly reuses the tiny-prompt unchunked
+policy and overstates OOM risk. The current probe does this and reports
+`prefill_chunk_tuning` in `/ready`.
+
+Conclusion: **128k is currently admitted by the strong startup gate; 262k is not**
+on the 24GB GPU with the current scratch layout. Restoring 256k requires reducing
+or streaming the transient linear/full prefill workspaces, not just proving KV
+allocation.
+
+### Legacy exact full-context server startup
 
 Command:
 
@@ -204,9 +243,9 @@ a previous failed request, or a server process running a different tree/env. Any
 future OOM report should capture the replay JSON, `/ready`, startup log, and GPU
 free memory immediately before the request.
 
-## Why startup is too weak today
+## Why legacy startup was too weak
 
-The server startup path in `hipengine/server/api.py` currently does this:
+The old server startup path in `hipengine/server/api.py` did this:
 
 1. construct `SamplingParams(max_tokens=config.eager_load_max_tokens, temperature=0.0, top_p=1.0, ignore_eos=True, ...)`;
 2. call `ensure_resident_context(...)`, which calls `engine.prepare(max_sequence_length=configured_or_auto, sampling_params=sampling)`;
@@ -226,8 +265,10 @@ The normal chat path does more:
 5. split `<think>...</think>` into `reasoning_content` vs visible `content`;
 6. optionally run tool/JSON/logprob/sampler-processing paths.
 
-Therefore current startup can say ready when only the cheap retained allocation
-and a narrow direct generation path have succeeded.
+Therefore legacy startup could say ready when only the cheap retained allocation
+and a narrow direct generation path had succeeded. The current P0 startup keeps
+that raw warmup for compatibility but adds the max-prompt scratch probe and a
+bounded chat-shaped smoke before setting readiness.
 
 ## Current memory model
 
@@ -373,24 +414,29 @@ Open questions for streaming:
 For `hipengine serve`, readiness should mean:
 
 1. resident session allocation succeeded;
-2. a minimal production-shaped chat request succeeded;
-3. the server retained enough configured free-memory headroom after that smoke;
-4. unsupported production shapes are rejected before they can destroy a working
+2. max admitted c=1 prompt prefill scratch can be allocated without decoding to
+   the output limit;
+3. a bounded production-shaped chat request succeeded;
+4. the server retained enough configured free-memory headroom after that smoke;
+5. unsupported production shapes are rejected before they can destroy a working
    resident session;
-5. the selected context is reported clearly in `/ready` and startup logs.
+6. the selected context is reported clearly in `/ready` and startup logs.
 
-Recommended startup smoke for the 24GB path:
+Current P0 startup now:
 
-- render a real chat prompt, e.g. `[{"role":"user","content":"hello"}]`;
-- derive sampling exactly like `/v1/chat/completions` with no explicit
-  `max_tokens`, i.e. `chat_default_max_tokens` after context clamp;
-- run one non-streaming chat-shaped generation through the same generation
-  batcher or an equivalent direct helper that exercises the same prompt/sampling
-  path;
-- record GPU free memory before prepare, after prepare, after warmup, and after
-  smoke;
-- fail startup, or auto-reduce context, if post-smoke free memory is below a
-  configurable threshold.
+- keeps the raw warmup as a cheap decode-path check;
+- probes `max_prompt_tokens=context-1`, `max_new_tokens=0`, `max_batch_size=1`
+  through the backend `prepare_request_scratch` hook;
+- runs a bounded `hello` chat smoke through the generation batcher using
+  `max_tokens=eager_load_max_tokens` (default `1`) so startup never decodes until
+  the context limit;
+- records GPU memory snapshots before prepare, after prepare, after raw warmup,
+  after scratch probe, after chat smoke, and at the optional guard point;
+- fails startup when the scratch probe or `--startup-min-free-mib` guard fails.
+
+Still open: auto-reduce context when `--max-context-tokens` is omitted and the
+scratch probe rejects the KV-only auto-selected context. Today that case fails
+fast with an actionable error instead of silently advertising an unsafe server.
 
 A conservative initial threshold for the W7900 24GB target should be at least
 **2 GiB** post-smoke free, and probably **3 GiB** while the scratch inventory is
@@ -402,13 +448,17 @@ server.
 
 ### P0: make failures early and actionable
 
-- Add startup chat smoke as described above.
-- Add `HIPENGINE_STARTUP_MIN_FREE_MIB` / CLI equivalent for required post-smoke
-  headroom.
-- Include post-smoke memory in `/ready`.
-- Reject unsupported c>N/int8 request shapes before closing/reallocating the
-  current resident session.
-- Ensure cancellation interrupts long backend decode promptly.
+- Done: add startup max-prompt scratch probe (`--startup-scratch-probe`, default
+  on) that allocates long-prompt prefill scratch without decoding to the limit.
+- Done: add bounded startup chat smoke (`--startup-chat-smoke`, default on).
+- Done: add `HIPENGINE_STARTUP_MIN_FREE_MIB` / `--startup-min-free-mib` for
+  required post-smoke headroom.
+- Done: include startup checks and memory snapshots in `/ready`.
+- Open: reject unsupported c>N/int8 request shapes before closing/reallocating
+  the current resident session.
+- Open: ensure cancellation interrupts long backend decode promptly.
+- Open: auto-reduce context when KV-only auto-selection passes but scratch probe
+  fails.
 
 ### P1: build an exact memory ledger
 
@@ -432,10 +482,36 @@ server.
 - Audit sampler scratch so greedy-fast and exact top-p only retain what they need.
 - Release decode scratch before large prefill whenever overlap is unsafe, and
   restore it after prefill.
+- Reduce the chunked linear-attention transient footprint enough for 262k on
+  24GB; the current failure is at `linear_attn.tree_recurrent_state` after the
+  262k session leaves only about 2.0 GiB free.
 - Tune default auto-context reserve by measured scratch high-water, not a fixed
   512 MiB guess.
 
 ## Useful reproduction commands
+
+Direct max-prompt scratch probe without launching a web server:
+
+```bash
+HIP_VISIBLE_DEVICES=1 uv run python3 - <<'PY'
+from hipengine import LLM, SamplingParams
+model = "shisa-ai/Qwen3.6-35B-A3B-PARO-packed"
+sampling = SamplingParams(max_tokens=1, temperature=0.0, top_p=1.0,
+                          ignore_eos=True, kv_storage="int8_per_token_head")
+llm = LLM(model, backend="hip_gfx1100", quant="w4_paro")
+try:
+    ctx = llm.prepare(max_sequence_length=262144, sampling_params=sampling)
+    llm.generate(("one two three four",), sampling)
+    print(llm.prepare_request_scratch(max_prompt_tokens=ctx - 1,
+                                      max_new_tokens=0,
+                                      sampling_params=sampling))
+finally:
+    gen = llm._get_text_generator()
+    close = getattr(gen, "close", None)
+    if callable(close):
+        close()
+PY
+```
 
 Full-context startup + default chat request:
 

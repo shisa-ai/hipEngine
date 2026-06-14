@@ -68,6 +68,9 @@ class ServerConfig:
     eager_load: bool = True
     eager_load_prompt: str = "one two three four"
     eager_load_max_tokens: int = 1
+    startup_chat_smoke: bool = True
+    startup_scratch_probe: bool = True
+    startup_min_free_mib: int | None = None
     max_context_tokens: int | None = None
     chat_default_max_tokens: int | None = 4096
     kv_storage: str = "auto"
@@ -1125,6 +1128,8 @@ class _ReadinessState:
     warmup_complete: bool
     startup_error: dict[str, Any] | None = None
     last_startup_timings: dict[str, float | None] = field(default_factory=dict)
+    last_startup_memory: dict[str, Any] = field(default_factory=dict)
+    last_startup_checks: dict[str, Any] = field(default_factory=dict)
 
 
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
@@ -1154,6 +1159,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "engine_create_s": None,
             "resident_prepare_s": None,
             "warmup_s": None,
+            "scratch_probe_s": None,
+            "chat_smoke_s": None,
             "startup_total_s": None,
         },
     )
@@ -1269,6 +1276,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         readiness.ready = not bool(config.eager_load)
         readiness.startup_error = None
         startup_started = time.perf_counter()
+        startup_memory: dict[str, Any] = {}
+        startup_checks: dict[str, Any] = {}
+        readiness.last_startup_memory = startup_memory
+        readiness.last_startup_checks = startup_checks
+        _record_startup_memory_snapshot(startup_memory, "startup_begin")
         max_tokens = max(1, int(config.eager_load_max_tokens))
         if not config.eager_load:
             max_context = configured_max_context_tokens()
@@ -1293,6 +1305,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "engine_create_s": None,
                 "resident_prepare_s": None,
                 "warmup_s": None,
+                "scratch_probe_s": None,
+                "chat_smoke_s": None,
                 "startup_total_s": round(startup_total_s, 6),
             }
             _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", startup_total_s)
@@ -1328,6 +1342,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             _log_kv_capacity_summary(engine)
             _validate_context_budget(max_context, engine, (config.eager_load_prompt,), sampling)
+        _record_startup_memory_snapshot(startup_memory, "after_resident_prepare")
         _LOGGER.info(
             "WARMUP: prompt_tokens<=%s max_tokens=%d",
             "unknown" if max_context is None else str(max_context),
@@ -1336,6 +1351,95 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         warmup_started = time.perf_counter()
         await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
         warmup_s = time.perf_counter() - warmup_started
+        startup_checks["raw_warmup"] = {"max_tokens": max_tokens}
+        _record_startup_memory_snapshot(startup_memory, "after_raw_warmup")
+
+        scratch_probe_s: float | None = None
+        scratch_probe_started = time.perf_counter()
+        max_prompt_tokens = _startup_max_prompt_tokens(max_context)
+        if config.startup_scratch_probe:
+            scratch_preparer = getattr(engine, "prepare_request_scratch", None)
+            if max_prompt_tokens is None:
+                startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
+            elif not callable(scratch_preparer):
+                startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "backend_hook_unavailable"}
+                _LOGGER.warning("STARTUP_SCRATCH_PROBE: skipped; backend does not expose prepare_request_scratch")
+            else:
+                _LOGGER.info(
+                    "STARTUP_SCRATCH_PROBE: max_prompt_tokens=%d max_new_tokens=0 max_batch_size=1 release_after_probe=True",
+                    max_prompt_tokens,
+                )
+                try:
+                    scratch_result = await run_in_threadpool(
+                        lambda: scratch_preparer(
+                            max_prompt_tokens=max_prompt_tokens,
+                            max_new_tokens=0,
+                            sampling_params=sampling,
+                            max_batch_size=1,
+                            release_after_probe=True,
+                        )
+                    )
+                except Exception as exc:
+                    startup_checks["scratch_probe"] = {
+                        "enabled": True,
+                        "status": "failed",
+                        "max_prompt_tokens": max_prompt_tokens,
+                        "error": str(exc),
+                    }
+                    _LOGGER.error(
+                        "STARTUP_SCRATCH_PROBE: failed at max_prompt_tokens=%d: %s. "
+                        "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
+                        max_prompt_tokens,
+                        exc,
+                    )
+                    raise
+                startup_checks["scratch_probe"] = {
+                    "enabled": True,
+                    "status": "passed",
+                    "max_prompt_tokens": max_prompt_tokens,
+                    "result": scratch_result,
+                }
+        else:
+            startup_checks["scratch_probe"] = {"enabled": False, "status": "disabled"}
+        scratch_probe_s = time.perf_counter() - scratch_probe_started
+        _record_startup_memory_snapshot(startup_memory, "after_scratch_probe")
+
+        chat_smoke_s: float | None = None
+        if config.startup_chat_smoke:
+            smoke_started = time.perf_counter()
+            smoke_request = ChatCompletionRequest(
+                model=config.model_id,
+                messages=[ChatMessage(role="user", content="hello")],
+                temperature=0.0,
+                top_p=1.0,
+                max_tokens=max_tokens,
+            )
+            async with session_lock:
+                smoke_prompt = chat_prompt_for_request(smoke_request, engine)
+                smoke_sampling = sampling_params(smoke_request, (smoke_prompt,), engine)
+                smoke_prompt_tokens = _count_tokens_for_admission(engine, smoke_prompt)
+                _validate_context_budget(effective_max_context_tokens(engine), engine, (smoke_prompt,), smoke_sampling)
+            _LOGGER.info(
+                "WARMUP_CHAT: prompt_tokens=%d max_tokens=%d",
+                smoke_prompt_tokens,
+                int(smoke_sampling.max_tokens),
+            )
+            await generation_batcher.submit((smoke_prompt,), smoke_sampling, detailed=True)
+            chat_smoke_s = time.perf_counter() - smoke_started
+            startup_checks["chat_smoke"] = {
+                "enabled": True,
+                "status": "passed",
+                "prompt_tokens": int(smoke_prompt_tokens),
+                "max_tokens": int(smoke_sampling.max_tokens),
+            }
+            _record_startup_memory_snapshot(startup_memory, "after_chat_smoke")
+        else:
+            startup_checks["chat_smoke"] = {"enabled": False, "status": "disabled"}
+
+        guard_memory = _device_memory_snapshot()
+        if guard_memory is not None:
+            startup_memory["guard"] = guard_memory
+        _startup_free_memory_guard(memory=guard_memory, min_free_mib=config.startup_min_free_mib)
         startup_total_s = time.perf_counter() - startup_started
         readiness.ready = True
         readiness.status = "ready"
@@ -1345,14 +1449,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "engine_create_s": round(engine_create_s, 6),
             "resident_prepare_s": round(resident_prepare_s, 6),
             "warmup_s": round(warmup_s, 6),
+            "scratch_probe_s": None if scratch_probe_s is None else round(scratch_probe_s, 6),
+            "chat_smoke_s": None if chat_smoke_s is None else round(chat_smoke_s, 6),
             "startup_total_s": round(startup_total_s, 6),
         }
         _LOGGER.info(
-            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f startup_total_s=%.3f",
+            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s startup_total_s=%.3f",
             config.model_id,
             engine_create_s,
             resident_prepare_s,
             warmup_s,
+            "skipped" if scratch_probe_s is None else f"{scratch_probe_s:.3f}",
+            "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
             startup_total_s,
         )
         _LOGGER.info("hipEngine is ready.")
@@ -1728,6 +1836,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "eager_load": bool(readiness.eager_load),
                 "warmup_complete": bool(readiness.warmup_complete),
                 "last_timings_s": dict(readiness.last_startup_timings),
+                "checks": dict(readiness.last_startup_checks),
+                "memory": dict(readiness.last_startup_memory),
                 "error": readiness.startup_error,
             },
             "context": {
@@ -3514,6 +3624,64 @@ def _prepared_context_tokens(engine: Any) -> int | None:
 
 def _format_bytes(value: int) -> str:
     return f"{int(value) / 1024**3:.2f} GiB"
+
+
+def _device_memory_snapshot() -> dict[str, Any] | None:
+    try:
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        free_bytes, total_bytes = runtime.mem_get_info()
+    except Exception:
+        return None
+    free = int(free_bytes)
+    total = int(total_bytes)
+    return {
+        "free_bytes": free,
+        "total_bytes": total,
+        "used_bytes": max(0, total - free),
+        "free_gib": round(free / 1024**3, 6),
+        "used_gib": round(max(0, total - free) / 1024**3, 6),
+    }
+
+
+def _startup_max_prompt_tokens(max_context_tokens: int | None) -> int | None:
+    if max_context_tokens is None:
+        return None
+    return max(1, int(max_context_tokens) - 1)
+
+
+def _record_startup_memory_snapshot(target: dict[str, Any], stage: str) -> dict[str, Any] | None:
+    snapshot = _device_memory_snapshot()
+    if snapshot is not None:
+        target[str(stage)] = snapshot
+        _LOGGER.info(
+            "STARTUP_MEMORY: stage=%s free=%s used=%s total=%s",
+            stage,
+            _format_bytes(int(snapshot["free_bytes"])),
+            _format_bytes(int(snapshot["used_bytes"])),
+            _format_bytes(int(snapshot["total_bytes"])),
+        )
+    return snapshot
+
+
+def _startup_free_memory_guard(
+    *,
+    memory: Mapping[str, Any] | None,
+    min_free_mib: int | None,
+) -> None:
+    if min_free_mib is None:
+        return
+    if memory is None:
+        _LOGGER.warning("STARTUP_MEMORY: minimum free-memory guard skipped; HIP memory snapshot unavailable")
+        return
+    required = max(0, int(min_free_mib)) * 1024**2
+    free = int(memory.get("free_bytes", 0) or 0)
+    if free < required:
+        raise MemoryError(
+            f"startup free-memory guard failed: free={_format_bytes(free)} below "
+            f"required={_format_bytes(required)}"
+        )
 
 
 def _request_max_tokens(

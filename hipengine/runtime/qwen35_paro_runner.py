@@ -3434,6 +3434,101 @@ class Qwen35ParoResidentSession:
         self.prefill_moe_scratch = scratch
         return scratch
 
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        """Allocate the worst-case serving scratch for an admitted c=1 request.
+
+        This is a startup/readiness probe, not a generation path: it reserves the
+        prompt-length-dependent prefill buffers and workspaces without launching a
+        full prompt prefill or decoding to the output limit.  By default the bulk
+        prefill buffers are released afterward, mirroring the real prefill path;
+        decode scratch is restored if it was temporarily freed to make room.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        prompt_rows = max(1, int(max_prompt_tokens))
+        new_tokens = max(0, int(max_new_tokens))
+        batch_size = max(1, int(max_batch_size))
+        if batch_size > self.max_batch_size:
+            raise ValueError("scratch probe max_batch_size exceeds resident session max_batch_size")
+        if prompt_rows > self.max_sequence_length:
+            raise ValueError("scratch probe prompt tokens exceed resident session capacity")
+        if prompt_rows + new_tokens + 1 > self.max_sequence_length:
+            raise ValueError("scratch probe request shape exceeds resident session capacity")
+
+        self._resolve_prefill_config_for_length(prompt_rows)
+        layer_types = tuple(str(item) for item in self.config.layer_types[: len(self.states)])
+        has_linear = any(item == "linear_attention" for item in layer_types)
+        has_full = any(item == "full_attention" for item in layer_types)
+        linear_chunk_rows = 0
+        full_chunk_rows = 0
+        int8_oracle_bytes = 0
+        decode_scratch_released = self._should_minimize_prefill_workspace_overlap(prompt_rows)
+        try:
+            if decode_scratch_released:
+                self._release_decode_scratch_for_prefill()
+            self._prepare_prefill_context_counts(prompt_rows, stream=0)
+            self._prefill_hidden_view_for_rows(prompt_rows)
+            if has_linear:
+                linear_chunk = self._linear_prefill_layer_chunk_size(prompt_rows)
+                min_rows = int(getattr(self.config, "linear_conv_kernel_dim", 1))
+                linear_chunk_rows = max(
+                    end - start
+                    for start, end in self._chunk_ranges(
+                        prompt_rows,
+                        linear_chunk,
+                        min_chunk_size=min_rows,
+                    )
+                )
+                self._ensure_linear_prefill_scratch(tokens=linear_chunk_rows)
+                self._ensure_moe_prefill_scratch(None, tokens=linear_chunk_rows)
+            if has_full:
+                full_chunk = self._full_attention_prefill_layer_chunk_size(prompt_rows)
+                full_chunk_rows = max(
+                    end - start
+                    for start, end in self._chunk_ranges(
+                        prompt_rows,
+                        full_chunk,
+                        min_chunk_size=2,
+                    )
+                )
+                use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(prompt_rows)
+                self._ensure_full_prefill_scratch(
+                    tokens=full_chunk_rows,
+                    aotriton_attention=use_aotriton_attention,
+                )
+                self._ensure_moe_prefill_scratch(None, tokens=full_chunk_rows)
+                if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+                    key, value = self._prefill_int8_oracle_cache(0, total_tokens=prompt_rows)
+                    int8_oracle_bytes = int(
+                        key.numel * key.dtype.itemsize + value.numel * value.dtype.itemsize
+                    )
+            self.runtime.device_synchronize()
+            return {
+                "max_prompt_tokens": prompt_rows,
+                "max_new_tokens": new_tokens,
+                "max_batch_size": batch_size,
+                "prefill_hidden_bytes": int(prompt_rows * self.hidden_nbytes),
+                "linear_prefill_chunk_rows": int(linear_chunk_rows),
+                "full_prefill_chunk_rows": int(full_chunk_rows),
+                "int8_oracle_bytes": int(int8_oracle_bytes),
+                "decode_scratch_released_for_probe": bool(decode_scratch_released),
+                "prefill_chunk_tuning": dict(getattr(self, "prefill_chunk_tuning", {}) or {}),
+                "release_after_probe": bool(release_after_probe),
+            }
+        finally:
+            if release_after_probe:
+                self._restore_decode_scratch_after_prefill()
+            elif decode_scratch_released:
+                self._reserve_decode_scratch_after_prefill()
+
     def _trace_linear_input_bits(
         self,
         *,
@@ -4282,9 +4377,7 @@ class Qwen35ParoResidentSession:
         if last_hidden is None:
             raise RuntimeError("serial suffix prefill produced no hidden row")
         return last_hidden
-    def _restore_decode_scratch_after_prefill(self) -> None:
-        self._release_prefill_workspace()
-        self._release_prefill_hidden_buffer()
+    def _reserve_decode_scratch_after_prefill(self) -> None:
         self._clear_verify_scratch_caches()
         for layer_id, state in enumerate(self.states):
             self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
@@ -4297,6 +4390,11 @@ class Qwen35ParoResidentSession:
                     activation_dtype=DType.FP16,
                     gated_dtype=DType.FP16,
                 )
+
+    def _restore_decode_scratch_after_prefill(self) -> None:
+        self._release_prefill_workspace()
+        self._release_prefill_hidden_buffer()
+        self._reserve_decode_scratch_after_prefill()
 
     def _batch_decode_segment_metadata(
         self,

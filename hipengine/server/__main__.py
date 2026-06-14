@@ -38,6 +38,20 @@ def _env_positive_int(name: str) -> int | None:
     return _positive_int(raw)
 
 
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be >= 0")
+    return parsed
+
+
+def _env_optional_nonnegative_int(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return None
+    return _nonnegative_int(raw)
+
+
 def _chat_default_max_tokens(value: str) -> int | None:
     if value.strip().lower() in {"auto", "remaining", "context"}:
         return None
@@ -107,6 +121,33 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Resident session/KV context tokens preallocated at startup "
             "(default: auto = min(model max context, estimated allocatable KV context))"
+        ),
+    )
+    parser.add_argument(
+        "--startup-chat-smoke",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("HIPENGINE_STARTUP_CHAT_SMOKE", True),
+        help=(
+            "Run a bounded production-shaped chat request during eager startup "
+            "(env HIPENGINE_STARTUP_CHAT_SMOKE; default: true)"
+        ),
+    )
+    parser.add_argument(
+        "--startup-scratch-probe",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("HIPENGINE_STARTUP_SCRATCH_PROBE", True),
+        help=(
+            "Ask the backend to allocate max-context request scratch during eager startup "
+            "without decoding to the output limit (env HIPENGINE_STARTUP_SCRATCH_PROBE; default: true)"
+        ),
+    )
+    parser.add_argument(
+        "--startup-min-free-mib",
+        type=_nonnegative_int,
+        default=_env_optional_nonnegative_int("HIPENGINE_STARTUP_MIN_FREE_MIB"),
+        help=(
+            "Optional minimum free GPU memory after startup warmup/probes; below this, startup fails "
+            "(env HIPENGINE_STARTUP_MIN_FREE_MIB; default: disabled)"
         ),
     )
     parser.add_argument(
@@ -207,6 +248,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         eager_load=args.eager_load,
         eager_load_prompt=args.eager_load_prompt,
         eager_load_max_tokens=args.eager_load_max_tokens,
+        startup_chat_smoke=args.startup_chat_smoke,
+        startup_scratch_probe=args.startup_scratch_probe,
+        startup_min_free_mib=args.startup_min_free_mib,
         max_context_tokens=args.max_context_tokens,
         chat_default_max_tokens=args.chat_default_max_tokens,
         kv_storage=args.kv_storage,

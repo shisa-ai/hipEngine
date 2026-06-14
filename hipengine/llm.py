@@ -155,6 +155,34 @@ class LLM:
             sampling_params=sampling_params or SamplingParams(),
         )
 
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: SamplingParams | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any] | None:
+        """Ask the backend to allocate serving scratch for an admitted request shape.
+
+        Backends that keep lazy prompt/decode workspaces may implement this hook
+        so server startup can prove the selected resident context has enough
+        transient headroom without decoding to the output limit.
+        """
+
+        generator = self._get_text_generator()
+        preparer = getattr(generator, "prepare_request_scratch", None)
+        if not callable(preparer):
+            return None
+        return preparer(
+            max_prompt_tokens=max_prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            sampling_params=sampling_params or SamplingParams(),
+            max_batch_size=max_batch_size,
+            release_after_probe=release_after_probe,
+        )
+
     def count_tokens(self, text: str) -> int:
         """Return tokenizer token count when the resolved generator exposes one."""
 

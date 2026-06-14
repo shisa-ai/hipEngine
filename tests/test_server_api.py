@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi import Request
@@ -46,6 +47,7 @@ class FakeLLM:
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
         self.stream_calls: list[tuple[str, SamplingParams]] = []
         self.prepares: list[tuple[int | None, SamplingParams]] = []
+        self.scratch_prepares: list[dict[str, Any]] = []
         self.tokenize_calls: list[str] = []
         self.max_sequence_length: int | None = None
         self.kv_capacity_estimate = None
@@ -65,6 +67,25 @@ class FakeLLM:
             storage="int8_per_token_head",
         )
         return selected
+
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: SamplingParams | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        payload = {
+            "max_prompt_tokens": int(max_prompt_tokens),
+            "max_new_tokens": int(max_new_tokens),
+            "sampling_params": sampling_params,
+            "max_batch_size": int(max_batch_size),
+            "release_after_probe": bool(release_after_probe),
+        }
+        self.scratch_prepares.append(payload)
+        return {key: value for key, value in payload.items() if key != "sampling_params"}
 
     def generate(self, prompts, sampling_params: SamplingParams) -> list[str]:
         return [output.text for output in self.generate_detailed(prompts, sampling_params)]
@@ -312,6 +333,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
         "hard_close_validation": True,
         "hard_close_marker": "</think>",
+        "diagnostic_close_token_lowering": True,
+        "diagnostic_initial_state": True,
     }
     assert body["features"]["logprobs"]["streaming"] == "buffered"
     assert body["features"]["request_timeouts"] == {
@@ -565,9 +588,13 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
     assert "KVCache: storage=bf16" in caplog.text
     assert "model_max_context_tokens=262144" in caplog.text
     assert "WARMUP: prompt_tokens<=131072 max_tokens=2" in caplog.text
+    assert "STARTUP_SCRATCH_PROBE: max_prompt_tokens=131071" in caplog.text
+    assert "WARMUP_CHAT: prompt_tokens=" in caplog.text
     assert "LOAD_TIMING: phase=startup resident_prepare_s=" in caplog.text
     assert "LOAD_TIMING: model=fake-model engine_create_s=" in caplog.text
     assert "warmup_s=" in caplog.text
+    assert "scratch_probe_s=" in caplog.text
+    assert "chat_smoke_s=" in caplog.text
     assert "hipEngine is ready." in caplog.text
     assert fake.prepares == [
         (
@@ -575,11 +602,24 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
             SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True),
         )
     ]
+    assert fake.scratch_prepares == [
+        {
+            "max_prompt_tokens": 131071,
+            "max_new_tokens": 0,
+            "sampling_params": SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True),
+            "max_batch_size": 1,
+            "release_after_probe": True,
+        }
+    ]
     assert fake.calls == [
         (
             ("one two three four",),
             SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True),
-        )
+        ),
+        (
+            ("<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",),
+            SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0),
+        ),
     ]
 
 
@@ -618,6 +658,13 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["startup"]["eager_load"] is True
     assert body["startup"]["warmup_complete"] is True
     assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
+    assert body["startup"]["last_timings_s"]["scratch_probe_s"] >= 0.0
+    assert body["startup"]["last_timings_s"]["chat_smoke_s"] >= 0.0
+    assert body["startup"]["checks"]["scratch_probe"]["status"] == "passed"
+    assert body["startup"]["checks"]["scratch_probe"]["max_prompt_tokens"] == 131071
+    assert body["startup"]["checks"]["chat_smoke"]["status"] == "passed"
+    for snapshot in body["startup"]["memory"].values():
+        assert set(snapshot) >= {"free_bytes", "total_bytes", "used_bytes"}
     assert body["context"]["effective_max_context_tokens"] == 131072
     assert body["kv_capacity"]["estimate"]["allocatable_context_tokens"] == 131072
     assert body["kv_capacity"]["storage"] == "auto"
@@ -2604,6 +2651,9 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)
     monkeypatch.delenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", raising=False)
+    monkeypatch.delenv("HIPENGINE_STARTUP_CHAT_SMOKE", raising=False)
+    monkeypatch.delenv("HIPENGINE_STARTUP_SCRATCH_PROBE", raising=False)
+    monkeypatch.delenv("HIPENGINE_STARTUP_MIN_FREE_MIB", raising=False)
     monkeypatch.delenv("HIPENGINE_REQUEST_TIMEOUT_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_QUEUED_REQUESTS", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
@@ -2612,6 +2662,9 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
     assert default_args.chat_default_max_tokens == 4096
+    assert default_args.startup_chat_smoke is True
+    assert default_args.startup_scratch_probe is True
+    assert default_args.startup_min_free_mib is None
     assert default_args.request_timeout_ms is None
     assert default_args.max_queued_requests is None
     assert default_args.replay_dir is None
@@ -2622,6 +2675,9 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", "3.5")
     monkeypatch.setenv("HIPENGINE_DEBUG", "1")
     monkeypatch.setenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", "auto")
+    monkeypatch.setenv("HIPENGINE_STARTUP_CHAT_SMOKE", "0")
+    monkeypatch.setenv("HIPENGINE_STARTUP_SCRATCH_PROBE", "0")
+    monkeypatch.setenv("HIPENGINE_STARTUP_MIN_FREE_MIB", "512")
     monkeypatch.setenv("HIPENGINE_REQUEST_TIMEOUT_MS", "250.5")
     monkeypatch.setenv("HIPENGINE_MAX_QUEUED_REQUESTS", "7")
     monkeypatch.setenv("HIPENGINE_REPLAY_DIR", "/tmp/hipengine-replay")
@@ -2632,6 +2688,9 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert env_args.generation_batch_window_ms == 3.5
     assert env_args.debug is True
     assert env_args.chat_default_max_tokens is None
+    assert env_args.startup_chat_smoke is False
+    assert env_args.startup_scratch_probe is False
+    assert env_args.startup_min_free_mib == 512
     assert env_args.request_timeout_ms == 250.5
     assert env_args.max_queued_requests == 7
     assert env_args.replay_dir == "/tmp/hipengine-replay"
@@ -2657,6 +2716,10 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "/tmp/hipengine-cli-replay",
             "--replay-redaction",
             "hash",
+            "--startup-chat-smoke",
+            "--startup-scratch-probe",
+            "--startup-min-free-mib",
+            "256",
             "--no-debug",
         ]
     )
@@ -2668,6 +2731,9 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert cli_args.chat_default_max_tokens == 123
     assert cli_args.replay_dir == "/tmp/hipengine-cli-replay"
     assert cli_args.replay_redaction == "hash"
+    assert cli_args.startup_chat_smoke is True
+    assert cli_args.startup_scratch_probe is True
+    assert cli_args.startup_min_free_mib == 256
     assert cli_args.debug is False
 
     app = create_app(ServerConfig(model="fake-path", eager_load=False, prefix_cache="radix"), llm=FakeLLM())

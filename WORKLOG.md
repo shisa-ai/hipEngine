@@ -87937,3 +87937,17 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `2 passed`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - Startup scratch probe gate for full-context serving
+
+Added a fail-fast startup memory gate so `hipengine serve` no longer reports ready after only retained KV allocation and a one-token raw warmup. Server startup now records HIP memory snapshots, runs the legacy raw warmup, probes max admitted c=1 prompt scratch via `prepare_request_scratch(max_prompt_tokens=context-1, max_new_tokens=0)`, runs a bounded `hello` chat-shaped smoke through the generation batcher, exposes startup checks/memory in `/ready`, and supports `--startup-chat-smoke`, `--startup-scratch-probe`, and `--startup-min-free-mib` / corresponding env vars. The PARO probe allocates long-prompt prefill hidden/workspaces/oracle buffers without decoding to the output limit and re-resolves `prefill_config` for the probed prompt length so a tiny raw warmup cannot leave stale unchunked scratch policy behind.
+
+Real GPU1/W7900 checks (`HIP_VISIBLE_DEVICES=1`, `shisa-ai/Qwen3.6-35B-A3B-PARO-packed`, `hip_gfx1100`, `w4_paro`, `kv_storage=int8_per_token_head`, clean GPU before each run):
+- 65,536 context: prepare 24.709s, free 5.088 GiB after prepare / 5.051 GiB after raw warmup, scratch probe passed in 0.050s (`prefill_hidden_bytes=268,431,360`, linear chunk 1024, full chunk 4096, int8 oracle 134,217,728 bytes).
+- 131,072 context: prepare 24.896s, free 4.199 GiB after prepare / 4.162 GiB after raw warmup, scratch probe passed in 0.054s (`prefill_hidden_bytes=536,866,816`, linear chunk 1024, full chunk 4096, int8 oracle 268,435,456 bytes).
+- 262,144 context: prepare 24.617s, free 2.045 GiB after prepare / 2.008 GiB after raw warmup, scratch probe failed before readiness with `HipError: out of memory` while allocating chunked `linear_attn.tree_recurrent_state`. Conclusion: current strong gate admits 128k but correctly rejects 262k on 24GB until transient linear/full prefill scratch is reduced or context auto-reduction is added.
+
+Validation:
+- `uv run pytest -q tests/test_server_api.py tests/test_llm_generate.py` -> passed.
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py hipengine/llm.py hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_server_api.py tests/test_llm_generate.py` -> passed.
+- Direct GPU probes above; `rocm-smi --showmeminfo vram --showpidgpus` after runs showed no KFD PIDs and GPU1 back to idle.
