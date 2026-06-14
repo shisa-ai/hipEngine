@@ -27,6 +27,11 @@ def _result(token_id: int, text: str) -> Qwen35ParoAutoregressiveStepResult:
     return Qwen35ParoAutoregressiveStepResult(token_id=token_id, token_text=text, logit=float(token_id))
 
 
+def _decode_state(output):
+    assert output.telemetry is not None
+    return output.telemetry.to_json_dict()["decode_state"]
+
+
 def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context() -> None:
     config = SimpleNamespace(
         layer_types=("linear_attention",) * 30 + ("full_attention",) * 10,
@@ -159,6 +164,15 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatc
         "length_limit": 3,
         "sampler_mode": "greedy_fast",
     }
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 3,
+        "prompt_tokens": 2,
+        "generated_tokens": 3,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "greedy_fast",
+    }
     assert calls == [
         ("init", runner, 4096),
         ("prefill_native", (10, 11), True),
@@ -263,6 +277,15 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
     assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
         "reason": "length",
         "length_limit": 2,
+        "sampler_mode": "host_logits_sample",
+    }
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
         "sampler_mode": "host_logits_sample",
     }
     assert calls[0][0] == "configure_host_sampler"
@@ -405,6 +428,16 @@ def test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch
         "stop_sequence": [100, 101],
         "sampler_mode": "processed_argmax",
     }
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "stop_suffix_state": {"matched_sequence": [100, 101]},
+        "sampler_mode": "processed_argmax",
+    }
     assert len([call for call in calls if call[0] == "step"]) == 1
 
 
@@ -505,6 +538,13 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         "native_caware_decode": False,
         "throughput_claim_eligible": False,
     }
+    assert [_decode_state(output)["row_index"] for output in generator.last_generation_outputs] == [0, 1]
+    assert [_decode_state(output)["request_id"] for output in generator.last_generation_outputs] == ["0", "1"]
+    assert [_decode_state(output)["prompt_tokens"] for output in generator.last_generation_outputs] == [2, 1]
+    assert [_decode_state(output)["sampler_mode"] for output in generator.last_generation_outputs] == [
+        "greedy_fast",
+        "greedy_fast",
+    ]
 
 
 def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) -> None:
@@ -577,6 +617,11 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) ->
     ]
     assert generator.last_batch_generation["path"] == "scheduler_native_packed_prefill_serial_host_sampler_decode"
     assert generator.last_batch_generation["native_compact_prefill"] is True
+    assert [_decode_state(output)["row_index"] for output in generator.last_generation_outputs] == [0, 1]
+    assert [_decode_state(output)["sampler_mode"] for output in generator.last_generation_outputs] == [
+        "host_logits_sample",
+        "host_logits_sample",
+    ]
 
 
 def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:

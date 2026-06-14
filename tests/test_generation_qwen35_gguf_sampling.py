@@ -42,6 +42,11 @@ def _request(**overrides) -> GenerationRequest:
     return GenerationRequest(**values)
 
 
+def _decode_state(output):
+    assert output.telemetry is not None
+    return output.telemetry.to_json_dict()["decode_state"]
+
+
 def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
     calls = []
 
@@ -94,6 +99,15 @@ def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
         "length_limit": 2,
         "sampler_mode": "greedy_fast",
     }
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "greedy_fast",
+    }
     assert ("prefill", (10, 11), False) in calls
     assert ("graph_replay", 1) in calls
 
@@ -136,6 +150,15 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
     assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
         "reason": "length",
         "length_limit": 2,
+        "sampler_mode": "host_logits_sample",
+    }
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
         "sampler_mode": "host_logits_sample",
     }
     assert ("prefill", (10, 11), True) in calls
@@ -224,6 +247,16 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
     assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
         "reason": "stop",
         "stop_sequence": [1, 2],
+        "sampler_mode": "host_logits_sample",
+    }
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "stop_suffix_state": {"matched_sequence": [1, 2]},
         "sampler_mode": "host_logits_sample",
     }
     assert len([call for call in calls if call[0] == "step"]) == 1

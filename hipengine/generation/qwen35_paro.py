@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
-from hipengine.generation.registry import FinishDetails, GenerationOutput, GenerationRequest, TokenLogprob, register_text_generator
+from hipengine.generation.registry import (
+    FinishDetails,
+    GenerationOutput,
+    GenerationRequest,
+    GenerationTelemetry,
+    TokenLogprob,
+    register_text_generator,
+)
 from hipengine.generation.sampling import (
     RowSamplingState,
     SamplingMode,
@@ -74,7 +81,7 @@ class Qwen35ParoOneTokenGenerator:
                         sampler_mode=plan.mode.value,
                     ),
                 )
-                for _ in request.prompts
+                for _prompt in request.prompts
             )
             return list(self.last_generation_outputs)
         runner = self._get_runner()
@@ -243,6 +250,13 @@ class Qwen35ParoOneTokenGenerator:
                     max_tokens=max_tokens,
                     sampler_mode=sampler_mode,
                 ),
+                telemetry=_telemetry_for_tokens(
+                    prompt_ids,
+                    generated_token_ids,
+                    row_index=0,
+                    sampler_mode=sampler_mode,
+                    stop_token_sequences=(),
+                ),
             )
 
         remaining = max_tokens - 1
@@ -270,6 +284,13 @@ class Qwen35ParoOneTokenGenerator:
                 stop_token_sequences=(),
                 max_tokens=max_tokens,
                 sampler_mode=sampler_mode,
+            ),
+            telemetry=_telemetry_for_tokens(
+                prompt_ids,
+                generated_token_ids,
+                row_index=0,
+                sampler_mode=sampler_mode,
+                stop_token_sequences=(),
             ),
         )
 
@@ -326,6 +347,13 @@ class Qwen35ParoOneTokenGenerator:
                         max_tokens=max_tokens,
                         sampler_mode=plan.mode.value,
                     ),
+                    telemetry=_telemetry_for_tokens(
+                        prompt_ids,
+                        generated_token_ids,
+                        row_index=row_index,
+                        sampler_mode=plan.mode.value,
+                        stop_token_sequences=request.stop_token_sequences,
+                    ),
                 )
 
             current_token_id = int(next_result.token_id)
@@ -356,6 +384,13 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                     max_tokens=max_tokens,
                     sampler_mode=plan.mode.value,
+                ),
+                telemetry=_telemetry_for_tokens(
+                    prompt_ids,
+                    generated_token_ids,
+                    row_index=row_index,
+                    sampler_mode=plan.mode.value,
+                    stop_token_sequences=request.stop_token_sequences,
                 ),
             )
         finally:
@@ -400,6 +435,7 @@ class Qwen35ParoOneTokenGenerator:
             scheduler.submit(row, max_new_tokens=max(0, max_tokens - 1))
             for row in prompt_rows
         )
+        prompt_rows_by_request = dict(zip(request_ids, prompt_rows, strict=True))
         admitted = scheduler.admit_pending()
         if admitted != request_ids:
             raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
@@ -541,6 +577,14 @@ class Qwen35ParoOneTokenGenerator:
                     max_tokens=max_tokens,
                     sampler_mode=sampler_mode,
                 ),
+                telemetry=_telemetry_for_tokens(
+                    prompt_rows_by_request[request_id],
+                    generated_ids[request_id],
+                    row_index=request_id,
+                    request_id=str(request_id),
+                    sampler_mode=sampler_mode,
+                    stop_token_sequences=(),
+                ),
             )
             for request_id in request_ids
         ]
@@ -588,6 +632,7 @@ class Qwen35ParoOneTokenGenerator:
             )
             for index, row in enumerate(prompt_rows)
         )
+        prompt_rows_by_request = dict(zip(request_ids, prompt_rows, strict=True))
         admitted = scheduler.admit_pending()
         if admitted != request_ids:
             raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
@@ -718,6 +763,14 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                     max_tokens=request.max_tokens,
                     sampler_mode=sampler_mode,
+                ),
+                telemetry=_telemetry_for_tokens(
+                    prompt_rows_by_request[request_id],
+                    generated_ids[request_id],
+                    row_index=request_id,
+                    request_id=str(request_id),
+                    sampler_mode=sampler_mode,
+                    stop_token_sequences=request.stop_token_sequences,
                 ),
             )
             for request_id in request_ids
@@ -924,6 +977,7 @@ def _generation_output_from_steps(
     steps: list[Qwen35ParoAutoregressiveStepResult] | tuple[Qwen35ParoAutoregressiveStepResult, ...],
     *,
     finish_details: FinishDetails,
+    telemetry: GenerationTelemetry | None = None,
 ) -> GenerationOutput:
     tokens = tuple(
         TokenLogprob(
@@ -941,7 +995,54 @@ def _generation_output_from_steps(
         text="".join(step.token_text for step in steps),
         token_logprobs=tokens,
         finish_details=finish_details,
+        telemetry=telemetry,
     )
+
+
+def _telemetry_for_tokens(
+    prompt_ids: list[int] | tuple[int, ...],
+    generated_token_ids: list[int] | tuple[int, ...],
+    *,
+    row_index: int,
+    sampler_mode: str,
+    stop_token_sequences: tuple[tuple[int, ...], ...],
+    request_id: str | None = None,
+) -> GenerationTelemetry:
+    return GenerationTelemetry.from_decode_counts(
+        request_id=request_id,
+        row_index=row_index,
+        prompt_tokens=len(prompt_ids),
+        generated_tokens=len(generated_token_ids),
+        sampler_mode=sampler_mode,
+        stop_suffix_state=_stop_suffix_state(generated_token_ids, stop_token_sequences),
+    )
+
+
+def _stop_suffix_state(
+    generated_token_ids: list[int] | tuple[int, ...],
+    stop_token_sequences: tuple[tuple[int, ...], ...],
+) -> dict[str, Any] | None:
+    if not generated_token_ids or not stop_token_sequences:
+        return None
+    matched = _matched_stop_sequence(generated_token_ids, stop_token_sequences)
+    if matched:
+        return {"matched_sequence": list(matched)}
+    generated = tuple(int(token) for token in generated_token_ids)
+    best: tuple[int, ...] = ()
+    candidates: list[list[int]] = []
+    for sequence in stop_token_sequences:
+        normalized = tuple(int(token) for token in sequence)
+        for length in range(1, min(len(normalized), len(generated)) + 1):
+            suffix = generated[-length:]
+            if suffix == normalized[:length] and len(suffix) > len(best):
+                best = suffix
+    if best:
+        for sequence in stop_token_sequences:
+            normalized = tuple(int(token) for token in sequence)
+            if normalized[: len(best)] == best:
+                candidates.append(list(normalized))
+        return {"partial_suffix": list(best), "candidate_sequences": candidates}
+    return None
 
 
 def _row_sampling_state(

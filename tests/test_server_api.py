@@ -11,7 +11,13 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, FinishDetails, GenerationOutput, TokenLogprob
+from hipengine.generation import (
+    GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    FinishDetails,
+    GenerationOutput,
+    GenerationTelemetry,
+    TokenLogprob,
+)
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
 from hipengine.server.api import (
@@ -19,6 +25,7 @@ from hipengine.server.api import (
     CompletionRequest,
     OpenAIHTTPError,
     _await_with_request_control,
+    _coerce_generation_output,
     _GenerationBatcher,
     _request_control,
 )
@@ -142,6 +149,31 @@ def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
         kv_scale_dtype="fp16" if storage == "int8_per_token_head" else None,
         fits_model_max=False,
     )
+
+
+def test_coerce_generation_output_preserves_telemetry() -> None:
+    raw = SimpleNamespace(
+        text="answer",
+        telemetry=GenerationTelemetry.from_decode_counts(
+            prompt_tokens=3,
+            generated_tokens=2,
+            sampler_mode="host_logits_sample",
+        ),
+    )
+
+    output = _coerce_generation_output(raw)
+
+    assert output.text == "answer"
+    assert output.telemetry is not None
+    assert output.telemetry.to_json_dict()["decode_state"] == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 3,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "host_logits_sample",
+    }
 
 
 def test_models_endpoint_reports_served_model_name_and_auth() -> None:

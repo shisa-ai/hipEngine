@@ -277,6 +277,39 @@ class GenerationTelemetry:
             usage=getattr(value, "usage", None),
         )
 
+    @classmethod
+    def from_decode_counts(
+        cls,
+        *,
+        prompt_tokens: int,
+        generated_tokens: int,
+        row_index: int = 0,
+        request_id: str | None = None,
+        phase: DecodePhase | str = DecodePhase.DONE,
+        sampler_mode: str | None = None,
+        stop_suffix_state: Any | None = None,
+        forced_tokens_pending: tuple[int, ...] = (),
+        budget_pressure: str | None = None,
+        continuation_eligible: bool = False,
+        event: str | None = None,
+    ) -> "GenerationTelemetry":
+        return cls(
+            decode_state=DecodeState(
+                request_id=request_id,
+                row_index=row_index,
+                step_index=generated_tokens,
+                prompt_tokens=prompt_tokens,
+                generated_tokens=generated_tokens,
+                phase=phase,
+                stop_suffix_state=stop_suffix_state,
+                forced_tokens_pending=forced_tokens_pending,
+                budget_pressure=budget_pressure,
+                sampler_mode=sampler_mode,
+                continuation_eligible=continuation_eligible,
+            ),
+            event=event,
+        )
+
     def to_json_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"decode_state": self.decode_state.to_json_dict()}
         if self.event is not None:

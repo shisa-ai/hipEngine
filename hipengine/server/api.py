@@ -3546,11 +3546,13 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
         return value
     token_logprobs = getattr(value, "token_logprobs", None)
     finish_details = getattr(value, "finish_details", None)
-    if token_logprobs is not None or finish_details is not None:
+    telemetry = getattr(value, "telemetry", None)
+    if token_logprobs is not None or finish_details is not None or telemetry is not None:
         return GenerationOutput(
             text=str(getattr(value, "text", value)),
             token_logprobs=tuple(token_logprobs or ()),
             finish_details=finish_details,
+            telemetry=telemetry,
         )
     return GenerationOutput(text=str(value))
 

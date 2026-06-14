@@ -87808,3 +87808,20 @@ Validation:
 - Direct GPU1 128k/4096 smoke above -> passed.
 
 Note: full `tests/test_qwen35_resident_batch_layout.py` currently has unrelated synthetic-session failures from missing recently added cache/sampler fields (`_slot_linear_state_cache`, `_resident_tensor_view_cache_enabled_value`, `_host_sampling_params`); the targeted verifier-trunk test passes.
+
+## 2026-06-14 - AGENTIC backend decode telemetry snapshots
+
+Advanced P0.1 lower-loop observability. Token-emitting PARO and GGUF detailed
+generation now attach final `GenerationTelemetry` snapshots to
+`GenerationOutput`: row index, prompt/generated token counts, sampler mode, and
+JSON-safe stop suffix match/partial-suffix state when multi-token stops are
+configured. The server coercion path preserves telemetry from adapter objects
+instead of dropping it. Public default OpenAI response shapes remain unchanged;
+opt-in stream metadata still uses the server-side live compatibility bridge
+until backend streams emit native token telemetry.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry -q` -> `19 passed`.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_agentic_harness_traces.py tests/test_model_quant_and_imports.py -q` -> `20 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.

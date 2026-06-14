@@ -87,8 +87,9 @@ Known baseline limitations:
   thinking budget, dynamic logit processor, EOS suppression, or forced close
   sequence yet. `hard_close_sequence` is validated to contain `</think>`, but it
   is not forced during decode.
-- Server-side reasoning/tool parsing lives above generation; the generation loop
-  does not yet expose canonical token-level phase state for reasoning, answer,
+- Server-side reasoning/tool parsing lives above generation. PARO/GGUF
+  generation loops emit final decode-state telemetry snapshots, but they do not
+  yet expose canonical live token-level phase state for reasoning, answer,
   tool-call, or structured-output spans.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, and sampler mode. Forced-token, backend
@@ -743,9 +744,12 @@ Current code reality:
 - Opt-in server stream metadata uses `DecodeState` for token-bearing
   `choices[].hipengine.decode_state` payloads derived from the current
   `_ReasoningSplitter` / token-counting compatibility layer.
-- Backend generation loops do not yet author decode-state snapshots directly,
-  so sampler fallback metadata, stop suffix state, forced-token queue state, and
-  backend-authored continuation eligibility remain future lower-loop work.
+- Token-emitting PARO/GGUF generation loops now author final
+  `GenerationTelemetry` snapshots with prompt/generated token counts, row index,
+  sampler mode, and stop suffix match/partial-suffix state where applicable.
+- Live backend-authored per-token phase transitions, forced-token queue state,
+  sampler fallback reason metadata, and real continuation eligibility remain
+  future lower-loop work.
 
 Exit gates:
 
