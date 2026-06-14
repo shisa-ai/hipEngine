@@ -87633,3 +87633,16 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `20 passed`.
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_emits_speculative_verify_work -q` -> `2 passed`.
 - `git diff --check -- hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py docs/API.md docs/AGENTIC.md docs/SAMPLING.md`.
+
+## 2026-06-14 - API docs batcher reality
+
+Updated `docs/API.md` to match the current OpenAI server execution path:
+requests now route through `_GenerationBatcher`, compatible queued prompts can
+coalesce into one prompt-list engine call, and the remaining async lock only
+covers short model/session preparation mutations. Continuous decode,
+concurrent backend execution, max-active-session admission, and scheduler
+fairness remain future runtime work.
+
+Validation:
+- Re-read changed `docs/API.md` sections.
+- `git diff --check -- docs/API.md`.

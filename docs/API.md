@@ -4,8 +4,9 @@ Last updated: 2026-06-14
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
-installed by default, and execution is intentionally serialized today because
-the current runnable Qwen/PARO path is still single-request / `c=1`.
+installed by default. HTTP requests route through the in-process generation
+batcher; compatible queued prompts can coalesce into one engine call, while the
+remaining async lock is limited to short model/session preparation mutations.
 
 ## Install
 
@@ -407,8 +408,10 @@ strings and should only be used in local, non-sensitive debugging sessions.
   await/iteration boundaries. They fail the HTTP/SSE request promptly, but
   already-running backend calls or GPU kernels are not preempted until those
   calls return.
-- Request execution is serialized with an in-process lock. Continuous batching,
-  concurrent decode, and scheduling fairness are later runtime work.
+- HTTP generation requests route through the in-process generation batcher.
+  Compatible queued prompts can coalesce into one prompt-list engine call, but
+  true continuous decode, concurrent backend execution, max-active-session
+  admission, and scheduler fairness remain later runtime work.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
