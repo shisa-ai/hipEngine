@@ -4821,6 +4821,17 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["error"]["param"] == "top_logprobs"
     assert artifact["error"]["hipengine"]["code"] == "unsupported_parameter"
     assert artifact["capabilities"]["model"]["id"] == "fake-model"
+    assert artifact["capabilities"]["features"]["tools"]["no_tool_start_suppression"] is True
+    assert artifact["capabilities"]["features"]["tools"]["required_tool_start_forcing"] is True
+    assert artifact["capabilities"]["features"]["tools"]["required_tool_start_forcing_scope"] == (
+        "initial_or_after_tokenized_thinking_close"
+    )
+    assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing"] is True
+    assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
+    assert artifact["capabilities"]["features"]["reasoning_controls"]["token_budget_enforced"] is True
+    assert artifact["capabilities"]["features"]["reasoning_controls"]["hard_close_token_forcing"] is True
+    assert artifact["capabilities"]["features"]["reasoning_controls"]["soft_close_bias"] is True
+    assert artifact["capabilities"]["features"]["reasoning_controls"]["eos_suppression"] is True
     assert artifact["capabilities"]["sampling"]["speculative_mtp"] == {
         "serving_route": False,
         "sampling_compatible": False,

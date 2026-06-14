@@ -567,9 +567,10 @@ method/path, redacted request JSON, prompt/tool-result hashes, served model id,
 requested sampler fields, seed fields, error or result-validation metadata,
 finish details when available, completion/chat prompt token counts when the
 engine is already loaded and supports counting, explicit unavailable reasons
-otherwise, and a compact capability snapshot including sampler/MTP compatibility
-plus cache/session support. Normal result-validation artifacts record affected
-choice indexes and finish metadata, not generated assistant text.
+otherwise, and a compact capability snapshot including sampler/MTP
+compatibility, tokenizer-dependent tool/reasoning controls, and cache/session
+support. Normal result-validation artifacts record affected choice indexes and
+finish metadata, not generated assistant text.
 
 The default `--replay-redaction hash` replaces every string value in the request
 JSON with SHA-256 and length metadata. `--replay-redaction none` stores raw

@@ -88825,3 +88825,17 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC replay capability tokenizer flags
+
+Replay artifact capability snapshots now use the loaded engine's tokenizer
+capability flags for tool start/close forcing and thinking-budget enforcement.
+This keeps failed-request bundles aligned with live `/v1/hipengine/capabilities`
+when tokenizer-backed tool/reasoning controls are available.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

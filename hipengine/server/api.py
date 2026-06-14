@@ -437,7 +437,7 @@ def _build_replay_artifact(
                 "hipengine": error_payload.get("hipengine"),
             }
         ),
-        "capabilities": _replay_capability_snapshot(config),
+        "capabilities": _replay_capability_snapshot(config, engine=engine),
     }
     if result_payload is not None:
         artifact["result"] = dict(result_payload)
@@ -723,7 +723,9 @@ def _scheduler_fairness_capability() -> dict[str, Any]:
     }
 
 
-def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
+def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
+    tokenizer_caps = _tokenizer_capability_flags(engine)
+    tokenizer_backed = tokenizer_caps["tokenize"]
     return {
         "model": {
             "id": config.model_id,
@@ -748,24 +750,26 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "strict_result_validation": True,
                 "schema_validation": "function_strict",
                 "schema_subset": _tool_schema_subset(),
-                "no_tool_start_suppression": False,
-                "required_tool_start_forcing": False,
-                "required_tool_start_forcing_scope": "none",
-                "specific_tool_name_prefix_forcing": False,
-                "tool_call_close_repair": False,
+                "no_tool_start_suppression": tokenizer_backed,
+                "required_tool_start_forcing": tokenizer_backed,
+                "required_tool_start_forcing_scope": (
+                    "initial_or_after_tokenized_thinking_close" if tokenizer_backed else "none"
+                ),
+                "specific_tool_name_prefix_forcing": tokenizer_backed,
+                "tool_call_close_repair": tokenizer_backed,
             },
             "reasoning_controls": {
                 "enabled": True,
                 "fields": _reasoning_control_fields(),
                 "budget_policy": "prompt_hint_plus_tokenized_soft_and_hard_close",
-                "token_budget": False,
-                "token_budget_enforced": False,
+                "token_budget": tokenizer_backed,
+                "token_budget_enforced": tokenizer_backed,
                 "effort_defaults": _thinking_effort_defaults_capability(),
                 "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                 "hard_close_validation": True,
-                "hard_close_token_forcing": False,
-                "soft_close_bias": False,
-                "eos_suppression": False,
+                "hard_close_token_forcing": tokenizer_backed,
+                "soft_close_bias": tokenizer_backed,
+                "eos_suppression": tokenizer_backed,
             },
             "request_timeouts": {
                 "timeout_ms": True,
