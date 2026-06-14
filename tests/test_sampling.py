@@ -60,6 +60,32 @@ def _params(**overrides):
     return SimpleNamespace(**values)
 
 
+def _speculative_mtp_blocker_cases():
+    return {
+        "temperature": _params(temperature=0.7),
+        "logit_bias": _params(logit_bias={1: 10.0}),
+        "repetition_penalty": _params(repetition_penalty=1.1),
+        "presence_penalty": _params(presence_penalty=0.1),
+        "frequency_penalty": _params(frequency_penalty=0.1),
+        "suppress_token_ids": _params(suppress_token_ids=(7,)),
+        "min_tokens": _params(min_tokens=2, eos_token_id=9),
+        "stop_token_ids": _params(stop_token_ids=(99,)),
+        "stop_token_sequences": _params(stop_token_sequences=((10, 11),)),
+        "forced_tokens_pending": _params(forced_tokens_pending=(10, 11)),
+        "post_thinking_forced_tokens_pending": _params(
+            thinking_close_token_ids=(10, 11),
+            thinking_hard_token_cap=4,
+            post_thinking_forced_tokens_pending=(12,),
+        ),
+        "force_sequence_completion_token_sequences": _params(
+            force_sequence_completion_token_sequences=((10, 11),),
+        ),
+        "thinking_budget": _params(thinking_close_token_ids=(10, 11), thinking_hard_token_cap=2),
+        "logprobs": _params(logprobs=True),
+        "top_logprobs": _params(top_logprobs=2),
+    }
+
+
 def test_sampler_plan_keeps_inert_top_p_top_k_on_greedy_fast_path() -> None:
     plan = plan_sampler(_params(temperature=0.0, top_p=0.5, top_k=4, min_p=0.5))
 
@@ -255,6 +281,20 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
         "logprobs",
         "top_logprobs",
     )
+
+
+def test_speculative_mtp_incompatible_fields_match_blocker_policy() -> None:
+    cases = _speculative_mtp_blocker_cases()
+    advertised = set(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS)
+
+    assert set(cases) == advertised
+    assert tuple(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS) == SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
+
+    for field, params in cases.items():
+        blockers = speculative_mtp_sampling_blockers(params)
+        assert field in blockers
+        assert set(blockers) <= advertised
+        assert supports_speculative_mtp_sampling(params) is False
 
 
 def test_greedy_tie_break_selects_lower_token_id() -> None:

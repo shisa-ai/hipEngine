@@ -181,6 +181,12 @@ Current code reality:
 - `tests/test_server_api.py`, `tests/test_agentic_server_conformance.py`,
   `tests/test_agentic_harness_traces.py`, and `tests/test_local_agent_config.py`
   cover the current matrix with fake engines and checked-in golden traces.
+- `tests/test_sampling.py` exhaustively maps every advertised
+  `sampling.speculative_mtp.incompatible_fields` entry to a concrete blocker
+  case, and verifies every actual blocker is advertised. This preserves the
+  current policy that `logit_bias`, penalties, suppressions, forced-token
+  queues, thinking budgets, and logprob requests are normal AR-sampling
+  features but raw-argmax MTP blockers.
 - These tests prove the server contract and diagnostics; they do not prove a
   particular live model will reliably choose the right tool without future
   decode-time grammar/schema constraints.

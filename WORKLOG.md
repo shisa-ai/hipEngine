@@ -89127,3 +89127,22 @@ ROCm stack check before the run:
 - `hipcc --version` and `/opt/rocm/bin/hipcc --version` both report `HIP version: 7.2.53211-3d9ef42`.
 - `hipRuntimeGetVersion` from `ctypes.CDLL('libamdhip64.so')` reports `70253211`.
 - Therefore this GPU1 gate and the previous GPU0 smoke gates used the system `/opt/rocm` 7.2 runtime/compiler path, not the clean TheRock ROCm 7.13 environment. Use the README `env -i ... ROOT=$(python3 -m rocm_sdk path --root)` wrapper for 7.13-comparable performance rows.
+
+## 2026-06-14 - AGENTIC speculative MTP blocker invariants
+
+Added an exhaustive sampler invariant test for the documented raw-argmax MTP
+compatibility policy. Every field advertised in
+`sampling.speculative_mtp.incompatible_fields` now has a concrete request case
+that makes `speculative_mtp_sampling_blockers()` report the field, and every
+reported blocker must be advertised. This keeps `logit_bias`, penalties,
+suppressions, forced-token queues, thinking budgets, and logprob requests
+available to normal AR sampling while keeping current MTP verification
+fail-closed.
+
+Validation:
+- `python3 -m py_compile tests/test_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy -q` -> `2 passed`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `38 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m ruff check tests/test_sampling.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_sampling.py docs/AGENTIC.md WORKLOG.md` -> clean.
