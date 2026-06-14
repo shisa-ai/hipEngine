@@ -1864,6 +1864,39 @@ def test_chat_completion_response_format_json_object_validates_visible_content()
     assert "Return only one valid JSON object" in invalid_fake.calls[0][0][0]
 
 
+def test_chat_completion_response_format_length_keeps_partial_json() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text='{"ok":',
+                finish_details=FinishDetails(reason="length", length_limit=6),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["message"] == {"role": "assistant", "content": '{"ok":'}
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == {
+        "reason": "length",
+        "length_limit": 6,
+        "phase": "structured",
+        "continuation_eligible": False,
+    }
+
+
 def test_streaming_chat_completion_response_format_buffers_validation() -> None:
     fake = FakeLLM(outputs=["not json"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)

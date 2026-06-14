@@ -87964,3 +87964,16 @@ Validation:
 - `uv run pytest -q tests/test_server_api.py tests/test_llm_generate.py` -> passed.
 - `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py hipengine/llm.py hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_server_api.py tests/test_llm_generate.py` -> passed.
 - Direct GPU probes above; `rocm-smi --showmeminfo vram --showpidgpus` after runs showed no KFD PIDs and GPU1 back to idle.
+
+## 2026-06-14 - AGENTIC structured length regression coverage
+
+Closed a P1.5 regression gap by covering `response_format={"type":"json_object"}`
+chat length stops with incomplete visible JSON. The server must preserve the
+partial structured content with `finish_reason="length"`,
+`finish_details.phase="structured"`, and `continuation_eligible=false` instead
+of erasing it as a schema violation.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_length_finish_details_include_phase tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json -q` -> `7 passed`.
+- `git diff --check` -> clean.
