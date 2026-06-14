@@ -516,11 +516,11 @@ records served model id, backend, quant, storage, timestamps, and
 or decode/sampling state. Authenticated
 `POST /v1/hipengine/sessions/{session_id}/snapshot` restores the snapshot into
 the same session id after validating schema, model id, backend, quant, storage,
-message shape, including nested assistant `tool_calls` objects and valid JSON
-`function.arguments` strings. Incompatible or corrupted snapshots fail before
-creating the session. Restoring a new session is subject to the configured
-chat-session cap; when the cap is full, the server returns `engine_busy` without
-creating partial session state.
+message shape, text content parts, message string metadata, nested assistant
+`tool_calls` objects, and valid JSON `function.arguments` strings. Incompatible
+or corrupted snapshots fail before creating the session. Restoring a new session
+is subject to the configured chat-session cap; when the cap is full, the server
+returns `engine_busy` without creating partial session state.
 
 Validate the config against a running server with:
 

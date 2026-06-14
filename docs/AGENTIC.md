@@ -1639,10 +1639,11 @@ Current code reality:
   visible transcript messages, served model id, backend, quant, storage, and
   timestamps, and explicitly report `resident_state_reuse=false`.
 - Restore validates snapshot schema, same session id, model id, backend, quant,
-  storage, resident-state flag, timestamps, message shape, and nested assistant
-  `tool_calls` shape, including valid JSON `function.arguments` strings, before
-  creating or replacing the app-local transcript session. Incompatible snapshots
-  fail with stable `invalid_request` errors and do not create a session.
+  storage, resident-state flag, timestamps, message shape, text content parts,
+  message string metadata, and nested assistant `tool_calls` shape, including
+  valid JSON `function.arguments` strings, before creating or replacing the
+  app-local transcript session. Incompatible snapshots fail with stable
+  `invalid_request` errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and
   fails with `engine_busy` without creating partial session state when full.
 - Resident KV payload references, prefix token blobs, tokenizer state, and

@@ -1489,6 +1489,75 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
 @pytest.mark.parametrize(
     ("corruption", "param"),
     [
+        ("content_object", "messages[0].content"),
+        ("content_part_non_object", "messages[0].content[0]"),
+        ("content_part_wrong_type", "messages[0].content[0]"),
+        ("content_part_non_string_text", "messages[0].content[0].text"),
+        ("empty_name", "messages[0].name"),
+        ("non_string_tool_call_id", "messages[0].tool_call_id"),
+    ],
+)
+def test_chat_session_snapshot_restore_rejects_corrupted_message_fields(
+    corruption: str,
+    param: str,
+) -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "snapshot prompt"}],
+            "session": {"id": "sess_corrupt_fields"},
+            "max_tokens": 4,
+        },
+    )
+    snapshot = client.get("/v1/hipengine/sessions/sess_corrupt_fields/snapshot", headers=headers).json()
+
+    if corruption == "content_object":
+        snapshot["messages"][0]["content"] = {"text": "not an accepted content shape"}
+    elif corruption == "content_part_non_object":
+        snapshot["messages"][0]["content"] = [7]
+    elif corruption == "content_part_wrong_type":
+        snapshot["messages"][0]["content"] = [{"type": "image_url", "text": "not text"}]
+    elif corruption == "content_part_non_string_text":
+        snapshot["messages"][0]["content"] = [{"type": "text", "text": 7}]
+    elif corruption == "empty_name":
+        snapshot["messages"][0]["name"] = ""
+    elif corruption == "non_string_tool_call_id":
+        snapshot["messages"][0]["tool_call_id"] = 7
+    else:
+        raise AssertionError(f"unhandled corruption case: {corruption}")
+    client.delete("/v1/hipengine/sessions/sess_corrupt_fields", headers=headers)
+
+    restored = client.post(
+        "/v1/hipengine/sessions/sess_corrupt_fields/snapshot",
+        headers=headers,
+        json=snapshot,
+    )
+
+    assert created.status_code == 200
+    assert restored.status_code == 400
+    assert restored.json()["error"]["code"] == "invalid_request"
+    assert restored.json()["error"]["param"] == param
+    assert "sess_corrupt_fields" not in app.state.hipengine_chat_sessions
+
+
+@pytest.mark.parametrize(
+    ("corruption", "param"),
+    [
         ("non_object", "messages[1].tool_calls[0]"),
         ("extra_key", "messages[1].tool_calls[0].unexpected"),
         ("missing_id", "messages[1].tool_calls[0].id"),

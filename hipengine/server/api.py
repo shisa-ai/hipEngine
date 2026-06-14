@@ -6232,9 +6232,11 @@ def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
             param=f"messages[{index}].role",
         )
     payload: dict[str, Any] = {"role": role}
-    for key in ("content", "name", "tool_call_id"):
+    if "content" in value:
+        payload["content"] = _chat_session_snapshot_content(value.get("content"), message_index=index)
+    for key in ("name", "tool_call_id"):
         if key in value:
-            payload[key] = value.get(key)
+            payload[key] = _chat_session_snapshot_string(value.get(key), param=f"messages[{index}].{key}")
     if "tool_calls" in value:
         tool_calls = value.get("tool_calls")
         if not isinstance(tool_calls, Sequence) or isinstance(tool_calls, (str, bytes)):
@@ -6249,6 +6251,61 @@ def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
             for tool_index, call in enumerate(tool_calls)
         ]
     return payload
+
+
+def _chat_session_snapshot_string(value: Any, *, param: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param} must be a non-empty string",
+            code="invalid_request",
+            param=param,
+        )
+    return value
+
+
+def _chat_session_snapshot_content(value: Any, *, message_index: int) -> str | list[Any] | None:
+    param = f"messages[{message_index}].content"
+    if value is None or isinstance(value, str):
+        return value
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param} must be text, null, or text content parts",
+            code="invalid_request",
+            param=param,
+        )
+    parts: list[Any] = []
+    for part_index, part in enumerate(value):
+        part_param = f"{param}[{part_index}]"
+        if isinstance(part, str):
+            parts.append(part)
+            continue
+        if not isinstance(part, Mapping):
+            raise OpenAIHTTPError(
+                400,
+                f"session snapshot {part_param} must be a text object",
+                code="invalid_request",
+                param=part_param,
+            )
+        part_type = part.get("type", "text")
+        if part_type != "text":
+            raise OpenAIHTTPError(
+                400,
+                f"session snapshot {part_param}.type must be 'text'",
+                code="invalid_request",
+                param=part_param,
+            )
+        text = part.get("text", "")
+        if not isinstance(text, str):
+            raise OpenAIHTTPError(
+                400,
+                f"session snapshot {part_param}.text must be a string",
+                code="invalid_request",
+                param=f"{part_param}.text",
+            )
+        parts.append(dict(part))
+    return parts
 
 
 def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_index: int) -> dict[str, Any]:
