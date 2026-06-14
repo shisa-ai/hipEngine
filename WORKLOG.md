@@ -87462,3 +87462,25 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC chat length finish metadata
+
+Added optional `phase` and `continuation_eligible` fields to
+`FinishDetails`. Chat length stops are now classified post-generation as
+`reasoning`, `closing_think`, `tool_call`, `structured`, or `answer`, and the
+server returns `continuation_eligible=false` until continuation handles exist.
+This is metadata-only: no synthetic close text is appended and no session state
+is committed.
+
+The generation batcher now has an explicit detailed-output mode for server
+response assembly. Default batcher callers still receive plain strings, while
+chat/completion response assembly preserves `GenerationOutput.finish_details`
+through the non-logprobs batched path and through the `generate()` fallback when
+it already returns detailed outputs.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `68 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

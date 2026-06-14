@@ -205,6 +205,8 @@ class FinishDetails:
     budget_pressure: str | None = None
     cache_action: str | None = None
     sampler_mode: str | None = None
+    phase: str | None = None
+    continuation_eligible: bool | None = None
 ```
 
 Server responses can expose this under an extension field such as
@@ -219,6 +221,9 @@ Current code reality:
   values without changing legacy fallback behavior: `eos` remains public
   `stop`, `length` maps to public `length`, and parsed tool calls report
   `tool_calls`.
+- Chat length stops get best-effort post-parse `finish_details.phase` metadata
+  (`reasoning`, `closing_think`, `tool_call`, `structured`, or `answer`) plus
+  explicit `continuation_eligible=false` until continuation handles exist.
 - PARO/GGUF detailed generation now emits basic backend finish details for EOS,
   token stop, stop sequence, length, and sampler mode. Normal backends still
   need native cancellation/deadline, forced-close, budget, cache, sampler
@@ -970,6 +975,14 @@ Implement:
 - return honest finish details and continuation eligibility;
 - avoid appending synthetic text unless explicitly marked and excluded from
   resident-session commit.
+
+Current code reality:
+
+- chat length stops are classified post-generation into `reasoning`,
+  `closing_think`, `tool_call`, `structured`, or `answer`, and the response
+  includes `continuation_eligible=false`;
+- no synthetic text is appended; true continuation handles and decode-loop phase
+  accounting remain P1.6 / DecodeState work.
 
 Exit gates:
 

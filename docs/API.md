@@ -159,7 +159,8 @@ Completion and chat choices include a hipEngine extension field,
 always contains `reason` and may include `eos_token_id`, `stop_sequence`,
 `length_limit`, `deadline_exceeded`, `cancelled`, `forced_close`,
 `synthetic_tokens`, `reasoning_tokens`, `answer_tokens`, `tool_call_tokens`,
-`structured_tokens`, `budget_pressure`, `cache_action`, and `sampler_mode`.
+`structured_tokens`, `budget_pressure`, `cache_action`, `sampler_mode`, `phase`,
+and `continuation_eligible`.
 
 `finish_reason` remains the coarse OpenAI value for compatibility. For example,
 backend `reason: "eos"` is exposed as `finish_reason: "stop"` with
@@ -168,6 +169,11 @@ backend `reason: "eos"` is exposed as `finish_reason: "stop"` with
 `finish_reason: "tool_calls"` and `finish_details.reason: "tool_calls"`.
 Streaming responses include `finish_details` on the final choice chunk;
 ordinary delta chunks are unchanged.
+
+For chat length stops, the server adds best-effort post-parse metadata:
+`phase` is one of `reasoning`, `closing_think`, `tool_call`, `structured`, or
+`answer`; `continuation_eligible` is currently `false` because continuation
+handles are not implemented.
 
 PARO/GGUF detailed generation reports basic backend finish details for EOS,
 token stops, stop sequences, length limits, and sampler mode when those signals

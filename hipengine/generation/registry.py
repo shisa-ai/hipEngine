@@ -107,6 +107,8 @@ class FinishDetails:
     budget_pressure: str | None = None
     cache_action: str | None = None
     sampler_mode: str | None = None
+    phase: str | None = None
+    continuation_eligible: bool | None = None
 
     def __post_init__(self) -> None:
         reason = "stop" if self.reason is None or str(self.reason).strip() == "" else str(self.reason)
@@ -126,6 +128,12 @@ class FinishDetails:
         object.__setattr__(self, "budget_pressure", None if self.budget_pressure is None else str(self.budget_pressure))
         object.__setattr__(self, "cache_action", None if self.cache_action is None else str(self.cache_action))
         object.__setattr__(self, "sampler_mode", None if self.sampler_mode is None else str(self.sampler_mode))
+        object.__setattr__(self, "phase", None if self.phase is None else str(self.phase))
+        object.__setattr__(
+            self,
+            "continuation_eligible",
+            None if self.continuation_eligible is None else bool(self.continuation_eligible),
+        )
 
     @classmethod
     def from_value(cls, value: Any) -> "FinishDetails":
@@ -148,6 +156,12 @@ class FinishDetails:
                 budget_pressure=value.get("budget_pressure"),
                 cache_action=value.get("cache_action"),
                 sampler_mode=value.get("sampler_mode"),
+                phase=value.get("phase"),
+                continuation_eligible=(
+                    value.get("continuation_eligible")
+                    if "continuation_eligible" in value
+                    else None
+                ),
             )
         return cls(
             reason=str(getattr(value, "reason", "stop")),
@@ -165,6 +179,8 @@ class FinishDetails:
             budget_pressure=getattr(value, "budget_pressure", None),
             cache_action=getattr(value, "cache_action", None),
             sampler_mode=getattr(value, "sampler_mode", None),
+            phase=getattr(value, "phase", None),
+            continuation_eligible=getattr(value, "continuation_eligible", None),
         )
 
     def to_json_dict(self, *, reason: str | None = None) -> dict[str, Any]:
@@ -197,6 +213,10 @@ class FinishDetails:
             payload["cache_action"] = self.cache_action
         if self.sampler_mode is not None:
             payload["sampler_mode"] = self.sampler_mode
+        if self.phase is not None:
+            payload["phase"] = self.phase
+        if self.continuation_eligible is not None:
+            payload["continuation_eligible"] = self.continuation_eligible
         return payload
 
 

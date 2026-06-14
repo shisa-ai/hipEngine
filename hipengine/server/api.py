@@ -785,6 +785,7 @@ class _QueuedGeneration:
     sampling: SamplingParams
     future: asyncio.Future[list[Any]] | None = None
     stream_queue: asyncio.Queue[object] | None = None
+    detailed: bool = False
     cancelled: bool = False
 
 
@@ -830,7 +831,13 @@ class _GenerationBatcher:
             headers={"Retry-After": str(self._retry_after_seconds)},
         )
 
-    async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[Any]:
+    async def submit(
+        self,
+        prompts: Sequence[str],
+        sampling: SamplingParams,
+        *,
+        detailed: bool = False,
+    ) -> list[Any]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[list[Any]] = loop.create_future()
@@ -840,6 +847,7 @@ class _GenerationBatcher:
                 prompts=prompt_tuple,
                 sampling=sampling,
                 future=future,
+                detailed=bool(detailed),
             )
         )
         if self._worker is None or self._worker.done():
@@ -919,14 +927,13 @@ class _GenerationBatcher:
                 _finish_queued_generation(item, exception=exc)
             return
         for item, start, end in slices:
-            _finish_queued_generation(item, outputs=outputs[start:end])
+            item_outputs: Sequence[Any] = outputs[start:end]
+            if not item.detailed:
+                item_outputs = [_coerce_generation_output(output).text for output in item_outputs]
+            _finish_queued_generation(item, outputs=item_outputs)
 
     async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[Any]:
-        raw_outputs = await run_in_threadpool(
-            self._engine_factory().generate,
-            prompts,
-            sampling,
-        )
+        raw_outputs = await _generate_detailed(self._engine_factory(), prompts, sampling)
         outputs = list(raw_outputs)
         if len(outputs) != len(prompts):
             raise RuntimeError(
@@ -954,7 +961,7 @@ def _queued_generation_cancelled(item: _QueuedGeneration) -> bool:
 def _finish_queued_generation(
     item: _QueuedGeneration,
     *,
-    outputs: Sequence[str] | None = None,
+    outputs: Sequence[Any] | None = None,
     exception: Exception | None = None,
 ) -> None:
     if item.future is not None and not item.future.done():
@@ -1398,7 +1405,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
             else:
-                raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
+                raw_outputs = await generation_batcher.submit(tuple(prompts), sampling, detailed=True)
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
@@ -2029,18 +2036,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     server_stop=server_stop,
                     tool_calls=bool(parsed.tool_calls),
                 )
+            finish_reason_override = (
+                tool_validation.failure_reason
+                if tool_validation.failed
+                else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
+            )
             choice = {
                 "index": index,
                 "message": message,
                 "finish_reason": finish_reason,
-                "finish_details": _finish_details_payload(
+                "finish_details": _chat_finish_details_payload(
                     detail,
                     finish_reason,
-                    reason_override=(
-                        tool_validation.failure_reason
-                        if tool_validation.failed
-                        else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
-                    ),
+                    text,
+                    reason_override=finish_reason_override,
                 ),
             }
             if request.logprobs:
@@ -2086,6 +2095,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         server_stop=server_stop,
                         tool_calls=bool(parsed.tool_calls),
                     )
+                finish_reason_override = (
+                    tool_validation.failure_reason
+                    if tool_validation.failed
+                    else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
+                )
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
                 yield _chat_stream_role(
                     response_id,
@@ -2103,14 +2117,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason,
                     index=index,
                     logprobs=logprobs,
-                    finish_details=_finish_details_payload(
+                    finish_details=_chat_finish_details_payload(
                         detail,
                         finish_reason,
-                        reason_override=(
-                            tool_validation.failure_reason
-                            if tool_validation.failed
-                            else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
-                        ),
+                        text,
+                        reason_override=finish_reason_override,
                     ),
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
@@ -3180,7 +3191,7 @@ async def _generate_detailed(
     detailed = getattr(engine, "generate_detailed", None)
     if callable(detailed):
         return list(await run_in_threadpool(detailed, prompts, sampling))
-    return [GenerationOutput(text=str(item)) for item in await run_in_threadpool(engine.generate, prompts, sampling)]
+    return [_coerce_generation_output(item) for item in await run_in_threadpool(engine.generate, prompts, sampling)]
 
 
 def _coerce_generation_output(value: Any) -> GenerationOutput:
@@ -3675,6 +3686,31 @@ def _finish_details_payload(
     return finish.to_json_dict(reason=reason_override)
 
 
+def _chat_finish_details_payload(
+    detail: GenerationOutput | None,
+    finish_reason: str,
+    text: str,
+    *,
+    reason_override: str | None = None,
+) -> dict[str, Any]:
+    payload = _finish_details_payload(detail, finish_reason, reason_override=reason_override)
+    if _is_length_finish_payload(payload):
+        payload.setdefault("phase", _classify_chat_length_phase(text))
+        payload.setdefault("continuation_eligible", False)
+    return payload
+
+
+def _is_length_finish_payload(payload: Mapping[str, Any]) -> bool:
+    reason = str(payload.get("reason", "")).strip().lower()
+    return reason in {
+        "length",
+        "max_length",
+        "max_tokens",
+        "token_budget_exhausted",
+        "budget_exhausted",
+    }
+
+
 def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     if stop is None:
         return ()
@@ -3877,6 +3913,41 @@ def _tag_suffix_len(text: str, tag: str) -> int:
         if tag.startswith(text[-length:]):
             return length
     return 0
+
+
+def _classify_chat_length_phase(text: str) -> str:
+    if _tag_suffix_len(text, _REASONING_OPEN_TAG):
+        return "reasoning"
+    in_reasoning = text.rfind(_REASONING_OPEN_TAG) > text.rfind(_REASONING_CLOSE_TAG)
+    if in_reasoning:
+        if _tag_suffix_len(text, _REASONING_CLOSE_TAG):
+            return "closing_think"
+        return "reasoning"
+    if _has_unclosed_tool_call(text):
+        return "tool_call"
+    if _looks_like_partial_json(text):
+        return "structured"
+    return "answer"
+
+
+def _has_unclosed_tool_call(text: str) -> bool:
+    lowered = text.lower()
+    if _tag_suffix_len(lowered, "<tool_call>") or _tag_suffix_len(lowered, "</tool_call>"):
+        return True
+    open_index = lowered.rfind("<tool_call>")
+    close_index = lowered.rfind("</tool_call>")
+    return open_index > close_index
+
+
+def _looks_like_partial_json(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "[{":
+        return False
+    try:
+        json.loads(stripped)
+    except Exception:
+        return True
+    return False
 
 
 def _split_reasoning(text: str) -> _ReasoningSplit:

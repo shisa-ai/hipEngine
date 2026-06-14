@@ -1375,6 +1375,54 @@ def test_chat_completion_rejects_invalid_thinking_budget_value() -> None:
     assert fake.calls == []
 
 
+@pytest.mark.parametrize(
+    ("output", "phase", "content", "reasoning_content"),
+    [
+        ("<think>scratch", "reasoning", "", "scratch"),
+        ("<think>scratch</thi", "closing_think", "", "scratch</thi"),
+        ('<tool_call>{"name":"read"', "tool_call", '<tool_call>{"name":"read"', None),
+        ('{"status":', "structured", '{"status":', None),
+        ("partial answer", "answer", "partial answer", None),
+    ],
+)
+def test_chat_completion_length_finish_details_include_phase(
+    output: str,
+    phase: str,
+    content: str,
+    reasoning_content: str | None,
+) -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text=output,
+                finish_details=FinishDetails(reason="length", length_limit=5),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "continue"}]},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == {
+        "reason": "length",
+        "length_limit": 5,
+        "phase": phase,
+        "continuation_eligible": False,
+    }
+    assert choice["message"]["content"] == content
+    if reasoning_content is None:
+        assert "reasoning_content" not in choice["message"]
+    else:
+        assert choice["message"]["reasoning_content"] == reasoning_content
+
+
 def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
     prompt = render_chat_prompt(
         [
