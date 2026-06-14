@@ -90127,3 +90127,18 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py -q` -> `6 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `24 passed`.
 - `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_local_agent_config.py scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC structured length phase
+
+Fixed chat length-finish metadata for structured-output requests whose generated
+prefix already parses as valid JSON. The post-generation phase marker now treats
+any active structured-output validator (`response_format`, `guided_patch`, or
+`guided_diff`) as `phase="structured"` on length finishes instead of relying
+only on partial-JSON text heuristics.
+
+Validation:
+- RED: `python3 -m pytest tests/test_server_api.py::test_chat_completion_response_format_length_marks_complete_json_structured -q` failed with `phase='answer'`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_response_format_length_marks_complete_json_structured tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_patch_and_inherits_validation tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format tests/test_server_api.py::test_chat_completion_length_finish_details_include_phase -q` -> `9 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

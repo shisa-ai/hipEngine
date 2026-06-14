@@ -3898,7 +3898,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                     ),
                 }
-                _mark_guided_patch_length_phase(request, choice["finish_details"])
+                _mark_structured_length_phase(request, choice["finish_details"])
                 effective_cache_action = _effective_session_cache_action(
                     requested_cache_action,
                     choice["finish_details"],
@@ -4031,7 +4031,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     parsed=parsed,
                     token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                 )
-                _mark_guided_patch_length_phase(request, finish_details)
+                _mark_structured_length_phase(request, finish_details)
                 await _maybe_write_agentic_result_replay_artifact(
                     config,
                     raw_request,
@@ -4456,7 +4456,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 parsed=parsed,
                 token_counter=getattr(engine, "count_tokens", None),
             )
-            _mark_guided_patch_length_phase(request, finish_details)
+            _mark_structured_length_phase(request, finish_details)
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -6679,11 +6679,11 @@ def _mark_continuation_unavailable(finish_details: dict[str, Any]) -> None:
         finish_details.setdefault("continuation_eligible", False)
 
 
-def _mark_guided_patch_length_phase(
+def _mark_structured_length_phase(
     request: CompletionRequest | ChatCompletionRequest,
     finish_details: dict[str, Any],
 ) -> None:
-    if not _guided_patch_result_validation(request):
+    if not _structured_result_validation(request):
         return
     if not _is_length_finish(str(finish_details.get("reason", "")), finish_details):
         return

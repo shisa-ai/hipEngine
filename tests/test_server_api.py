@@ -5037,6 +5037,41 @@ def test_chat_completion_response_format_length_keeps_partial_json() -> None:
     )
 
 
+def test_chat_completion_response_format_length_marks_complete_json_structured() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text='{"ok":true}',
+                finish_details=FinishDetails(reason="length", length_limit=11),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    continuation_id = choice["continuation_id"]
+    assert choice["message"] == {"role": "assistant", "content": '{"ok":true}'}
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=11,
+        phase="structured",
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+
 def test_chat_continuation_resumes_partial_guided_patch_and_inherits_validation() -> None:
     fake = SequentialFakeLLM(
         [
