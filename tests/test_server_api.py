@@ -2346,6 +2346,57 @@ def test_completion_continuation_resumes_buffered_length_finish_once() -> None:
     assert len(fake.calls) == 2
 
 
+def test_completion_continuation_resume_rejects_explicit_response_format_override() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text='{"ok":',
+                finish_details=FinishDetails(reason="length", length_limit=6),
+            ),
+            GenerationOutput(text="true}", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "Return JSON: ",
+            "response_format": {"type": "json_object"},
+            "max_tokens": 6,
+        },
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    override = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "response_format": {"type": "text"},
+            "max_tokens": 4,
+        },
+    )
+
+    assert override.status_code == 400
+    assert override.json()["error"]["code"] == "unsupported_parameter"
+    assert override.json()["error"]["param"] == "response_format"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    inherited = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert inherited.status_code == 200
+    assert inherited.json()["choices"][0]["text"] == '{"ok":true}'
+    assert len(fake.calls) == 2
+
+
 def test_completion_length_finish_marks_sampled_continuation_ineligible() -> None:
     fake = FakeLLM(
         detailed_outputs=[

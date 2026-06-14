@@ -6086,6 +6086,8 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
         return "presence_penalty"
     if float(request.frequency_penalty or 0.0) != 0.0:
         return "frequency_penalty"
+    if request.response_format is not None:
+        return "response_format"
     if isinstance(request, ChatCompletionRequest):
         if request.tools:
             return "tools"
@@ -6093,8 +6095,6 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
             return "tool_choice"
         if request.parallel_tool_calls is not None:
             return "parallel_tool_calls"
-        if request.response_format is not None:
-            return "response_format"
         thinking_param = _thinking_budget_sampling_unsupported_param(request)
         if thinking_param is not None:
             return thinking_param

@@ -232,8 +232,8 @@ scoped to the served model and endpoint, expire after 15 minutes, and are
 cleared on server restart.
 
 Resume by sending the returned `continuation_id` to the same endpoint. The
-original `prompt` or `messages` can be omitted on resume; chat resumes also
-inherit the stored `response_format` when the follow-up request omits it. This
+original `prompt` or `messages` can be omitted on resume; resumes also inherit
+the stored `response_format` when the follow-up request omits it. This
 first implementation re-prefills the stored rendered prompt plus prior generated
 text instead of reusing resident KV state, and the capabilities manifest reports
 `sessions.continuations.resident_state_reuse: false`.

@@ -1261,7 +1261,7 @@ Current code reality:
   15 minutes, and return stable `invalid_continuation` /
   `continuation_expired` errors;
 - resume requests can omit the original completion prompt or chat messages, and
-  chat resumes inherit stored `response_format` when the follow-up omits it;
+  inherit stored `response_format` when the follow-up omits it;
 - the implementation re-prefills the stored rendered prompt plus prior generated
   text and reports `resident_state_reuse=false`; it does not yet preserve
   decode state, tokenizer id, auth principal, RNG state, or resident KV;
