@@ -87771,3 +87771,24 @@ Validation/commands:
 - `HIP_VISIBLE_DEVICES=1 python3 - <<'PY' ... llm.prepare(max_sequence_length=128000, SamplingParams(kv_storage='int8_per_token_head')); llm.stream(' one'*4096, max_tokens=1) ... PY` -> reproduced HIP OOM at `moe.grouped.selected_out` allocation.
 - Same direct smoke with `max_sequence_length=96000` -> prepared 96256 tokens, 4096-token prompt succeeded, after-prepare free ~3.928 GiB.
 - Same direct smoke with `max_sequence_length=64000` -> prepared 64512 tokens, 4096-token prompt succeeded, after-prepare free ~4.596 GiB.
+
+## 2026-06-14 - AGENTIC DecodeState telemetry MVP
+
+Advanced P0.1 by adding torch-free generation telemetry primitives:
+`DecodePhase`, `DecodeState`, and `GenerationTelemetry` now live in
+`hipengine.generation.registry`, are exported from `hipengine.generation`, and
+`GenerationOutput` can carry an optional telemetry snapshot. Opt-in SSE
+metadata now includes canonical `choices[].hipengine.decode_state` snapshots on
+token-bearing chunks derived from the current server reasoning splitter/token
+counter bridge. Backend-authored decode-state emission remains future lower-loop
+work. While validating the full server suite, aligned the completion timeout
+reuse test with the documented request-control boundary: a 1 ms timeout may
+cancel before the worker starts or while it unwinds; the public contract is that
+the next request can reuse the server.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_completion_timeout_returns_deadline_error_and_server_reuses -q` -> `7 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_completion_timeout_returns_deadline_error_and_server_reuses -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_agentic_harness_traces.py tests/test_model_quant_and_imports.py -q` -> `20 passed`.

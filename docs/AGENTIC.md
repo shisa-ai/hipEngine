@@ -735,6 +735,18 @@ Likely touchpoints:
 - `hipengine/generation/qwen35_paro.py` / `qwen35_gguf.py` for output plumbing;
 - `hipengine/server/api.py` for response/stream serialization.
 
+Current code reality:
+
+- `hipengine.generation.registry` now defines torch-free `DecodePhase`,
+  `DecodeState`, and `GenerationTelemetry` primitives, and `GenerationOutput`
+  can carry an optional telemetry snapshot.
+- Opt-in server stream metadata uses `DecodeState` for token-bearing
+  `choices[].hipengine.decode_state` payloads derived from the current
+  `_ReasoningSplitter` / token-counting compatibility layer.
+- Backend generation loops do not yet author decode-state snapshots directly,
+  so sampler fallback metadata, stop suffix state, forced-token queue state, and
+  backend-authored continuation eligibility remain future lower-loop work.
+
 Exit gates:
 
 - fake-session tests prove streaming and non-streaming paths report the same
@@ -783,7 +795,8 @@ Current code reality:
   include `choices[].hipengine.tokens` with per-chunk `delta_tokens`,
   cumulative `streamed_tokens`, and best-effort server-side phase counters;
   final choice chunks include usage-derived prompt/completion/total token counts
-  plus those streamed phase counters.
+  plus those streamed phase counters. Token-bearing chunks also include a
+  canonical `choices[].hipengine.decode_state` snapshot.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
   usage chunks mirror `usage` under top-level `hipengine.usage`.
 - Streaming error chunks also honor `include_hipengine`: they use top-level

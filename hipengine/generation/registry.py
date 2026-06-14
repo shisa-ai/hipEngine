@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -86,6 +87,205 @@ class TokenLogprob:
             "top_logprobs",
             tuple((int(token_id), str(text), float(logprob)) for token_id, text, logprob in self.top_logprobs),
         )
+
+
+class DecodePhase(str, Enum):
+    """Canonical generation phase labels for agent-facing telemetry."""
+
+    PREFILL = "prefill"
+    THINK = "think"
+    CLOSING_THINK = "closing_think"
+    ANSWER = "answer"
+    TOOL_CALL = "tool_call"
+    STRUCTURED = "structured"
+    DONE = "done"
+
+
+def _decode_phase_value(value: Any) -> str:
+    return value.value if isinstance(value, DecodePhase) else str(value)
+
+
+def _nonnegative_int(value: Any, default: int = 0) -> int:
+    return max(0, int(default if value is None else value))
+
+
+def _pending_token_tuple(value: Any) -> tuple[int, ...]:
+    return () if value is None else tuple(int(token) for token in value)
+
+
+@dataclass(frozen=True)
+class DecodeState:
+    """Per-row decode phase and token-accounting snapshot."""
+
+    request_id: str | None = None
+    row_index: int = 0
+    step_index: int = 0
+    prompt_tokens: int = 0
+    generated_tokens: int = 0
+    phase: DecodePhase | str = DecodePhase.DONE
+    reasoning_tokens: int = 0
+    answer_tokens: int = 0
+    tool_call_tokens: int = 0
+    structured_tokens: int = 0
+    stop_suffix_state: Any | None = None
+    forced_tokens_pending: tuple[int, ...] = ()
+    budget_pressure: str | None = None
+    sampler_mode: str | None = None
+    continuation_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "request_id", None if self.request_id is None else str(self.request_id))
+        object.__setattr__(self, "row_index", _nonnegative_int(self.row_index))
+        object.__setattr__(self, "step_index", _nonnegative_int(self.step_index))
+        object.__setattr__(self, "prompt_tokens", _nonnegative_int(self.prompt_tokens))
+        object.__setattr__(self, "generated_tokens", _nonnegative_int(self.generated_tokens))
+        object.__setattr__(self, "phase", _decode_phase_value(self.phase))
+        object.__setattr__(self, "reasoning_tokens", _nonnegative_int(self.reasoning_tokens))
+        object.__setattr__(self, "answer_tokens", _nonnegative_int(self.answer_tokens))
+        object.__setattr__(self, "tool_call_tokens", _nonnegative_int(self.tool_call_tokens))
+        object.__setattr__(self, "structured_tokens", _nonnegative_int(self.structured_tokens))
+        object.__setattr__(self, "forced_tokens_pending", _pending_token_tuple(self.forced_tokens_pending))
+        object.__setattr__(self, "budget_pressure", None if self.budget_pressure is None else str(self.budget_pressure))
+        object.__setattr__(self, "sampler_mode", None if self.sampler_mode is None else str(self.sampler_mode))
+        object.__setattr__(self, "continuation_eligible", bool(self.continuation_eligible))
+
+    @classmethod
+    def from_value(cls, value: Any) -> "DecodeState":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(
+                request_id=value.get("request_id"),
+                row_index=value.get("row_index", 0),
+                step_index=value.get("step_index", 0),
+                prompt_tokens=value.get("prompt_tokens", 0),
+                generated_tokens=value.get("generated_tokens", 0),
+                phase=value.get("phase", DecodePhase.DONE.value),
+                reasoning_tokens=value.get("reasoning_tokens", 0),
+                answer_tokens=value.get("answer_tokens", 0),
+                tool_call_tokens=value.get("tool_call_tokens", 0),
+                structured_tokens=value.get("structured_tokens", 0),
+                stop_suffix_state=value.get("stop_suffix_state"),
+                forced_tokens_pending=value.get("forced_tokens_pending", ()),
+                budget_pressure=value.get("budget_pressure"),
+                sampler_mode=value.get("sampler_mode"),
+                continuation_eligible=bool(value.get("continuation_eligible", False)),
+            )
+        return cls(
+            request_id=getattr(value, "request_id", None),
+            row_index=getattr(value, "row_index", 0),
+            step_index=getattr(value, "step_index", 0),
+            prompt_tokens=getattr(value, "prompt_tokens", 0),
+            generated_tokens=getattr(value, "generated_tokens", 0),
+            phase=getattr(value, "phase", DecodePhase.DONE.value),
+            reasoning_tokens=getattr(value, "reasoning_tokens", 0),
+            answer_tokens=getattr(value, "answer_tokens", 0),
+            tool_call_tokens=getattr(value, "tool_call_tokens", 0),
+            structured_tokens=getattr(value, "structured_tokens", 0),
+            stop_suffix_state=getattr(value, "stop_suffix_state", None),
+            forced_tokens_pending=getattr(value, "forced_tokens_pending", ()),
+            budget_pressure=getattr(value, "budget_pressure", None),
+            sampler_mode=getattr(value, "sampler_mode", None),
+            continuation_eligible=bool(getattr(value, "continuation_eligible", False)),
+        )
+
+    @classmethod
+    def from_stream_tokens(
+        cls,
+        *,
+        phase: DecodePhase | str,
+        tokens: Mapping[str, int],
+        row_index: int = 0,
+    ) -> "DecodeState":
+        streamed_tokens = _nonnegative_int(tokens.get("streamed_tokens", tokens.get("generated_tokens", 0)))
+        generated_tokens = _nonnegative_int(tokens.get("completion_tokens", streamed_tokens))
+        return cls(
+            row_index=row_index,
+            step_index=streamed_tokens,
+            prompt_tokens=_nonnegative_int(tokens.get("prompt_tokens", 0)),
+            generated_tokens=generated_tokens,
+            phase=phase,
+            reasoning_tokens=_nonnegative_int(tokens.get("reasoning_tokens", 0)),
+            answer_tokens=_nonnegative_int(tokens.get("answer_tokens", 0)),
+            tool_call_tokens=_nonnegative_int(tokens.get("tool_call_tokens", 0)),
+            structured_tokens=_nonnegative_int(tokens.get("structured_tokens", 0)),
+            continuation_eligible=bool(tokens.get("continuation_eligible", False)),
+        )
+
+    def to_json_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "row_index": self.row_index,
+            "step_index": self.step_index,
+            "prompt_tokens": self.prompt_tokens,
+            "generated_tokens": self.generated_tokens,
+            "phase": _decode_phase_value(self.phase),
+            "continuation_eligible": self.continuation_eligible,
+        }
+        if self.request_id is not None:
+            payload["request_id"] = self.request_id
+        if self.reasoning_tokens:
+            payload["reasoning_tokens"] = self.reasoning_tokens
+        if self.answer_tokens:
+            payload["answer_tokens"] = self.answer_tokens
+        if self.tool_call_tokens:
+            payload["tool_call_tokens"] = self.tool_call_tokens
+        if self.structured_tokens:
+            payload["structured_tokens"] = self.structured_tokens
+        if self.stop_suffix_state is not None:
+            payload["stop_suffix_state"] = self.stop_suffix_state
+        if self.forced_tokens_pending:
+            payload["forced_tokens_pending"] = list(self.forced_tokens_pending)
+        if self.budget_pressure is not None:
+            payload["budget_pressure"] = self.budget_pressure
+        if self.sampler_mode is not None:
+            payload["sampler_mode"] = self.sampler_mode
+        return payload
+
+
+@dataclass(frozen=True)
+class GenerationTelemetry:
+    """Agent-facing generation telemetry snapshot."""
+
+    decode_state: DecodeState
+    event: str | None = None
+    timing: Mapping[str, float] | None = None
+    usage: Mapping[str, int] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "decode_state", DecodeState.from_value(self.decode_state))
+        object.__setattr__(self, "event", None if self.event is None else str(self.event))
+        timing = None if self.timing is None else {str(key): float(value) for key, value in self.timing.items()}
+        usage = None if self.usage is None else {str(key): max(0, int(value)) for key, value in self.usage.items()}
+        object.__setattr__(self, "timing", timing)
+        object.__setattr__(self, "usage", usage)
+
+    @classmethod
+    def from_value(cls, value: Any) -> "GenerationTelemetry":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(
+                decode_state=value.get("decode_state", value),
+                event=value.get("event"),
+                timing=value.get("timing"),
+                usage=value.get("usage"),
+            )
+        return cls(
+            decode_state=getattr(value, "decode_state", value),
+            event=getattr(value, "event", None),
+            timing=getattr(value, "timing", None),
+            usage=getattr(value, "usage", None),
+        )
+
+    def to_json_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"decode_state": self.decode_state.to_json_dict()}
+        if self.event is not None:
+            payload["event"] = self.event
+        if self.timing is not None:
+            payload["timing"] = dict(self.timing)
+        if self.usage is not None:
+            payload["usage"] = dict(self.usage)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -227,12 +427,15 @@ class GenerationOutput:
     text: str
     token_logprobs: tuple[TokenLogprob, ...] = ()
     finish_details: FinishDetails | None = None
+    telemetry: GenerationTelemetry | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
         object.__setattr__(self, "token_logprobs", tuple(self.token_logprobs))
         if self.finish_details is not None:
             object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
+        if self.telemetry is not None:
+            object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
 
     def __str__(self) -> str:
         return self.text

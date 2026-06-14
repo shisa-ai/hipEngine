@@ -1074,10 +1074,8 @@ def test_completion_timeout_returns_deadline_error_and_server_reuses() -> None:
     }
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
 
-    deadline = time.perf_counter() + 1.0
-    while fake.completed_generations < 1 and time.perf_counter() < deadline:
-        time.sleep(0.001)
-    assert fake.completed_generations == 1
+    # With very short deadlines the worker may time out before the threadpool
+    # starts it, or it may unwind later. The public contract is server reuse.
     fake.generate_delay_s = 0.0
     fake.outputs = ["ok"]
     reused = client.post(
@@ -2389,6 +2387,15 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
             "delta_tokens": 2,
             "reasoning_tokens": 2,
         },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 0,
+            "generated_tokens": 2,
+            "phase": "think",
+            "continuation_eligible": False,
+            "reasoning_tokens": 2,
+        },
     }
 
     content = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content") == "streamed ")
@@ -2397,6 +2404,16 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
         "tokens": {
             "streamed_tokens": 3,
             "delta_tokens": 1,
+            "reasoning_tokens": 2,
+            "answer_tokens": 1,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 3,
+            "prompt_tokens": 0,
+            "generated_tokens": 3,
+            "phase": "answer",
+            "continuation_eligible": False,
             "reasoning_tokens": 2,
             "answer_tokens": 1,
         },
@@ -2412,6 +2429,16 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
             "completion_tokens": payloads[-1]["usage"]["completion_tokens"],
             "total_tokens": payloads[-1]["usage"]["total_tokens"],
             "streamed_tokens": 4,
+            "reasoning_tokens": 2,
+            "answer_tokens": 2,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": payloads[-1]["usage"]["prompt_tokens"],
+            "generated_tokens": payloads[-1]["usage"]["completion_tokens"],
+            "phase": "done",
+            "continuation_eligible": False,
             "reasoning_tokens": 2,
             "answer_tokens": 2,
         },
@@ -2474,6 +2501,15 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
             "delta_tokens": 1,
             "answer_tokens": 1,
         },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 0,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "answer_tokens": 1,
+        },
     }
     assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
     assert payloads[2]["choices"][0]["hipengine"] == {
@@ -2484,6 +2520,15 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
             "completion_tokens": 2,
             "total_tokens": 3,
             "streamed_tokens": 2,
+            "answer_tokens": 2,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 1,
+            "generated_tokens": 2,
+            "phase": "done",
+            "continuation_eligible": False,
             "answer_tokens": 2,
         },
     }

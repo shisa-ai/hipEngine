@@ -38,6 +38,7 @@ from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
 from hipengine.generation import (
+    DecodeState,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     GenerationOutput,
@@ -4831,7 +4832,12 @@ def _choice_hipengine_payload(
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
     if tokens is not None:
-        payload["tokens"] = {str(key): max(0, int(value)) for key, value in tokens.items()}
+        token_payload = {str(key): max(0, int(value)) for key, value in tokens.items()}
+        payload["tokens"] = token_payload
+        payload["decode_state"] = DecodeState.from_stream_tokens(
+            phase=phase,
+            tokens=token_payload,
+        ).to_json_dict()
     return payload
 
 
