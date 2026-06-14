@@ -5796,6 +5796,51 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
             },
             "grammar",
         ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_json": {"type": "object"},
+            },
+            "guided_json",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_regex": "[a-z]+",
+            },
+            "guided_regex",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_choice": ["yes", "no"],
+            },
+            "guided_choice",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_grammar": "root ::= 'ok'",
+            },
+            "guided_grammar",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_decoding_backend": "outlines",
+            },
+            "guided_decoding_backend",
+        ),
     ],
 )
 def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, param) -> None:

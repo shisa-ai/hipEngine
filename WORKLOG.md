@@ -89013,3 +89013,18 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `41 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC grammar unsupported-field coverage
+
+Expanded the unsupported agentic field tests so every grammar/guidance field
+advertised under `features.grammars.unsupported_fields` is covered:
+`grammar`, `guided_json`, `guided_regex`, `guided_choice`, `guided_grammar`,
+and `guided_decoding_backend`. Each case verifies HTTP 400
+`unsupported_parameter`, stable `error.param`, and no generation call.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields -q` -> `10 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -1426,7 +1426,8 @@ Current code reality:
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
   set to the rejected field. JSON-object / JSON-schema support remains
-  result-validation-only, not grammar decoding.
+  result-validation-only, not grammar decoding. Tests cover every advertised
+  unsupported grammar/guidance field.
 
 #### P2.5 Patch/diff constrained mode
 
