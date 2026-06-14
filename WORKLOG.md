@@ -89625,3 +89625,19 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `50 passed`.
 - `python3 -m ruff check scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> passed.
+
+## 2026-06-14 - AGENTIC model-list capability summary
+
+Added a compact `hipengine.capabilities` summary to `/v1/models` entries while
+keeping `/v1/hipengine/capabilities` as the detailed manifest. The OpenAI model
+list now exposes the served model's high-level completion/chat/streaming/tool/
+reasoning/structured-output/session/continuation support plus explicit false
+flags for grammar decoding, MTP serving, tensor parallelism, and multiple
+models without forcing lazy model load.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_models_endpoint_reports_served_model_name_and_auth tests/test_server_api.py::test_models_endpoint_reports_lazy_model_not_loaded tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

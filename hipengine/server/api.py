@@ -1030,6 +1030,23 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
     }
 
 
+def _model_capability_summary() -> dict[str, Any]:
+    return {
+        "completions": True,
+        "chat_completions": True,
+        "streaming": True,
+        "tools": True,
+        "reasoning_controls": True,
+        "structured_outputs": True,
+        "continuations": True,
+        "sessions": True,
+        "grammars": False,
+        "speculative_mtp": False,
+        "tensor_parallel": False,
+        "multiple_models": False,
+    }
+
+
 def _choice_telemetry_capability() -> dict[str, Any]:
     return {
         "non_streaming": True,
@@ -3069,6 +3086,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "scale_granularity": config.kv_scale_granularity,
                             "estimate": _kv_capacity_estimate_payload(engine),
                         },
+                        "capabilities": _model_capability_summary(),
                         "capabilities_url": "/v1/hipengine/capabilities",
                         "routing": {
                             "loaded_model_count": 0 if engine is None else 1,

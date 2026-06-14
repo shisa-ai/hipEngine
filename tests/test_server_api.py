@@ -434,6 +434,20 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "scale_granularity": "per_token_head",
             "estimate": None,
         },
+        "capabilities": {
+            "completions": True,
+            "chat_completions": True,
+            "streaming": True,
+            "tools": True,
+            "reasoning_controls": True,
+            "structured_outputs": True,
+            "continuations": True,
+            "sessions": True,
+            "grammars": False,
+            "speculative_mtp": False,
+            "tensor_parallel": False,
+            "multiple_models": False,
+        },
         "capabilities_url": "/v1/hipengine/capabilities",
         "routing": {"loaded_model_count": 1, "multiple_models": False},
     }
@@ -452,6 +466,9 @@ def test_models_endpoint_reports_lazy_model_not_loaded() -> None:
     model = response.json()["data"][0]
     assert model["id"] == "fake-model"
     assert model["hipengine"]["loaded"] is False
+    assert model["hipengine"]["capabilities"]["chat_completions"] is True
+    assert model["hipengine"]["capabilities"]["tools"] is True
+    assert model["hipengine"]["capabilities"]["multiple_models"] is False
     assert model["hipengine"]["routing"] == {"loaded_model_count": 0, "multiple_models": False}
     assert model["hipengine"]["kv_capacity"]["estimate"] is None
 

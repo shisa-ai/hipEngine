@@ -2109,7 +2109,8 @@ Current code reality:
 - `/v1/models` remains single-model, but each OpenAI-compatible model entry now
   includes a `hipengine` extension with backend/quant/path, loaded state,
   resident-context support, context defaults, KV policy/capacity estimate when
-  available, a capabilities URL, and routing count metadata.
+  available, a compact capability summary, a capabilities URL for the detailed
+  manifest, and routing count metadata.
 - Multiple resident models, per-model VRAM admission, unload/eviction, and
   cross-model request targeting remain future routing work.
 
