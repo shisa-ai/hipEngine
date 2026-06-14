@@ -87564,3 +87564,16 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
 - `python3 -m pytest tests/test_generation_batch_scheduler.py -q` -> `279 passed`.
 - `git diff --check -- hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py tests/test_sampling.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md docs/SAMPLING.md`.
+
+## 2026-06-14 - AGENTIC completion response_format stream fixture
+
+Added a server API regression fixture for streaming completions with
+`response_format={"type":"json_object"}`. The test proves these requests use the
+buffered validation path, do not emit invalid text as successful stream content,
+preserve `finish_details.reason="schema_violation"`, and avoid the live
+`llm.stream()` path.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `89 passed`.

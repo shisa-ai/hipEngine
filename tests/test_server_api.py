@@ -1194,6 +1194,34 @@ def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:
     assert fake.calls[0][1].logprobs is True
 
 
+def test_streaming_completion_response_format_buffers_validation() -> None:
+    fake = FakeLLM(outputs=["not json"], stream_chunks=["wrong"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "stream": True,
+            "response_format": {"type": "json_object"},
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "schema_violation"},
+    }
+    assert fake.stream_calls == []
+
+
 def test_chat_completion_returns_openai_logprobs() -> None:
     fake = FakeLLM(
         detailed_outputs=[
