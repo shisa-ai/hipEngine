@@ -66,6 +66,15 @@ def _capabilities(**overrides):
                 "budget_policy": "prompt_hint_only",
                 "token_budget": False,
                 "token_budget_enforced": False,
+                "effort_defaults": {
+                    "minimal": {"hard_think_cap": 256, "soft_close_window": 64, "min_answer_tokens": 256},
+                    "low": {"hard_think_cap": 512, "soft_close_window": 128, "min_answer_tokens": 512},
+                    "medium": {"hard_think_cap": 4096, "soft_close_window": 512, "min_answer_tokens": 1024},
+                    "high": {"hard_think_cap": 16384, "soft_close_window": 1024, "min_answer_tokens": 2048},
+                    "xhigh": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
+                    "max": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
+                },
+                "effort_default_clamp": "request_max_tokens_or_chat_default",
             },
             "request_timeouts": {"timeout_ms": True},
             "token_diagnostics": {

@@ -423,6 +423,20 @@ def _reasoning_control_fields() -> list[str]:
     ]
 
 
+_THINKING_EFFORT_DEFAULTS: dict[str, dict[str, int]] = {
+    "minimal": {"hard_think_cap": 256, "soft_close_window": 64, "min_answer_tokens": 256},
+    "low": {"hard_think_cap": 512, "soft_close_window": 128, "min_answer_tokens": 512},
+    "medium": {"hard_think_cap": 4096, "soft_close_window": 512, "min_answer_tokens": 1024},
+    "high": {"hard_think_cap": 16384, "soft_close_window": 1024, "min_answer_tokens": 2048},
+    "xhigh": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
+    "max": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
+}
+
+
+def _thinking_effort_defaults_capability() -> dict[str, dict[str, int]]:
+    return {name: dict(values) for name, values in _THINKING_EFFORT_DEFAULTS.items()}
+
+
 def _tool_schema_subset() -> list[str]:
     return [
         "type",
@@ -483,6 +497,8 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "budget_policy": "prompt_hint_only",
                 "token_budget": False,
                 "token_budget_enforced": False,
+                "effort_defaults": _thinking_effort_defaults_capability(),
+                "effort_default_clamp": "request_max_tokens_or_chat_default",
                 "hard_close_validation": True,
             },
             "request_timeouts": {"timeout_ms": True},
@@ -1797,6 +1813,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "budget_policy": "prompt_hint_only",
                     "token_budget": False,
                     "token_budget_enforced": False,
+                    "effort_defaults": _thinking_effort_defaults_capability(),
+                    "effort_default_clamp": "request_max_tokens_or_chat_default",
                     "hard_close_validation": True,
                     "hard_close_marker": _THINKING_CLOSE_MARKER,
                 },
@@ -2048,7 +2066,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
         _validate_generation_request(config, request)
-        thinking = _thinking_control_from_request(request)
+        thinking = _thinking_control_from_request(
+            request,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+        )
         prompt = render_chat_prompt(
             request.messages,
             tools=request.tools,
@@ -2683,7 +2704,11 @@ def _format_metric_value(value: float) -> str:
     return repr(numeric)
 
 
-def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingControl:
+def _thinking_control_from_request(
+    request: ChatCompletionRequest,
+    *,
+    chat_default_max_tokens: int | None = None,
+) -> _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
     max_think_tokens: int | None = None
@@ -2804,6 +2829,18 @@ def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingC
 
     if _effort_disables_thinking(effort):
         enabled = False
+    if enabled is not False and not _effort_disables_thinking(effort):
+        generation_budget = _thinking_generation_budget(
+            request,
+            chat_default_max_tokens=chat_default_max_tokens,
+        )
+        hard_think_cap, min_answer_tokens, soft_close_window = _apply_thinking_effort_defaults(
+            effort,
+            generation_budget=generation_budget,
+            hard_think_cap=hard_think_cap,
+            min_answer_tokens=min_answer_tokens,
+            soft_close_window=soft_close_window,
+        )
     control = _ThinkingControl(
         enabled=enabled,
         effort=effort,
@@ -2816,6 +2853,67 @@ def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingC
     )
     _validate_thinking_control(control)
     return control
+
+
+def _thinking_generation_budget(
+    request: ChatCompletionRequest,
+    *,
+    chat_default_max_tokens: int | None,
+) -> int | None:
+    if request.max_tokens is not None:
+        return max(0, int(request.max_tokens))
+    if chat_default_max_tokens is not None:
+        return max(0, int(chat_default_max_tokens))
+    return None
+
+
+def _apply_thinking_effort_defaults(
+    effort: str | None,
+    *,
+    generation_budget: int | None,
+    hard_think_cap: int | None,
+    min_answer_tokens: int | None,
+    soft_close_window: int | None,
+) -> tuple[int | None, int | None, int | None]:
+    defaults = _THINKING_EFFORT_DEFAULTS.get(str(effort or "").strip().lower())
+    if defaults is not None:
+        hard_think_cap = int(defaults["hard_think_cap"]) if hard_think_cap is None else hard_think_cap
+        min_answer_tokens = int(defaults["min_answer_tokens"]) if min_answer_tokens is None else min_answer_tokens
+        soft_close_window = int(defaults["soft_close_window"]) if soft_close_window is None else soft_close_window
+    return _clamp_thinking_budget_hints(
+        generation_budget=generation_budget,
+        hard_think_cap=hard_think_cap,
+        min_answer_tokens=min_answer_tokens,
+        soft_close_window=soft_close_window,
+    )
+
+
+def _clamp_thinking_budget_hints(
+    *,
+    generation_budget: int | None,
+    hard_think_cap: int | None,
+    min_answer_tokens: int | None,
+    soft_close_window: int | None,
+) -> tuple[int | None, int | None, int | None]:
+    if generation_budget is None:
+        return hard_think_cap, min_answer_tokens, soft_close_window
+    budget = max(0, int(generation_budget))
+    if hard_think_cap == 0:
+        min_answer_tokens = budget if min_answer_tokens is None else min(int(min_answer_tokens), budget)
+        return 0, min_answer_tokens, 0 if soft_close_window is not None else soft_close_window
+    if min_answer_tokens is not None:
+        min_answer_tokens = min(int(min_answer_tokens), max(0, budget // 2))
+    reserved = 0 if min_answer_tokens is None else int(min_answer_tokens)
+    if hard_think_cap is not None:
+        hard_think_cap = min(int(hard_think_cap), max(0, budget - reserved))
+    if soft_close_window is not None:
+        soft_limit = budget if hard_think_cap is None else int(hard_think_cap)
+        soft_close_window = min(int(soft_close_window), max(0, soft_limit))
+    return (
+        hard_think_cap,
+        min_answer_tokens,
+        soft_close_window,
+    )
 
 
 def _maybe_bool(value: Any, current: bool | None) -> bool | None:
@@ -3654,7 +3752,10 @@ def _diagnostic_text_from_request(config: ServerConfig, request: TokenDiagnostic
     if has_text:
         return str(request.text), "text"
     chat_request = _chat_request_from_diagnostic(config, request)
-    thinking = _thinking_control_from_request(chat_request)
+    thinking = _thinking_control_from_request(
+        chat_request,
+        chat_default_max_tokens=config.chat_default_max_tokens,
+    )
     return (
         render_chat_prompt(
             chat_request.messages,

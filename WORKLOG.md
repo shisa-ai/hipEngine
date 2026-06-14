@@ -87577,3 +87577,28 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation -q` -> `1 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `89 passed`.
+
+## 2026-06-14 - AGENTIC reasoning_effort budget hints
+
+Implemented prompt-level P1.4 effort defaults for thinking controls. Chat
+`reasoning_effort` values `minimal`, `low`, `medium`, `high`, `xhigh`, and
+`max` now map to documented hard-think-cap, answer-reserve, and soft-close
+window hints, clamped to request `max_tokens` or the configured bounded chat
+default. Explicit numeric hard/min/soft budget hints are clamped to the same
+bounded generation budget. `none`/`off`/`disabled` still pre-closes Qwen
+thinking.
+
+Capabilities now advertise the effort default table and the clamp source while
+keeping `budget_policy="prompt_hint_only"` and `token_budget_enforced=false`.
+`docs/AGENTIC.md` and `docs/API.md` now distinguish this prompt-level clamp from
+the still-missing token-level decoder policy, remaining-context clamp,
+tokenizer lowering, soft logit bias, hard forced close, manual force hooks, EOS
+suppression, and per-phase generation metadata.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_accepts_reasoning_effort_controls tests/test_server_api.py::test_chat_completion_clamps_reasoning_effort_defaults_to_generation_budget tests/test_server_api.py::test_chat_completion_clamps_explicit_thinking_budget_hints tests/test_server_api.py::test_chat_completion_accepts_thinking_budget_prompt_hints tests/test_server_api.py::test_chat_completion_preserves_string_thinking_budget_effort_alias tests/test_local_agent_config.py -q` -> `11 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `91 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md`.

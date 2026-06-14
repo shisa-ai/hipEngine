@@ -267,9 +267,11 @@ response formats remain unsupported and return `unsupported_parameter`.
 
 Chat requests accept common OpenAI/Qwen thinking controls:
 
-- `reasoning_effort`: `none`/`off`/`disabled` pre-closes Qwen thinking; `low`,
-  `medium`, and `high` add soft instructions to keep `<think>` content bounded
-  and close `</think>` before the final answer or a tool call.
+- `reasoning_effort`: `none`/`off`/`disabled` pre-closes Qwen thinking;
+  `minimal`, `low`, `medium`, `high`, `xhigh`, and `max` add bounded prompt
+  hints for hidden-reasoning hard cap, visible-answer reserve, and soft-close
+  window. Defaults are clamped to request `max_tokens` or the configured bounded
+  chat default.
 - `enable_thinking`: `false` pre-fills `<think>\n\n</think>\n\n` after the
   assistant header, matching Qwen no-think chat-template behavior.
 - `chat_template_kwargs.enable_thinking`: accepted for Qwen-compatible clients;
@@ -282,6 +284,7 @@ Chat requests accept common OpenAI/Qwen thinking controls:
 - Explicit hint fields are accepted on chat requests:
   `max_think_tokens`, `min_answer_tokens`, `hard_think_cap`,
   `soft_close_window`, `hard_close_message`, and `hard_close_sequence`.
+  Numeric hard/min/soft hints are clamped to the same bounded generation budget.
 - Nested `thinking` or `reasoning` objects with `type`, `enabled`, or `effort`
   are accepted for OpenAI-compatible proxy variants; nested `thinking` also
   accepts the budget fields above.

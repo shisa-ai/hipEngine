@@ -558,14 +558,19 @@ Precedence and disabling rules:
    `min_answer_tokens` remains active unless the request explicitly sets it to
    `0`.
 
-Current server behavior is weaker than this target: it accepts these control
-surfaces only to render prompt/template hints or pre-close Qwen thinking. Numeric
+Current server behavior is weaker than the final token-level target but stronger
+than a plain tone hint: it accepts these control surfaces only to render
+prompt/template hints or pre-close Qwen thinking. `reasoning_effort`
+`minimal`/`low`/`medium`/`high`/`xhigh`/`max` maps to the default hard-cap,
+answer-reserve, and soft-close-window table above, clamped to request
+`max_tokens` or the configured chat default when bounded. Numeric
 `thinking_token_budget`, `chat_template_kwargs.thinking_budget`,
 `thinking.budget_tokens`, and `thinking.max_tokens` aliases normalize to the
 effective hard-cap hint; string `thinking_budget`/`budget_tokens` values still
 act as effort aliases for compatibility. Explicit `max_think_tokens`,
 `min_answer_tokens`, `hard_think_cap`, `soft_close_window`,
-`hard_close_message`, and `hard_close_sequence` fields are accepted, and
+`hard_close_message`, and `hard_close_sequence` fields are accepted; numeric
+hard/min/soft hints are clamped to the same bounded generation budget, and
 `hard_close_sequence` is rejected unless it contains `</think>`. The server does
 not yet lower any of these controls into token-level decode policy.
 
@@ -948,9 +953,10 @@ Implement:
 Current code reality:
 
 - accepted and tested: explicit budget fields, compatibility aliases, numeric
-  alias normalization, prompt-hint rendering, and parser-marker validation for
-  `hard_close_sequence`;
-- not implemented: effort-to-hard-default clamping, tokenizer lowering, dynamic
+  alias normalization, effort-to-default budget hints clamped to request
+  `max_tokens` or the bounded chat default, prompt-hint rendering, and
+  parser-marker validation for `hard_close_sequence`;
+- not implemented: remaining-context clamp, tokenizer lowering, dynamic
   soft-close bias, hard forced close, manual force hooks, EOS suppression, and
   per-phase finish metadata.
 
