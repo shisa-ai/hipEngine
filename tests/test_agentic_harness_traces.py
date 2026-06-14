@@ -50,6 +50,9 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
     "structured_agent_outputs": frozenset(
         {
             "json_schema_violation_chat",
+            "guided_json_schema_chat_reasoning_success",
+            "guided_choice_chat_reasoning_success",
+            "guided_regex_completion_rejects_mismatch",
             "guided_patch_chat_reasoning_fenced_diff",
             "guided_diff_completion_rejects_prefaced_patch",
         }

@@ -91210,3 +91210,15 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC guided-output golden traces
+
+Extended the agentic golden-trace matrix so newly supported validation-only
+guidance controls are covered at the harness-contract level, not only by direct
+API tests. Added required trace coverage and fixture cases for guided JSON
+schema chat success with hidden reasoning split out, guided choice chat success,
+and guided regex completion mismatch suppression.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `51 passed`.

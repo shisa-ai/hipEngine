@@ -556,6 +556,73 @@
       }
     },
     {
+      "name": "guided_json_schema_chat_reasoning_success",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["<think>shape</think>{\"ok\":true,\"path\":\"README.md\"}"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Return guided JSON."}],
+        "guided_json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "ok": {"type": "boolean"},
+              "path": {"type": "string", "minLength": 1}
+            },
+            "required": ["ok", "path"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "message_content": "{\"ok\":true,\"path\":\"README.md\"}",
+        "reasoning_content": "shape",
+        "prompt_contains": ["Return only JSON that satisfies this JSON schema"],
+        "response_excludes": ["<think>"]
+      }
+    },
+    {
+      "name": "guided_choice_chat_reasoning_success",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["<think>choose</think>no"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Choose yes or no."}],
+        "guided_choice": ["yes", "no"]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "message_content": "no",
+        "reasoning_content": "choose",
+        "prompt_contains": ["Return exactly one of these choices and no other text"],
+        "response_excludes": ["<think>"]
+      }
+    },
+    {
+      "name": "guided_regex_completion_rejects_mismatch",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_outputs": ["AB"],
+      "request": {
+        "model": "fake-model",
+        "prompt": "Return an identifier.",
+        "guided_regex": "[A-Z]{2}-\\d{2}"
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "schema_violation", "cache_action": "append_none"},
+        "text": ""
+      }
+    },
+    {
       "name": "guided_patch_chat_reasoning_fenced_diff",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
