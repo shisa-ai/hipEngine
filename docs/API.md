@@ -293,6 +293,12 @@ hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
 and keeps unsupported/session/structured-output fields plus intentionally unused
 tool-policy fields in `do_not_send`.
 
+Known agent fields that are advertised as unsupported are rejected before
+generation work starts. `response_format`, `continuation_id`, `session.commit`,
+and other `session` payloads return HTTP 400 with
+`error.code: "unsupported_parameter"` and `error.param` set to the rejected
+field.
+
 Validate the config against a running server with:
 
 ```bash

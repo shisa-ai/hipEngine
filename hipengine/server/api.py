@@ -520,6 +520,9 @@ class CompletionRequest(_OpenAIBaseModel):
     kv_storage: str | None = None
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
+    response_format: Any | None = None
+    continuation_id: Any | None = None
+    session: Any | None = None
 
 
 class ChatMessage(_OpenAIBaseModel):
@@ -569,6 +572,9 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     kv_storage: str | None = None
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
+    response_format: Any | None = None
+    continuation_id: Any | None = None
+    session: Any | None = None
 
 
 class TokenizeRequest(_OpenAIBaseModel):
@@ -3367,6 +3373,14 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             code="unsupported_parameter",
             param=param,
         )
+    unsupported_param = _unsupported_agentic_request_param(request)
+    if unsupported_param is not None:
+        raise OpenAIHTTPError(
+            400,
+            f"{unsupported_param} is not supported by this server",
+            code="unsupported_parameter",
+            param=unsupported_param,
+        )
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
@@ -3588,6 +3602,19 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
     if n < 1:
         raise OpenAIHTTPError(400, "n must be at least 1", code="invalid_request", param="n")
     return n
+
+
+def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    if getattr(request, "response_format", None) is not None:
+        return "response_format"
+    if getattr(request, "continuation_id", None) is not None:
+        return "continuation_id"
+    session = getattr(request, "session", None)
+    if session is not None:
+        if isinstance(session, Mapping) and "commit" in session:
+            return "session.commit"
+        return "session"
+    return None
 
 
 def _request_extra_keys(request: CompletionRequest | ChatCompletionRequest) -> set[str]:

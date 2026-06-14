@@ -87504,3 +87504,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC explicit unsupported field rejection
+
+Recognized common agent request fields that are intentionally unsupported today:
+`response_format`, `continuation_id`, and `session`. They now fail before any
+generation work with canonical `unsupported_parameter` errors. `session` payloads
+that request a commit policy report `error.param="session.commit"` to match the
+capabilities manifest and local-agent `do_not_send` guidance; other session
+payloads report `error.param="session"`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> 85 tests completed successfully.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

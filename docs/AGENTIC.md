@@ -1366,6 +1366,10 @@ Current code reality:
   timeouts and client-disconnect cancellation are advertised as supported with
   `preemptive_decode_cancel=false`; token diagnostics are advertised from
   current tokenizer/counting callables.
+- Known unsupported agent fields are rejected explicitly before generation work:
+  `response_format`, `continuation_id`, `session.commit`, and other `session`
+  payloads return `unsupported_parameter` with `error.param` set to the rejected
+  field.
 
 Exit gates:
 

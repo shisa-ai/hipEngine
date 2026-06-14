@@ -2512,6 +2512,56 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     assert "param=typical_p" in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "payload", "param"),
+    [
+        (
+            "/v1/completions",
+            {"model": "fake-model", "prompt": "hello", "response_format": {"type": "json_object"}},
+            "response_format",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "continuation_id": "gen_123",
+            },
+            "continuation_id",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "session": {"commit": "append_visible_only"},
+            },
+            "session.commit",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "session": {"id": "session_123"},
+            },
+            "session",
+        ),
+    ],
+)
+def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, param) -> None:
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(endpoint, json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_parameter"
+    assert response.json()["error"]["param"] == param
+    assert fake.calls == []
+
+
 def test_completions_endpoint_lowers_n_to_distinct_seeded_rows() -> None:
     fake = FakeLLM()
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
