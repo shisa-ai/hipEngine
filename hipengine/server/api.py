@@ -106,7 +106,17 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "tools",
     "tool_choice",
     "parallel_tool_calls",
+    "reasoning_effort",
+    "max_think_tokens",
+    "min_answer_tokens",
+    "hard_think_cap",
+    "soft_close_window",
+    "hard_close_message",
+    "hard_close_sequence",
+    "thinking_token_budget",
+    "chat_template_kwargs",
     "thinking",
+    "reasoning",
 )
 _TOOL_RESULT_VALIDATION_FAILURE_REASONS = (
     "invalid_tool_call",
@@ -6082,8 +6092,9 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
             return "tool_choice"
         if request.parallel_tool_calls is not None:
             return "parallel_tool_calls"
-        if _thinking_budget_sampling_kwargs_present(request):
-            return "thinking"
+        thinking_param = _thinking_budget_sampling_unsupported_param(request)
+        if thinking_param is not None:
+            return thinking_param
     return None
 
 
@@ -6107,27 +6118,32 @@ def _continuation_can_create(
             return False
         if request.tools or request.tool_choice is not None or request.parallel_tool_calls is not None:
             return False
-        if _thinking_budget_sampling_kwargs_present(request):
+        if _thinking_budget_sampling_unsupported_param(request) is not None:
             return False
     return _continuation_sampling_is_deterministic(request)
 
 
 def _thinking_budget_sampling_kwargs_present(request: ChatCompletionRequest) -> bool:
-    return any(
-        value is not None
-        for value in (
-            request.max_think_tokens,
-            request.min_answer_tokens,
-            request.hard_think_cap,
-            request.soft_close_window,
-            request.hard_close_message,
-            request.hard_close_sequence,
-            request.thinking_token_budget,
-            request.chat_template_kwargs,
-            request.thinking,
-            request.reasoning,
-        )
-    )
+    return _thinking_budget_sampling_unsupported_param(request) is not None
+
+
+def _thinking_budget_sampling_unsupported_param(request: ChatCompletionRequest) -> str | None:
+    for name in (
+        "reasoning_effort",
+        "max_think_tokens",
+        "min_answer_tokens",
+        "hard_think_cap",
+        "soft_close_window",
+        "hard_close_message",
+        "hard_close_sequence",
+        "thinking_token_budget",
+        "chat_template_kwargs",
+        "thinking",
+        "reasoning",
+    ):
+        if getattr(request, name) is not None:
+            return name
+    return None
 
 
 def _continuation_sampling_is_deterministic(request: CompletionRequest | ChatCompletionRequest) -> bool:

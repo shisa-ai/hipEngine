@@ -280,7 +280,17 @@ def _continuation_capability() -> dict[str, Any]:
             "tools",
             "tool_choice",
             "parallel_tool_calls",
+            "reasoning_effort",
+            "max_think_tokens",
+            "min_answer_tokens",
+            "hard_think_cap",
+            "soft_close_window",
+            "hard_close_message",
+            "hard_close_sequence",
+            "thinking_token_budget",
+            "chat_template_kwargs",
             "thinking",
+            "reasoning",
         ],
     }
 
@@ -2360,6 +2370,79 @@ def test_completion_length_finish_marks_sampled_continuation_ineligible() -> Non
         length_limit=2,
         continuation_eligible=False,
     )
+
+
+def test_chat_length_finish_with_reasoning_effort_is_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial answer",
+                finish_details=FinishDetails(reason="length", length_limit=2),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "max_tokens": 16,
+            "reasoning_effort": "low",
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert "continuation_id" not in choice
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=2,
+        phase="answer",
+        continuation_eligible=False,
+    )
+
+
+def test_chat_continuation_resume_rejects_reasoning_control_with_specific_param() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="partial answer",
+                finish_details=FinishDetails(reason="length", length_limit=2),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 2,
+        },
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    resumed = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "max_tokens": 4,
+            "reasoning": {"allow_unbounded": True},
+        },
+    )
+
+    assert resumed.status_code == 400
+    assert resumed.json()["error"]["code"] == "unsupported_parameter"
+    assert resumed.json()["error"]["param"] == "reasoning"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
 
 
 def test_completion_continuation_expiration_reports_stable_error() -> None:

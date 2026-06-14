@@ -89544,3 +89544,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC continuation thinking-control blockers
+
+Tightened continuation creation/resume policy for thinking-budget controls.
+Top-level `reasoning_effort` now blocks new continuation handles because it
+synthesizes budget defaults, and continuation resumes report the actual
+unsupported thinking-control field such as `reasoning` instead of collapsing all
+cases to `thinking`. The capabilities manifest now lists the concrete
+unsupported resume fields for top-level budget controls, `chat_template_kwargs`,
+nested `thinking`, and nested `reasoning`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_length_finish_with_reasoning_effort_is_continuation_ineligible tests/test_server_api.py::test_chat_continuation_resume_rejects_reasoning_control_with_specific_param -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
