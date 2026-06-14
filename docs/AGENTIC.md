@@ -1500,9 +1500,9 @@ Current code reality:
 - handles are scoped to the served model, endpoint, tokenizer compatibility
   metadata, authenticated bearer principal, and session id, single-use, expire
   after 15 minutes, and return stable `invalid_continuation` /
-  `continuation_expired` errors. Current eligible handles store a null session
-  id because `session.id` requests remain ineligible for continuation-handle
-  creation;
+  `continuation_expired` errors. Stateless handles store a null session id;
+  session-backed chat handles are scoped to the app-local transcript session
+  and require that session to still exist on resume;
 - resume requests use the stored prompt/rendered chat plus prior generated text,
   reject fresh completion `prompt` or chat `messages` payloads before
   generation, and inherit stored `response_format` when the follow-up omits it;
@@ -1873,8 +1873,8 @@ Current code reality:
   selected cache behavior.
 - Buffered `/v1/chat/completions` accepts `session.id` for `n=1` requests and
   prepends the stored app-local transcript before rendering the next prompt.
-  Stateful sessions do not support streaming, completions, `n>1`, or
-  `continuation_id` in this slice.
+  Stateful sessions do not support streaming, completions, or `n>1` in this
+  slice.
 - With `session.id`, the default commit is `append_visible_only`.
   `append_prompt_only`, `append_none`, and explicit debug `append_all` are also
   accepted. Visible-only commits store the incoming user/tool messages plus the
@@ -1885,8 +1885,11 @@ Current code reality:
   `append_visible_only` to `append_prompt_only`; `finish_details.cache_action`
   reports the effective action on normal responses and structured error
   payloads.
-- Session requests do not mint continuation handles, and resume requests cannot
-  combine `session.id` with `continuation_id`.
+- Deterministic buffered session-backed chat length stops may mint
+  continuation handles. The first length-stopped turn downgrades
+  `append_visible_only` to `append_prompt_only`; the resume request must send
+  the same existing `session.id` with no fresh `messages`, then commits the
+  completed visible assistant answer according to the session policy.
 - Authenticated `GET /v1/hipengine/sessions` lists metadata for app-local
   transcript sessions and active continuation-handle counts without transcript,
   prompt, generated, or tool-result text. Authenticated
@@ -2378,8 +2381,9 @@ Current code reality:
   from the next prompt, completion length finish metadata, chat reasoning/
   closing-think/answer/structured/tool-call length phase metadata,
   continuation-eligible answer and structured length stops, a multi-request
-  continuation-resume sequence, transcript session rollback that trims later
-  turns from the next prompt, guided patch/diff validation success and
+  continuation-resume sequence, deterministic session-backed continuation
+  resume, transcript session rollback that trims later turns from the next
+  prompt, guided patch/diff validation success and
   fail-closed rejection paths, context-overflow fit data, wrong-model routing
   errors, unsupported parameter/feature errors, request schema-validation
   errors, streaming context-overflow SSE error chunks, chat-session-cap

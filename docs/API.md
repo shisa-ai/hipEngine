@@ -322,10 +322,10 @@ requests that end by generation length, the server may return a top-level
 `choices[].continuation_id` and mirror it in
 `choices[].finish_details.continuation_id`. Handles are app-local, single-use,
 scoped to the served model, endpoint, tokenizer compatibility metadata,
-authenticated bearer principal, and session id. Current eligible handles are
-stored with a null session id because `session.id` requests do not mint
-continuation handles yet. Handles expire after 15 minutes and are cleared on
-server restart.
+authenticated bearer principal, and session id. Stateless handles are stored
+with a null session id; session-backed chat handles are scoped to the requested
+app-local transcript session and require that session to still exist on resume.
+Handles expire after 15 minutes and are cleared on server restart.
 
 Resume by sending the returned `continuation_id` to the same endpoint. The
 resume uses the stored prompt/rendered chat plus prior generated text, so the
@@ -680,12 +680,14 @@ as an explicit no-retain marker. Buffered non-streaming chat requests may set
 `append_none`, `append_prompt_only`, and explicit debug `append_all` are also
 accepted. The server stores an app-local visible transcript, strips parsed
 `reasoning_content` from visible-only assistant commits, and reports the
-effective `finish_details.cache_action`. Session requests do not mint
-continuation handles. This is not resident KV reuse.
-`session.id` on completions, streaming chat, `n>1`, continuation resumes,
-unsupported `session.commit` modes, and other `session` payloads return HTTP 400
-with `error.code: "unsupported_parameter"` and `error.param` set to the rejected
-field. `continuation_id` is intentionally kept in the example config's
+effective `finish_details.cache_action`. Deterministic buffered chat session
+requests that stop by generation length may mint continuation handles; the
+resume request must send the same existing `session.id` and omit `messages`.
+This is not resident KV reuse. `session.id` on completions, streaming chat,
+`n>1`, unsupported `session.commit` modes, and other `session` payloads return
+HTTP 400 with `error.code: "unsupported_parameter"` and `error.param` set to the
+rejected field.
+`continuation_id` is intentionally kept in the example config's
 `do_not_send` list so local agents do not invent handles; a handle returned by
 the server can be sent back on the supported resume path described above.
 

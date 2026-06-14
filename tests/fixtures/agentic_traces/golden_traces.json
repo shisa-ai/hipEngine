@@ -1156,6 +1156,58 @@
       ]
     },
     {
+      "name": "session_continuation_resume_chat_sequence",
+      "kind": "http_sequence",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {"text": "partial", "finish_details": {"reason": "length", "length_limit": 1}},
+        {"text": " answer", "finish_details": {"reason": "eos", "eos_token_id": 151645}}
+      ],
+      "steps": [
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "session": {"id": "sess_trace_continue"},
+            "max_tokens": 1
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "length",
+            "message_content": "partial",
+            "continuation_id": true,
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 1,
+              "cache_action": "append_prompt_only",
+              "phase": "answer",
+              "continuation_eligible": true,
+              "continuation_id": "$continuation_id"
+            }
+          }
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "continuation_id": "$continuation_id",
+            "session": {"id": "sess_trace_continue"},
+            "max_tokens": 4
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "partial answer",
+            "finish_details": {
+              "reason": "eos",
+              "eos_token_id": 151645,
+              "cache_action": "append_visible_only"
+            },
+            "prompt_endswith": "partial"
+          }
+        }
+      ]
+    },
+    {
       "name": "length_finish_chat_partial_tool_call",
       "kind": "http",
       "endpoint": "/v1/chat/completions",

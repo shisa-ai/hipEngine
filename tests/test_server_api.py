@@ -369,7 +369,7 @@ def _continuation_capability() -> dict[str, Any]:
             "stop",
             "chat_tools",
             "thinking_budget_controls",
-            "session_id",
+            "session_id_without_commit",
         ],
         "unsupported_resume_fields": [
             "prompt",
@@ -3936,6 +3936,130 @@ def test_chat_continuation_resume_rejects_messages_without_consuming_handle() ->
     assert resumed.status_code == 200
     assert resumed.json()["choices"][0]["message"]["content"] == "partial answer"
     assert len(fake.calls) == 2
+
+
+def test_chat_session_continuation_resumes_buffered_length_finish_once() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" answer", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "session": {"id": "sess_continue"},
+            "max_tokens": 1,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert continuation_id.startswith("gen_")
+    assert first_choice["finish_reason"] == "length"
+    assert first_choice["finish_details"] == {
+        "reason": "length",
+        "length_limit": 1,
+        "cache_action": "append_prompt_only",
+        "phase": "answer",
+        "continuation_eligible": True,
+        "continuation_id": continuation_id,
+    }
+    assert app.state.hipengine_continuations[continuation_id].session_id == "sess_continue"
+    assert app.state.hipengine_chat_sessions["sess_continue"].messages == (
+        {"role": "user", "content": "continue"},
+    )
+
+    resumed = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "session": {"id": "sess_continue"},
+            "max_tokens": 4,
+        },
+    )
+
+    assert resumed.status_code == 200
+    resumed_choice = resumed.json()["choices"][0]
+    assert resumed_choice["message"]["content"] == "partial answer"
+    assert resumed_choice["finish_reason"] == "stop"
+    assert resumed_choice["finish_details"]["cache_action"] == "append_visible_only"
+    assert continuation_id not in app.state.hipengine_continuations
+    assert app.state.hipengine_chat_sessions["sess_continue"].messages == (
+        {"role": "user", "content": "continue"},
+        {"role": "assistant", "content": "partial answer"},
+    )
+    assert "partial" in fake.calls[1][0][0]
+
+    reused = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "session": {"id": "sess_continue"},
+            "max_tokens": 1,
+        },
+    )
+
+    assert reused.status_code == 400
+    assert reused.json()["error"]["code"] == "invalid_continuation"
+    assert len(fake.calls) == 2
+
+
+def test_chat_session_continuation_rejects_deleted_session_without_generation() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" should not run", finish_details=FinishDetails(reason="eos")),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "session": {"id": "sess_deleted"},
+            "max_tokens": 1,
+        },
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    deleted = client.delete("/v1/hipengine/sessions/sess_deleted")
+    rejected = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "session": {"id": "sess_deleted"},
+            "max_tokens": 4,
+        },
+    )
+
+    assert deleted.json()["deleted"] is True
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["code"] == "invalid_continuation"
+    assert rejected.json()["error"]["param"] == "continuation_id"
+    assert continuation_id in app.state.hipengine_continuations
+    assert "sess_deleted" not in app.state.hipengine_chat_sessions
+    assert len(fake.calls) == 1
 
 
 def test_completion_continuation_expiration_reports_stable_error() -> None:

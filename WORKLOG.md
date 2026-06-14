@@ -91775,6 +91775,26 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
 
+## 2026-06-15 - AGENTIC session-backed chat continuations
+
+Deterministic buffered chat requests with `session.id` can now mint
+continuation handles on answer/structured length stops when the effective
+session commit keeps transcript continuity. The first length-stopped turn keeps
+the prompt in the app-local transcript, the resume request must send the same
+existing `session.id` with no fresh `messages`, and deleted backing sessions
+fail with `invalid_continuation` before generation. The golden agentic trace
+suite now includes this session-backed continuation loop.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_chat_session_continuation_rejects_deleted_session_without_generation tests/test_server_api.py::test_chat_continuation_resume_rejects_messages_without_consuming_handle tests/test_server_api.py::test_chat_continuation_resume_rejects_reasoning_control_with_specific_param tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_chat_session_continuation_rejects_deleted_session_without_generation tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `56 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py -q` -> `66 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_resume_rejects_prompt_without_consuming_handle tests/test_server_api.py::test_completion_continuation_is_scoped_to_session_id tests/test_server_api.py::test_completion_continuation_expiration_reports_stable_error -q` -> `4 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/API.md docs/AGENTIC.md` -> clean.
+
 ## 2026-06-15 - AGENTIC continuation resume input guards
 
 Continuation resumes now reject fresh completion `prompt` or chat `messages`

@@ -72,6 +72,7 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
             "length_finish_chat_answer_continuation",
             "length_finish_chat_structured_continuation",
             "continuation_resume_chat_answer_sequence",
+            "session_continuation_resume_chat_sequence",
             "invalid_continuation_id_chat",
             "continuation_expired_completion_sequence",
         }

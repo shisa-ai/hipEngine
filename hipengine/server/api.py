@@ -95,7 +95,7 @@ _CONTINUATION_INELIGIBLE_WHEN = (
     "stop",
     "chat_tools",
     "thinking_budget_controls",
-    "session_id",
+    "session_id_without_commit",
 )
 _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "prompt",
@@ -2195,6 +2195,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         session_id = _session_id(request)
         if session_id is None:
             return None
+        if request.continuation_id is not None:
+            return None
         cache_action = _session_cache_action(request)
         if cache_action in (None, "append_none"):
             return None
@@ -2319,6 +2321,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     code="invalid_continuation",
                     param="continuation_id",
                 )
+            if endpoint == "chat" and record.session_id is not None:
+                async with chat_session_lock:
+                    if record.session_id not in chat_sessions:
+                        raise OpenAIHTTPError(
+                            400,
+                            "continuation_id is scoped to a deleted session",
+                            code="invalid_continuation",
+                            param="continuation_id",
+                        )
             current_engine = getattr(app.state, "hipengine_llm", None)
             if (
                 current_engine is not None
@@ -7431,8 +7442,6 @@ def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompleti
                     return "stream"
                 if _request_n(request) != 1:
                     return "n"
-                if getattr(request, "continuation_id", None) is not None:
-                    return "continuation_id"
                 if set(session.keys()) - {"id", "commit"}:
                     return "session"
                 if _session_cache_action(request) is not None:
@@ -7545,8 +7554,13 @@ def _continuation_can_create(
         return False
     if not _is_length_finish(finish_reason, finish_details):
         return False
-    if _session_id(request) is not None:
-        return False
+    session_id = _session_id(request)
+    if session_id is not None:
+        if not isinstance(request, ChatCompletionRequest):
+            return False
+        cache_action = str(finish_details.get("cache_action") or _session_cache_action(request) or "")
+        if cache_action in {"", "append_none"}:
+            return False
     if request.stream or _request_n(request) != 1 or _request_logprobs_enabled(request):
         return False
     if isinstance(request, CompletionRequest) and request.echo:
