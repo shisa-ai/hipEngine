@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from hipengine.generation import GenerationOutput
 from hipengine.server.api import ServerConfig, create_app
 
 
@@ -38,6 +39,21 @@ class _FakeLLM:
 
     def count_tokens(self, text: str) -> int:
         return len(text.split())
+
+
+class _PiToolSmokeLLM(_FakeLLM):
+    def __init__(self) -> None:
+        self.calls = []
+
+    def generate(self, prompts, sampling_params):
+        prompts = tuple(str(prompt) for prompt in prompts)
+        self.calls.append((prompts, sampling_params))
+        return [
+            GenerationOutput(
+                text='<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>'
+            )
+            for _ in prompts
+        ]
 
 
 def _capabilities(**overrides):
@@ -392,6 +408,50 @@ def test_pi_agent_chat_smoke_payload_uses_qwen_tool_shape() -> None:
     assert payload["session"] == {"commit": "append_none"}
     assert payload["tool_choice"] == {"type": "function", "function": {"name": "record_result"}}
     assert payload["tools"][0]["function"]["name"] == "record_result"
+
+
+def test_pi_agent_chat_smoke_payload_round_trips_through_server() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+    llm = _PiToolSmokeLLM()
+    client = TestClient(
+        create_app(
+            ServerConfig(
+                model="/models/fake",
+                served_model_name=model_id,
+                eager_load=False,
+            ),
+            llm=llm,
+        )
+    )
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    payload = validate_pi_agent_models.build_pi_chat_smoke_payload(config, capabilities)
+
+    response = client.post("/v1/chat/completions", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert validate_pi_agent_models.validate_pi_chat_smoke_response(body) == {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": ["result"],
+        "result": "ok",
+    }
+    choice = body["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"] == {
+        "reason": "tool_calls",
+        "cache_action": "append_none",
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
+    assert choice["message"]["content"] == ""
+    assert "<tool_call>" not in json.dumps(choice["message"])
+    assert len(llm.calls) == 1
+    prompt = llm.calls[0][0][0]
+    assert "record_result" in prompt
+    assert "You must call the function named 'record_result'." in prompt
+    assert "<think>\n\n</think>" in prompt
 
 
 def test_pi_agent_chat_smoke_response_requires_tool_call() -> None:

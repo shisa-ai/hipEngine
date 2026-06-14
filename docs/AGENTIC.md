@@ -2125,6 +2125,9 @@ Current code reality:
   tool-call request and requires a parsed `record_result` tool call with JSON
   arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
   including a doubled start-marker form, is rejected as a tool-calling mismatch.
+- `tests/test_local_agent_config.py` posts that exact pi smoke payload through a
+  FastAPI `create_app()` test server with fake Qwen `<tool_call>` output and
+  asserts the response is parsed OpenAI `message.tool_calls`, not raw markup.
 - Existing server fake-session tests and the P5.3 golden trace harness cover
   parsed Qwen tool calls in non-streaming and streaming responses, including
   multi-turn tool loops and raw-markup rejection.

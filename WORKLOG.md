@@ -91065,3 +91065,20 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC pi smoke server regression
+
+Added a server round-trip regression for the checked-in pi-agent smoke payload.
+The test builds the same `record_result` Qwen tool-call request as
+`scripts/validate_pi_agent_models.py`, posts it through a FastAPI `create_app()`
+server with fake Qwen `<tool_call>` output, and verifies the response is parsed
+OpenAI `message.tool_calls` with no raw tool markup leakage. This covers the
+observed pi failure mode where tool markup can repeat in the transcript instead
+of being surfaced as tool calls.
+
+Validation:
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `26 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `8 passed`.
+- `python3 -m py_compile tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_local_agent_config.py docs/AGENTIC.md WORKLOG.md` -> clean.
