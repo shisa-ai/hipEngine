@@ -106,6 +106,7 @@ class OpenAIHTTPError(Exception):
         code: str | None = None,
         param: str | None = None,
         finish_details: Mapping[str, Any] | None = None,
+        extra: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
     ):
         self.status_code = status_code
@@ -114,6 +115,7 @@ class OpenAIHTTPError(Exception):
         self.code = code
         self.param = param
         self.finish_details = None if finish_details is None else dict(finish_details)
+        self.extra = {} if extra is None else dict(extra)
         self.headers = {} if headers is None else dict(headers)
         super().__init__(message)
 
@@ -230,6 +232,7 @@ def _error_payload(
     param: str | None,
     status_code: int,
     finish_details: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "message": message,
@@ -242,6 +245,8 @@ def _error_payload(
         payload["hipengine"] = extension
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
+    if extra is not None:
+        payload.update(dict(extra))
     return payload
 
 
@@ -1377,6 +1382,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             param=exc.param,
             status_code=exc.status_code,
             finish_details=exc.finish_details,
+            extra=exc.extra,
         )
         await _maybe_write_replay_artifact(config, request, error_payload)
         return JSONResponse(
@@ -1985,23 +1991,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         else:
             effective_max_tokens = 16
-        required_context = int(prompt_tokens) + int(effective_max_tokens) + 1
-        fits = True if max_context is None else required_context <= int(max_context)
+        fit_payload = _context_fit_payload(
+            prompt_tokens=int(prompt_tokens),
+            max_context_tokens=max_context,
+            max_tokens=int(effective_max_tokens),
+        )
         return {
             "object": "hipengine.fit_context",
             "input_type": input_type,
             "text": text,
-            "prompt_tokens": int(prompt_tokens),
-            "max_context_tokens": None if max_context is None else int(max_context),
             "requested_max_tokens": request.max_tokens,
-            "effective_max_tokens": int(effective_max_tokens),
-            "required_context_tokens": required_context,
-            "fits": fits,
+            **fit_payload,
             "chat_default_max_tokens": config.chat_default_max_tokens if input_type == "chat" else None,
             "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
-            "clear_policy": "reject",
-            "would_truncate": False,
-            "would_drop": [],
         }
 
     @app.post("/v1/completions", response_model=None)
@@ -3705,6 +3707,11 @@ def _validate_context_budget(
         prompt_tokens = _count_tokens_for_admission(engine, str(prompt))
         required = prompt_tokens + max_tokens + 1
         if required > max_context:
+            fit_context = _context_fit_payload(
+                prompt_tokens=prompt_tokens,
+                max_context_tokens=max_context,
+                max_tokens=max_tokens,
+            )
             raise OpenAIHTTPError(
                 400,
                 f"request requires {required} context tokens (prompt {prompt_tokens} + "
@@ -3712,7 +3719,30 @@ def _validate_context_budget(
                 f"preallocated max_context_tokens={max_context}",
                 code="context_length_exceeded",
                 param=f"prompts[{index}].max_tokens" if len(prompts) > 1 else "max_tokens",
+                extra={"fit_context": fit_context},
             )
+
+
+def _context_fit_payload(
+    *,
+    prompt_tokens: int,
+    max_context_tokens: int | None,
+    max_tokens: int,
+) -> dict[str, Any]:
+    prompt_count = max(0, int(prompt_tokens))
+    effective_max_tokens = max(0, int(max_tokens))
+    required_context = prompt_count + effective_max_tokens + 1
+    max_context = None if max_context_tokens is None else max(1, int(max_context_tokens))
+    return {
+        "prompt_tokens": prompt_count,
+        "max_context_tokens": max_context,
+        "effective_max_tokens": effective_max_tokens,
+        "required_context_tokens": required_context,
+        "fits": True if max_context is None else required_context <= max_context,
+        "clear_policy": "reject",
+        "would_truncate": False,
+        "would_drop": [],
+    }
 
 
 def _count_tokens_for_admission(engine: Any, text: str) -> int:

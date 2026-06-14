@@ -87694,3 +87694,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_parallel_tool_call_indexes tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure tests/test_server_api.py::test_chat_completion_parallel_tool_calls_require_explicit_opt_in -q` -> `4 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC context overflow fit data
+
+Closed the P3.4 actionable-overflow gap for the current reject policy.
+Generation admission now attaches `error.fit_context` to `context_overflow`
+responses with the same prompt token count, effective max tokens, required
+context, clear policy, truncation flag, and drop list shape returned by
+`/v1/hipengine/fit_context`. `docs/API.md` and `docs/AGENTIC.md` now document
+that generation-time context errors can be handled without parsing the human
+message.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `93 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

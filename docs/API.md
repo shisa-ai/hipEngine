@@ -350,7 +350,7 @@ strict tool result-validation emits it as a normal chat
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. |
 | `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for strict tool result-validation failures; malformed tool JSON remains assistant text when strict validation is inactive. |
 | `schema_violation` | 422 | no | Request body validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error`. |
-| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`. |
+| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue cap rejected the request before enqueue. |

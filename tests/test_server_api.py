@@ -2752,13 +2752,32 @@ def test_server_rejects_requests_beyond_preallocated_context() -> None:
     )
 
     assert response.status_code == 400
-    assert response.json()["error"]["code"] == "context_length_exceeded"
-    assert response.json()["error"]["hipengine"] == {
+    error = response.json()["error"]
+    assert error["code"] == "context_length_exceeded"
+    assert error["hipengine"] == {
         "code": "context_overflow",
         "status_code": 400,
         "legacy_code": "context_length_exceeded",
         "retryable": False,
     }
+    assert error["fit_context"] == {
+        "prompt_tokens": 4,
+        "max_context_tokens": 5,
+        "effective_max_tokens": 2,
+        "required_context_tokens": 7,
+        "fits": False,
+        "clear_policy": "reject",
+        "would_truncate": False,
+        "would_drop": [],
+    }
+    fit = client.post(
+        "/v1/hipengine/fit_context",
+        json={"text": "one two three four", "max_tokens": 2},
+    )
+    assert fit.status_code == 200
+    fit_body = fit.json()
+    for key, value in error["fit_context"].items():
+        assert fit_body[key] == value
     assert fake.calls == []
 
 
