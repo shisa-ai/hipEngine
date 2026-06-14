@@ -81,7 +81,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated health/model probe. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
-| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, request-timeout support, cache/session status, and unsupported fields. |
+| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, and thinking controls. |

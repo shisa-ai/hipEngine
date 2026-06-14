@@ -171,7 +171,8 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     }
 
 
-def test_capabilities_endpoint_reports_manifest_and_auth() -> None:
+def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     fake = FakeLLM()
     app = create_app(
         ServerConfig(
@@ -222,6 +223,40 @@ def test_capabilities_endpoint_reports_manifest_and_auth() -> None:
         "default_timeout_ms": 250.0,
         "client_disconnect": True,
         "preemptive_decode_cancel": False,
+    }
+    assert body["sampling"]["execution_modes"] == [
+        "greedy_fast",
+        "processed_argmax",
+        "host_logits_sample",
+        "gpu_sample",
+    ]
+    assert body["sampling"]["native_gpu"] == {
+        "enabled": False,
+        "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
+        "scope": "paro_c1_only",
+        "default_path": False,
+        "top_k_max": 64,
+        "top_p_min_p": "exact_full_vocab_top_k_0",
+        "selected_logprobs": True,
+        "top_logprobs": False,
+        "processors": [
+            "logit_bias",
+            "repetition_penalty",
+            "presence_penalty",
+            "frequency_penalty",
+        ],
+        "unsupported": [
+            "c_gt_1",
+            "gguf",
+            "top_logprobs",
+            "combined_top_k_with_top_p_or_min_p",
+        ],
+    }
+    assert body["sampling"]["speculative_mtp"] == {
+        "serving_route": False,
+        "sampling_compatible": False,
+        "allowed_execution_modes": ["greedy_fast"],
+        "processed_target_verification": False,
     }
     assert body["sessions"] == {
         "resident_context": True,

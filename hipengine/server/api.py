@@ -13,6 +13,7 @@ from contextlib import suppress
 import json
 import logging
 import math
+import os
 import re
 import time
 import uuid
@@ -243,6 +244,13 @@ class _RequestControl:
 
 
 _STREAM_DONE = object()
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _next_stream_item(iterator: Iterator[Any]) -> object:
@@ -1174,6 +1182,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "sampling": {
                 "modes": ["greedy", "temperature"],
+                "execution_modes": [
+                    "greedy_fast",
+                    "processed_argmax",
+                    "host_logits_sample",
+                    "gpu_sample",
+                ],
                 "parameters": [
                     "temperature",
                     "top_p",
@@ -1187,6 +1201,34 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "n",
                     "stop",
                 ],
+                "native_gpu": {
+                    "enabled": _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER"),
+                    "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
+                    "scope": "paro_c1_only",
+                    "default_path": False,
+                    "top_k_max": 64,
+                    "top_p_min_p": "exact_full_vocab_top_k_0",
+                    "selected_logprobs": True,
+                    "top_logprobs": False,
+                    "processors": [
+                        "logit_bias",
+                        "repetition_penalty",
+                        "presence_penalty",
+                        "frequency_penalty",
+                    ],
+                    "unsupported": [
+                        "c_gt_1",
+                        "gguf",
+                        "top_logprobs",
+                        "combined_top_k_with_top_p_or_min_p",
+                    ],
+                },
+                "speculative_mtp": {
+                    "serving_route": False,
+                    "sampling_compatible": False,
+                    "allowed_execution_modes": ["greedy_fast"],
+                    "processed_target_verification": False,
+                },
             },
             "cache": {
                 "prefix_cache": prefix_cache_mode,

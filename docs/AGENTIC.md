@@ -1278,8 +1278,9 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
-  parameters, request-timeout/client-disconnect support, cache/session settings,
-  loaded-model count, and unsupported fields.
+  parameters and execution modes, the default-off PARO c=1 native GPU sampler
+  scope, speculative/MTP sampling compatibility, request-timeout/client-disconnect
+  support, cache/session settings, loaded-model count, and unsupported fields.
 - Continuations, `session.commit`, multi-model routing, and strict tool decoding
   are advertised as unsupported until their runtime paths exist. Request
   timeouts and client-disconnect cancellation are advertised as supported with

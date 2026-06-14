@@ -87248,3 +87248,21 @@ Validation:
 - `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py -q` -> `68 passed`.
 - `git diff --check -- hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md docs/API.md`.
+
+## 2026-06-14 - AGENTIC sampler capabilities metadata
+
+Extended `/v1/hipengine/capabilities` sampling metadata so agent harnesses can
+discover the execution-mode contract instead of inferring it from docs. The
+manifest keeps the coarse `modes` list and now adds `execution_modes`, a
+default-off PARO c=1 `native_gpu` scope/exclusion block, and a
+`speculative_mtp` block that advertises no serving route and no compatibility
+with processed/stochastic sampling until target verification runs the same
+selection policy.
+
+Updated `docs/AGENTIC.md` and `docs/API.md` to describe the added capability
+surface.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `50 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.
