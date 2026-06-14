@@ -339,6 +339,22 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert body["tokenizer"]["detokenize"] is True
     assert body["tokenizer"]["count_tokens"] is True
     assert body["features"]["stream_options"] == {"include_usage": True, "include_hipengine": True}
+    assert body["features"]["stream_metadata"] == {
+        "metadata_version": 1,
+        "events": ["role", "delta", "tool_call", "done", "usage", "error"],
+        "timing": [
+            "elapsed_ms",
+            "ttft_ms",
+            "decode_elapsed_ms",
+            "decode_tokens_per_second",
+        ],
+        "server_wall_timing": True,
+        "backend_prefill_timing": False,
+        "choice_phase": True,
+        "choice_finish_details": True,
+        "choice_token_accounting": True,
+        "choice_decode_state": True,
+    }
     assert body["features"]["structured_outputs"] == {
         "response_format": True,
         "json_object": True,

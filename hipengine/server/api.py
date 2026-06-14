@@ -2355,6 +2355,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "include_usage": True,
                     "include_hipengine": True,
                 },
+                "stream_metadata": {
+                    "metadata_version": 1,
+                    "events": ["role", "delta", "tool_call", "done", "usage", "error"],
+                    "timing": [
+                        "elapsed_ms",
+                        "ttft_ms",
+                        "decode_elapsed_ms",
+                        "decode_tokens_per_second",
+                    ],
+                    "server_wall_timing": True,
+                    "backend_prefill_timing": False,
+                    "choice_phase": True,
+                    "choice_finish_details": True,
+                    "choice_token_accounting": tokenizer_caps["count_tokens"],
+                    "choice_decode_state": tokenizer_caps["count_tokens"],
+                },
                 "structured_outputs": _structured_outputs_capability(),
                 "finish_details": True,
                 "token_diagnostics": {

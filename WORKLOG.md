@@ -88612,3 +88612,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC stream metadata capability
+
+Added `features.stream_metadata` to `/v1/hipengine/capabilities` so harnesses
+can discover the hipEngine SSE metadata version, event names, server-wall timing
+fields, and whether token-accounting-backed choice metadata/decode-state is
+available for the loaded engine. Updated API/AGENTIC docs to point clients at
+that manifest instead of hardcoding the extension shape.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

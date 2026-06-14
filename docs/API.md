@@ -163,6 +163,11 @@ include the same `finish_details` under
 `hipengine.event: "error"` and include `choices[].hipengine.finish_details` when
 structured finish details are available.
 
+The `/v1/hipengine/capabilities` manifest reports the same extension under
+`features.stream_metadata`, including metadata version, event names, timing
+field names, and whether the server can attach token-accounting-backed
+`decode_state` payloads for the loaded engine.
+
 Cache, backend prefill timing, budget-pressure, KV-byte, and backend-authored
 per-phase token metadata are omitted until the runtime exposes those signals.
 

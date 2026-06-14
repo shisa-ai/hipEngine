@@ -1657,9 +1657,10 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support,
-  no-tool start-marker suppression, required/specific tool start-marker forcing
-  plus its initial-or-post-thinking scope, sampling parameters and execution
-  modes, strict tool result-validation support,
+  the stream metadata extension version/event/timing fields, no-tool
+  start-marker suppression, required/specific tool start-marker forcing plus
+  its initial-or-post-thinking scope, sampling parameters and execution modes,
+  strict tool result-validation support,
   JSON-object and JSON-schema structured-output result validation, the
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
