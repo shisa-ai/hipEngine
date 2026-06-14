@@ -315,8 +315,10 @@ For deterministic buffered `/v1/completions` and `/v1/chat/completions`
 requests that end by generation length, the server may return a top-level
 `choices[].continuation_id` and mirror it in
 `choices[].finish_details.continuation_id`. Handles are app-local, single-use,
-scoped to the served model, endpoint, tokenizer compatibility metadata, and
-authenticated bearer principal, expire after 15 minutes, and are cleared on
+scoped to the served model, endpoint, tokenizer compatibility metadata,
+authenticated bearer principal, and session id. Current eligible handles are
+stored with a null session id because `session.id` requests do not mint
+continuation handles yet. Handles expire after 15 minutes and are cleared on
 server restart.
 
 Resume by sending the returned `continuation_id` to the same endpoint. The

@@ -1482,9 +1482,11 @@ Current code reality:
 - app-local continuation handles are implemented for deterministic buffered
   `/v1/completions` and `/v1/chat/completions` length stops;
 - handles are scoped to the served model, endpoint, tokenizer compatibility
-  metadata, and authenticated bearer principal, single-use, expire after 15
-  minutes, and return stable `invalid_continuation` /
-  `continuation_expired` errors;
+  metadata, authenticated bearer principal, and session id, single-use, expire
+  after 15 minutes, and return stable `invalid_continuation` /
+  `continuation_expired` errors. Current eligible handles store a null session
+  id because `session.id` requests remain ineligible for continuation-handle
+  creation;
 - resume requests can omit the original completion prompt or chat messages, and
   inherit stored `response_format` when the follow-up omits it;
 - the implementation re-prefills the stored rendered prompt plus prior generated

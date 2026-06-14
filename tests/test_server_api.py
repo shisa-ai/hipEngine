@@ -352,7 +352,7 @@ def _continuation_capability() -> dict[str, Any]:
         "resident_state_reuse": False,
         "single_use": True,
         "ttl_seconds": 900,
-        "scoped_to": ["served_model", "endpoint", "tokenizer", "auth_principal"],
+        "scoped_to": ["served_model", "endpoint", "tokenizer", "auth_principal", "session_id"],
         "supported_endpoints": ["completions", "chat_completions"],
         "supported_finishes": ["length"],
         "supported_streaming": False,
@@ -3256,6 +3256,52 @@ def test_completion_continuation_is_scoped_to_auth_principal() -> None:
     resumed = client.post(
         "/v1/completions",
         headers=headers,
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert resumed.status_code == 200
+    assert resumed.json()["choices"][0]["text"] == "alpha beta"
+    assert continuation_id not in app.state.hipengine_continuations
+    assert len(fake.calls) == 2
+
+
+def test_completion_continuation_is_scoped_to_session_id() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="alpha",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" beta", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "Say: ", "max_tokens": 1, "temperature": 0.0},
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+    record = app.state.hipengine_continuations[continuation_id]
+    assert record.session_id is None
+
+    app.state.hipengine_continuations[continuation_id] = replace(record, session_id="other-session")
+    rejected = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["code"] == "invalid_continuation"
+    assert rejected.json()["error"]["param"] == "continuation_id"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    app.state.hipengine_continuations[continuation_id] = record
+    resumed = client.post(
+        "/v1/completions",
         json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
     )
 

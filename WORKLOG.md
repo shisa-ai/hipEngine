@@ -91646,3 +91646,16 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `89 passed`.
 - `python3 -m py_compile tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC continuation session scope
+
+Continuation records now carry an explicit `session_id` scope and reject resume
+when the stored scope differs from the request scope. The current eligible
+handle path still stores `session_id=null` because session-backed requests remain
+ineligible for continuation creation, but the capability manifest and docs now
+match the AGENTIC handle-scope contract.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_is_scoped_to_auth_principal tests/test_server_api.py::test_completion_continuation_is_scoped_to_session_id tests/test_server_api.py::test_completion_continuation_is_scoped_to_tokenizer_metadata tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `6 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

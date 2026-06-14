@@ -1122,7 +1122,7 @@ def _session_continuation_capability() -> dict[str, Any]:
         "resident_state_reuse": False,
         "single_use": True,
         "ttl_seconds": _CONTINUATION_TTL_SECONDS,
-        "scoped_to": ["served_model", "endpoint", "tokenizer", "auth_principal"],
+        "scoped_to": ["served_model", "endpoint", "tokenizer", "auth_principal", "session_id"],
         "supported_endpoints": ["completions", "chat_completions"],
         "supported_finishes": ["length"],
         "supported_streaming": False,
@@ -1963,6 +1963,7 @@ class _ContinuationRecord:
     endpoint: str
     model_id: str
     auth_principal: str
+    session_id: str | None
     tokenizer: dict[str, Any]
     prompts: tuple[str, ...]
     generated_texts: tuple[str, ...]
@@ -2288,6 +2289,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     code="invalid_continuation",
                     param="continuation_id",
                 )
+            if record.session_id != _session_id(request):
+                raise OpenAIHTTPError(
+                    400,
+                    "continuation_id is scoped to a different session",
+                    code="invalid_continuation",
+                    param="continuation_id",
+                )
             current_engine = getattr(app.state, "hipengine_llm", None)
             if (
                 current_engine is not None
@@ -2314,6 +2322,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         guided_patch: Any | None,
         guided_diff: Any | None,
         auth_principal: str,
+        session_id: str | None,
     ) -> _ContinuationRecord:
         now = time.time()
         record = _ContinuationRecord(
@@ -2321,6 +2330,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             endpoint=endpoint,
             model_id=config.model_id,
             auth_principal=auth_principal,
+            session_id=session_id,
             tokenizer=_tokenizer_compatibility_metadata(getattr(app.state, "hipengine_llm", None)),
             prompts=tuple(str(prompt) for prompt in prompts),
             generated_texts=tuple(str(text) for text in generated_texts),
@@ -4236,6 +4246,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     guided_patch=request.guided_patch,
                     guided_diff=request.guided_diff,
                     auth_principal=auth_principal,
+                    session_id=_session_id(request),
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
             _attach_choice_telemetry(choice, detail)
@@ -4464,6 +4475,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         guided_patch=request.guided_patch,
                         guided_diff=request.guided_diff,
                         auth_principal=auth_principal,
+                        session_id=_session_id(request),
                     )
                     _attach_continuation_metadata(choice, continuation_id=record.id)
                 _attach_choice_telemetry(choice, detail)
