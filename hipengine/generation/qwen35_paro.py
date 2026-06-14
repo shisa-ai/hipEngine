@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
-from hipengine.generation.registry import GenerationOutput, GenerationRequest, TokenLogprob, register_text_generator
+from hipengine.generation.registry import FinishDetails, GenerationOutput, GenerationRequest, TokenLogprob, register_text_generator
 from hipengine.generation.sampling import (
     RowSamplingState,
     SamplingMode,
@@ -61,7 +61,21 @@ class Qwen35ParoOneTokenGenerator:
         plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
             self.last_batch_generation = None
-            self.last_generation_outputs = tuple(GenerationOutput(text="") for _ in request.prompts)
+            self.last_generation_outputs = tuple(
+                GenerationOutput(
+                    text="",
+                    finish_details=_finish_details_for_tokens(
+                        None,
+                        (),
+                        ignore_eos=request.ignore_eos,
+                        stop_token_ids=request.stop_token_ids,
+                        stop_token_sequences=request.stop_token_sequences,
+                        max_tokens=request.max_tokens,
+                        sampler_mode=plan.mode.value,
+                    ),
+                )
+                for _ in request.prompts
+            )
             return list(self.last_generation_outputs)
         runner = self._get_runner()
         kv_policy = resolve_kv_policy(
@@ -72,14 +86,15 @@ class Qwen35ParoOneTokenGenerator:
         if len(request.prompts) == 1:
             self.last_batch_generation = None
             if plan.mode is SamplingMode.GREEDY_FAST:
-                text = self._generate_one(
+                output = self._generate_one(
                     runner,
                     request.prompts[0],
                     request.max_tokens,
                     ignore_eos=request.ignore_eos,
                     kv_policy=kv_policy,
+                    sampler_mode=plan.mode.value,
                 )
-                self.last_generation_outputs = (GenerationOutput(text=text),)
+                self.last_generation_outputs = (output,)
                 return list(self.last_generation_outputs)
             output = self._generate_one_sampled(
                 runner,
@@ -105,14 +120,15 @@ class Qwen35ParoOneTokenGenerator:
                 )
             )
             return list(self.last_generation_outputs)
-        texts = self._generate_batch(
+        outputs = self._generate_batch(
             runner,
             request.prompts,
             request.max_tokens,
             ignore_eos=request.ignore_eos,
             kv_policy=kv_policy,
+            sampler_mode=plan.mode.value,
         )
-        self.last_generation_outputs = tuple(GenerationOutput(text=text) for text in texts)
+        self.last_generation_outputs = tuple(outputs)
         return list(self.last_generation_outputs)
 
     def prepare(
@@ -196,13 +212,15 @@ class Qwen35ParoOneTokenGenerator:
         *,
         ignore_eos: bool,
         kv_policy,
-    ) -> str:
+        sampler_mode: str,
+    ) -> GenerationOutput:
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         required_sequence_length = len(prompt_ids) + max_tokens + 1
         session_capacity = _session_capacity_for(required_sequence_length)
         generated_text: list[str] = []
+        generated_token_ids: list[int] = []
         session = self._get_session(
             runner,
             max_sequence_length=session_capacity,
@@ -212,8 +230,20 @@ class Qwen35ParoOneTokenGenerator:
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
         generated_text.append(next_result.token_text)
+        generated_token_ids.append(int(next_result.token_id))
         if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
-            return "".join(generated_text)
+            return GenerationOutput(
+                text="".join(generated_text),
+                finish_details=_finish_details_for_tokens(
+                    session.tokenizer,
+                    generated_token_ids,
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=(),
+                    stop_token_sequences=(),
+                    max_tokens=max_tokens,
+                    sampler_mode=sampler_mode,
+                ),
+            )
 
         remaining = max_tokens - 1
         if remaining:
@@ -227,9 +257,21 @@ class Qwen35ParoOneTokenGenerator:
                 token_ids = graph.read_generated_token_ids(remaining)
             for token_id in token_ids:
                 generated_text.append(_decode_token_cached(session.tokenizer, token_id))
+                generated_token_ids.append(int(token_id))
                 if not ignore_eos and _is_eos(session.tokenizer, token_id):
                     break
-        return "".join(generated_text)
+        return GenerationOutput(
+            text="".join(generated_text),
+            finish_details=_finish_details_for_tokens(
+                session.tokenizer,
+                generated_token_ids,
+                ignore_eos=ignore_eos,
+                stop_token_ids=(),
+                stop_token_sequences=(),
+                max_tokens=max_tokens,
+                sampler_mode=sampler_mode,
+            ),
+        )
 
     def _generate_one_sampled(
         self,
@@ -272,7 +314,19 @@ class Qwen35ParoOneTokenGenerator:
                 stop_token_ids=request.stop_token_ids,
                 stop_token_sequences=request.stop_token_sequences,
             ):
-                return _generation_output_from_steps(session.tokenizer, generated_steps)
+                return _generation_output_from_steps(
+                    session.tokenizer,
+                    generated_steps,
+                    finish_details=_finish_details_for_tokens(
+                        session.tokenizer,
+                        generated_token_ids,
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=request.stop_token_ids,
+                        stop_token_sequences=request.stop_token_sequences,
+                        max_tokens=max_tokens,
+                        sampler_mode=plan.mode.value,
+                    ),
+                )
 
             current_token_id = int(next_result.token_id)
             for position in range(len(prompt_ids), len(prompt_ids) + max_tokens - 1):
@@ -291,7 +345,19 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                 ):
                     break
-            return _generation_output_from_steps(session.tokenizer, generated_steps)
+            return _generation_output_from_steps(
+                session.tokenizer,
+                generated_steps,
+                finish_details=_finish_details_for_tokens(
+                    session.tokenizer,
+                    generated_token_ids,
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=request.stop_token_ids,
+                    stop_token_sequences=request.stop_token_sequences,
+                    max_tokens=max_tokens,
+                    sampler_mode=plan.mode.value,
+                ),
+            )
         finally:
             _configure_sampled_session(session, None, None, plan=plan)
 
@@ -303,7 +369,8 @@ class Qwen35ParoOneTokenGenerator:
         *,
         ignore_eos: bool,
         kv_policy,
-    ) -> list[str]:
+        sampler_mode: str,
+    ) -> list[GenerationOutput]:
         """Generate a prompt list through the scheduler-owned c>N path.
 
         Native compact prefill runs all admitted rows together when their block
@@ -338,6 +405,7 @@ class Qwen35ParoOneTokenGenerator:
             raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
 
         output_parts: dict[int, list[str]] = {request_id: [] for request_id in request_ids}
+        generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
         next_token_by_request: dict[int, int] = {}
         packed_slabs = scheduler.next_compact_prefill_slabs(
             chunk_size=max(len(row) for row in prompt_rows),
@@ -364,6 +432,7 @@ class Qwen35ParoOneTokenGenerator:
                 if result is None:
                     raise RuntimeError("packed native prefill did not produce next-token logits")
                 output_parts[request_id].append(result.token_text)
+                generated_ids[request_id].append(int(result.token_id))
                 seed_finished = (
                     not ignore_eos and _is_eos(session.tokenizer, result.token_id)
                 ) or max_tokens <= 1
@@ -427,6 +496,7 @@ class Qwen35ParoOneTokenGenerator:
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
                 output_parts[request_id].append(result.token_text)
+                generated_ids[request_id].append(int(result.token_id))
                 next_token_by_request[request_id] = int(result.token_id)
                 finished = not ignore_eos and _is_eos(session.tokenizer, result.token_id)
                 generated.append(GeneratedToken(request_id, result.token_id, finished=finished))
@@ -459,7 +529,21 @@ class Qwen35ParoOneTokenGenerator:
                 getattr(batch_execution, "throughput_claim_eligible", False)
             ),
         }
-        return ["".join(output_parts[request_id]) for request_id in request_ids]
+        return [
+            GenerationOutput(
+                text="".join(output_parts[request_id]),
+                finish_details=_finish_details_for_tokens(
+                    session.tokenizer,
+                    generated_ids[request_id],
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=(),
+                    stop_token_sequences=(),
+                    max_tokens=max_tokens,
+                    sampler_mode=sampler_mode,
+                ),
+            )
+            for request_id in request_ids
+        ]
 
     def _generate_batch_sampled(
         self,
@@ -621,7 +705,23 @@ class Qwen35ParoOneTokenGenerator:
             "native_caware_decode": False,
             "throughput_claim_eligible": False,
         }
-        return [_generation_output_from_steps(session.tokenizer, output_steps[request_id]) for request_id in request_ids]
+        sampler_mode = plan_sampler(request, native_gpu_available=False).mode.value
+        return [
+            _generation_output_from_steps(
+                session.tokenizer,
+                output_steps[request_id],
+                finish_details=_finish_details_for_tokens(
+                    session.tokenizer,
+                    generated_ids[request_id],
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=request.stop_token_ids,
+                    stop_token_sequences=request.stop_token_sequences,
+                    max_tokens=request.max_tokens,
+                    sampler_mode=sampler_mode,
+                ),
+            )
+            for request_id in request_ids
+        ]
 
     def _stream_one(
         self,
@@ -822,6 +922,8 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
 def _generation_output_from_steps(
     tokenizer: Any,
     steps: list[Qwen35ParoAutoregressiveStepResult] | tuple[Qwen35ParoAutoregressiveStepResult, ...],
+    *,
+    finish_details: FinishDetails,
 ) -> GenerationOutput:
     tokens = tuple(
         TokenLogprob(
@@ -835,7 +937,11 @@ def _generation_output_from_steps(
         )
         for step in steps
     )
-    return GenerationOutput(text="".join(step.token_text for step in steps), token_logprobs=tokens)
+    return GenerationOutput(
+        text="".join(step.token_text for step in steps),
+        token_logprobs=tokens,
+        finish_details=finish_details,
+    )
 
 
 def _row_sampling_state(
@@ -964,6 +1070,43 @@ def _is_finished(
     if token_id in {int(stop_id) for stop_id in stop_token_ids}:
         return True
     return _ends_with_stop_sequence(generated_token_ids, stop_token_sequences)
+
+
+def _finish_details_for_tokens(
+    tokenizer: Any | None,
+    generated_token_ids: list[int] | tuple[int, ...],
+    *,
+    ignore_eos: bool,
+    stop_token_ids: tuple[int, ...],
+    stop_token_sequences: tuple[tuple[int, ...], ...],
+    max_tokens: int,
+    sampler_mode: str,
+) -> FinishDetails:
+    if generated_token_ids:
+        token_id = int(generated_token_ids[-1])
+        if not ignore_eos and _is_eos(tokenizer, token_id):
+            return FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=sampler_mode)
+        if token_id in {int(stop_id) for stop_id in stop_token_ids}:
+            return FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=sampler_mode)
+        sequence = _matched_stop_sequence(generated_token_ids, stop_token_sequences)
+        if sequence:
+            return FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=sampler_mode)
+    if len(generated_token_ids) >= max(0, int(max_tokens)):
+        return FinishDetails(reason="length", length_limit=max_tokens, sampler_mode=sampler_mode)
+    return FinishDetails(reason="stop", sampler_mode=sampler_mode)
+
+
+def _matched_stop_sequence(
+    generated_token_ids: list[int] | tuple[int, ...],
+    stop_token_sequences: tuple[tuple[int, ...], ...],
+) -> tuple[int, ...]:
+    for sequence in stop_token_sequences:
+        if len(sequence) <= 0 or len(sequence) > len(generated_token_ids):
+            continue
+        normalized = tuple(int(token) for token in sequence)
+        if tuple(int(token) for token in generated_token_ids[-len(normalized) :]) == normalized:
+            return normalized
+    return ()
 
 
 def _ends_with_stop_sequence(

@@ -84,9 +84,16 @@ def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
-    out = _generator().generate(_request(top_p=0.5, top_k=2, min_p=0.5))
+    generator = _generator()
+    out = generator.generate(_request(top_p=0.5, top_k=2, min_p=0.5))
 
     assert out == ["BQ"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 2,
+        "sampler_mode": "greedy_fast",
+    }
     assert ("prefill", (10, 11), False) in calls
     assert ("graph_replay", 1) in calls
 
@@ -121,9 +128,16 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
-    out = _generator().generate(_request(temperature=0.7, top_k=1, seed=5))
+    generator = _generator()
+    out = generator.generate(_request(temperature=0.7, top_k=1, seed=5))
 
     assert out == ["BC"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 2,
+        "sampler_mode": "host_logits_sample",
+    }
     assert ("prefill", (10, 11), True) in calls
     assert ("step", 1, True) in calls
     assert not any(call[0] == "capture_decode_graph" for call in calls)
@@ -158,9 +172,16 @@ def test_gguf_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
-    out = _generator().generate(_request(temperature=0.7, top_k=1, stop_token_ids=(1,)))
+    generator = _generator()
+    out = generator.generate(_request(temperature=0.7, top_k=1, stop_token_ids=(1,)))
 
     assert out == ["B"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "stop",
+        "stop_sequence": [1],
+        "sampler_mode": "host_logits_sample",
+    }
     assert not any(call[0] == "step" for call in calls)
 
 
@@ -193,9 +214,16 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
-    out = _generator().generate(
+    generator = _generator()
+    out = generator.generate(
         _request(temperature=0.7, top_k=1, max_tokens=3, stop_token_sequences=((1, 2),))
     )
 
     assert out == ["BC"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "stop",
+        "stop_sequence": [1, 2],
+        "sampler_mode": "host_logits_sample",
+    }
     assert len([call for call in calls if call[0] == "step"]) == 1

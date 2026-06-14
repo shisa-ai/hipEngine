@@ -77,11 +77,10 @@ Known baseline limitations:
 - Server-side reasoning/tool parsing lives above generation; the generation loop
   does not yet expose canonical token-level phase state for reasoning, answer,
   tool-call, or structured-output spans.
-- Public finish metadata still lacks most backend/runtime reasons: real token
-  stop, length, forced-token, cancellation, cache behavior, sampler fallback,
-  budget pressure, and per-phase token counts still need generation-loop
-  signals. Server request deadlines are the only runtime error finish currently
-  emitted with structured metadata.
+- Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
+  token stop, stop sequence, length, and sampler mode. Forced-token, backend
+  cancellation/deadline, cache behavior, sampler fallback, budget pressure, and
+  per-phase token counts still need generation-loop signals.
 - Streaming logprobs are buffered detailed responses, not live per-token engine
   streams. Completion `echo+logprobs` does not compute real prompt-token
   logprobs yet; the echoed prompt is represented as a prefix entry with `null`
@@ -207,10 +206,12 @@ Current code reality:
   values without changing legacy fallback behavior: `eos` remains public
   `stop`, `length` maps to public `length`, and parsed tool calls report
   `tool_calls`.
-- Normal backends still need to emit real EOS, token-stop, length, cancellation,
-  forced-close, budget, cache, and sampler metadata; absent backend detail, the
-  server falls back to `{"reason": finish_reason}`. Server-side deadline errors
-  already emit `{"reason": "deadline_exceeded", "deadline_exceeded": true}`.
+- PARO/GGUF detailed generation now emits basic backend finish details for EOS,
+  token stop, stop sequence, length, and sampler mode. Normal backends still
+  need native cancellation/deadline, forced-close, budget, cache, sampler
+  fallback, and per-phase metadata; absent backend detail, the server falls back
+  to `{"reason": finish_reason}`. Server-side deadline errors already emit
+  `{"reason": "deadline_exceeded", "deadline_exceeded": true}`.
 
 ### Logit processor stack
 

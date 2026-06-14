@@ -87228,3 +87228,23 @@ Validation:
 - `python3 -m py_compile hipengine/generation/sampling.py tests/test_sampling.py`.
 - `python3 -m pytest tests/test_sampling.py -q` -> `18 passed`.
 - `git diff --check -- docs/AGENTIC.md docs/API.md tests/test_sampling.py`.
+
+## 2026-06-14 - AGENTIC backend finish details
+
+Filled the basic backend `GenerationOutput.finish_details` gap for PARO/GGUF
+detailed generation. PARO c=1 greedy, c>N greedy, c=1 sampled, and sampled
+prompt-batch paths now emit `FinishDetails` for EOS, token stop, stop sequence,
+length limit, and sampler mode when the generation loop already has those token
+signals. GGUF greedy and sampled paths emit the same basic detail set. Server
+projection already maps these details to coarse OpenAI `finish_reason` values,
+so this exposes richer metadata without changing the legacy text surface.
+
+Updated `docs/AGENTIC.md` and `docs/API.md` to move EOS/token-stop/length out of
+the missing bucket while keeping forced-close, backend cancellation/deadline,
+cache behavior, sampler fallback, budget pressure, and per-phase token counts as
+future runtime-signal work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py -q` -> `68 passed`.
+- `git diff --check -- hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md docs/API.md`.

@@ -168,6 +168,10 @@ backend `reason: "eos"` is exposed as `finish_reason: "stop"` with
 Streaming responses include `finish_details` on the final choice chunk;
 ordinary delta chunks are unchanged.
 
+PARO/GGUF detailed generation reports basic backend finish details for EOS,
+token stops, stop sequences, length limits, and sampler mode when those signals
+are available from the generation loop.
+
 When a backend does not yet provide structured finish metadata, the server emits
 the conservative fallback `{"reason": finish_reason}`.
 

@@ -153,6 +153,12 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatc
     out = generator.generate(_request(max_tokens=3))
 
     assert out == ["ABC"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 3,
+        "sampler_mode": "greedy_fast",
+    }
     assert calls == [
         ("init", runner, 4096),
         ("prefill_native", (10, 11), True),
@@ -253,6 +259,12 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
     out = generator.generate(_request(max_tokens=2, temperature=0.7, seed=5))
 
     assert out == ["AB"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 2,
+        "sampler_mode": "host_logits_sample",
+    }
     assert calls[0][0] == "configure_host_sampler"
     assert calls[0][1] == 0.7
     assert calls[0][3] == (10, 11)
@@ -345,6 +357,12 @@ def test_qwen35_paro_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
     out = generator.generate(_request(max_tokens=2, stop_token_ids=(100,)))
 
     assert out == ["A"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "stop",
+        "stop_sequence": [100],
+        "sampler_mode": "processed_argmax",
+    }
     assert not any(call[0] == "step" for call in calls)
 
 
@@ -381,6 +399,12 @@ def test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch
     out = generator.generate(_request(max_tokens=3, stop_token_sequences=((100, 101),)))
 
     assert out == ["AB"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "stop",
+        "stop_sequence": [100, 101],
+        "sampler_mode": "processed_argmax",
+    }
     assert len([call for call in calls if call[0] == "step"]) == 1
 
 
