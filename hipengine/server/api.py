@@ -167,6 +167,8 @@ _UNSUPPORTED_GRAMMAR_FIELDS = (
     "guided_choice",
     "guided_grammar",
     "guided_decoding_backend",
+    "guided_patch",
+    "guided_diff",
 )
 
 

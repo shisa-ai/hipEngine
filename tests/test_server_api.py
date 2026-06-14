@@ -528,6 +528,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "guided_choice",
             "guided_grammar",
             "guided_decoding_backend",
+            "guided_patch",
+            "guided_diff",
         ],
         "result_validation_only": ["json_object", "json_schema"],
     }
@@ -771,6 +773,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "continuation_id" not in body["unsupported_fields"]
     assert "grammar" in body["unsupported_fields"]
     assert "guided_json" in body["unsupported_fields"]
+    assert "guided_patch" in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -5958,6 +5961,24 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
                 "guided_decoding_backend": "outlines",
             },
             "guided_decoding_backend",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_patch": {"format": "unified_diff"},
+            },
+            "guided_patch",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "guided_diff": {"format": "unified_diff"},
+            },
+            "guided_diff",
         ),
     ],
 )

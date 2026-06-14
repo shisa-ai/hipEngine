@@ -377,8 +377,9 @@ validation, not grammar-constrained decoding.
 Grammar/guidance request fields are not currently supported. The capabilities
 manifest reports `features.grammars.enabled=false` and lists known unsupported
 fields such as `grammar`, `guided_json`, `guided_regex`, `guided_choice`,
-`guided_grammar`, and `guided_decoding_backend`; sending them returns HTTP 400
-with `error.code: "unsupported_parameter"` and `error.param` set to the field.
+`guided_grammar`, `guided_decoding_backend`, `guided_patch`, and
+`guided_diff`; sending them returns HTTP 400 with
+`error.code: "unsupported_parameter"` and `error.param` set to the field.
 
 ### Thinking / no-think controls
 

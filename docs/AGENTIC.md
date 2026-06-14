@@ -1422,7 +1422,8 @@ Current code reality:
   `strict_decoding=false`, an empty supported grammar list, and known
   unsupported grammar/guidance fields (`grammar`, `guided_json`,
   `guided_regex`, `guided_choice`, `guided_grammar`, and
-  `guided_decoding_backend`).
+  `guided_decoding_backend`) plus patch/diff grammar fields (`guided_patch` and
+  `guided_diff`).
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
   set to the rejected field. JSON-object / JSON-schema support remains
@@ -1442,6 +1443,16 @@ Exit gates:
 - generated patch fixtures parse under the selected grammar;
 - partial patch at length stop returns continuation handle or structured error;
 - plain text mode remains unaffected.
+
+Current code reality:
+
+- Patch/diff constrained decoding is not implemented. The capabilities manifest
+  advertises future top-level request fields `guided_patch` and `guided_diff`
+  as unsupported grammar fields, and requests that send either field are
+  rejected before generation with `unsupported_parameter` and stable
+  `error.param`.
+- Plain text generation remains unaffected because unsupported patch/diff
+  controls fail closed at request validation time.
 
 #### P2.6 Tool streaming polish
 

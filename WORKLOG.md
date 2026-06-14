@@ -89055,3 +89055,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json -q` -> `1 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC patch grammar fail-closed fields
+
+Made patch/diff constrained decoding explicit while it remains unimplemented.
+Capabilities now advertise `guided_patch` and `guided_diff` as unsupported
+grammar fields, the local-agent snippet blocks both in `do_not_send`, and the
+server test matrix verifies both fields fail before generation with stable
+`unsupported_parameter` responses.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_local_agent_config.py::test_local_agent_config_matches_server_capabilities_manifest tests/test_local_agent_config.py::test_local_agent_chat_smoke_payload_avoids_unsupported_fields -q` -> `15 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
+- `python3 -m json.tool docs/examples/local-agent/openai-compatible.json >/tmp/hipengine-local-agent-config.jsoncheck`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/examples/local-agent/openai-compatible.json docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
