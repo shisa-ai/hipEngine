@@ -90303,3 +90303,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `45 passed`.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json WORKLOG.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC API error taxonomy sync test
+
+Added a server API contract test that parses the public `docs/API.md` error
+taxonomy table and compares its canonical code, HTTP status, and retry columns
+against the live `/v1/hipengine/capabilities` error manifest. Updated
+`docs/AGENTIC.md` P5.4 current-reality text to call out that the API table is
+now tested against the manifest, and refreshed `docs/API.md`'s update date.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_api_error_taxonomy_table_matches_capabilities_manifest -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_api_error_taxonomy_table_matches_capabilities_manifest -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -2070,6 +2070,9 @@ Current code reality:
   `schema_violation`, `invalid_continuation`, `continuation_expired`,
   `context_overflow`, `deadline_exceeded`, `cancelled`, `engine_busy`, and
   `model_unavailable`.
+- `docs/API.md` lists the same client-handled taxonomy table, and a server test
+  compares that public table's code/status/retry columns against the live
+  `/v1/hipengine/capabilities` manifest.
 - `invalid_tool_call` is currently emitted as a normal chat
   `finish_details.reason` for parsed tool-policy failures and strict tool
   result-validation failures, not as an HTTP error payload. `schema_violation`

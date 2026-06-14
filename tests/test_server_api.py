@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -38,6 +39,26 @@ from hipengine.server.api import (
     _request_control,
     _startup_memory_summary,
 )
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _api_error_taxonomy_table() -> dict[str, dict[str, Any]]:
+    lines = (REPO_ROOT / "docs" / "API.md").read_text(encoding="utf-8").splitlines()
+    start = lines.index("| Code | Status | Retry | Current emission |") + 2
+    table: dict[str, dict[str, Any]] = {}
+    for line in lines[start:]:
+        if not line.startswith("| `"):
+            break
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        code = cells[0].strip("`")
+        table[code] = {
+            "status_code": int(cells[1]),
+            "retryable": cells[2] == "yes",
+            "current_emission": cells[3],
+        }
+    return table
 
 
 class FakeLLM:
@@ -905,6 +926,22 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "guided_json" in body["unsupported_fields"]
     assert "guided_patch" not in body["unsupported_fields"]
     assert "guided_diff" not in body["unsupported_fields"]
+
+
+def test_api_error_taxonomy_table_matches_capabilities_manifest() -> None:
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False), llm=FakeLLM())
+    client = TestClient(app)
+
+    response = client.get("/v1/hipengine/capabilities")
+
+    assert response.status_code == 200
+    api_table = _api_error_taxonomy_table()
+    manifest_by_code = {item["code"]: item for item in response.json()["errors"]["codes"]}
+    assert set(api_table) == set(manifest_by_code)
+    for code, item in manifest_by_code.items():
+        assert api_table[code]["status_code"] == item["status_code"]
+        assert api_table[code]["retryable"] == item["retryable"]
+        assert api_table[code]["current_emission"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
