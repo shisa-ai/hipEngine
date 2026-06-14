@@ -90990,3 +90990,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata tests/test_server_api.py::test_completion_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_streaming_completion_live_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_chat_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_streaming_chat_live_logprobs_omitted_selected_score_reports_reason -q` -> `6 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC golden trace logprob omissions
+
+Extended the deterministic agentic golden-trace suite to cover the new partial
+logprob metadata contract. Completion and chat traces now assert that omitted
+selected-token scores remain OpenAI-compatible `null` values while
+`choices[].logprobs.hipengine.omitted_token_logprobs[]` reports the token
+index/id/text and stable `backend_omitted_logprob` reason. The required
+finish-phase/sampling coverage guard now includes both omission traces, and
+AGENTIC's trace inventory names omission reasons alongside logprob success and
+missing-backend-metadata fallback coverage.
+
+Validation:
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns tests/test_agentic_harness_traces.py::test_agentic_golden_trace -q` -> passed.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py && python3 -m ruff check tests/test_agentic_harness_traces.py && git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md` -> `All checks passed!` / clean.

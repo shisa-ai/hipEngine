@@ -1205,6 +1205,50 @@
       }
     },
     {
+      "name": "completion_logprobs_omitted_reason",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "fake_detailed_outputs": [
+        {
+          "text": "alpha beta",
+          "token_logprobs": [
+            {"token_id": 1, "token_text": "alpha", "logprob": null},
+            {"token_id": 3, "token_text": " beta", "logprob": -0.5}
+          ],
+          "finish_details": {"reason": "stop"}
+        }
+      ],
+      "request": {
+        "model": "fake-model",
+        "prompt": "hello",
+        "max_tokens": 2,
+        "logprobs": 1
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "text": "alpha beta",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "logprobs": {
+          "tokens": ["alpha", " beta"],
+          "token_logprobs": [null, -0.5],
+          "top_logprobs": [null, null],
+          "text_offset": [0, 5],
+          "hipengine": {
+            "omitted_token_logprobs": [
+              {
+                "index": 0,
+                "token": "alpha",
+                "token_id": 1,
+                "reason": "backend_omitted_logprob"
+              }
+            ]
+          }
+        },
+        "sampling": {"logprobs": true, "top_logprobs": 1}
+      }
+    },
+    {
       "name": "chat_logprobs_success",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
@@ -1248,6 +1292,51 @@
           "refusal": null
         },
         "sampling": {"logprobs": true, "top_logprobs": 1}
+      }
+    },
+    {
+      "name": "chat_logprobs_omitted_reason",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {
+          "text": "assistant reply",
+          "token_logprobs": [
+            {"token_id": 4, "token_text": "assistant", "logprob": null},
+            {"token_id": 5, "token_text": " reply", "logprob": -0.2}
+          ],
+          "finish_details": {"reason": "stop"}
+        }
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 2,
+        "logprobs": true
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "message_content": "assistant reply",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "logprobs": {
+          "content": [
+            {"token": "assistant", "logprob": null, "bytes": null, "top_logprobs": []},
+            {"token": " reply", "logprob": -0.2, "bytes": null, "top_logprobs": []}
+          ],
+          "refusal": null,
+          "hipengine": {
+            "omitted_token_logprobs": [
+              {
+                "index": 0,
+                "token": "assistant",
+                "token_id": 4,
+                "reason": "backend_omitted_logprob"
+              }
+            ]
+          }
+        },
+        "sampling": {"logprobs": true, "top_logprobs": 0}
       }
     },
     {

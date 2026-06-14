@@ -74,6 +74,8 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
             "length_finish_chat_partial_tool_call",
             "completion_logprobs_success",
             "chat_logprobs_success",
+            "completion_logprobs_omitted_reason",
+            "chat_logprobs_omitted_reason",
             "completion_logprobs_missing_backend_metadata_error",
         }
     ),

@@ -2148,8 +2148,8 @@ Current code reality:
   errors, unsupported parameter/feature errors, request schema-validation
   errors, streaming context-overflow SSE error chunks, chat-session-cap
   `engine_busy`, invalid and expired continuation handles, deadline error
-  metadata, backend cancellation HTTP/SSE errors, and request-control
-  cancellation.
+  metadata, backend cancellation HTTP/SSE errors, request-control cancellation,
+  and logprob omission-reason payloads.
 - `tests/test_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,
@@ -2169,7 +2169,8 @@ Current code reality:
   visible-only transcript retention, snapshot export/restore of a hidden-
   reasoning tool-call loop, and streaming tool-call parity without raw
   `<tool_call>` leakage. The trace suite also includes representative
-  completion/chat logprob success paths and the stable
+  completion/chat logprob success paths, explicit selected-score omission
+  reasons when backend token metadata is partial, and the stable
   `unsupported_feature` fallback when a backend cannot return token metadata.
 
 Exit gates:
