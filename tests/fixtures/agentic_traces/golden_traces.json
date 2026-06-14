@@ -692,6 +692,131 @@
       ]
     },
     {
+      "name": "session_snapshot_restore_reasoning_tool_loop_sequence",
+      "kind": "http_sequence",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<think>hidden plan</think><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>",
+        "README says hello after snapshot restore."
+      ],
+      "steps": [
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read the README with hidden reasoning."}],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "read",
+                  "description": "Read a file",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                    "additionalProperties": false
+                  },
+                  "strict": true
+                }
+              }
+            ],
+            "session": {"id": "sess_snapshot_tool"}
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "tool_calls",
+            "finish_details": {
+              "reason": "tool_calls",
+              "cache_action": "append_visible_only",
+              "phase": "tool_call",
+              "reasoning_tokens": 2,
+              "tool_call_tokens": 1
+            },
+            "message_content": "",
+            "reasoning_content": "hidden plan",
+            "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+            "capture_tool_call_id": true,
+            "response_excludes": ["<think>", "<tool_call>"]
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/v1/hipengine/sessions/sess_snapshot_tool/snapshot",
+          "expected": {
+            "status_code": 200,
+            "object": "hipengine.session.snapshot",
+            "snapshot_messages": [
+              {"role": "user", "content": "Read the README with hidden reasoning."},
+              {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                  {
+                    "id": "$tool_call_id",
+                    "type": "function",
+                    "function": {
+                      "name": "read",
+                      "arguments": "{\"path\":\"README.md\"}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "capture_snapshot": true,
+            "response_excludes": ["hidden plan", "<think>"]
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/v1/hipengine/sessions/sess_snapshot_tool",
+          "expected": {
+            "status_code": 200,
+            "object": "hipengine.session.deleted",
+            "deleted": true
+          }
+        },
+        {
+          "endpoint": "/v1/hipengine/sessions/sess_snapshot_tool/snapshot",
+          "request": "$snapshot",
+          "expected": {
+            "status_code": 200,
+            "object": "hipengine.session.restored",
+            "restored": true,
+            "message_count": 2
+          }
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "tool", "tool_call_id": "$tool_call_id", "content": "hello from README"}],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "read",
+                  "description": "Read a file",
+                  "parameters": {"type": "object"}
+                }
+              }
+            ],
+            "session": {"id": "sess_snapshot_tool", "commit": "append_none"}
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "README says hello after snapshot restore.",
+            "finish_details": {"reason": "stop", "cache_action": "append_none"},
+            "prompt_contains": [
+              "Read the README with hidden reasoning.",
+              "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>",
+              "<tool_response>\nhello from README\n</tool_response>"
+            ],
+            "prompt_excludes": ["hidden plan", "<think>"]
+          }
+        }
+      ]
+    },
+    {
       "name": "length_finish_completion",
       "kind": "http",
       "endpoint": "/v1/completions",

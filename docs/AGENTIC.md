@@ -1,6 +1,6 @@
 # Agentic Inference Roadmap
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 `AGENTIC.md` is the implementation handoff for making hipEngine useful as a
 local **agent runtime**. The scope is not broad project management; it is the
@@ -1703,6 +1703,10 @@ Current code reality:
   errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and
   fails with `engine_busy` without creating partial session state when full.
+- Checked-in server-conformance and golden-trace fixtures cover restoring an
+  app-local session after a hidden-reasoning assistant tool call, then
+  continuing from a tool response. They verify the snapshot and restored prompt
+  retain only visible tool-call state and do not replay hidden reasoning.
 - Resident KV payload references, prefix token blobs, full tokenizer state, and
   decode/sampling state are not snapshotted yet; restored sessions re-render the
   transcript through the normal prompt path.
@@ -2012,7 +2016,8 @@ Current code reality:
   rendering exactly once, `enable_thinking=false` pre-close rendering,
   duplicated-start tool-call recovery, permissive malformed-JSON compatibility,
   `session.commit="append_none"` finish metadata, app-local `session.id`
-  visible-only transcript retention, and streaming tool-call parity without raw
+  visible-only transcript retention, snapshot export/restore of a hidden-
+  reasoning tool-call loop, and streaming tool-call parity without raw
   `<tool_call>` leakage.
 
 Exit gates:

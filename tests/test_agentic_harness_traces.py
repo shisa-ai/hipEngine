@@ -101,27 +101,38 @@ def _assert_http_sequence_trace(trace: dict[str, Any]) -> None:
     context: dict[str, Any] = {}
     for step in trace["steps"]:
         endpoint = str(step.get("endpoint") or trace.get("endpoint"))
-        request_payload = _resolve_trace_values(step["request"], context)
+        method = str(step.get("method", "POST")).upper()
+        request_payload = _resolve_trace_values(step.get("request", {}), context)
+        expected = _resolve_trace_values(step["expected"], context)
         payload = _assert_http_exchange(
             client,
             fake,
+            method=method,
             endpoint=endpoint,
             request_payload=request_payload,
-            expected=step["expected"],
+            expected=expected,
         )
-        _capture_trace_values(payload, expected=step["expected"], context=context)
+        _capture_trace_values(payload, expected=expected, context=context)
 
 
 def _assert_http_exchange(
     client: TestClient,
     fake: TraceLLM,
     *,
+    method: str = "POST",
     endpoint: str,
     request_payload: dict[str, Any],
     expected: dict[str, Any],
 ) -> dict[str, Any] | None:
     call_index = len(fake.calls)
-    response = client.post(endpoint, json=request_payload)
+    if method == "POST":
+        response = client.post(endpoint, json=request_payload)
+    elif method == "GET":
+        response = client.get(endpoint)
+    elif method == "DELETE":
+        response = client.delete(endpoint)
+    else:  # pragma: no cover - fixture schema guard
+        raise AssertionError(f"unsupported trace HTTP method {method!r}")
 
     assert response.status_code == expected["status_code"]
     _assert_response_exclusions(response.text, expected)
@@ -136,15 +147,17 @@ def _assert_http_exchange(
         payload = response.json()
         if endpoint.endswith("/chat/completions"):
             _assert_chat_response(payload, expected)
-        else:
+        elif endpoint.endswith("/completions"):
             _assert_completion_response(payload, expected)
+        else:
+            _assert_generic_response(payload, expected)
     _assert_prompt_expectations(fake, expected, call_index=call_index)
     return payload
 
 
 def _resolve_trace_values(value: Any, context: dict[str, Any]) -> Any:
     if isinstance(value, str) and value.startswith("$"):
-        return context[value[1:]]
+        return context.get(value[1:], value)
     if isinstance(value, list):
         return [_resolve_trace_values(item, context) for item in value]
     if isinstance(value, dict):
@@ -158,9 +171,14 @@ def _capture_trace_values(
     expected: dict[str, Any],
     context: dict[str, Any],
 ) -> None:
-    if payload is None or not expected.get("continuation_id"):
+    if payload is None:
         return
-    context["continuation_id"] = payload["choices"][0]["continuation_id"]
+    if expected.get("continuation_id"):
+        context["continuation_id"] = payload["choices"][0]["continuation_id"]
+    if expected.get("capture_tool_call_id"):
+        context["tool_call_id"] = payload["choices"][0]["message"]["tool_calls"][0]["id"]
+    if expected.get("capture_snapshot"):
+        context["snapshot"] = payload
 
 
 def _assert_chat_response(payload: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -194,6 +212,19 @@ def _assert_completion_response(payload: dict[str, Any], expected: dict[str, Any
     assert choice["finish_details"] == _expected_finish_details(choice, expected)
     if expected.get("continuation_id"):
         assert choice["continuation_id"].startswith("gen_")
+
+
+def _assert_generic_response(payload: dict[str, Any], expected: dict[str, Any]) -> None:
+    if "object" in expected:
+        assert payload["object"] == expected["object"]
+    if "deleted" in expected:
+        assert payload["deleted"] is expected["deleted"]
+    if "restored" in expected:
+        assert payload["restored"] is expected["restored"]
+    if "message_count" in expected:
+        assert payload["message_count"] == expected["message_count"]
+    if "snapshot_messages" in expected:
+        assert payload["messages"] == expected["snapshot_messages"]
 
 
 def _expected_finish_details(choice: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:

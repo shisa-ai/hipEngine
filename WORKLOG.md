@@ -90189,3 +90189,23 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `31 passed`.
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_local_agent_config.py scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC golden snapshot restore trace
+
+Extended the deterministic golden trace runner to support non-POST sequence
+steps plus dynamic response captures. Added a checked-in trace for the restored
+agentic session flow: hidden-reasoning tool-call turn, snapshot export, session
+delete, snapshot restore, and a final tool-response turn. The trace verifies the
+snapshot and restored prompt retain visible tool-call state while omitting
+hidden reasoning. Updated `docs/AGENTIC.md` P3.5/P5.3 current-reality text to
+point at this restored-session golden coverage.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_trace[session_snapshot_restore_reasoning_tool_loop_sequence] -q` -> `1 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `32 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `31 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
