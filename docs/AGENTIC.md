@@ -910,7 +910,9 @@ Current code reality:
   packed prefill, c-aware native decode, or the serial decode bridge.
   PARO/GGUF host-sampled forced-token selections also expose the selected
   `forced_token_id`, `forced_token_reason`, and post-selection
-  `forced_tokens_remaining` alongside any still-pending queue state.
+  `forced_tokens_remaining` alongside pending generic forced-token queues,
+  post-thinking forced-token queues, and sequence-completion repair policy when
+  those controller states are active.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present,
   mirroring the final `finish_details` alongside the backend-authored
@@ -1209,8 +1211,10 @@ Current code reality:
   so the token still goes through the normal decode/KV path.
 - PARO/GGUF host-sampled telemetry carries selected forced-token metadata in
   `DecodeState` as `forced_token_id`, `forced_token_reason`, and
-  `forced_tokens_remaining`; `forced_tokens_pending` remains the pending queue
-  snapshot.
+  `forced_tokens_remaining`; `forced_tokens_pending`,
+  `post_thinking_forced_tokens_pending`, and
+  `force_sequence_completion_token_sequences` remain pending/controller policy
+  snapshots.
 - `RowSamplingState` can now bind a `ThinkingBudgetState`; before each host
   token selection, hard budget pressure queues the tokenizer-lowered close
   sequence as forced tokens, and every selected token updates the

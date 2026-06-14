@@ -205,7 +205,35 @@ def test_gguf_sampled_force_sequence_completion_repairs_tool_close(monkeypatch) 
     assert outputs[0].text == "DQ"
     assert outputs[0].finish_details is not None
     assert outputs[0].finish_details.to_json_dict()["sampler_mode"] == "processed_argmax"
-    assert _decode_state(outputs[0])["active_processors"] == ["force_sequence_completion_token_sequences"]
+    decode_state = _decode_state(outputs[0])
+    assert decode_state["active_processors"] == ["force_sequence_completion_token_sequences"]
+    assert decode_state["force_sequence_completion_token_sequences"] == [[3, 16]]
+    assert decode_state["force_sequence_completion_reason"] == "tool_call_close_repair"
+
+
+def test_gguf_telemetry_reports_post_thinking_forced_queue_before_close() -> None:
+    request = _request(
+        thinking_close_token_ids=(2,),
+        thinking_hard_token_cap=8,
+        post_thinking_forced_tokens_pending=(3, 16),
+        post_thinking_forced_token_reason="tool_choice_required",
+    )
+    state = qwen35_gguf._gguf_row_sampling_state(request, [10, 11], row_index=0)
+    state.observe(1)
+
+    telemetry = qwen35_gguf._gguf_telemetry(
+        [10, 11],
+        [1],
+        request,
+        row_index=0,
+        sampling_state=state,
+    )
+
+    decode_state = telemetry.to_json_dict()["decode_state"]
+    assert decode_state["phase"] == "think"
+    assert decode_state["reasoning_tokens"] == 1
+    assert decode_state["post_thinking_forced_tokens_pending"] == [3, 16]
+    assert decode_state["post_thinking_forced_token_reason"] == "tool_choice_required"
 
 
 def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:

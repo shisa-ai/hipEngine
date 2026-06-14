@@ -220,9 +220,11 @@ decode-state metadata from that final telemetry, including sampler mode,
 processor/fallback blockers, logits-readback state, and scheduler execution-path
 flags, while keeping phase and token counts server-derived for the emitted
 chunk. Buffered tool/reasoning/structured delta token counts are parsed from the
-chunks the server emits, not authoritative decode-loop grammar state; token-specific
-final fields such as forced-token state, stop suffixes, budget pressure,
-and backend timing/usage remain final-chunk metadata.
+chunks the server emits, not authoritative decode-loop grammar state; final
+backend fields such as selected forced-token state, pending post-thinking
+forced-token queues, sequence-completion repair policy, stop suffixes, budget
+pressure, and backend timing/usage remain final-chunk metadata unless the
+backend emits live `GenerationStreamChunk` telemetry for the token.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final

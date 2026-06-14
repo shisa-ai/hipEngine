@@ -124,6 +124,55 @@ def test_qwen35_paro_row_sampling_state_repairs_tool_close_suffix() -> None:
     assert state.forced_token_reason == "tool_call_close_repair"
 
 
+def test_qwen35_paro_telemetry_reports_post_thinking_forced_queue() -> None:
+    request = _request(
+        thinking_close_token_ids=(42, 43),
+        thinking_hard_token_cap=8,
+        post_thinking_forced_tokens_pending=(77, 78),
+        post_thinking_forced_token_reason="tool_choice_required",
+    )
+    state = qwen35._row_sampling_state(request, [1, 2], row_index=0)
+    state.observe(99)
+
+    telemetry = qwen35._telemetry_for_tokens(
+        [1, 2],
+        [99],
+        row_index=0,
+        sampler_mode="processed_argmax",
+        stop_token_sequences=(),
+        sampling_state=state,
+    )
+
+    decode_state = telemetry.to_json_dict()["decode_state"]
+    assert decode_state["phase"] == "think"
+    assert decode_state["reasoning_tokens"] == 1
+    assert decode_state["post_thinking_forced_tokens_pending"] == [77, 78]
+    assert decode_state["post_thinking_forced_token_reason"] == "tool_choice_required"
+
+
+def test_qwen35_paro_telemetry_reports_sequence_completion_repair() -> None:
+    request = _request(
+        force_sequence_completion_token_sequences=((70, 71),),
+        force_sequence_completion_reason="tool_call_close_repair",
+    )
+    state = qwen35._row_sampling_state(request, [1, 2], row_index=0)
+    state.observe(70)
+
+    telemetry = qwen35._telemetry_for_tokens(
+        [1, 2],
+        [70],
+        row_index=0,
+        sampler_mode="processed_argmax",
+        stop_token_sequences=(),
+        sampling_state=state,
+    )
+
+    decode_state = telemetry.to_json_dict()["decode_state"]
+    assert decode_state["forced_tokens_pending"] == [71]
+    assert decode_state["force_sequence_completion_token_sequences"] == [[70, 71]]
+    assert decode_state["force_sequence_completion_reason"] == "tool_call_close_repair"
+
+
 def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(monkeypatch) -> None:
     calls = []
 

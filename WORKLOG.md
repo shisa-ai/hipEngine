@@ -91268,3 +91268,22 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC decode-state constraint queue telemetry
+
+Extended backend decode-state telemetry so existing post-thinking forced-token
+queues and sequence-completion repair policy are observable, not only listed as
+planner/MTP blockers. `DecodeState` now normalizes and serializes
+`post_thinking_forced_tokens_pending`,
+`post_thinking_forced_token_reason`,
+`force_sequence_completion_token_sequences`, and
+`force_sequence_completion_reason` when present; PARO/GGUF host telemetry
+bridges thread those fields from `RowSamplingState`, and the capabilities
+manifest advertises them in `features.choice_telemetry.decode_state_fields`.
+Updated AGENTIC/API docs to describe the observable controller state.
+
+Validation:
+- `python3 -m pytest tests/test_generation_registry.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_telemetry_reports_post_thinking_forced_queue tests/test_generation_qwen35_paro.py::test_qwen35_paro_telemetry_reports_sequence_completion_repair tests/test_generation_qwen35_gguf_sampling.py::test_gguf_sampled_force_sequence_completion_repairs_tool_close tests/test_generation_qwen35_gguf_sampling.py::test_gguf_telemetry_reports_post_thinking_forced_queue_before_close tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `12 passed`.
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

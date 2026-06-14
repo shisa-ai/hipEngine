@@ -1305,6 +1305,12 @@ def _telemetry_for_tokens(
         forced_token_id=forced_token_id,
         forced_token_reason=forced_token_reason,
         forced_tokens_remaining=forced_tokens_remaining,
+        post_thinking_forced_tokens_pending=tuple(state_payload.get("post_thinking_forced_tokens_pending", ())),
+        post_thinking_forced_token_reason=state_payload.get("post_thinking_forced_token_reason"),
+        force_sequence_completion_token_sequences=tuple(
+            tuple(sequence) for sequence in state_payload.get("force_sequence_completion_token_sequences", ())
+        ),
+        force_sequence_completion_reason=state_payload.get("force_sequence_completion_reason"),
         budget_pressure=state_payload.get("budget_pressure"),
         sampler_mode=sampler_mode,
         stop_suffix_state=_stop_suffix_state(generated_token_ids, stop_token_sequences),
@@ -1356,6 +1362,14 @@ def _decode_state_from_sampling_state(state: RowSamplingState | None) -> dict[st
     payload: dict[str, Any] = {}
     if state.forced_tokens:
         payload["forced_tokens_pending"] = state.forced_tokens
+    if state.post_thinking_forced_tokens_pending.pending_tokens:
+        payload["post_thinking_forced_tokens_pending"] = state.post_thinking_forced_tokens_pending.pending_tokens
+    if state.post_thinking_forced_token_reason is not None:
+        payload["post_thinking_forced_token_reason"] = state.post_thinking_forced_token_reason
+    if state.force_sequence_completion_token_sequences:
+        payload["force_sequence_completion_token_sequences"] = state.force_sequence_completion_token_sequences
+    if state.force_sequence_completion_reason is not None:
+        payload["force_sequence_completion_reason"] = state.force_sequence_completion_reason
     budget = state.thinking_budget
     if budget is None:
         return payload

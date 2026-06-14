@@ -169,6 +169,17 @@ def _pending_token_tuple(value: Any) -> tuple[int, ...]:
     return () if value is None else tuple(int(token) for token in value)
 
 
+def _token_sequence_tuple(value: Any) -> tuple[tuple[int, ...], ...]:
+    if value is None:
+        return ()
+    normalized: list[tuple[int, ...]] = []
+    for raw_sequence in value:
+        sequence = tuple(int(token) for token in raw_sequence)
+        if sequence:
+            normalized.append(sequence)
+    return tuple(normalized)
+
+
 def _string_tuple(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -196,6 +207,10 @@ class DecodeState:
     forced_token_id: int | None = None
     forced_token_reason: str | None = None
     forced_tokens_remaining: int | None = None
+    post_thinking_forced_tokens_pending: tuple[int, ...] = ()
+    post_thinking_forced_token_reason: str | None = None
+    force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
+    force_sequence_completion_reason: str | None = None
     active_processors: tuple[str, ...] = ()
     sampler_fast_path_blockers: tuple[str, ...] = ()
     sampler_fallback_reason: str | None = None
@@ -228,6 +243,26 @@ class DecodeState:
             None if self.forced_token_reason is None else str(self.forced_token_reason),
         )
         object.__setattr__(self, "forced_tokens_remaining", _optional_nonnegative_int(self.forced_tokens_remaining))
+        object.__setattr__(
+            self,
+            "post_thinking_forced_tokens_pending",
+            _pending_token_tuple(self.post_thinking_forced_tokens_pending),
+        )
+        object.__setattr__(
+            self,
+            "post_thinking_forced_token_reason",
+            None if self.post_thinking_forced_token_reason is None else str(self.post_thinking_forced_token_reason),
+        )
+        object.__setattr__(
+            self,
+            "force_sequence_completion_token_sequences",
+            _token_sequence_tuple(self.force_sequence_completion_token_sequences),
+        )
+        object.__setattr__(
+            self,
+            "force_sequence_completion_reason",
+            None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
+        )
         object.__setattr__(self, "active_processors", _string_tuple(self.active_processors))
         object.__setattr__(self, "sampler_fast_path_blockers", _string_tuple(self.sampler_fast_path_blockers))
         object.__setattr__(
@@ -282,6 +317,10 @@ class DecodeState:
                 forced_token_id=value.get("forced_token_id"),
                 forced_token_reason=value.get("forced_token_reason"),
                 forced_tokens_remaining=value.get("forced_tokens_remaining"),
+                post_thinking_forced_tokens_pending=value.get("post_thinking_forced_tokens_pending", ()),
+                post_thinking_forced_token_reason=value.get("post_thinking_forced_token_reason"),
+                force_sequence_completion_token_sequences=value.get("force_sequence_completion_token_sequences", ()),
+                force_sequence_completion_reason=value.get("force_sequence_completion_reason"),
                 active_processors=value.get("active_processors", ()),
                 sampler_fast_path_blockers=value.get("sampler_fast_path_blockers", ()),
                 sampler_fallback_reason=value.get("sampler_fallback_reason"),
@@ -311,6 +350,10 @@ class DecodeState:
             forced_token_id=getattr(value, "forced_token_id", None),
             forced_token_reason=getattr(value, "forced_token_reason", None),
             forced_tokens_remaining=getattr(value, "forced_tokens_remaining", None),
+            post_thinking_forced_tokens_pending=getattr(value, "post_thinking_forced_tokens_pending", ()),
+            post_thinking_forced_token_reason=getattr(value, "post_thinking_forced_token_reason", None),
+            force_sequence_completion_token_sequences=getattr(value, "force_sequence_completion_token_sequences", ()),
+            force_sequence_completion_reason=getattr(value, "force_sequence_completion_reason", None),
             active_processors=getattr(value, "active_processors", ()),
             sampler_fast_path_blockers=getattr(value, "sampler_fast_path_blockers", ()),
             sampler_fallback_reason=getattr(value, "sampler_fallback_reason", None),
@@ -377,6 +420,16 @@ class DecodeState:
             payload["forced_token_reason"] = self.forced_token_reason
         if self.forced_tokens_remaining is not None:
             payload["forced_tokens_remaining"] = self.forced_tokens_remaining
+        if self.post_thinking_forced_tokens_pending:
+            payload["post_thinking_forced_tokens_pending"] = list(self.post_thinking_forced_tokens_pending)
+        if self.post_thinking_forced_token_reason is not None:
+            payload["post_thinking_forced_token_reason"] = self.post_thinking_forced_token_reason
+        if self.force_sequence_completion_token_sequences:
+            payload["force_sequence_completion_token_sequences"] = [
+                list(sequence) for sequence in self.force_sequence_completion_token_sequences
+            ]
+        if self.force_sequence_completion_reason is not None:
+            payload["force_sequence_completion_reason"] = self.force_sequence_completion_reason
         if self.active_processors:
             payload["active_processors"] = list(self.active_processors)
         if self.sampler_fast_path_blockers:
@@ -456,6 +509,10 @@ class GenerationTelemetry:
         forced_token_id: int | None = None,
         forced_token_reason: str | None = None,
         forced_tokens_remaining: int | None = None,
+        post_thinking_forced_tokens_pending: tuple[int, ...] = (),
+        post_thinking_forced_token_reason: str | None = None,
+        force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = (),
+        force_sequence_completion_reason: str | None = None,
         active_processors: tuple[str, ...] = (),
         sampler_fast_path_blockers: tuple[str, ...] = (),
         sampler_fallback_reason: str | None = None,
@@ -488,6 +545,10 @@ class GenerationTelemetry:
                 forced_token_id=forced_token_id,
                 forced_token_reason=forced_token_reason,
                 forced_tokens_remaining=forced_tokens_remaining,
+                post_thinking_forced_tokens_pending=post_thinking_forced_tokens_pending,
+                post_thinking_forced_token_reason=post_thinking_forced_token_reason,
+                force_sequence_completion_token_sequences=force_sequence_completion_token_sequences,
+                force_sequence_completion_reason=force_sequence_completion_reason,
                 active_processors=active_processors,
                 sampler_fast_path_blockers=sampler_fast_path_blockers,
                 sampler_fallback_reason=sampler_fallback_reason,
