@@ -153,7 +153,9 @@ live stream deltas also include `choices[].hipengine.tokens` with
 `prompt_tokens`, `completion_tokens`, and `total_tokens` in the same object.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
-`hipengine.usage`.
+`hipengine.usage`. Streaming error chunks use top-level
+`hipengine.event: "error"` and include `choices[].hipengine.finish_details` when
+structured finish details are available.
 
 Cache, prefill/TTFT, decode-rate, budget-pressure, and backend-authored
 per-phase token metadata are omitted until the runtime exposes those signals.

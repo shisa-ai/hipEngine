@@ -1586,6 +1586,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -1607,6 +1609,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 status_code=400,
                 code="unsupported_parameter",
                 error_type="invalid_request_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -1628,6 +1632,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 status_code=400,
                 code="invalid_request",
                 error_type="invalid_request_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -1648,6 +1654,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 message,
                 status_code=500,
                 code="generation_failed",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2289,6 +2297,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
@@ -2307,6 +2317,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 message,
                 status_code=500,
                 code="generation_failed",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
         yield "data: [DONE]\n\n"
 
@@ -2315,12 +2327,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         request: ChatCompletionRequest,
         control: _RequestControl,
     ) -> AsyncIterator[str]:
+        response_id = f"chatcmpl-{uuid.uuid4().hex}"
+        created = int(time.time())
+        stream_started_at = time.perf_counter()
+        include_hipengine = _stream_include_hipengine(request)
         try:
             _validate_generation_request(config, request)
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
-            response_id = f"chatcmpl-{uuid.uuid4().hex}"
-            created = int(time.time())
             _log_stream_failure(
                 "POST /v1/chat/completions stream",
                 status_code=exc.status_code,
@@ -2338,13 +2352,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
-        response_id = f"chatcmpl-{uuid.uuid4().hex}"
-        created = int(time.time())
-        stream_started_at = time.perf_counter()
-        include_hipengine = _stream_include_hipengine(request)
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
@@ -2424,6 +2436,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2445,6 +2459,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 status_code=400,
                 code="unsupported_parameter",
                 error_type="invalid_request_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2466,6 +2482,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 status_code=400,
                 code="invalid_request",
                 error_type="invalid_request_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2486,6 +2504,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 message,
                 status_code=500,
                 code="generation_failed",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
             )
             yield "data: [DONE]\n\n"
             return
@@ -4944,6 +4964,8 @@ def _completion_stream_error(
     param: str | None = None,
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
     choice: dict[str, Any] = {
         "text": "",
@@ -4962,15 +4984,25 @@ def _completion_stream_error(
     if finish_details is not None:
         details = dict(finish_details)
         choice["finish_details"] = details
+    if include_hipengine:
+        choice["hipengine"] = _choice_hipengine_payload(
+            "done",
+            finish_details=choice.get("finish_details"),
+        )
     return _sse(
-        {
-            "id": response_id,
-            "object": "text_completion",
-            "created": created,
-            "model": model,
-            "choices": [choice],
-            "error": error,
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "text_completion",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+                "error": error,
+            },
+            include_hipengine=include_hipengine,
+            event="error",
+            stream_started_at=stream_started_at,
+        )
     )
 
 
@@ -5296,6 +5328,8 @@ def _chat_stream_error(
     param: str | None = None,
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: float | None = None,
 ) -> str:
     choice: dict[str, Any] = {
         "index": 0,
@@ -5313,15 +5347,25 @@ def _chat_stream_error(
     if finish_details is not None:
         details = dict(finish_details)
         choice["finish_details"] = details
+    if include_hipengine:
+        choice["hipengine"] = _choice_hipengine_payload(
+            "done",
+            finish_details=choice.get("finish_details"),
+        )
     return _sse(
-        {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [choice],
-            "error": error,
-        }
+        _attach_stream_hipengine(
+            {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [choice],
+                "error": error,
+            },
+            include_hipengine=include_hipengine,
+            event="error",
+            stream_started_at=stream_started_at,
+        )
     )
 
 

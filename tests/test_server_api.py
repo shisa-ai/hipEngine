@@ -1120,6 +1120,36 @@ def test_streaming_completion_timeout_emits_error_and_done() -> None:
     assert payload["error"]["finish_details"] == payload["choices"][0]["finish_details"]
 
 
+def test_streaming_completion_timeout_can_include_hipengine_error_metadata() -> None:
+    fake = DelayedFakeLLM(outputs=["ok"], stream_chunks=["late"], stream_delay_s=0.03)
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "slow",
+            "max_tokens": 1,
+            "stream": True,
+            "timeout_ms": 1,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert len(payloads) == 1
+    payload = payloads[0]
+    assert payload["hipengine"]["event"] == "error"
+    assert isinstance(payload["hipengine"]["timing"]["elapsed_ms"], float)
+    assert payload["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": True},
+    }
+    assert payload["error"]["finish_details"] == payload["choices"][0]["finish_details"]
+
+
 def test_completions_endpoint_returns_openai_logprobs() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -2252,6 +2282,35 @@ def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
     assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
     assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
     assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+
+
+def test_streaming_chat_timeout_can_include_hipengine_error_metadata() -> None:
+    fake = DelayedFakeLLM(outputs=["ok"], stream_chunks=["late"], stream_delay_s=0.03)
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "timeout_ms": 1,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert payloads[0]["hipengine"]["event"] == "role"
+    payload = next(item for item in payloads if item.get("error"))
+    assert payload["hipengine"]["event"] == "error"
+    assert isinstance(payload["hipengine"]["timing"]["elapsed_ms"], float)
+    assert payload["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": True},
+    }
+    assert payload["error"]["finish_details"] == payload["choices"][0]["finish_details"]
 
 
 def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:

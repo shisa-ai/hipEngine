@@ -87741,6 +87741,21 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 
+## 2026-06-14 - AGENTIC SSE error metadata
+
+Closed another P0.3/P5.4 streaming consistency gap. SSE error chunks now honor
+`stream_options.include_hipengine`: the top-level extension reports
+`event="error"` with elapsed timing, and the per-choice extension mirrors
+structured finish details when the error has them. Default streams and HTTP
+pre-SSE validation errors remain unchanged.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_timeout_emits_error_and_done tests/test_server_api.py::test_streaming_completion_timeout_can_include_hipengine_error_metadata tests/test_server_api.py::test_streaming_chat_timeout_can_include_hipengine_error_metadata -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_timeout_emits_error_and_done tests/test_server_api.py::test_streaming_completion_timeout_can_include_hipengine_error_metadata tests/test_server_api.py::test_streaming_chat_timeout_can_include_hipengine_error_metadata tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata -q` -> `5 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+
 ## 2026-06-14 - PARO GPU1 serve OOM memory trace
 
 Investigated `HIP_VISIBLE_DEVICES=1 hipengine serve --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed --kv-storage int8_per_token_head` stream OOMs on the 24 GiB GPU1. Direct in-process tracing with `quant=w4_paro` showed `max_sequence_length=128000` prepares successfully but leaves only ~3.23 GiB live HIP free after resident allocation, despite the startup KV capacity log's pre-allocation `usable=5.49 GiB` estimate. A tiny prompt streams successfully, so retained KV allocation is not the immediate failure.

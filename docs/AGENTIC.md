@@ -786,6 +786,9 @@ Current code reality:
   plus those streamed phase counters.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
   usage chunks mirror `usage` under top-level `hipengine.usage`.
+- Streaming error chunks also honor `include_hipengine`: they use top-level
+  `hipengine.event="error"` and mirror structured finish details under
+  `choices[].hipengine.finish_details` when those details are available.
 - Backend TTFT/prefill/decode-rate, cache hit/miss, KV-byte, budget-pressure,
   and backend-authored per-phase token counts are still omitted until
   generation/runtime code emits those signals.
