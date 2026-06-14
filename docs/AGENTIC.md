@@ -121,13 +121,12 @@ Known baseline limitations:
   and best-effort token accounting. Exact backend-authored per-phase counts,
   prefill timing, cache state, KV bytes, and budget pressure still need runtime
   signals.
-- Resident session reuse needs an explicit commit policy before hidden reasoning
-  or failed/truncated tool-call attempts can safely be retained across turns.
 - Public agent/runtime capability discovery is exposed through
   `/v1/hipengine/capabilities`. Limited deterministic buffered continuation
   handles exist, but they re-prefill stored rendered prompt plus generated text;
-  stateful session commit and resident KV continuation reuse are still future
-  work.
+  resident KV continuation reuse is still future work. App-local buffered chat
+  transcript sessions exist for explicit `session.id` requests, but they
+  re-render the visible transcript rather than reusing resident KV state.
 - Server startup supports one loaded model at a time; routing, multiple resident
   models, tensor parallelism, and model-family fallback are not yet designed.
 
@@ -172,6 +171,8 @@ Minimum matrix:
   clients do not advertise thinking/tool features the server cannot honor;
 - opt-in replay artifacts for failed HTTP requests and normal strict
   result-validation failures, with prompt/tool-result redaction verified;
+- session commit modes, transcript prepending, visible-only reasoning stripping,
+  tool-call transcript replay, and unsafe-finish downgrade behavior;
 - sampler/MTP compatibility guards for every processor field that changes token
   selection or post-accept behavior.
 
@@ -1472,11 +1473,23 @@ Current code reality:
   stateless no-retain policy. Final choice metadata includes
   `finish_details.cache_action="append_none"` so client harnesses can record the
   selected cache behavior.
-- Stateful session ids and stateful commit modes (`append_all`,
-  `append_visible_only`, `append_prompt_only`) remain unsupported and are
-  rejected before generation work starts.
-- There is no resident session transcript/KV commit, visible-only re-prefill, or
-  continuation handle yet.
+- Buffered `/v1/chat/completions` accepts `session.id` for `n=1` requests and
+  prepends the stored app-local transcript before rendering the next prompt.
+  Stateful sessions do not support streaming, completions, `n>1`, or
+  `continuation_id` in this slice.
+- With `session.id`, the default commit is `append_visible_only`.
+  `append_prompt_only`, `append_none`, and explicit debug `append_all` are also
+  accepted. Visible-only commits store the incoming user/tool messages plus the
+  final visible assistant answer/tool calls and strip server-parsed
+  `reasoning_content`; `append_all` stores raw generated assistant text.
+- `length`, `cancelled`, `deadline_exceeded`, invalid/missing tool-call,
+  schema-violation, and synthetic-token finishes downgrade
+  `append_visible_only` to `append_prompt_only`; `finish_details.cache_action`
+  reports the effective action.
+- Session requests do not mint continuation handles, and resume requests cannot
+  combine `session.id` with `continuation_id`.
+- There is no resident KV commit or visible-only KV re-prefill yet; transcript
+  sessions re-render/re-prefill through the normal prompt path.
 
 #### P3.2 Visible-only re-prefill path
 
@@ -1700,17 +1713,19 @@ Current code reality:
 - Continuations are advertised as supported with `stateful=false`,
   `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,
   deterministic-buffered sampling scope, length-only finishes, and no streaming
-  support. Stateful `session.id`, stateful `session.commit` modes,
-  multi-model routing, and strict tool decoding are advertised as unsupported
-  until their runtime paths exist. Stateless `session.commit="append_none"` is
-  advertised as the only supported session policy. Request timeouts and
-  client-disconnect cancellation are advertised as supported with cooperative
-  backend deadline/cancel checks and `preemptive_decode_cancel=false`; token
-  diagnostics are advertised from current tokenizer/counting callables.
+  support. Session commit policy is advertised as stateful app-local transcript
+  storage with `resident_state_reuse=false`, buffered chat-only scope,
+  `append_visible_only` as the stateful default, and downgrade reasons for
+  unsafe visible-only finishes. Multi-model routing and strict tool decoding
+  remain advertised as unsupported until their runtime paths exist. Request
+  timeouts and client-disconnect cancellation are advertised as supported with
+  cooperative backend deadline/cancel checks and `preemptive_decode_cancel=false`;
+  token diagnostics are advertised from current tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
-  stateful `session.id`, unsupported `session.commit` modes, and other
-  `session` payloads return `unsupported_parameter` with `error.param` set to
-  the rejected field. Unknown, consumed, wrong-endpoint, or wrong-model
+  `session.id` outside buffered chat, unsupported streaming/`n`/continuation
+  combinations, unsupported `session.commit` modes, and other `session`
+  payloads return `unsupported_parameter` with `error.param` set to the rejected
+  field. Unknown, consumed, wrong-endpoint, or wrong-model
   `continuation_id` values return `invalid_continuation`; expired handles return
   `continuation_expired`.
 
@@ -1738,9 +1753,9 @@ Current code reality:
   bounds ordinary generations to `max_tokens=4096`, enables SSE usage and
   hipEngine extension metadata, sets a request `timeout_ms`, explicitly sends
   `session.commit="append_none"` for stateless no-retain behavior, sends tools
-  per request, and keeps unsupported stateful-session fields plus intentionally
-  unused tool-policy/logprob fields (`parallel_tool_calls`, `top_logprobs`) in
-  `do_not_send`.
+  per request, and keeps stateful `session.id` out of the default streaming
+  payload plus intentionally unused tool-policy/logprob fields
+  (`parallel_tool_calls`, `top_logprobs`) in `do_not_send`.
 - `docs/examples/pi-agent/models.json` is a checked-in pi config example for the
   Qwen 3.6 PARO endpoint. It enables pi's thinking UI with `reasoning=true` and
   `compat.thinkingFormat="qwen"` while leaving `supportsReasoningEffort=false`
@@ -1800,8 +1815,8 @@ Current code reality:
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
   rendering exactly once, `enable_thinking=false` pre-close rendering,
   permissive malformed-tool compatibility, `session.commit="append_none"`
-  finish metadata, and streaming tool-call parity without raw `<tool_call>`
-  leakage.
+  finish metadata, app-local `session.id` visible-only transcript retention, and
+  streaming tool-call parity without raw `<tool_call>` leakage.
 
 Exit gates:
 

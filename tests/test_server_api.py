@@ -247,6 +247,33 @@ def _continuation_capability() -> dict[str, Any]:
     }
 
 
+def _session_commit_policy_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "stateful": True,
+        "resident_state_reuse": False,
+        "storage": "app_local_transcript",
+        "default": "append_none",
+        "stateful_default": "append_visible_only",
+        "modes": [
+            "append_none",
+            "append_prompt_only",
+            "append_visible_only",
+            "append_all",
+        ],
+        "supported_endpoints": ["chat_completions"],
+        "supported_streaming": False,
+        "downgrade_visible_only_on": [
+            "cancelled",
+            "deadline_exceeded",
+            "invalid_tool_call",
+            "length",
+            "schema_violation",
+            "tool_required_not_satisfied",
+        ],
+    }
+
+
 def test_coerce_generation_output_preserves_telemetry() -> None:
     raw = SimpleNamespace(
         text="answer",
@@ -586,20 +613,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     }
     assert body["sessions"] == {
         "resident_context": True,
-        "commit_policy": {
-            "supported": True,
-            "stateful": False,
-            "default": "append_none",
-            "modes": ["append_none"],
-            "unsupported_stateful_modes": [
-                "append_all",
-                "append_visible_only",
-                "append_prompt_only",
-            ],
-        },
+        "commit_policy": _session_commit_policy_capability(),
         "continuations": _continuation_capability(),
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
+    assert "session.id" not in body["unsupported_fields"]
     assert "timeout_ms" not in body["unsupported_fields"]
     assert "parallel_tool_calls" not in body["unsupported_fields"]
     assert "response_format" not in body["unsupported_fields"]
@@ -1507,6 +1525,205 @@ def test_streaming_session_append_none_reports_cache_action(endpoint, payload) -
     payloads = _sse_payloads(response.text)
     done = next(item for item in payloads if item["choices"][0]["finish_reason"] == "stop")
     assert done["choices"][0]["finish_details"]["cache_action"] == "append_none"
+
+
+def test_chat_session_visible_only_prepends_stored_transcript_and_commits_visible_answer() -> None:
+    fake = SequentialFakeLLM(["first answer", "second answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_visible", "commit": "append_visible_only"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "again"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_visible", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_visible_only"
+    assert second.json()["choices"][0]["finish_details"]["cache_action"] == "append_none"
+    prompt = fake.calls[1][0][0]
+    assert prompt.index("hello") < prompt.index("first answer") < prompt.index("again")
+    record = app.state.hipengine_chat_sessions["sess_visible"]
+    assert record.messages == (
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "first answer"},
+    )
+
+
+def test_chat_session_visible_only_strips_hidden_reasoning_from_next_prompt() -> None:
+    fake = SequentialFakeLLM(["<think>secret plan</think>visible answer", "done"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_reasoning"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_reasoning", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    choice = first.json()["choices"][0]
+    assert choice["message"] == {
+        "role": "assistant",
+        "content": "visible answer",
+        "reasoning_content": "secret plan",
+    }
+    assert choice["finish_details"]["cache_action"] == "append_visible_only"
+    prompt = fake.calls[1][0][0]
+    assert "visible answer" in prompt
+    assert "secret plan" not in prompt
+    assert "<think>secret plan</think>" not in prompt
+
+
+def test_chat_session_append_all_retains_raw_generated_text_for_debug() -> None:
+    fake = SequentialFakeLLM(["<think>secret plan</think>visible answer", "done"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "debug"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_all", "commit": "append_all"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_all", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_all"
+    assert "<think>secret plan</think>visible answer" in fake.calls[1][0][0]
+
+
+def test_chat_session_visible_only_downgrades_length_finish_to_prompt_only() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(text="partial answer", finish_details=FinishDetails(reason="length")),
+            "done",
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "start"}],
+            "max_tokens": 1,
+            "session": {"id": "sess_length", "commit": "append_visible_only"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "next"}],
+            "max_tokens": 2,
+            "session": {"id": "sess_length", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_prompt_only"
+    assert "continuation_id" not in first.json()["choices"][0]
+    assert first.json()["choices"][0]["finish_details"]["continuation_eligible"] is False
+    prompt = fake.calls[1][0][0]
+    assert "start" in prompt
+    assert "next" in prompt
+    assert "partial answer" not in prompt
+    record = app.state.hipengine_chat_sessions["sess_length"]
+    assert record.messages == ({"role": "user", "content": "start"},)
+
+
+def test_chat_session_visible_only_commits_tool_calls_without_reasoning() -> None:
+    fake = SequentialFakeLLM(
+        [
+            '<think>need file</think><tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+            "done",
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read it"}],
+            "tools": tools,
+            "max_tokens": 4,
+            "session": {"id": "sess_tool", "commit": "append_visible_only"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "tool", "tool_call_id": "call_1", "content": "file text"}],
+            "tools": tools,
+            "max_tokens": 4,
+            "session": {"id": "sess_tool", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["choices"][0]["finish_reason"] == "tool_calls"
+    prompt = fake.calls[1][0][0]
+    assert '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>' in prompt
+    assert "<tool_response>\nfile text\n</tool_response>" in prompt
+    assert "need file" not in prompt
+    assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_visible_only"
 
 
 def test_completions_response_format_json_object_validates_result() -> None:
@@ -4277,17 +4494,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     }
     assert artifact["capabilities"]["sessions"] == {
         "resident_context": True,
-        "commit_policy": {
-            "supported": True,
-            "stateful": False,
-            "default": "append_none",
-            "modes": ["append_none"],
-            "unsupported_stateful_modes": [
-                "append_all",
-                "append_visible_only",
-                "append_prompt_only",
-            ],
-        },
+        "commit_policy": _session_commit_policy_capability(),
         "continuations": _continuation_capability(),
     }
     assert "secret prompt" not in serialized
@@ -4812,22 +5019,43 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     ("endpoint", "payload", "param"),
     [
         (
-            "/v1/chat/completions",
+            "/v1/completions",
             {
                 "model": "fake-model",
-                "messages": [{"role": "user", "content": "hello"}],
-                "session": {"commit": "append_visible_only"},
+                "prompt": "hello",
+                "session": {"id": "session_123"},
             },
-            "session.commit",
+            "session.id",
         ),
         (
             "/v1/chat/completions",
             {
                 "model": "fake-model",
                 "messages": [{"role": "user", "content": "hello"}],
+                "stream": True,
                 "session": {"id": "session_123"},
             },
-            "session.id",
+            "stream",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "n": 2,
+                "session": {"id": "session_123"},
+            },
+            "n",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "continuation_id": "gen_missing",
+                "session": {"id": "session_123"},
+            },
+            "continuation_id",
         ),
     ],
 )

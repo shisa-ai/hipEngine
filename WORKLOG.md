@@ -88665,3 +88665,22 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC app-local chat sessions
+
+Implemented the first `session.id` slice for buffered `/v1/chat/completions`.
+Stateful chat sessions now retain an app-local transcript, prepend it before
+rendering follow-up prompts, default to `append_visible_only`, support explicit
+`append_none`, `append_prompt_only`, and debug `append_all`, and downgrade unsafe
+visible-only finishes to `append_prompt_only`. Visible-only commits strip parsed
+`reasoning_content` while preserving final assistant text/tool calls; this is
+transcript replay, not resident KV reuse. Streaming, completions, `n>1`, and
+`continuation_id` remain incompatible with `session.id`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_session_append_none_reports_cache_action tests/test_server_api.py::test_stateless_session_default_reports_append_none_cache_action tests/test_server_api.py::test_streaming_session_append_none_reports_cache_action tests/test_server_api.py::test_chat_session_visible_only_prepends_stored_transcript_and_commits_visible_answer tests/test_server_api.py::test_chat_session_visible_only_strips_hidden_reasoning_from_next_prompt tests/test_server_api.py::test_chat_session_append_all_retains_raw_generated_text_for_debug tests/test_server_api.py::test_chat_session_visible_only_downgrades_length_finish_to_prompt_only tests/test_server_api.py::test_chat_session_visible_only_commits_tool_calls_without_reasoning tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_local_agent_config.py -q` -> `25 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

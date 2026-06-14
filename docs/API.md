@@ -428,17 +428,22 @@ model id from `/v1/hipengine/capabilities`, uses deterministic Qwen-friendly
 defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
 hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
 explicitly sends `session.commit="append_none"` as the current stateless
-no-retain policy, and keeps unsupported stateful-session fields plus
-intentionally unused tool-policy fields in `do_not_send`.
+no-retain policy, and keeps stateful `session.id` out of the default streaming
+payload plus intentionally unused tool-policy fields in `do_not_send`.
 
 Known agent fields that are advertised as unsupported are rejected before
 generation work starts. Stateless requests without a `session` object default
 to no generated-tail retention, and `session.commit="append_none"` is accepted
-as an explicit no-retain marker. Final choice metadata reports
-`finish_details.cache_action="append_none"` for both forms.
-Stateful `session.id`, unsupported `session.commit` modes, and other `session`
-payloads return HTTP 400 with
-`error.code: "unsupported_parameter"` and `error.param` set to the rejected
+as an explicit no-retain marker. Buffered non-streaming chat requests may set
+`session.id`. With a session id, the default commit is `append_visible_only`;
+`append_none`, `append_prompt_only`, and explicit debug `append_all` are also
+accepted. The server stores an app-local visible transcript, strips parsed
+`reasoning_content` from visible-only assistant commits, and reports the
+effective `finish_details.cache_action`. Session requests do not mint
+continuation handles. This is not resident KV reuse.
+`session.id` on completions, streaming chat, `n>1`, continuation resumes,
+unsupported `session.commit` modes, and other `session` payloads return HTTP 400
+with `error.code: "unsupported_parameter"` and `error.param` set to the rejected
 field. `continuation_id` is intentionally kept in the example config's
 `do_not_send` list so local agents do not invent handles; a handle returned by
 the server can be sent back on the supported resume path described above.

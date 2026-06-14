@@ -60,6 +60,23 @@ _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
 _CONTINUATION_TTL_SECONDS = 15 * 60
+_SESSION_COMMIT_MODES = (
+    "append_none",
+    "append_prompt_only",
+    "append_visible_only",
+    "append_all",
+)
+_SESSION_STATEFUL_DEFAULT_COMMIT = "append_visible_only"
+_SESSION_UNSAFE_VISIBLE_REASONS = frozenset(
+    {
+        "length",
+        "cancelled",
+        "deadline_exceeded",
+        "invalid_tool_call",
+        "schema_violation",
+        "tool_required_not_satisfied",
+    }
+)
 _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     {
         "invalid_tool_call",
@@ -747,23 +764,22 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "commit_policy": _session_commit_policy_capability(),
             "continuations": _session_continuation_capability(),
         },
-        "unsupported_fields": [
-            "session.id",
-        ],
+        "unsupported_fields": [],
     }
 
 
 def _session_commit_policy_capability() -> dict[str, Any]:
     return {
         "supported": True,
-        "stateful": False,
+        "stateful": True,
+        "resident_state_reuse": False,
+        "storage": "app_local_transcript",
         "default": "append_none",
-        "modes": ["append_none"],
-        "unsupported_stateful_modes": [
-            "append_all",
-            "append_visible_only",
-            "append_prompt_only",
-        ],
+        "stateful_default": _SESSION_STATEFUL_DEFAULT_COMMIT,
+        "modes": list(_SESSION_COMMIT_MODES),
+        "supported_endpoints": ["chat_completions"],
+        "supported_streaming": False,
+        "downgrade_visible_only_on": sorted(_SESSION_UNSAFE_VISIBLE_REASONS),
     }
 
 
@@ -1414,6 +1430,14 @@ class _ContinuationRecord:
         )
 
 
+@dataclass(frozen=True)
+class _ChatSessionRecord:
+    id: str
+    messages: tuple[dict[str, Any], ...]
+    created: float
+    updated: float
+
+
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     """Create a FastAPI app for OpenAI-compatible local inference.
 
@@ -1453,6 +1477,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     continuations: dict[str, _ContinuationRecord] = {}
     app.state.hipengine_continuations = continuations
     app.state.hipengine_continuation_ttl_seconds = _CONTINUATION_TTL_SECONDS
+    chat_session_lock = asyncio.Lock()
+    chat_sessions: dict[str, _ChatSessionRecord] = {}
+    app.state.hipengine_chat_sessions = chat_sessions
 
     def cleanup_expired_continuations(now: float | None = None) -> None:
         current = time.time() if now is None else float(now)
@@ -1538,6 +1565,48 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             cleanup_expired_continuations(now)
             continuations[record.id] = record
         return record
+
+    async def chat_session_prefix_messages(request: ChatCompletionRequest) -> tuple[dict[str, Any], ...]:
+        session_id = _session_id(request)
+        if session_id is None:
+            return ()
+        async with chat_session_lock:
+            record = chat_sessions.get(session_id)
+            if record is None:
+                return ()
+            return tuple(dict(message) for message in record.messages)
+
+    async def commit_chat_session(
+        request: ChatCompletionRequest,
+        *,
+        request_messages: Sequence[ChatMessage | Mapping[str, Any]],
+        raw_output: str,
+        visible_message: Mapping[str, Any],
+        cache_action: str | None,
+    ) -> None:
+        session_id = _session_id(request)
+        if session_id is None or cache_action in (None, "append_none"):
+            return
+        prompt_messages = tuple(_chat_message_to_session_dict(message) for message in request_messages)
+        if cache_action == "append_prompt_only":
+            appended = prompt_messages
+        elif cache_action == "append_visible_only":
+            appended = (*prompt_messages, _assistant_visible_session_message(visible_message))
+        elif cache_action == "append_all":
+            appended = (*prompt_messages, {"role": "assistant", "content": str(raw_output)})
+        else:
+            return
+        now = time.time()
+        async with chat_session_lock:
+            previous = chat_sessions.get(session_id)
+            created = now if previous is None else previous.created
+            base = () if previous is None else previous.messages
+            chat_sessions[session_id] = _ChatSessionRecord(
+                id=session_id,
+                messages=(*base, *appended),
+                created=created,
+                updated=now,
+            )
 
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
@@ -2386,7 +2455,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "sessions": {
                 "resident_context": True,
-                "active": 0,
+                "active": len(chat_sessions),
             },
         }
 
@@ -2644,9 +2713,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "multiple_models": False,
             },
             "errors": _error_taxonomy_manifest(),
-            "unsupported_fields": [
-                "session.id",
-            ],
+            "unsupported_fields": [],
         }
 
     @app.post("/v1/hipengine/tokenize")
@@ -2878,7 +2945,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         code="invalid_request",
                         param="messages",
                     )
-                return chat_prompt_for_request(request, engine)
+                session_messages = await chat_session_prefix_messages(request)
+                render_request = request
+                if session_messages:
+                    render_request = _chat_request_with_messages(
+                        request,
+                        (*session_messages, *request.messages),
+                    )
+                return chat_prompt_for_request(render_request, engine)
 
         prompt = await _await_with_request_control(prepare_prompt(), control)
         if request.stream:
@@ -2899,7 +2973,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
-        cache_action = _session_cache_action(request)
+        requested_cache_action = _session_cache_action(request)
         for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
             previous_text = "" if continuation is None else continuation.generated_texts[index]
             output = f"{previous_text}{output}"
@@ -2949,11 +3023,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason,
                     text,
                     reason_override=finish_reason_override,
-                    cache_action=cache_action,
+                    cache_action=requested_cache_action,
                     parsed=parsed,
                     token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                 ),
             }
+            effective_cache_action = _effective_session_cache_action(
+                requested_cache_action,
+                choice["finish_details"],
+            )
+            if effective_cache_action != requested_cache_action:
+                choice["finish_details"]["cache_action"] = effective_cache_action
             if request.logprobs:
                 choice["logprobs"] = _chat_logprobs(detail, text)
             _mark_continuation_unavailable(choice["finish_details"])
@@ -2970,6 +3050,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, 0, index)
             choices.append(choice)
+            await commit_chat_session(
+                request,
+                request_messages=request.messages,
+                raw_output=output,
+                visible_message=message,
+                cache_action=effective_cache_action,
+            )
         response = {
             "id": response_id,
             "object": "chat.completion",
@@ -4767,6 +4854,7 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             code="unsupported_parameter",
             param=param,
         )
+    _validate_session_request(request)
     unsupported_param = _unsupported_agentic_request_param(request)
     if unsupported_param is not None:
         raise OpenAIHTTPError(
@@ -5236,10 +5324,22 @@ def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompleti
     session = getattr(request, "session", None)
     if session is not None:
         if isinstance(session, Mapping):
+            if "id" in session:
+                if not isinstance(request, ChatCompletionRequest):
+                    return "session.id"
+                if request.stream:
+                    return "stream"
+                if _request_n(request) != 1:
+                    return "n"
+                if getattr(request, "continuation_id", None) is not None:
+                    return "continuation_id"
+                if set(session.keys()) - {"id", "commit"}:
+                    return "session"
+                if _session_cache_action(request) is not None:
+                    return None
+                return "session.commit"
             if _session_cache_action(request) is not None:
                 return None
-            if "id" in session:
-                return "session.id"
             if "commit" in session:
                 return "session.commit"
         return "session"
@@ -5322,6 +5422,8 @@ def _continuation_can_create(
 ) -> bool:
     if not _is_length_finish(finish_reason, finish_details):
         return False
+    if _session_id(request) is not None:
+        return False
     if request.stream or _request_n(request) < 1 or _request_logprobs_enabled(request):
         return False
     if isinstance(request, CompletionRequest) and request.echo:
@@ -5400,26 +5502,113 @@ def _apply_continuation_defaults(
         request.response_format = record.response_format
 
 
-def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) -> str | None:
-    """Return the explicit stateless session cache action for a request.
+def _validate_session_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+    session = getattr(request, "session", None)
+    if session is None or not isinstance(session, Mapping):
+        return
+    if "id" in session:
+        _session_id(request)
+    if "commit" not in session:
+        return
+    raw_commit = session.get("commit")
+    if not isinstance(raw_commit, str) or not raw_commit.strip():
+        raise OpenAIHTTPError(
+            400,
+            "session.commit must be a non-empty string",
+            code="invalid_request",
+            param="session.commit",
+        )
+    mode = raw_commit.strip().lower()
+    if "id" in session and mode not in _SESSION_COMMIT_MODES:
+        raise OpenAIHTTPError(
+            400,
+            "session.commit must be one of: " + ", ".join(_SESSION_COMMIT_MODES),
+            code="invalid_request",
+            param="session.commit",
+        )
 
-    hipEngine does not yet own stateful server-side session ids. The one
-    accepted policy is a no-retain marker so clients can explicitly request the
-    current safe behavior and see it reflected in finish metadata.
-    """
+
+def _session_id(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    session = getattr(request, "session", None)
+    if not isinstance(session, Mapping) or "id" not in session:
+        return None
+    raw_id = session.get("id")
+    if not isinstance(raw_id, str) or not raw_id.strip():
+        raise OpenAIHTTPError(
+            400,
+            "session.id must be a non-empty string",
+            code="invalid_request",
+            param="session.id",
+        )
+    return raw_id.strip()
+
+
+def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    """Return the effective requested session commit/cache action."""
 
     session = getattr(request, "session", None)
     if session is None:
         return "append_none"
     if not isinstance(session, Mapping):
         return None
+    has_id = "id" in session
     commit = session.get("commit")
+    if commit is None and has_id:
+        return _SESSION_STATEFUL_DEFAULT_COMMIT
     if commit is None:
         return None
     mode = str(commit).strip().lower()
+    if has_id:
+        if mode in _SESSION_COMMIT_MODES and not (set(session.keys()) - {"id", "commit"}):
+            return mode
+        return None
     if mode == "append_none" and set(session.keys()) == {"commit"}:
-        return "append_none"
+        return mode
     return None
+
+
+def _effective_session_cache_action(
+    requested_action: str | None,
+    finish_details: Mapping[str, Any],
+) -> str | None:
+    if requested_action != "append_visible_only":
+        return requested_action
+    reason = str(finish_details.get("reason") or "")
+    synthetic_tokens = int(finish_details.get("synthetic_tokens") or 0)
+    if reason in _SESSION_UNSAFE_VISIBLE_REASONS or synthetic_tokens > 0:
+        return "append_prompt_only"
+    return requested_action
+
+
+def _chat_message_to_session_dict(message: ChatMessage | Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(message, Mapping):
+        payload = dict(message)
+    elif hasattr(message, "model_dump"):
+        payload = message.model_dump(exclude_none=True)
+    else:
+        payload = message.dict(exclude_none=True)
+    return {str(key): value for key, value in payload.items() if value is not None}
+
+
+def _assistant_visible_session_message(message: Mapping[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {"role": "assistant"}
+    if "content" in message:
+        payload["content"] = message.get("content")
+    else:
+        payload["content"] = ""
+    tool_calls = message.get("tool_calls")
+    if tool_calls:
+        payload["tool_calls"] = list(tool_calls)
+    return payload
+
+
+def _chat_request_with_messages(
+    request: ChatCompletionRequest,
+    messages: Sequence[ChatMessage | Mapping[str, Any]],
+) -> ChatCompletionRequest:
+    if hasattr(request, "model_copy"):
+        return request.model_copy(update={"messages": list(messages)})
+    return request.copy(update={"messages": list(messages)})
 
 
 def _validate_response_format_request(request: CompletionRequest | ChatCompletionRequest) -> None:

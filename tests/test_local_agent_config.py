@@ -110,9 +110,7 @@ def _capabilities(**overrides):
                 "fit_context": True,
             },
         },
-        "unsupported_fields": [
-            "session.id",
-        ],
+        "unsupported_fields": [],
     }
     payload.update(overrides)
     return payload
@@ -175,7 +173,10 @@ def test_local_agent_config_rejects_missing_unsupported_blocklist() -> None:
     config["chat_completions"]["do_not_send"] = []
 
     with pytest.raises(validate_local_agent_config.ConfigValidationError, match="do_not_send"):
-        validate_local_agent_config.validate_config_against_capabilities(config, _capabilities())
+        validate_local_agent_config.validate_config_against_capabilities(
+            config,
+            _capabilities(unsupported_fields=["session.id"]),
+        )
 
 
 def test_local_agent_config_rejects_strict_tool_decoding_when_unavailable() -> None:
