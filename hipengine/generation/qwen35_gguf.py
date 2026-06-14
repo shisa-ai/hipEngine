@@ -186,7 +186,13 @@ class Qwen35GGUFBringupGenerator:
                 self.tokenizer,
                 samples,
                 finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request, state),
-                telemetry=_gguf_telemetry(prompt_ids, generated_ids, request, row_index=row_index),
+                telemetry=_gguf_telemetry(
+                    prompt_ids,
+                    generated_ids,
+                    request,
+                    row_index=row_index,
+                    sampling_state=state,
+                ),
             )
         for _ in range(request.max_tokens - 1):
             raise_if_generation_deadline_expired(request)
@@ -201,7 +207,13 @@ class Qwen35GGUFBringupGenerator:
             self.tokenizer,
             samples,
             finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request, state),
-            telemetry=_gguf_telemetry(prompt_ids, generated_ids, request, row_index=row_index),
+            telemetry=_gguf_telemetry(
+                prompt_ids,
+                generated_ids,
+                request,
+                row_index=row_index,
+                sampling_state=state,
+            ),
         )
 
 
@@ -261,17 +273,43 @@ def _gguf_telemetry(
     request: GenerationRequest,
     *,
     row_index: int,
+    sampling_state: RowSamplingState | None = None,
 ) -> GenerationTelemetry:
     plan = plan_sampler(request)
+    state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
     return GenerationTelemetry.from_decode_counts(
         row_index=row_index,
         prompt_tokens=len(prompt_ids),
         generated_tokens=len(generated_ids),
+        phase=state_payload.get("phase", "done"),
+        reasoning_tokens=int(state_payload.get("reasoning_tokens", 0)),
+        answer_tokens=int(state_payload.get("answer_tokens", 0)),
+        forced_tokens_pending=tuple(state_payload.get("forced_tokens_pending", ())),
+        budget_pressure=state_payload.get("budget_pressure"),
         sampler_mode=plan.mode.value,
         stop_suffix_state=_gguf_stop_suffix_state(generated_ids, request.stop_token_sequences),
         active_processors=plan.active_processors,
         sampler_fast_path_blockers=plan.fast_path_blockers,
     )
+
+
+def _gguf_decode_state_from_sampling_state(state: RowSamplingState | None) -> dict[str, Any]:
+    if state is None:
+        return {}
+    payload: dict[str, Any] = {}
+    if state.forced_tokens:
+        payload["forced_tokens_pending"] = state.forced_tokens
+    budget = state.thinking_budget
+    if budget is None:
+        return payload
+    payload["phase"] = str(budget.phase)
+    payload["reasoning_tokens"] = int(budget.reasoning_tokens)
+    payload["answer_tokens"] = int(budget.answer_tokens)
+    forced_reason = getattr(budget.forced_tokens, "reason", None)
+    pressure = "hard_close" if forced_reason == "thinking_hard_close" else budget.budget_pressure
+    if pressure is not None:
+        payload["budget_pressure"] = str(pressure)
+    return payload
 
 
 def _gguf_stop_suffix_state(

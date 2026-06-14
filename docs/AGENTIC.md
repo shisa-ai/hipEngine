@@ -847,13 +847,14 @@ Current code reality:
   `_ReasoningSplitter` / token-counting compatibility layer.
 - Token-emitting PARO/GGUF generation loops now author final
   `GenerationTelemetry` snapshots with prompt/generated token counts, row index,
-  sampler mode, and stop suffix match/partial-suffix state where applicable.
+  sampler mode, stop suffix match/partial-suffix state where applicable, and
+  sampled thinking-budget phase, reasoning/answer counts, budget pressure, and
+  pending forced-token state when row state is available.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
   the final `finish_details` alongside the backend-authored `decode_state`.
-- Live backend-authored per-token phase transitions, forced-token queue state,
-  sampler fallback reason metadata, and real continuation eligibility remain
-  future lower-loop work.
+- Live backend-authored per-token phase transitions, sampler fallback reason
+  metadata, and real continuation eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -1199,6 +1200,9 @@ Current code reality:
   argmax/sampling, with forced-token metadata, normal row-history updates, and
   final `FinishDetails` fields for forced close, token counts, budget pressure,
   and phase;
+- final PARO/GGUF `GenerationTelemetry.decode_state` snapshots now inherit
+  sampled thinking-budget phase, reasoning/answer token counts, budget pressure,
+  and pending forced-token state from `RowSamplingState` where available;
 - `SamplingParams`, `GenerationRequest`, and `PerRowSamplingParams` carry the
   lowered `thinking_close_token_ids`, `thinking_hard_token_cap`, and
   `thinking_soft_close_window` fields; PARO/GGUF host-sampled rows and

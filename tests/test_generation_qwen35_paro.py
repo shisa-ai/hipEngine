@@ -532,7 +532,10 @@ def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) ->
         "sampler_mode": "processed_argmax",
         "phase": "answer",
     }
-
+    decode_state = _decode_state(generator.last_generation_outputs[0])
+    assert decode_state["phase"] == "answer"
+    assert decode_state["reasoning_tokens"] == 1
+    assert decode_state["budget_pressure"] == "hard_close"
 
 
 def test_qwen35_paro_generator_env_routes_supported_c1_request_to_native_sampler(monkeypatch) -> None:

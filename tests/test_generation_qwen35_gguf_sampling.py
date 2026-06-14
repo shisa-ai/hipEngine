@@ -447,6 +447,10 @@ def test_gguf_finish_details_report_forced_thinking_close(monkeypatch) -> None:
         "sampler_mode": "processed_argmax",
         "phase": "answer",
     }
+    decode_state = _decode_state(generator.last_generation_outputs[0])
+    assert decode_state["phase"] == "answer"
+    assert decode_state["reasoning_tokens"] == 1
+    assert decode_state["budget_pressure"] == "hard_close"
 
 
 def test_gguf_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:

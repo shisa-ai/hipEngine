@@ -90452,3 +90452,21 @@ Validation:
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
 - `git diff --check -- docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC backend thinking telemetry
+
+Extended `GenerationTelemetry.from_decode_counts()` so final backend
+`DecodeState` snapshots can carry phase token counts, forced-token pending
+state, and budget pressure. Threaded PARO/GGUF sampled row state into final
+telemetry so forced thinking-close outputs now expose backend-owned
+`phase="answer"`, `reasoning_tokens`, and `budget_pressure="hard_close"` in
+`GenerationTelemetry.decode_state`, not only in server finish-detail inference.
+Updated AGENTIC P0.1/P1.4 current-code reality.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close -q` -> `8 passed`.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `22 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `11 passed`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md` -> clean.

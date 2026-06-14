@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from hipengine.generation import DecodePhase, DecodeState, FinishDetails, GenerationOutput
+from hipengine.generation import DecodePhase, DecodeState, FinishDetails, GenerationOutput, GenerationTelemetry
 
 
 def test_decode_state_stream_snapshot_normalizes_json_payload() -> None:
@@ -62,6 +62,33 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
         },
         "event": "done",
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
+    }
+
+
+def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
+    telemetry = GenerationTelemetry.from_decode_counts(
+        prompt_tokens=5,
+        generated_tokens=3,
+        phase=DecodePhase.ANSWER,
+        reasoning_tokens=2,
+        answer_tokens=1,
+        forced_tokens_pending=(42,),
+        budget_pressure="hard_close",
+        sampler_mode="processed_argmax",
+    )
+
+    assert telemetry.to_json_dict()["decode_state"] == {
+        "row_index": 0,
+        "step_index": 3,
+        "prompt_tokens": 5,
+        "generated_tokens": 3,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "reasoning_tokens": 2,
+        "answer_tokens": 1,
+        "forced_tokens_pending": [42],
+        "budget_pressure": "hard_close",
+        "sampler_mode": "processed_argmax",
     }
 
 
