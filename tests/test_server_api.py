@@ -1486,6 +1486,94 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
     assert "sess_corrupt" not in app.state.hipengine_chat_sessions
 
 
+@pytest.mark.parametrize(
+    ("corruption", "param"),
+    [
+        ("non_object", "messages[1].tool_calls[0]"),
+        ("extra_key", "messages[1].tool_calls[0].unexpected"),
+        ("missing_id", "messages[1].tool_calls[0].id"),
+        ("wrong_type", "messages[1].tool_calls[0].type"),
+        ("missing_function", "messages[1].tool_calls[0].function"),
+        ("function_extra_key", "messages[1].tool_calls[0].function.unexpected"),
+        ("empty_name", "messages[1].tool_calls[0].function.name"),
+        ("non_string_arguments", "messages[1].tool_calls[0].function.arguments"),
+    ],
+)
+def test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape(
+    corruption: str,
+    param: str,
+) -> None:
+    fake = SequentialFakeLLM(
+        ['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
+    )
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "snapshot tool call"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+            "session": {"id": "sess_corrupt_tool"},
+            "max_tokens": 4,
+        },
+    )
+    snapshot = client.get("/v1/hipengine/sessions/sess_corrupt_tool/snapshot", headers=headers).json()
+    tool_call = snapshot["messages"][1]["tool_calls"][0]
+
+    if corruption == "non_object":
+        snapshot["messages"][1]["tool_calls"][0] = "not-object"
+    elif corruption == "extra_key":
+        tool_call["unexpected"] = True
+    elif corruption == "missing_id":
+        tool_call["id"] = ""
+    elif corruption == "wrong_type":
+        tool_call["type"] = "custom"
+    elif corruption == "missing_function":
+        del tool_call["function"]
+    elif corruption == "function_extra_key":
+        tool_call["function"]["unexpected"] = True
+    elif corruption == "empty_name":
+        tool_call["function"]["name"] = ""
+    elif corruption == "non_string_arguments":
+        tool_call["function"]["arguments"] = {"path": "README.md"}
+    else:
+        raise AssertionError(f"unhandled corruption case: {corruption}")
+    client.delete("/v1/hipengine/sessions/sess_corrupt_tool", headers=headers)
+
+    restored = client.post(
+        "/v1/hipengine/sessions/sess_corrupt_tool/snapshot",
+        headers=headers,
+        json=snapshot,
+    )
+
+    assert created.status_code == 200
+    assert restored.status_code == 400
+    assert restored.json()["error"]["code"] == "invalid_request"
+    assert restored.json()["error"]["param"] == param
+    assert "sess_corrupt_tool" not in app.state.hipengine_chat_sessions
+
+
 def test_chat_session_snapshot_restore_rejects_new_session_when_cap_full() -> None:
     fake = SequentialFakeLLM(["stored answer"])
     app = create_app(

@@ -6244,8 +6244,89 @@ def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
                 code="invalid_request",
                 param=f"messages[{index}].tool_calls",
             )
-        payload["tool_calls"] = [dict(call) if isinstance(call, Mapping) else call for call in tool_calls]
+        payload["tool_calls"] = [
+            _chat_session_snapshot_tool_call(call, message_index=index, tool_index=tool_index)
+            for tool_index, call in enumerate(tool_calls)
+        ]
     return payload
+
+
+def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_index: int) -> dict[str, Any]:
+    param = f"messages[{message_index}].tool_calls[{tool_index}]"
+    if not isinstance(value, Mapping):
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param} must be an object",
+            code="invalid_request",
+            param=param,
+        )
+    allowed = {"id", "type", "function"}
+    extra = sorted(str(key) for key in value if str(key) not in allowed)
+    if extra:
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param}.{extra[0]} is not supported",
+            code="invalid_request",
+            param=f"{param}.{extra[0]}",
+        )
+    call_id = value.get("id")
+    if not isinstance(call_id, str) or not call_id.strip():
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param}.id must be a non-empty string",
+            code="invalid_request",
+            param=f"{param}.id",
+        )
+    call_type = value.get("type")
+    if call_type != "function":
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param}.type must be 'function'",
+            code="invalid_request",
+            param=f"{param}.type",
+        )
+    function = value.get("function")
+    function_param = f"{param}.function"
+    if not isinstance(function, Mapping):
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {function_param} must be an object",
+            code="invalid_request",
+            param=function_param,
+        )
+    function_allowed = {"name", "arguments"}
+    function_extra = sorted(str(key) for key in function if str(key) not in function_allowed)
+    if function_extra:
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {function_param}.{function_extra[0]} is not supported",
+            code="invalid_request",
+            param=f"{function_param}.{function_extra[0]}",
+        )
+    name = function.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {function_param}.name must be a non-empty string",
+            code="invalid_request",
+            param=f"{function_param}.name",
+        )
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {function_param}.arguments must be a string",
+            code="invalid_request",
+            param=f"{function_param}.arguments",
+        )
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": arguments,
+        },
+    }
 
 
 def _chat_session_snapshot_time(value: Any, *, param: str) -> float:

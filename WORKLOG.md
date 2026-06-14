@@ -89235,3 +89235,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC snapshot tool-call shape validation
+
+Tightened app-local session snapshot restore validation for persisted assistant
+tool calls. Restore now rejects non-object `tool_calls` entries, unexpected
+tool-call keys, missing/non-function tool types, malformed nested `function`
+objects, empty function names, and non-string `function.arguments` before
+creating or replacing a transcript session. This keeps corrupted saved agent
+transcripts from being accepted and later re-rendered into prompts.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_snapshot_export_restore_round_trips_visible_transcript tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_shape tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_new_session_when_cap_full -q` -> `11 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
