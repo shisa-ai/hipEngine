@@ -151,6 +151,26 @@ class FakeLLM:
         return " ".join(f"T{int(token)}" for token in token_ids)
 
 
+class ScratchProbeFailureFakeLLM(FakeLLM):
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: SamplingParams | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        super().prepare_request_scratch(
+            max_prompt_tokens=max_prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            sampling_params=sampling_params,
+            max_batch_size=max_batch_size,
+            release_after_probe=release_after_probe,
+        )
+        raise RuntimeError("scratch failed near private startup prompt")
+
+
 class SequentialFakeLLM(FakeLLM):
     def __init__(self, outputs: list[str | GenerationOutput]) -> None:
         super().__init__()
@@ -1434,6 +1454,52 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
         "total_messages": 0,
         "continuations": {"active": 0, "ttl_seconds": 900},
     }
+    serialized = json.dumps(body)
+    assert "private startup prompt" not in serialized
+    assert "private warmup output" not in serialized
+
+
+def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> None:
+    fake = ScratchProbeFailureFakeLLM(outputs=["private warmup output"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load_prompt="private startup prompt",
+            eager_load_max_tokens=2,
+        ),
+        llm=fake,
+    )
+
+    with TestClient(app) as client:
+        ready = client.get("/ready")
+
+    assert ready.status_code == 503
+    body = ready.json()
+    assert body["object"] == "hipengine.readiness"
+    assert body["ready"] is False
+    assert body["status"] == "error"
+    assert body["diagnostics"] == [
+        "server startup is not ready; check startup.error and server logs",
+        "startup scratch_probe failed: Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
+    ]
+    assert body["startup"]["warmup_complete"] is False
+    assert body["startup"]["error"] == {
+        "stage": "scratch_probe",
+        "type": "RuntimeError",
+        "message": "startup scratch_probe failed",
+        "guidance": "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
+    }
+    assert body["startup"]["checks"]["raw_warmup"] == {"status": "passed", "max_tokens": 2}
+    assert body["startup"]["checks"]["scratch_probe"] == {
+        "enabled": True,
+        "status": "failed",
+        "max_prompt_tokens": 131071,
+        "exception_type": "RuntimeError",
+    }
+    assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
+    assert body["startup"]["last_timings_s"]["scratch_probe_s"] >= 0.0
+    assert body["startup"]["last_timings_s"]["startup_total_s"] >= 0.0
     serialized = json.dumps(body)
     assert "private startup prompt" not in serialized
     assert "private warmup output" not in serialized

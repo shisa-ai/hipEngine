@@ -2117,9 +2117,13 @@ Current code reality:
 - Readiness is `false` for eager-load servers until startup preparation and
   warmup complete. Lazy-load servers report ready after startup with
   `model.loaded=false` until the first lazy model load.
+- Eager startup failures keep the process live but unready: `/ready` returns
+  HTTP 503 with `status="error"`, a stage-specific `startup.error`, and
+  operator guidance in `diagnostics`.
 - Tests assert the readiness payload does not expose warmup prompt text or
-  generated warmup output, and session observability tests assert prompt and
-  generated text stay out of readiness/session metadata payloads.
+  generated warmup output in both success and failure readiness payloads, and
+  session observability tests assert prompt and generated text stay out of
+  readiness/session metadata payloads.
 
 Exit gates:
 

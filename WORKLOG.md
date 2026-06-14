@@ -90334,3 +90334,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC readiness startup-failure diagnostics
+
+Changed eager startup failures to keep the process live but unready instead of
+letting startup abort before `/ready` can report diagnostics. The readiness
+payload now returns HTTP 503 with `status="error"`, a redacted
+`startup.error` containing failed stage, exception type, generic message, and
+operator guidance, plus a diagnostics entry. Added a scratch-probe failure test
+whose raw exception contains private prompt text to prove `/ready` does not
+leak warmup prompt or generated output. Updated `docs/API.md` and
+`docs/AGENTIC.md` P5.5 current-reality text.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_ready_reports_startup_failure_diagnostics_without_payload_text tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_ready_reports_lazy_server_ready_without_loaded_model -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

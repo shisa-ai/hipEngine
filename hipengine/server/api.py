@@ -2381,6 +2381,31 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         return effective
 
+    def mark_startup_failed(
+        readiness: _ReadinessState,
+        exc: BaseException,
+        *,
+        startup_started: float,
+        stage: str,
+        guidance: str,
+        timings: Mapping[str, float | None] | None = None,
+    ) -> None:
+        readiness.ready = False
+        readiness.status = "error"
+        readiness.model_loaded = app.state.hipengine_llm is not None
+        readiness.warmup_complete = False
+        readiness.startup_error = {
+            "stage": stage,
+            "type": type(exc).__name__,
+            "message": f"startup {stage} failed",
+            "guidance": guidance,
+        }
+        startup_total_s = time.perf_counter() - startup_started
+        updated_timings = dict(readiness.last_startup_timings)
+        updated_timings.update(dict(timings or {}))
+        updated_timings["startup_total_s"] = round(startup_total_s, 6)
+        readiness.last_startup_timings = updated_timings
+
     async def eager_load_model() -> None:
         readiness = app.state.hipengine_readiness
         readiness.status = "starting"
@@ -2434,10 +2459,44 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         async with session_lock:
             engine_started = time.perf_counter()
-            engine = get_llm()
+            try:
+                engine = get_llm()
+            except Exception as exc:
+                startup_checks["engine_create"] = {
+                    "status": "failed",
+                    "exception_type": type(exc).__name__,
+                }
+                mark_startup_failed(
+                    readiness,
+                    exc,
+                    startup_started=startup_started,
+                    stage="engine_create",
+                    guidance="Check the configured model path, backend, quantization, and server logs.",
+                    timings={"engine_create_s": round(time.perf_counter() - engine_started, 6)},
+                )
+                _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
+                return
             engine_create_s = time.perf_counter() - engine_started
             prepare_started = time.perf_counter()
-            max_context = await ensure_resident_context(engine, sampling, phase="startup")
+            try:
+                max_context = await ensure_resident_context(engine, sampling, phase="startup")
+            except Exception as exc:
+                startup_checks["resident_prepare"] = {
+                    "status": "failed",
+                    "exception_type": type(exc).__name__,
+                }
+                mark_startup_failed(
+                    readiness,
+                    exc,
+                    startup_started=startup_started,
+                    stage="resident_prepare",
+                    guidance="Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
+                    timings={
+                        "engine_create_s": round(engine_create_s, 6),
+                        "resident_prepare_s": round(time.perf_counter() - prepare_started, 6),
+                    },
+                )
+                return
             resident_prepare_s = time.perf_counter() - prepare_started
             _LOGGER.info(
                 "Config: model=%s served_model=%s max_context_tokens=%s "
@@ -2460,9 +2519,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_tokens,
         )
         warmup_started = time.perf_counter()
-        await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
+        try:
+            await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
+        except Exception as exc:
+            startup_checks["raw_warmup"] = {
+                "status": "failed",
+                "max_tokens": max_tokens,
+                "exception_type": type(exc).__name__,
+            }
+            mark_startup_failed(
+                readiness,
+                exc,
+                startup_started=startup_started,
+                stage="raw_warmup",
+                guidance="Check backend generation logs and lower --eager-load-max-tokens if needed.",
+                timings={
+                    "engine_create_s": round(engine_create_s, 6),
+                    "resident_prepare_s": round(resident_prepare_s, 6),
+                    "warmup_s": round(time.perf_counter() - warmup_started, 6),
+                },
+            )
+            _LOGGER.exception("WARMUP: failed during eager startup")
+            return
         warmup_s = time.perf_counter() - warmup_started
-        startup_checks["raw_warmup"] = {"max_tokens": max_tokens}
+        startup_checks["raw_warmup"] = {"status": "passed", "max_tokens": max_tokens}
         _record_startup_memory_snapshot(startup_memory, "after_raw_warmup")
 
         scratch_probe_s: float | None = None
@@ -2495,7 +2575,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "enabled": True,
                         "status": "failed",
                         "max_prompt_tokens": max_prompt_tokens,
-                        "error": str(exc),
+                        "exception_type": type(exc).__name__,
                     }
                     _LOGGER.error(
                         "STARTUP_SCRATCH_PROBE: failed at max_prompt_tokens=%d: %s. "
@@ -2503,7 +2583,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         max_prompt_tokens,
                         exc,
                     )
-                    raise
+                    mark_startup_failed(
+                        readiness,
+                        exc,
+                        startup_started=startup_started,
+                        stage="scratch_probe",
+                        guidance="Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
+                        timings={
+                            "engine_create_s": round(engine_create_s, 6),
+                            "resident_prepare_s": round(resident_prepare_s, 6),
+                            "warmup_s": round(warmup_s, 6),
+                            "scratch_probe_s": round(time.perf_counter() - scratch_probe_started, 6),
+                        },
+                    )
+                    return
                 startup_checks["scratch_probe"] = {
                     "enabled": True,
                     "status": "passed",
@@ -3161,6 +3254,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         diagnostics: list[str] = []
         if not readiness.ready:
             diagnostics.append("server startup is not ready; check startup.error and server logs")
+            if readiness.startup_error:
+                diagnostics.append(
+                    f"{readiness.startup_error.get('message')}: {readiness.startup_error.get('guidance')}"
+                )
         return {
             "object": "hipengine.readiness",
             "status": readiness.status,

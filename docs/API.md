@@ -659,6 +659,12 @@ cap, pending session creations, and continuation-handle counts. It
 intentionally omits prompts, generated text, tool results, and raw
 request/response payloads.
 
+If eager startup fails, the process stays live but unready. `/ready` returns
+HTTP 503 with `status: "error"`, a redacted `startup.error` containing the
+failed stage, exception type, generic message, and operator guidance, plus a
+matching diagnostics entry. Raw exception text is kept in server logs, not the
+readiness payload.
+
 ## Diagnostics
 
 Unsupported/unknown request fields, validation failures, and generation failures
