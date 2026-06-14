@@ -1779,9 +1779,10 @@ completions/chat, buffered streaming completions/chat, and completion
 `null` prompt logprob. Backend paths that cannot provide token metadata for a
 logprobs request return stable HTTP 501 `unsupported_feature` with
 `error.param="logprobs"`, and the capabilities manifest advertises that
-fallback under `features.logprobs.missing_backend_metadata_error`. Remaining
-work is true prompt-token logprobs, native-path coverage, and live token-stream
-parity.
+fallback under `features.logprobs.missing_backend_metadata_error`. Server
+golden traces cover representative completion/chat logprob success and the
+missing-backend-metadata fallback. Remaining work is true prompt-token
+logprobs, native-path coverage, and live token-stream parity.
 
 Implement:
 
@@ -2022,7 +2023,9 @@ Current code reality:
   `session.commit="append_none"` finish metadata, app-local `session.id`
   visible-only transcript retention, snapshot export/restore of a hidden-
   reasoning tool-call loop, and streaming tool-call parity without raw
-  `<tool_call>` leakage.
+  `<tool_call>` leakage. The trace suite also includes representative
+  completion/chat logprob success paths and the stable
+  `unsupported_feature` fallback when a backend cannot return token metadata.
 
 Exit gates:
 

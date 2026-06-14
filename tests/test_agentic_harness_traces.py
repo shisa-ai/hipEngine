@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import FinishDetails, GenerationCancelled, GenerationOutput
+from hipengine.generation import FinishDetails, GenerationCancelled, GenerationOutput, TokenLogprob
 from hipengine.server import ServerConfig, create_app
 from hipengine.server.api import OpenAIHTTPError, _RequestControl, _await_with_request_control
 
@@ -23,13 +23,7 @@ class TraceLLM:
     def __init__(self, trace: dict[str, Any]) -> None:
         self.outputs = list(trace.get("fake_outputs", ()))
         self.stream_chunks = list(trace.get("fake_stream_chunks", ()))
-        self.detailed_outputs = [
-            GenerationOutput(
-                text=str(item["text"]),
-                finish_details=FinishDetails(**dict(item["finish_details"])),
-            )
-            for item in trace.get("fake_detailed_outputs", ())
-        ]
+        self.detailed_outputs = [_trace_generation_output(item) for item in trace.get("fake_detailed_outputs", ())]
         self.fake_exception = str(trace.get("fake_exception") or "")
         self.generate_delay_s = float(trace.get("generate_delay_s", 0.0))
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
@@ -71,6 +65,23 @@ class TraceLLM:
 
     def count_tokens(self, text: str) -> int:
         return len(str(text).split())
+
+
+def _trace_generation_output(item: dict[str, Any]) -> GenerationOutput:
+    finish_details = item.get("finish_details")
+    return GenerationOutput(
+        text=str(item["text"]),
+        token_logprobs=tuple(
+            TokenLogprob(
+                token_id=token["token_id"],
+                token_text=token["token_text"],
+                logprob=token.get("logprob"),
+                top_logprobs=tuple(tuple(top) for top in token.get("top_logprobs", ())),
+            )
+            for token in item.get("token_logprobs", ())
+        ),
+        finish_details=None if finish_details is None else FinishDetails(**dict(finish_details)),
+    )
 
 
 def _load_traces() -> list[dict[str, Any]]:
@@ -216,6 +227,8 @@ def _assert_chat_response(payload: dict[str, Any], expected: dict[str, Any]) -> 
         assert choice["finish_details"] == _expected_finish_details(choice, expected)
     if expected.get("continuation_id"):
         assert choice["continuation_id"].startswith("gen_")
+    if "logprobs" in expected:
+        assert choice["logprobs"] == expected["logprobs"]
     message = choice["message"]
     if "message_content" in expected:
         assert message["content"] == expected["message_content"]
@@ -239,6 +252,8 @@ def _assert_completion_response(payload: dict[str, Any], expected: dict[str, Any
     assert choice["finish_details"] == _expected_finish_details(choice, expected)
     if expected.get("continuation_id"):
         assert choice["continuation_id"].startswith("gen_")
+    if "logprobs" in expected:
+        assert choice["logprobs"] == expected["logprobs"]
 
 
 def _assert_generic_response(payload: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -322,6 +337,10 @@ def _assert_prompt_expectations(fake: TraceLLM, expected: dict[str, Any], *, cal
         assert str(needle) not in prompt
     if "prompt_endswith" in expected:
         assert prompt.endswith(str(expected["prompt_endswith"]))
+    if "sampling" in expected:
+        sampling = fake.calls[call_index][1]
+        for field, value in expected["sampling"].items():
+            assert getattr(sampling, field) == value
 
 
 def _assert_tool_call(actual: dict[str, Any], expected: dict[str, Any]) -> None:

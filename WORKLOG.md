@@ -90267,3 +90267,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC golden logprob contract traces
+
+Added deterministic golden traces for representative completion/chat logprob
+success responses plus the stable missing-backend-metadata fallback. The trace
+runner now accepts fake per-token logprob metadata, asserts OpenAI-shaped
+completion/chat logprob payloads, and verifies the normalized sampling request
+reaches generation with `logprobs` / `top_logprobs` enabled. Updated
+`docs/AGENTIC.md` P4.4/P5.3 current-reality text to name this contract
+coverage.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q -k 'completion_logprobs_success or chat_logprobs_success or completion_logprobs_missing_backend_metadata_error'` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `45 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
