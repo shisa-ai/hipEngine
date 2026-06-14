@@ -1646,8 +1646,8 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         error_extra: Mapping[str, Any] | None = None,
-    ) -> AsyncIterator[Any]:
-        """Yield generated text through a per-request queue owned by the batcher."""
+    ) -> AsyncIterator[GenerationStreamChunk]:
+        """Yield generated stream chunks through a per-request queue owned by the batcher."""
 
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
@@ -1771,7 +1771,7 @@ def _finish_queued_generation(
         item.stream_queue.put_nowait(exception)
     else:
         for output in outputs or ():
-            item.stream_queue.put_nowait(str(output))
+            item.stream_queue.put_nowait(_coerce_generation_stream_chunk(output))
     item.stream_queue.put_nowait(_STREAM_DONE)
 
 
@@ -1796,7 +1796,7 @@ async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams
     streamer = getattr(engine, "stream", None)
     if not callable(streamer):
         for output in await run_in_threadpool(engine.generate, (prompt,), sampling):
-            yield str(output)
+            yield _coerce_generation_stream_chunk(output)
         return
     iterator = iter(streamer(prompt, sampling))
     done = False

@@ -90714,3 +90714,21 @@ Validation:
 - `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py` -> passed.
 - `python3 -m pytest tests/test_generation_registry.py::test_generation_telemetry_decode_counts_accept_phase_metadata tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `4 passed`.
 - `python3 -m ruff check hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py && git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC batcher stream chunk contract
+
+Full server validation found one stale direct-batcher assertion after the
+`GenerationStreamChunk` telemetry work: `_GenerationBatcher.stream()` could
+yield chunks on the direct engine stream path but strings on the coalesced
+generate fallback path. The batcher stream contract is now consistently
+chunk-based, including the no-stream `engine.generate()` fallback and coalesced
+stream queue completion path. Public OpenAI SSE helpers already coerce stream
+items, so this keeps internal telemetry transport consistent without changing
+default client payloads.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_generation_batcher_default_zero_window_queues_without_lifetime_lock tests/test_server_api.py::test_generation_batcher_stream_uses_per_request_queue_and_coalesces tests/test_server_api.py::test_generation_batcher_stream_generate_only_fallback_yields_chunks -q` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `115 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` initially exposed the stale
+  batcher stream assertion; after the fix -> `257 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py WORKLOG.md` -> `All checks passed!` / clean.

@@ -2383,7 +2383,8 @@ def test_generation_batcher_default_zero_window_queues_without_lifetime_lock() -
 
         assert first == ["generated:one"]
         assert second == ["generated:two"]
-        assert streamed == ["generated:three"]
+        assert [chunk.text for chunk in streamed] == ["generated:three"]
+        assert all(isinstance(chunk, GenerationStreamChunk) for chunk in streamed)
         assert fake.calls == [(("one", "two"), sampling), (("three",), sampling)]
 
     asyncio.run(run())
@@ -2398,7 +2399,7 @@ def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> Non
             batch_window_seconds=0.001,
         )
 
-        async def collect_stream() -> list[str]:
+        async def collect_stream() -> list[GenerationStreamChunk]:
             return [chunk async for chunk in batcher.stream(("stream",), sampling)]
 
         streamed, submitted = await asyncio.gather(
@@ -2406,11 +2407,39 @@ def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> Non
             batcher.submit(("batch",), sampling),
         )
 
-        assert streamed == ["generated:stream"]
+        assert [chunk.text for chunk in streamed] == ["generated:stream"]
+        assert all(isinstance(chunk, GenerationStreamChunk) for chunk in streamed)
         assert submitted == ["generated:batch"]
         assert len(fake.calls) == 1
         assert set(fake.calls[0][0]) == {"stream", "batch"}
         assert fake.calls[0][1] == sampling
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_stream_generate_only_fallback_yields_chunks() -> None:
+    class GenerateOnlyLLM:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+
+        def generate(self, prompts, sampling_params: SamplingParams) -> list[str]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            return [f"generated:{prompt}" for prompt in prompt_tuple]
+
+    async def run() -> None:
+        fake = GenerateOnlyLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+        )
+
+        streamed = [chunk async for chunk in batcher.stream(("fallback",), sampling)]
+
+        assert [chunk.text for chunk in streamed] == ["generated:fallback"]
+        assert all(isinstance(chunk, GenerationStreamChunk) for chunk in streamed)
+        assert fake.calls == [(("fallback",), sampling)]
 
     asyncio.run(run())
 
