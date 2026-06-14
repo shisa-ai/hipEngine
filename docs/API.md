@@ -439,9 +439,9 @@ valid tool call; the manifest reports this under
 `features.tools.compatibility_parser_repairs`. Tool-enabled requests fail closed
 on unparseable `<tool_call>` markup, reported as
 `features.tools.malformed_json_compatibility =
-"invalid_tool_call_when_tools_enabled"`. Strict validation also rejects
-duplicated-start malformed blocks, reported as
-`features.tools.strict_malformed_blocks_rejected`.
+"invalid_tool_call_when_tools_enabled"`. Strict validation uses the same
+duplicated-start repair before schema checks, but still rejects truly malformed
+tool-call blocks as reported by `features.tools.strict_malformed_blocks_rejected`.
 When
 `tool_choice="none"` and tokenization is available, the sampler also suppresses
 the first token of the Qwen `<tool_call>` start marker; this is a no-tool

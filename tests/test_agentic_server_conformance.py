@@ -393,7 +393,7 @@ def test_agentic_conformance_snapshot_restore_replays_tool_loop_without_reasonin
     assert "<think>need file</think>" not in prompt
 
 
-def test_agentic_conformance_permissive_duplicated_tool_start_recovers_call() -> None:
+def test_agentic_conformance_strict_duplicated_tool_start_recovers_call() -> None:
     raw_tool_markup = (
         "<tool_call>\n"
         '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
@@ -404,7 +404,7 @@ def test_agentic_conformance_permissive_duplicated_tool_start_recovers_call() ->
         json={
             "model": "fake-model",
             "messages": [{"role": "user", "content": "Read README.md."}],
-            "tools": [_read_tool(strict=False)],
+            "tools": [_read_tool(strict=True)],
             "max_tokens": 64,
         },
     )

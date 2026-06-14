@@ -9550,7 +9550,7 @@ def _tool_call_arguments_value(call: _ParsedToolCall) -> Any:
 def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
     malformed: list[str] = []
     for match in _TOOL_CALL_BLOCK_RE.finditer(text):
-        if _parsed_tool_call_from_json(match.group(1).strip()) is None:
+        if _parsed_tool_call_from_block_body(match.group(1), raw_text=match.group(0)) is None:
             malformed.append(match.group(0))
     if _has_unclosed_tool_call(text):
         open_index = text.lower().rfind("<tool_call>")

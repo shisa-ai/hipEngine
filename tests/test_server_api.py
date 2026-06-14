@@ -4088,10 +4088,10 @@ def test_chat_session_visible_only_downgrades_length_finish_to_prompt_only() -> 
     [
         (
             "invalid_tool_call",
-            '<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+            '<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>',
             {},
             "invalid_tool_call",
-            '<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+            '"name":"write"',
         ),
         (
             "missing_required_tool",
@@ -7925,7 +7925,7 @@ def test_chat_completion_auto_tool_rejects_undeclared_function() -> None:
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
-def test_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:
+def test_chat_completion_strict_validation_recovers_doubled_tool_call_tag() -> None:
     fake = FakeLLM(
         outputs=['<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
     )
@@ -7952,9 +7952,17 @@ def test_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> No
 
     assert response.status_code == 200
     choice = response.json()["choices"][0]
-    assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
-    assert choice["message"] == {"role": "assistant", "content": ""}
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=2,
+        phase="tool_call",
+    )
+    message = choice["message"]
+    assert message["content"] == ""
+    tool_call = message["tool_calls"][0]
+    assert tool_call["function"]["name"] == "read"
+    assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
     assert "<tool_call>" not in response.text
 
 
@@ -9013,7 +9021,7 @@ def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
     assert done_hipengine["decode_state"]["tool_call_tokens"] == 1
 
 
-def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:
+def test_streaming_chat_completion_strict_validation_recovers_doubled_tool_call_tag() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],
         stream_chunks=['<tool_call>\n<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'],
@@ -9043,10 +9051,17 @@ def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_t
     assert response.status_code == 200
     assert "<tool_call>" not in response.text
     payloads = _sse_payloads(response.text)
-    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    tool_payload = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
+    tool_call = tool_payload["choices"][0]["delta"]["tool_calls"][0]
+    assert tool_call["function"]["name"] == "bash"
+    assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
-    assert done["choices"][0]["finish_reason"] == "stop"
-    assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert done["choices"][0]["finish_reason"] == "tool_calls"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=2,
+        phase="tool_call",
+    )
 
 
 def test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json() -> None:

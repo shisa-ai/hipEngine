@@ -91741,3 +91741,20 @@ Validation:
 - `python3 -m py_compile hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> passed.
 - `python3 -m ruff check hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC strict duplicated tool-call recovery
+
+Strict tool validation now shares the duplicated-start compatibility parser
+before marking a `<tool_call>` block malformed. Valid
+`<tool_call><tool_call>{...}</tool_call>` output is converted to OpenAI
+`tool_calls` in both non-streaming and buffered streaming paths even when the
+declared tool is strict; truly malformed tool JSON still fails closed with
+`finish_details.reason="invalid_tool_call"` and no raw markup leakage.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_strict_validation_recovers_doubled_tool_call_tag tests/test_server_api.py::test_streaming_chat_completion_strict_validation_recovers_doubled_tool_call_tag tests/test_server_api.py::test_chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_only tests/test_server_api.py::test_chat_completion_auto_tool_rejects_unparseable_tool_markup tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json -q` -> `7 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py -q` -> `65 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/fixtures/agentic_traces/golden_traces.json docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -118,7 +118,7 @@
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "fake_outputs": [
-        "<tool_call>\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+        "<tool_call>\n<tool_call>{\"name\":\"read\",\"arguments\":</tool_call>"
       ],
       "request": {
         "model": "fake-model",
@@ -165,7 +165,8 @@
             "function": {
               "name": "read",
               "description": "Read a file",
-              "parameters": {"type": "object"}
+              "parameters": {"type": "object"},
+              "strict": true
             }
           }
         ]
