@@ -310,7 +310,9 @@ forced close sequences during decode. Generic sampler `min_tokens` /
 thinking-budget policy yet. Chat `count_tokens` and `fit_context` diagnostics
 do lower the configured close sequence into token ids and return an initial
 thinking-budget state for harness/debug verification when tokenization is
-available.
+available. The capabilities manifest exposes this as
+`features.reasoning_controls.diagnostic_close_token_lowering` and
+`diagnostic_initial_state`.
 
 For pi, prefer `compat.thinkingFormat: "qwen"` with `reasoning: true` if you want
 pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`

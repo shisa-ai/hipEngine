@@ -1979,6 +1979,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                     "hard_close_validation": True,
                     "hard_close_marker": _THINKING_CLOSE_MARKER,
+                    "diagnostic_close_token_lowering": tokenizer_caps["tokenize"],
+                    "diagnostic_initial_state": tokenizer_caps["tokenize"],
                 },
                 "logprobs": {
                     "completions": True,

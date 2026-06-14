@@ -87938,6 +87938,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `2 passed`.
 - `git diff --check` -> clean.
 
+## 2026-06-14 - AGENTIC diagnostic lowering capability flags
+
+Added explicit capabilities for diagnostic thinking-budget close-token lowering
+and initialized budget-state payloads:
+`features.reasoning_controls.diagnostic_close_token_lowering` and
+`diagnostic_initial_state`. These remain separate from live
+`token_budget_enforced=false`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat -q` -> `2 passed`.
+- `git diff --check` -> clean.
+
 ## 2026-06-14 - Startup scratch probe gate for full-context serving
 
 Added a fail-fast startup memory gate so `hipengine serve` no longer reports ready after only retained KV allocation and a one-token raw warmup. Server startup now records HIP memory snapshots, runs the legacy raw warmup, probes max admitted c=1 prompt scratch via `prepare_request_scratch(max_prompt_tokens=context-1, max_new_tokens=0)`, runs a bounded `hello` chat-shaped smoke through the generation batcher, exposes startup checks/memory in `/ready`, and supports `--startup-chat-smoke`, `--startup-scratch-probe`, and `--startup-min-free-mib` / corresponding env vars. The PARO probe allocates long-prompt prefill hidden/workspaces/oracle buffers without decoding to the output limit and re-resolves `prefill_config` for the probed prompt length so a tiny raw warmup cannot leave stale unchunked scratch policy behind.

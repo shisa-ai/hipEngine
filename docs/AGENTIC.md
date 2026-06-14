@@ -843,7 +843,9 @@ Current code reality:
   render the same Qwen-style prompt as generation, including tool markup and
   thinking controls, before counting. Chat count/fit diagnostics also expose
   lowered thinking-budget close tokens and the initialized
-  `ThinkingBudgetState` payload when tokenization is available.
+  `ThinkingBudgetState` payload when tokenization is available; capability
+  metadata advertises that diagnostic lowering/state support separately from
+  live token-budget enforcement.
 - `/fit_context` uses the same context arithmetic and chat default max-token
   policy as generation admission, and reports the current clear policy as
   `reject` with no automatic truncation/dropping.
