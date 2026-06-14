@@ -87,6 +87,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/sessions/{session_id}/fork` | Built in | Authenticated app-local transcript fork into a new session id. Clones visible transcript messages only; no resident KV state is reused. |
+| `POST /v1/hipengine/sessions/{session_id}/rollback` | Built in | Authenticated app-local transcript rollback to a requested `message_count`. Trims visible transcript messages only; no resident KV state is reused. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
@@ -668,6 +669,13 @@ then the two sessions diverge independently on later commits. It rejects missing
 source sessions, empty or existing target ids, same-id forks, and configured
 chat-session cap overflow. Forks are transcript-only:
 `resident_state_reuse=false`, no resident KV state is copied.
+
+Authenticated `POST /v1/hipengine/sessions/{session_id}/rollback` with body
+`{"message_count":2}` trims the app-local visible transcript to exactly that
+message count. It rejects missing source sessions and counts larger than the
+current transcript. Responses include previous and retained message counts but
+do not include transcript content. Rollbacks are transcript-only:
+`resident_state_reuse=false`, no resident KV state is rewound.
 
 Authenticated `GET /v1/hipengine/sessions/{session_id}/snapshot` exports a
 versioned `hipengine.chat_session_snapshot.v1` snapshot for that app-local

@@ -447,6 +447,9 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
         "fork_endpoint": "/v1/hipengine/sessions/{session_id}/fork",
         "fork_resident_state_reuse": False,
+        "rollback_endpoint": "/v1/hipengine/sessions/{session_id}/rollback",
+        "rollback_target": "message_count",
+        "rollback_resident_state_reuse": False,
         "snapshot_schema": "hipengine.chat_session_snapshot.v1",
         "snapshot_export_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
@@ -2008,6 +2011,141 @@ def test_chat_session_fork_rejects_existing_target_and_session_cap() -> None:
     assert missing.status_code == 404
     assert missing.json()["error"]["param"] == "session_id"
     assert set(app.state.hipengine_chat_sessions) == {"sess_root", "sess_target"}
+
+
+def test_chat_session_rollback_trims_visible_transcript_for_next_turn() -> None:
+    fake = SequentialFakeLLM(["base answer", "second answer", "after rollback"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    first = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "base prompt"}],
+            "session": {"id": "sess_rollback"},
+            "max_tokens": 4,
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "second turn"}],
+            "session": {"id": "sess_rollback"},
+            "max_tokens": 4,
+        },
+    )
+    unauthorized = client.post(
+        "/v1/hipengine/sessions/sess_rollback/rollback",
+        json={"message_count": 2},
+    )
+    rollback = client.post(
+        "/v1/hipengine/sessions/sess_rollback/rollback",
+        headers=headers,
+        json={"message_count": 2},
+    )
+    continued = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "after rollback turn"}],
+            "session": {"id": "sess_rollback", "commit": "append_none"},
+            "max_tokens": 4,
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert unauthorized.status_code == 401
+    assert rollback.status_code == 200
+    assert rollback.json() == {
+        "object": "hipengine.session.rolled_back",
+        "id": "sess_rollback",
+        "rolled_back": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "previous_message_count": 4,
+        "message_count": 2,
+    }
+    assert continued.status_code == 200
+    record = app.state.hipengine_chat_sessions["sess_rollback"]
+    assert len(record.messages) == 2
+    prompt = fake.calls[2][0][0]
+    assert "base prompt" in prompt
+    assert "base answer" in prompt
+    assert "after rollback turn" in prompt
+    assert "second turn" not in prompt
+    assert "second answer" not in prompt
+    listed = client.get("/v1/hipengine/sessions", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["sessions"][0]["message_count"] == 2
+    assert "base prompt" not in json.dumps(listed.json())
+    assert "base answer" not in json.dumps(listed.json())
+
+
+def test_chat_session_rollback_rejects_missing_and_out_of_range() -> None:
+    fake = SequentialFakeLLM(["root answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "root prompt"}],
+            "session": {"id": "sess_rollback_errors"},
+            "max_tokens": 4,
+        },
+    )
+    too_far = client.post(
+        "/v1/hipengine/sessions/sess_rollback_errors/rollback",
+        headers=headers,
+        json={"message_count": 3},
+    )
+    missing = client.post(
+        "/v1/hipengine/sessions/sess_missing/rollback",
+        headers=headers,
+        json={"message_count": 0},
+    )
+    noop = client.post(
+        "/v1/hipengine/sessions/sess_rollback_errors/rollback",
+        headers=headers,
+        json={"message_count": 2},
+    )
+
+    assert created.status_code == 200
+    assert too_far.status_code == 400
+    assert too_far.json()["error"]["param"] == "message_count"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["param"] == "session_id"
+    assert noop.status_code == 200
+    assert noop.json()["rolled_back"] is False
+    assert noop.json()["previous_message_count"] == 2
+    assert noop.json()["message_count"] == 2
+    assert len(app.state.hipengine_chat_sessions["sess_rollback_errors"].messages) == 2
 
 
 def test_chat_session_snapshot_export_restore_round_trips_visible_transcript() -> None:

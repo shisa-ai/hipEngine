@@ -1137,6 +1137,9 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
         "fork_endpoint": "/v1/hipengine/sessions/{session_id}/fork",
         "fork_resident_state_reuse": False,
+        "rollback_endpoint": "/v1/hipengine/sessions/{session_id}/rollback",
+        "rollback_target": "message_count",
+        "rollback_resident_state_reuse": False,
         "snapshot_schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
         "snapshot_export_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
@@ -1377,6 +1380,10 @@ class ChatCompletionRequest(_OpenAIBaseModel):
 
 class SessionForkRequest(_OpenAIBaseModel):
     id: str
+
+
+class SessionRollbackRequest(_OpenAIBaseModel):
+    message_count: int = Field(..., ge=0)
 
 
 class TokenizeRequest(_OpenAIBaseModel):
@@ -3676,6 +3683,50 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "storage": "app_local_transcript",
             "resident_state_reuse": False,
             "message_count": len(forked.messages),
+        }
+
+    @app.post("/v1/hipengine/sessions/{session_id}/rollback")
+    async def rollback_session(
+        session_id: str,
+        request: SessionRollbackRequest,
+        _auth: None = Depends(require_auth),
+    ) -> dict[str, Any]:
+        target_count = int(request.message_count)
+        async with chat_session_lock:
+            record = chat_sessions.get(session_id)
+            if record is None:
+                raise OpenAIHTTPError(
+                    404,
+                    "chat session does not exist",
+                    code="invalid_request",
+                    param="session_id",
+                )
+            previous_count = len(record.messages)
+            if target_count > previous_count:
+                raise OpenAIHTTPError(
+                    400,
+                    "rollback message_count cannot exceed current session message_count",
+                    code="invalid_request",
+                    param="message_count",
+                )
+            rolled_back = target_count != previous_count
+            if rolled_back:
+                now = time.time()
+                record = _ChatSessionRecord(
+                    id=session_id,
+                    messages=tuple(dict(message) for message in record.messages[:target_count]),
+                    created=record.created,
+                    updated=now,
+                )
+                chat_sessions[session_id] = record
+        return {
+            "object": "hipengine.session.rolled_back",
+            "id": session_id,
+            "rolled_back": rolled_back,
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+            "previous_message_count": previous_count,
+            "message_count": target_count,
         }
 
     @app.get("/v1/hipengine/sessions/{session_id}/snapshot")

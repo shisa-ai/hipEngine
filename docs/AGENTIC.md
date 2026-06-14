@@ -1830,7 +1830,12 @@ Current code reality:
   chat-session cap, report `resident_state_reuse=false`, and then diverge
   independently on later commits. This gives agent harnesses a branch primitive
   without exposing transcript text through metadata endpoints.
-- Forkable pinned prefixes, rollback, resident KV cache handles, resident KV
+- App-local transcript sessions can be rolled back with
+  `POST /v1/hipengine/sessions/{session_id}/rollback` and a target
+  `message_count`. Rollback trims visible transcript messages only, reports
+  previous/retained counts without exposing transcript text, and keeps
+  `resident_state_reuse=false`.
+- Forkable pinned prefixes, resident KV cache handles, resident KV
   fork/rollback, and prefix-vs-turn-history eviction policy remain future work.
 
 #### P3.4 Context fitting and auto-clear policy

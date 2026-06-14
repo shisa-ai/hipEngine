@@ -91287,3 +91287,19 @@ Validation:
 - `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC transcript session rollback
+
+Added an authenticated app-local transcript rollback endpoint at
+`POST /v1/hipengine/sessions/{session_id}/rollback`. The request trims the
+visible transcript to a supplied `message_count`, reports previous/retained
+counts without returning transcript text, and preserves
+`resident_state_reuse=false` so clients do not mistake this for resident KV
+rewind. Capabilities, API docs, and AGENTIC P3.3 now advertise the
+transcript-only rollback primitive.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_rollback_trims_visible_transcript_for_next_turn tests/test_server_api.py::test_chat_session_rollback_rejects_missing_and_out_of_range tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
