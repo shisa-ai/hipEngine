@@ -459,6 +459,41 @@ def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -
     assert llm.stream_calls
 
 
+def test_agentic_conformance_streaming_malformed_tool_json_fails_closed() -> None:
+    llm = AgenticFakeLLM(
+        stream_chunks=[
+            '<tool_call>{"name":"read","arguments":</tool_call>',
+        ]
+    )
+    response = _client(llm).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read README.md."}],
+            "tools": [_read_tool()],
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "max_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == {
+        "reason": "invalid_tool_call",
+        "cache_action": "append_none",
+    }
+    assert done["choices"][0]["hipengine"]["finish_details"] == {
+        "reason": "invalid_tool_call",
+        "cache_action": "append_none",
+    }
+
+
 def _sse_payloads(text: str) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for raw_line in text.splitlines():

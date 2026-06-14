@@ -91633,3 +91633,16 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_native_sampler_route tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_logprobs tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_finish_details tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_finish_details -q` -> `10 passed`.
 - `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> passed.
 - `python3 -m ruff check hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC streaming malformed-tool conformance
+
+Added a client-pattern conformance test for streamed malformed Qwen
+`<tool_call>` JSON. The server must not leak raw tool markup or emit
+`delta.tool_calls`; the final SSE choice reports `finish_reason="stop"` with
+stable `finish_details.reason="invalid_tool_call"` under both public and
+hipEngine metadata.
+
+Validation:
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `89 passed`.
+- `python3 -m py_compile tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
