@@ -474,6 +474,15 @@ keywords are rejected before generation instead of being silently ignored;
 annotation keys are accepted but ignored by validation. This is result
 validation, not grammar-constrained decoding.
 
+Choice guidance is also result-validation only. `guided_choice` accepts a
+non-empty array of non-empty strings. Chat requests add a prompt hint that asks
+for exactly one listed choice. Stop-finished visible output is accepted when it
+matches one listed choice after surrounding whitespace is stripped; invalid
+stop-finished outputs return empty successful content with
+`finish_details.reason: "schema_violation"`. Length-finished partial choice
+outputs keep their partial text and can produce a continuation handle in
+deterministic buffered mode.
+
 Patch/diff guidance is also result-validation only. `guided_patch` and
 `guided_diff` accept `true`, `"unified_diff"`, or an object such as
 `{"type":"unified_diff"}` / `{"format":"unified_diff","fenced":"optional"}`.
@@ -490,9 +499,9 @@ reports the supported unified-diff format, accepted fence labels, allowed
 
 Grammar-constrained decoding is not currently supported. The capabilities
 manifest reports `features.grammars.enabled=false`, lists true grammar fields
-such as `grammar`, `guided_json`, `guided_regex`, `guided_choice`,
-`guided_grammar`, and `guided_decoding_backend` under unsupported fields, and
-reports `guided_patch` / `guided_diff` under
+such as `grammar`, `guided_json`, `guided_regex`, `guided_grammar`, and
+`guided_decoding_backend` under unsupported fields, and reports
+`guided_choice` / `guided_patch` / `guided_diff` under
 `features.grammars.result_validation_only`.
 
 ### Thinking / no-think controls
@@ -600,7 +609,8 @@ hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
 explicitly sends `session.commit="append_none"` as the current stateless
 no-retain policy, and keeps stateful `session.id` out of the default streaming
 payload plus intentionally unused tool-policy fields and unsupported
-grammar/guidance fields in `do_not_send`.
+grammar/guidance fields in `do_not_send`. Validation-only controls such as
+`guided_choice`, `guided_patch`, and `guided_diff` are not blocklisted.
 
 When `--chat-smoke` is used and the config enables tools, the validator sends a
 specific `record_result` tool choice and requires the server response to contain

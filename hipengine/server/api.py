@@ -113,6 +113,7 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "tool_choice",
     "parallel_tool_calls",
     "response_format",
+    "guided_choice",
     "guided_patch",
     "guided_diff",
     "reasoning_effort",
@@ -185,10 +186,10 @@ _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_json",
     "guided_regex",
-    "guided_choice",
     "guided_grammar",
     "guided_decoding_backend",
 )
+_GUIDED_CHOICE_FIELD = "guided_choice"
 _NATIVE_GPU_SAMPLER_UNSUPPORTED = (
     "c_gt_1",
     "gguf",
@@ -790,6 +791,7 @@ def _replay_sampling_payload(body_json: Any, *, redaction: str) -> dict[str, Any
         "logprobs",
         "top_logprobs",
         "response_format",
+        "guided_choice",
         "guided_patch",
         "guided_diff",
         "thinking_token_budget",
@@ -892,6 +894,7 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "response_format": True,
         "json_object": True,
         "json_schema": True,
+        "guided_choice": True,
         "guided_patch": True,
         "guided_diff": True,
         "guided_patch_formats": list(_GUIDED_PATCH_FORMATS),
@@ -920,7 +923,12 @@ def _grammar_capability() -> dict[str, Any]:
         "strict_decoding": False,
         "supported": [],
         "unsupported_fields": list(_UNSUPPORTED_GRAMMAR_FIELDS),
-        "result_validation_only": ["json_object", "json_schema", *_GUIDED_PATCH_FIELDS],
+        "result_validation_only": [
+            "json_object",
+            "json_schema",
+            _GUIDED_CHOICE_FIELD,
+            *_GUIDED_PATCH_FIELDS,
+        ],
     }
 
 
@@ -1284,6 +1292,7 @@ class CompletionRequest(_OpenAIBaseModel):
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
     response_format: Any | None = None
+    guided_choice: Any | None = None
     guided_patch: Any | None = None
     guided_diff: Any | None = None
     continuation_id: Any | None = None
@@ -1341,6 +1350,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
     response_format: Any | None = None
+    guided_choice: Any | None = None
     guided_patch: Any | None = None
     guided_diff: Any | None = None
     continuation_id: Any | None = None
@@ -1377,6 +1387,7 @@ class TokenDiagnosticRequest(_OpenAIBaseModel):
     chat_template_kwargs: dict[str, Any] | None = None
     thinking: str | dict[str, Any] | None = None
     reasoning: dict[str, Any] | None = None
+    guided_choice: Any | None = None
     guided_patch: Any | None = None
     guided_diff: Any | None = None
     session: Any | None = None
@@ -1925,6 +1936,7 @@ class _ContinuationRecord:
     created: float
     expires_at: float
     response_format: Any | None = None
+    guided_choice: Any | None = None
     guided_patch: Any | None = None
     guided_diff: Any | None = None
 
@@ -2261,6 +2273,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts: Sequence[str],
         generated_texts: Sequence[str],
         response_format: Any | None,
+        guided_choice: Any | None,
         guided_patch: Any | None,
         guided_diff: Any | None,
         auth_principal: str,
@@ -2277,6 +2290,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             created=now,
             expires_at=now + _CONTINUATION_TTL_SECONDS,
             response_format=response_format,
+            guided_choice=guided_choice,
             guided_patch=guided_patch,
             guided_diff=guided_diff,
         )
@@ -4116,6 +4130,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     prompts=(base_prompt,),
                     generated_texts=(generated_text,),
                     response_format=request.response_format,
+                    guided_choice=request.guided_choice,
                     guided_patch=request.guided_patch,
                     guided_diff=request.guided_diff,
                     auth_principal=auth_principal,
@@ -4333,6 +4348,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         prompts=(base_prompt,),
                         generated_texts=(text,),
                         response_format=request.response_format,
+                        guided_choice=request.guided_choice,
                         guided_patch=request.guided_patch,
                         guided_diff=request.guided_diff,
                         auth_principal=auth_principal,
@@ -5581,6 +5597,7 @@ def _render_chat_prompt_for_request(
         tool_choice=request.tool_choice,
         thinking=thinking,
         response_format=request.response_format,
+        guided_choice=request.guided_choice,
         guided_patch=request.guided_patch,
         guided_diff=request.guided_diff,
     )
@@ -5606,6 +5623,7 @@ def _render_chat_prompt_for_request(
             tool_choice=request.tool_choice,
             thinking=adjusted,
             response_format=request.response_format,
+            guided_choice=request.guided_choice,
             guided_patch=request.guided_patch,
             guided_diff=request.guided_diff,
         )
@@ -5873,6 +5891,16 @@ def _render_response_format_prompt(response_format: Any | None) -> str:
     return ""
 
 
+def _render_guided_choice_prompt(guided_choice: Any | None) -> str:
+    if guided_choice is None:
+        return ""
+    choices = _guided_choice_values(guided_choice, validate=False)
+    if not choices:
+        return ""
+    choices_text = json.dumps(list(choices), ensure_ascii=False, separators=(",", ":"))
+    return f"Return exactly one of these choices and no other text: {choices_text}"
+
+
 def _render_guided_patch_prompt(guided_patch: Any | None, guided_diff: Any | None) -> str:
     mode = _guided_patch_field(guided_patch, guided_diff)
     if mode is None:
@@ -5956,6 +5984,7 @@ def render_chat_prompt(
     tool_choice: str | Mapping[str, Any] | None = None,
     thinking: _ThinkingControl | None = None,
     response_format: Any | None = None,
+    guided_choice: Any | None = None,
     guided_patch: Any | None = None,
     guided_diff: Any | None = None,
 ) -> str:
@@ -5974,6 +6003,7 @@ def render_chat_prompt(
         for item in (
             _render_thinking_prompt(thinking),
             _render_response_format_prompt(response_format),
+            _render_guided_choice_prompt(guided_choice),
             _render_guided_patch_prompt(guided_patch, guided_diff),
             _render_tools_prompt(tools, tool_choice),
         )
@@ -6622,6 +6652,7 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             param=unsupported_param,
         )
     _validate_response_format_request(request)
+    _validate_guided_choice_request(request)
     _validate_guided_patch_request(request)
     _validate_tool_schema_requests(request)
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
@@ -6883,6 +6914,7 @@ def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnostic
         chat_template_kwargs=request.chat_template_kwargs,
         thinking=request.thinking,
         reasoning=request.reasoning,
+        guided_choice=request.guided_choice,
         guided_patch=request.guided_patch,
         guided_diff=request.guided_diff,
         max_tokens=getattr(request, "max_tokens", None),
@@ -7247,6 +7279,8 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
         return "frequency_penalty"
     if request.response_format is not None:
         return "response_format"
+    if getattr(request, "guided_choice", None) is not None:
+        return "guided_choice"
     if getattr(request, "guided_patch", None) is not None:
         return "guided_patch"
     if getattr(request, "guided_diff", None) is not None:
@@ -7371,6 +7405,8 @@ def _apply_continuation_defaults(
         return
     if getattr(request, "response_format", None) is None and record.response_format is not None:
         request.response_format = record.response_format
+    if getattr(request, "guided_choice", None) is None and record.guided_choice is not None:
+        request.guided_choice = record.guided_choice
     if getattr(request, "guided_patch", None) is None and record.guided_patch is not None:
         request.guided_patch = record.guided_patch
     if getattr(request, "guided_diff", None) is None and record.guided_diff is not None:
@@ -7732,6 +7768,75 @@ def _validate_response_format_request(request: CompletionRequest | ChatCompletio
                 raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
 
 
+def _validate_guided_choice_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+    if getattr(request, "guided_choice", None) is None:
+        return
+    _guided_choice_values(request.guided_choice, validate=True)
+    response_mode = _response_format_mode(request)
+    if response_mode not in {None, "text"}:
+        raise OpenAIHTTPError(
+            400,
+            f"guided_choice is incompatible with response_format {response_mode}",
+            code="invalid_request",
+            param="guided_choice",
+        )
+    guided_patch_field = _guided_patch_field(
+        getattr(request, "guided_patch", None),
+        getattr(request, "guided_diff", None),
+    )
+    if guided_patch_field is not None:
+        raise OpenAIHTTPError(
+            400,
+            f"guided_choice is incompatible with {guided_patch_field}",
+            code="invalid_request",
+            param="guided_choice",
+        )
+
+
+def _guided_choice_values(value: Any, *, validate: bool) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        if validate:
+            raise OpenAIHTTPError(
+                400,
+                "guided_choice must be a non-empty array of strings",
+                code="invalid_request",
+                param="guided_choice",
+            )
+        return ()
+    choices: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            if validate:
+                raise OpenAIHTTPError(
+                    400,
+                    f"guided_choice[{index}] must be a string",
+                    code="invalid_request",
+                    param=f"guided_choice[{index}]",
+                )
+            return ()
+        choice = item.strip()
+        if not choice:
+            if validate:
+                raise OpenAIHTTPError(
+                    400,
+                    f"guided_choice[{index}] must be a non-empty string",
+                    code="invalid_request",
+                    param=f"guided_choice[{index}]",
+                )
+            return ()
+        choices.append(choice)
+    if not choices:
+        if validate:
+            raise OpenAIHTTPError(
+                400,
+                "guided_choice must contain at least one choice",
+                code="invalid_request",
+                param="guided_choice",
+            )
+        return ()
+    return tuple(choices)
+
+
 def _validate_guided_patch_request(request: CompletionRequest | ChatCompletionRequest) -> None:
     active_fields = [
         field
@@ -7844,6 +7949,10 @@ def _guided_patch_result_validation(request: CompletionRequest | ChatCompletionR
         getattr(request, "guided_patch", None),
         getattr(request, "guided_diff", None),
     ) is not None
+
+
+def _guided_choice_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    return getattr(request, "guided_choice", None) is not None
 
 
 def _guided_patch_fenced_policy(request: CompletionRequest | ChatCompletionRequest) -> str:
@@ -7969,7 +8078,11 @@ def _response_format_result_validation(request: CompletionRequest | ChatCompleti
 
 
 def _structured_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
-    return _response_format_result_validation(request) or _guided_patch_result_validation(request)
+    return (
+        _response_format_result_validation(request)
+        or _guided_choice_result_validation(request)
+        or _guided_patch_result_validation(request)
+    )
 
 
 def _response_format_json_schema(
@@ -8210,7 +8323,23 @@ def _structured_output_failure_reason(
     response_format_failure = _response_format_failure_reason(request, text, finish_reason)
     if response_format_failure is not None:
         return response_format_failure
+    guided_choice_failure = _guided_choice_failure_reason(request, text, finish_reason)
+    if guided_choice_failure is not None:
+        return guided_choice_failure
     return _guided_patch_failure_reason(request, text, finish_reason)
+
+
+def _guided_choice_failure_reason(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+    finish_reason: str,
+) -> str | None:
+    if not _guided_choice_result_validation(request):
+        return None
+    if str(finish_reason).strip().lower() == "length":
+        return None
+    choices = _guided_choice_values(getattr(request, "guided_choice", ()), validate=False)
+    return None if str(text).strip() in choices else "schema_violation"
 
 
 def _guided_patch_failure_reason(

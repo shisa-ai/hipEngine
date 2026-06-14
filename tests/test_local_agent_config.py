@@ -67,6 +67,7 @@ def _capabilities(**overrides):
                 "response_format": True,
                 "json_object": True,
                 "json_schema": True,
+                "guided_choice": True,
                 "strict_decoding": False,
                 "strict_result_validation": True,
             },
