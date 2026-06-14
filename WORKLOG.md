@@ -89341,3 +89341,17 @@ short/mid c=1 gates. 4K prefill is slightly higher, 512 prefill and decode are
 slightly lower, and tracked memory is unchanged. Treat as diagnostic/no-promote
 single runs; the retained README rows still use repeated 128-token decode sweeps
 and correctness gates.
+
+## 2026-06-14 - AGENTIC chat length golden traces
+
+Added deterministic golden harness traces for chat length exhaustion in
+reasoning and partial tool-call phases. The traces lock down honest
+`finish_details.phase`, `continuation_eligible=false`, visible message shape,
+and raw tool-markup suppression for a required-tool partial call, complementing
+the existing completion length trace and lower-level server phase tests.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `22 passed`.
+- `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `26 passed`.

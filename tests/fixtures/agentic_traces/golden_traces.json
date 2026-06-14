@@ -533,6 +533,69 @@
       }
     },
     {
+      "name": "length_finish_chat_reasoning_phase",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {"text": "<think>scratch", "finish_details": {"reason": "length", "length_limit": 5}}
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "think briefly"}],
+        "max_tokens": 5
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "length",
+        "message_content": "",
+        "reasoning_content": "scratch",
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 5,
+          "cache_action": "append_none",
+          "phase": "reasoning",
+          "continuation_eligible": false
+        }
+      }
+    },
+    {
+      "name": "length_finish_chat_partial_tool_call",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {"text": "<tool_call>{\"name\":\"read\"", "finish_details": {"reason": "length", "length_limit": 6}}
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "read the readme"}],
+        "tool_choice": "required",
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "length",
+        "message_content": "",
+        "no_tool_calls": true,
+        "finish_details": {
+          "reason": "invalid_tool_call",
+          "length_limit": 6,
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "continuation_eligible": false
+        },
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
       "name": "deadline_error_completion",
       "kind": "http",
       "endpoint": "/v1/completions",
