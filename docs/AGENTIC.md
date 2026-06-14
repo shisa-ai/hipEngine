@@ -1632,6 +1632,8 @@ Current code reality:
   for compatibility and add `error.hipengine` with the canonical AGENTIC
   taxonomy code, HTTP status, retryability, and `legacy_code` when the public
   code still uses an older name.
+- Request-body validation errors populate OpenAI-style `error.param` with the
+  first FastAPI/Pydantic field path when available.
 - `/v1/hipengine/capabilities` advertises
   `errors.schema="hipengine.error_taxonomy.v1"`, canonical code metadata, and
   legacy aliases. Currently emitted canonical codes include

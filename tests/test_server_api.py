@@ -3629,6 +3629,7 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     )
     assert schema_violation.status_code == 422
     assert schema_violation.json()["error"]["code"] == "validation_error"
+    assert schema_violation.json()["error"]["param"] == "prompt"
     assert schema_violation.json()["error"]["hipengine"] == {
         "code": "schema_violation",
         "status_code": 422,

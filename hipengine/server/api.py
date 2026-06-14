@@ -1580,17 +1580,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         exc: RequestValidationError,
     ) -> JSONResponse:
         message = _format_validation_error(exc)
+        param = _validation_error_param(exc)
         _log_request_failure(
             request,
             status_code=422,
             code="validation_error",
-            param=None,
+            param=param,
             message=message,
         )
         error_payload = _error_payload(
             message=message,
             error_type="invalid_request_error",
-            param=None,
+            param=param,
             code="validation_error",
             status_code=422,
         )
@@ -5884,6 +5885,21 @@ def _format_validation_error(exc: RequestValidationError) -> str:
     if not errors:
         return "invalid request"
     first = errors[0]
-    loc = ".".join(str(item) for item in first.get("loc", ()) if item != "body")
+    loc = _validation_error_location(first.get("loc", ()))
     msg = str(first.get("msg", "invalid value"))
     return f"{loc}: {msg}" if loc else msg
+
+
+def _validation_error_param(exc: RequestValidationError) -> str | None:
+    for error in exc.errors():
+        loc = _validation_error_location(error.get("loc", ()))
+        if loc:
+            return loc
+    return None
+
+
+def _validation_error_location(value: Any) -> str | None:
+    if not isinstance(value, (list, tuple)):
+        return None
+    parts = [str(item) for item in value if item != "body"]
+    return ".".join(parts) or None

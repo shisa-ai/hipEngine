@@ -366,6 +366,9 @@ All JSON error responses use OpenAI-style `{"error": ...}` payloads with
 contains the canonical AGENTIC code, HTTP status, retryability, and
 `legacy_code` when the OpenAI-facing `error.code` is kept for compatibility.
 Streaming failures use the same error object inside the final SSE error chunk.
+Request-body validation failures set `error.param` to the first field path
+reported by FastAPI/Pydantic when available, for example `prompt` or
+`messages.0.content`.
 
 Clients should handle these canonical codes from `error.hipengine.code` on
 error payloads. The same manifest also advertises `invalid_tool_call` because

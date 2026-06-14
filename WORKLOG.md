@@ -88084,3 +88084,17 @@ Validation:
 - `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/golden_traces.pretty`.
 - `python3 -m py_compile tests/test_agentic_harness_traces.py`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `13 passed`.
+
+## 2026-06-14 - AGENTIC validation-error param paths
+
+Filled a P5.4 error-taxonomy gap by populating OpenAI-style `error.param` for
+FastAPI/Pydantic request-body validation failures. The handler now derives the
+first available field path from the validation location, so schema errors such
+as missing completion `prompt` return the canonical `schema_violation`
+`error.hipengine.code` plus `error.param="prompt"` instead of forcing clients to
+parse the human-readable message.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `2 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
