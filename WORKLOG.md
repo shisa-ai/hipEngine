@@ -88950,3 +88950,19 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `37 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC strict-tool golden traces
+
+Expanded `tests/fixtures/agentic_traces/golden_traces.json` with deterministic
+harness-visible strict tool failure cases for missing required tool calls, wrong
+specific function selection, `tool_choice="none"` violations, and multiple tool
+calls without `parallel_tool_calls=true`. The AGENTIC trace inventory now names
+these cases alongside the existing malformed-tool and schema-validation traces.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/agentic-traces.jsoncheck`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `20 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `21 passed`.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json tests/test_agentic_harness_traces.py docs/AGENTIC.md WORKLOG.md` -> clean.

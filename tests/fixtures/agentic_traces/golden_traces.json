@@ -150,6 +150,144 @@
       }
     },
     {
+      "name": "required_tool_missing_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["ordinary answer"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read strictly."}],
+        "tool_choice": "required",
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {
+          "reason": "tool_required_not_satisfied",
+          "cache_action": "append_none"
+        },
+        "message_content": "",
+        "no_tool_calls": true,
+        "response_excludes": ["ordinary answer"]
+      }
+    },
+    {
+      "name": "specific_tool_wrong_function_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>{\"name\":\"write\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read strictly."}],
+        "tool_choice": {"type": "function", "function": {"name": "read"}},
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          },
+          {
+            "type": "function",
+            "function": {
+              "name": "write",
+              "description": "Write a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "message_content": "",
+        "no_tool_calls": true,
+        "response_excludes": ["<tool_call>", "write"]
+      }
+    },
+    {
+      "name": "tool_choice_none_rejects_tool_call_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Answer without tools."}],
+        "tool_choice": "none",
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "message_content": "",
+        "no_tool_calls": true,
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
+      "name": "parallel_tool_calls_without_opt_in_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"WORKLOG.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read two files."}],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "strict": true,
+              "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": false
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
+        "message_content": "",
+        "no_tool_calls": true,
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
       "name": "tool_call_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
