@@ -111,7 +111,6 @@ def _capabilities(**overrides):
             },
         },
         "unsupported_fields": [
-            "continuation_id",
             "session.id",
         ],
     }

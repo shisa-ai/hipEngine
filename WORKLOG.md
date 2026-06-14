@@ -88628,3 +88628,23 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC deterministic continuation handles
+
+Implemented the first server-managed continuation handle slice for deterministic
+buffered length stops. Completion and chat choices can now return single-use
+15-minute `continuation_id` handles for eligible answer/structured length
+finishes. Resume requests can omit the original prompt/messages, chat resumes
+inherit stored `response_format`, invalid/reused/expired handles return stable
+errors, and capabilities/docs explicitly report `resident_state_reuse=false`
+because this slice re-prefills stored rendered prompt plus prior output rather
+than reusing resident KV state. Streaming, logprobs, `n != 1`, completion
+`echo`, sampled/logit-processor paths, chat tools, and thinking-budget controls
+remain unsupported for resume.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -126,6 +127,26 @@ class FakeLLM:
         return " ".join(f"T{int(token)}" for token in token_ids)
 
 
+class SequentialFakeLLM(FakeLLM):
+    def __init__(self, outputs: list[str | GenerationOutput]) -> None:
+        super().__init__()
+        self.sequence = list(outputs)
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        prompts = tuple(prompts)
+        self.calls.append((prompts, sampling_params))
+        outputs: list[GenerationOutput] = []
+        for _prompt in prompts:
+            if not self.sequence:
+                raise AssertionError("no fake generation output left")
+            output = self.sequence.pop(0)
+            if isinstance(output, GenerationOutput):
+                outputs.append(output)
+            else:
+                outputs.append(GenerationOutput(text=str(output)))
+        return outputs
+
+
 class DetailedGenerateFakeLLM(FakeLLM):
     def generate(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         return self.generate_detailed(prompts, sampling_params)
@@ -210,6 +231,20 @@ def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
 
 def _stateless_finish_details(reason: str, **extra: Any) -> dict[str, Any]:
     return {"reason": reason, **extra, "cache_action": "append_none"}
+
+
+def _continuation_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "stateful": False,
+        "resident_state_reuse": False,
+        "single_use": True,
+        "ttl_seconds": 900,
+        "supported_endpoints": ["completions", "chat_completions"],
+        "supported_finishes": ["length"],
+        "supported_streaming": False,
+        "supported_sampling": "deterministic_buffered_only",
+    }
 
 
 def test_coerce_generation_output_preserves_telemetry() -> None:
@@ -449,6 +484,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "unsupported_parameter",
         "invalid_tool_call",
         "schema_violation",
+        "invalid_continuation",
+        "continuation_expired",
         "context_overflow",
         "deadline_exceeded",
         "cancelled",
@@ -554,12 +591,13 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
                 "append_prompt_only",
             ],
         },
-        "continuations": False,
+        "continuations": _continuation_capability(),
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
     assert "timeout_ms" not in body["unsupported_fields"]
     assert "parallel_tool_calls" not in body["unsupported_fields"]
     assert "response_format" not in body["unsupported_fields"]
+    assert "continuation_id" not in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -1193,7 +1231,7 @@ def test_completions_preserve_structured_finish_details() -> None:
 
     response = client.post(
         "/v1/completions",
-        json={"model": "fake-model", "prompt": ["one", "two"], "max_tokens": 2},
+        json={"model": "fake-model", "prompt": ["one", "two"], "max_tokens": 2, "logit_bias": {"12": -1.0}},
     )
 
     assert response.status_code == 200
@@ -1208,7 +1246,121 @@ def test_completions_preserve_structured_finish_details() -> None:
         "length",
         length_limit=2,
         budget_pressure="answer_budget",
+        continuation_eligible=False,
     )
+
+
+def test_completion_continuation_resumes_buffered_length_finish_once() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="alpha",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" beta", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "Say: ", "max_tokens": 1, "temperature": 0.0},
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert continuation_id.startswith("gen_")
+    assert first_choice["text"] == "alpha"
+    assert first_choice["finish_reason"] == "length"
+    assert first_choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=1,
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+    second = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["text"] == "alpha beta"
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["finish_details"] == _stateless_finish_details("eos", eos_token_id=151645)
+    assert fake.calls[0][0] == ("Say: ",)
+    assert fake.calls[1][0] == ("Say: alpha",)
+
+    reused = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 1},
+    )
+
+    assert reused.status_code == 400
+    assert reused.json()["error"]["code"] == "invalid_continuation"
+    assert len(fake.calls) == 2
+
+
+def test_completion_length_finish_marks_sampled_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="sampled partial",
+                finish_details=FinishDetails(reason="length", length_limit=2),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "sample", "max_tokens": 2, "temperature": 0.7},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert "continuation_id" not in choice
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=2,
+        continuation_eligible=False,
+    )
+
+
+def test_completion_continuation_expiration_reports_stable_error() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "start", "max_tokens": 1},
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+    record = app.state.hipengine_continuations[continuation_id]
+    app.state.hipengine_continuations[continuation_id] = replace(record, expires_at=time.time() - 1)
+
+    expired = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 1},
+    )
+
+    assert expired.status_code == 410
+    assert expired.json()["error"]["code"] == "continuation_expired"
+    assert expired.json()["error"]["param"] == "continuation_id"
+    assert len(fake.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -2343,12 +2495,24 @@ def test_chat_completion_length_finish_details_include_phase(
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "length"
-    assert choice["finish_details"] == _stateless_finish_details(
-        "length",
-        length_limit=5,
-        phase=phase,
-        continuation_eligible=False,
-    )
+    if phase in {"answer", "structured"}:
+        continuation_id = choice["continuation_id"]
+        assert continuation_id.startswith("gen_")
+        assert choice["finish_details"] == _stateless_finish_details(
+            "length",
+            length_limit=5,
+            phase=phase,
+            continuation_eligible=True,
+            continuation_id=continuation_id,
+        )
+    else:
+        assert "continuation_id" not in choice
+        assert choice["finish_details"] == _stateless_finish_details(
+            "length",
+            length_limit=5,
+            phase=phase,
+            continuation_eligible=False,
+        )
     assert choice["message"]["content"] == content
     if reasoning_content is None:
         assert "reasoning_content" not in choice["message"]
@@ -2443,14 +2607,65 @@ def test_chat_completion_response_format_length_keeps_partial_json() -> None:
 
     assert response.status_code == 200
     choice = response.json()["choices"][0]
+    continuation_id = choice["continuation_id"]
     assert choice["message"] == {"role": "assistant", "content": '{"ok":'}
     assert choice["finish_reason"] == "length"
     assert choice["finish_details"] == _stateless_finish_details(
         "length",
         length_limit=6,
         phase="structured",
-        continuation_eligible=False,
+        continuation_eligible=True,
+        continuation_id=continuation_id,
     )
+
+
+def test_chat_continuation_resumes_partial_json_and_inherits_response_format() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text='{"ok":',
+                finish_details=FinishDetails(reason="length", length_limit=6),
+            ),
+            GenerationOutput(text="true}", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+            "max_tokens": 6,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert first_choice["message"] == {"role": "assistant", "content": '{"ok":'}
+    assert first_choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=6,
+        phase="structured",
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["message"] == {"role": "assistant", "content": '{"ok":true}'}
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["finish_details"] == _stateless_finish_details("eos", eos_token_id=151645)
+    assert fake.calls[1][0][0].endswith('{"ok":')
 
 
 def test_streaming_chat_completion_response_format_buffers_validation() -> None:
@@ -3965,7 +4180,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
                 "append_prompt_only",
             ],
         },
-        "continuations": False,
+        "continuations": _continuation_capability(),
     }
     assert "secret prompt" not in serialized
 
@@ -4449,14 +4664,12 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
         "/v1/completions",
         json={"model": "fake-model", "max_tokens": 1},
     )
-    assert schema_violation.status_code == 422
-    assert schema_violation.json()["error"]["code"] == "validation_error"
+    assert schema_violation.status_code == 400
+    assert schema_violation.json()["error"]["code"] == "invalid_request"
     assert schema_violation.json()["error"]["param"] == "prompt"
     assert schema_violation.json()["error"]["hipengine"] == {
-        "code": "schema_violation",
-        "status_code": 422,
-        "legacy_code": "validation_error",
-        "retryable": False,
+        "code": "invalid_request",
+        "status_code": 400,
     }
 
     unsupported_chat_top_logprobs = client.post(
@@ -4495,15 +4708,6 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
             {
                 "model": "fake-model",
                 "messages": [{"role": "user", "content": "hello"}],
-                "continuation_id": "gen_123",
-            },
-            "continuation_id",
-        ),
-        (
-            "/v1/chat/completions",
-            {
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "hello"}],
                 "session": {"commit": "append_visible_only"},
             },
             "session.commit",
@@ -4529,6 +4733,22 @@ def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, para
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "unsupported_parameter"
     assert response.json()["error"]["param"] == param
+    assert fake.calls == []
+
+
+def test_server_rejects_unknown_continuation_id_without_generation() -> None:
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": "gen_123"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_continuation"
+    assert response.json()["error"]["param"] == "continuation_id"
     assert fake.calls == []
 
 

@@ -59,6 +59,7 @@ _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
+_CONTINUATION_TTL_SECONDS = 15 * 60
 _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     {
         "invalid_tool_call",
@@ -158,6 +159,18 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "retryable": False,
         "emitted": True,
         "description": "A request, response_format result, or strict tool result schema was violated.",
+    },
+    "invalid_continuation": {
+        "status_code": 400,
+        "retryable": False,
+        "emitted": True,
+        "description": "A continuation_id is unknown, already consumed, or incompatible with this request.",
+    },
+    "continuation_expired": {
+        "status_code": 410,
+        "retryable": False,
+        "emitted": True,
+        "description": "A continuation_id existed but expired before it was resumed.",
     },
     "context_overflow": {
         "status_code": 400,
@@ -731,10 +744,9 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
         "sessions": {
             "resident_context": True,
             "commit_policy": _session_commit_policy_capability(),
-            "continuations": False,
+            "continuations": _session_continuation_capability(),
         },
         "unsupported_fields": [
-            "continuation_id",
             "session.id",
         ],
     }
@@ -754,6 +766,20 @@ def _session_commit_policy_capability() -> dict[str, Any]:
     }
 
 
+def _session_continuation_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "stateful": False,
+        "resident_state_reuse": False,
+        "single_use": True,
+        "ttl_seconds": _CONTINUATION_TTL_SECONDS,
+        "supported_endpoints": ["completions", "chat_completions"],
+        "supported_finishes": ["length"],
+        "supported_streaming": False,
+        "supported_sampling": "deterministic_buffered_only",
+    }
+
+
 if ConfigDict is not None:
 
     class _OpenAIBaseModel(BaseModel):
@@ -768,7 +794,7 @@ else:  # pragma: no cover - Pydantic v1 compatibility
 
 class CompletionRequest(_OpenAIBaseModel):
     model: str | None = None
-    prompt: str | list[str]
+    prompt: str | list[str] | None = None
     max_tokens: int | None = Field(default=16, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
@@ -808,7 +834,7 @@ class ChatMessage(_OpenAIBaseModel):
 
 class ChatCompletionRequest(_OpenAIBaseModel):
     model: str | None = None
-    messages: list[ChatMessage]
+    messages: list[ChatMessage] = Field(default_factory=list)
     max_tokens: int | None = Field(default=None, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
@@ -1360,6 +1386,24 @@ class _ReadinessState:
     last_startup_checks: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _ContinuationRecord:
+    id: str
+    endpoint: str
+    model_id: str
+    prompts: tuple[str, ...]
+    generated_texts: tuple[str, ...]
+    created: float
+    expires_at: float
+    response_format: Any | None = None
+
+    def resume_prompts(self) -> tuple[str, ...]:
+        return tuple(
+            f"{prompt}{generated}"
+            for prompt, generated in zip(self.prompts, self.generated_texts, strict=True)
+        )
+
+
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     """Create a FastAPI app for OpenAI-compatible local inference.
 
@@ -1395,6 +1439,95 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     if config.debug:
         app.add_middleware(_DebugPayloadMiddleware)
     session_lock = asyncio.Lock()
+    continuation_lock = asyncio.Lock()
+    continuations: dict[str, _ContinuationRecord] = {}
+    app.state.hipengine_continuations = continuations
+    app.state.hipengine_continuation_ttl_seconds = _CONTINUATION_TTL_SECONDS
+
+    def cleanup_expired_continuations(now: float | None = None) -> None:
+        current = time.time() if now is None else float(now)
+        expired = [
+            continuation_id
+            for continuation_id, record in continuations.items()
+            if record.expires_at <= current
+        ]
+        for continuation_id in expired:
+            continuations.pop(continuation_id, None)
+
+    async def pop_continuation(
+        request: CompletionRequest | ChatCompletionRequest,
+        *,
+        endpoint: str,
+    ) -> _ContinuationRecord | None:
+        raw_id = getattr(request, "continuation_id", None)
+        if raw_id is None:
+            return None
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise OpenAIHTTPError(
+                400,
+                "continuation_id must be a non-empty string",
+                code="invalid_request",
+                param="continuation_id",
+            )
+        continuation_id = raw_id.strip()
+        async with continuation_lock:
+            record = continuations.get(continuation_id)
+            if record is None:
+                cleanup_expired_continuations()
+                raise OpenAIHTTPError(
+                    400,
+                    "continuation_id is invalid or has already been consumed",
+                    code="invalid_continuation",
+                    param="continuation_id",
+                )
+            if record.expires_at <= time.time():
+                continuations.pop(continuation_id, None)
+                cleanup_expired_continuations()
+                raise OpenAIHTTPError(
+                    410,
+                    "continuation_id has expired",
+                    code="continuation_expired",
+                    param="continuation_id",
+                )
+            if record.endpoint != endpoint:
+                raise OpenAIHTTPError(
+                    400,
+                    f"continuation_id was created for {record.endpoint}, not {endpoint}",
+                    code="invalid_continuation",
+                    param="continuation_id",
+                )
+            if record.model_id != config.model_id:
+                raise OpenAIHTTPError(
+                    400,
+                    "continuation_id is scoped to a different served model",
+                    code="invalid_continuation",
+                    param="continuation_id",
+                )
+            cleanup_expired_continuations()
+            return continuations.pop(continuation_id)
+
+    async def store_continuation(
+        *,
+        endpoint: str,
+        prompts: Sequence[str],
+        generated_texts: Sequence[str],
+        response_format: Any | None,
+    ) -> _ContinuationRecord:
+        now = time.time()
+        record = _ContinuationRecord(
+            id=f"gen_{uuid.uuid4().hex}",
+            endpoint=endpoint,
+            model_id=config.model_id,
+            prompts=tuple(str(prompt) for prompt in prompts),
+            generated_texts=tuple(str(text) for text in generated_texts),
+            created=now,
+            expires_at=now + _CONTINUATION_TTL_SECONDS,
+            response_format=response_format,
+        )
+        async with continuation_lock:
+            cleanup_expired_continuations(now)
+            continuations[record.id] = record
+        return record
 
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
@@ -1785,6 +1918,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         cancellation_token: GenerationCancellationToken | None = None,
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
+        uses_stored_chat_prompt = isinstance(request, ChatCompletionRequest) and request.continuation_id is not None
         thinking_budget = (
             _thinking_budget_sampling_kwargs(
                 config,
@@ -1792,17 +1926,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 engine=engine,
                 max_context_tokens=effective_max_context_tokens(engine),
             )
-            if isinstance(request, ChatCompletionRequest)
+            if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else {}
         )
         no_tool_suppress_token_ids = (
             _no_tool_sampling_suppress_token_ids(request, engine)
-            if isinstance(request, ChatCompletionRequest)
+            if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else ()
         )
         forced_tool_token_ids = (
             _required_tool_sampling_forced_token_ids(request, engine)
-            if isinstance(request, ChatCompletionRequest)
+            if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else ()
         )
         force_sequence_completion_token_sequences = (
@@ -2492,7 +2626,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "sessions": {
                 "resident_context": True,
                 "commit_policy": _session_commit_policy_capability(),
-                "continuations": False,
+                "continuations": _session_continuation_capability(),
             },
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
@@ -2500,7 +2634,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "errors": _error_taxonomy_manifest(),
             "unsupported_fields": [
-                "continuation_id",
                 "session.id",
             ],
         }
@@ -2610,7 +2743,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
         _validate_generation_request(config, request)
-        prompts = _normalize_prompts(request.prompt)
+        _validate_continuation_resume_request(request)
+        continuation = await pop_continuation(request, endpoint="completion")
+        _apply_continuation_defaults(request, continuation)
+        prompts = continuation.resume_prompts() if continuation is not None else _normalize_prompts(request.prompt)
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
         control = _request_control(config, request, raw_request)
@@ -2632,6 +2768,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         final_texts: list[str] = []
         cache_action = _session_cache_action(request)
         for index, (prompt, output, detail) in enumerate(zip(expanded_prompts, batch.outputs, batch.details, strict=True)):
+            previous_text = "" if continuation is None else continuation.generated_texts[index]
+            output = f"{previous_text}{output}"
             generated_text, finish_reason = _apply_stop(output, request.stop)
             server_stop = generated_text != output
             finish_reason = _finish_reason_for_output(detail, finish_reason, server_stop=server_stop)
@@ -2657,6 +2795,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     cache_action=cache_action,
                 ),
             }
+            _mark_continuation_unavailable(choice["finish_details"])
+            if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
+                base_prompt = prompt if continuation is None else continuation.prompts[index]
+                record = await store_continuation(
+                    endpoint="completion",
+                    prompts=(base_prompt,),
+                    generated_texts=(generated_text,),
+                    response_format=request.response_format,
+                )
+                _attach_continuation_metadata(choice, continuation_id=record.id)
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, index // n, index % n)
             choices.append(choice)
@@ -2700,12 +2848,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
         _validate_generation_request(config, request)
+        _validate_continuation_resume_request(request)
+        continuation = await pop_continuation(request, endpoint="chat")
+        _apply_continuation_defaults(request, continuation)
         control = _request_control(config, request, raw_request)
 
         async def prepare_prompt() -> str:
             async with session_lock:
                 engine = get_llm()
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                if continuation is not None:
+                    return continuation.resume_prompts()[0]
+                if not request.messages:
+                    raise OpenAIHTTPError(
+                        400,
+                        "messages must not be empty",
+                        code="invalid_request",
+                        param="messages",
+                    )
                 return chat_prompt_for_request(request, engine)
 
         prompt = await _await_with_request_control(prepare_prompt(), control)
@@ -2729,6 +2889,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         choices = []
         cache_action = _session_cache_action(request)
         for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
+            previous_text = "" if continuation is None else continuation.generated_texts[index]
+            output = f"{previous_text}{output}"
             text, finish_reason = _apply_stop(output, request.stop)
             server_stop = text != output
             parsed = _parse_chat_tool_calls(text)
@@ -2782,6 +2944,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             }
             if request.logprobs:
                 choice["logprobs"] = _chat_logprobs(detail, text)
+            _mark_continuation_unavailable(choice["finish_details"])
+            if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
+                base_prompt = prompt if continuation is None else continuation.prompts[index]
+                record = await store_continuation(
+                    endpoint="chat",
+                    prompts=(base_prompt,),
+                    generated_texts=(text,),
+                    response_format=request.response_format,
+                )
+                _attach_continuation_metadata(choice, continuation_id=record.id)
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, 0, index)
             choices.append(choice)
@@ -5030,7 +5202,9 @@ def _tool_call_close_repair_token_sequences(
     return (tuple(int(token_id) for token_id in token_ids),)
 
 
-def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:
+def _normalize_prompts(prompt: str | list[str] | None) -> tuple[str, ...]:
+    if prompt is None:
+        raise OpenAIHTTPError(400, "prompt is required", code="invalid_request", param="prompt")
     if isinstance(prompt, str):
         return (prompt,)
     if not prompt:
@@ -5046,8 +5220,6 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
 
 
 def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
-    if getattr(request, "continuation_id", None) is not None:
-        return "continuation_id"
     session = getattr(request, "session", None)
     if session is not None:
         if isinstance(session, Mapping):
@@ -5059,6 +5231,160 @@ def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompleti
                 return "session.commit"
         return "session"
     return None
+
+
+def _validate_continuation_resume_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+    if getattr(request, "continuation_id", None) is None:
+        return
+    unsupported_param = _continuation_resume_unsupported_param(request)
+    if unsupported_param is not None:
+        raise OpenAIHTTPError(
+            400,
+            f"continuation_id resume does not support {unsupported_param} yet",
+            code="unsupported_parameter",
+            param=unsupported_param,
+        )
+    if request.stream:
+        raise OpenAIHTTPError(
+            400,
+            "continuation_id resume does not support stream=true yet",
+            code="unsupported_parameter",
+            param="stream",
+        )
+    if _request_n(request) != 1:
+        raise OpenAIHTTPError(
+            400,
+            "continuation_id resume requires n=1",
+            code="unsupported_parameter",
+            param="n",
+        )
+    if _request_logprobs_enabled(request):
+        raise OpenAIHTTPError(
+            400,
+            "continuation_id resume does not support logprobs yet",
+            code="unsupported_parameter",
+            param="logprobs",
+        )
+    if isinstance(request, CompletionRequest) and request.echo:
+        raise OpenAIHTTPError(
+            400,
+            "continuation_id resume does not support echo=true",
+            code="unsupported_parameter",
+            param="echo",
+        )
+
+
+def _continuation_resume_unsupported_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    if request.temperature not in (None, 0, 0.0):
+        return "temperature"
+    if request.logit_bias:
+        return "logit_bias"
+    if request.suppress_token_ids:
+        return "suppress_token_ids"
+    if int(request.min_tokens or 0) != 0:
+        return "min_tokens"
+    if float(request.repetition_penalty or 1.0) != 1.0:
+        return "repetition_penalty"
+    if float(request.presence_penalty or 0.0) != 0.0:
+        return "presence_penalty"
+    if float(request.frequency_penalty or 0.0) != 0.0:
+        return "frequency_penalty"
+    if isinstance(request, ChatCompletionRequest):
+        if request.tools:
+            return "tools"
+        if request.tool_choice is not None:
+            return "tool_choice"
+        if request.parallel_tool_calls is not None:
+            return "parallel_tool_calls"
+        if _thinking_budget_sampling_kwargs_present(request):
+            return "thinking"
+    return None
+
+
+def _continuation_can_create(
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    finish_reason: str,
+    finish_details: Mapping[str, Any],
+) -> bool:
+    if not _is_length_finish(finish_reason, finish_details):
+        return False
+    if request.stream or _request_n(request) < 1 or _request_logprobs_enabled(request):
+        return False
+    if isinstance(request, CompletionRequest) and request.echo:
+        return False
+    if isinstance(request, ChatCompletionRequest):
+        phase = str(finish_details.get("phase") or "")
+        if phase and phase not in {"answer", "structured"}:
+            return False
+        if request.tools or request.tool_choice is not None or request.parallel_tool_calls is not None:
+            return False
+        if _thinking_budget_sampling_kwargs_present(request):
+            return False
+    return _continuation_sampling_is_deterministic(request)
+
+
+def _thinking_budget_sampling_kwargs_present(request: ChatCompletionRequest) -> bool:
+    return any(
+        value is not None
+        for value in (
+            request.max_think_tokens,
+            request.min_answer_tokens,
+            request.hard_think_cap,
+            request.soft_close_window,
+            request.hard_close_message,
+            request.hard_close_sequence,
+            request.thinking_token_budget,
+            request.chat_template_kwargs,
+            request.thinking,
+            request.reasoning,
+        )
+    )
+
+
+def _continuation_sampling_is_deterministic(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    if request.temperature not in (None, 0, 0.0):
+        return False
+    if request.logit_bias:
+        return False
+    if request.suppress_token_ids:
+        return False
+    if int(request.min_tokens or 0) != 0:
+        return False
+    if float(request.repetition_penalty or 1.0) != 1.0:
+        return False
+    if float(request.presence_penalty or 0.0) != 0.0:
+        return False
+    if float(request.frequency_penalty or 0.0) != 0.0:
+        return False
+    return True
+
+
+def _mark_continuation_unavailable(finish_details: dict[str, Any]) -> None:
+    if _is_length_finish(str(finish_details.get("reason", "")), finish_details):
+        finish_details.setdefault("continuation_eligible", False)
+
+
+def _attach_continuation_metadata(
+    choice: dict[str, Any],
+    *,
+    continuation_id: str,
+) -> None:
+    choice["continuation_id"] = continuation_id
+    details = choice.setdefault("finish_details", {})
+    if isinstance(details, dict):
+        details["continuation_eligible"] = True
+        details["continuation_id"] = continuation_id
+
+
+def _apply_continuation_defaults(
+    request: CompletionRequest | ChatCompletionRequest,
+    record: _ContinuationRecord | None,
+) -> None:
+    if record is None:
+        return
+    if getattr(request, "response_format", None) is None and record.response_format is not None:
+        request.response_format = record.response_format
 
 
 def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) -> str | None:

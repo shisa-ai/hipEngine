@@ -179,7 +179,7 @@ always contains `reason` and may include `eos_token_id`, `stop_sequence`,
 `length_limit`, `deadline_exceeded`, `cancelled`, `forced_close`,
 `synthetic_tokens`, `reasoning_tokens`, `answer_tokens`, `tool_call_tokens`,
 `structured_tokens`, `budget_pressure`, `cache_action`, `sampler_mode`, `phase`,
-and `continuation_eligible`.
+`continuation_eligible`, and `continuation_id`.
 
 `finish_reason` remains the coarse OpenAI value for compatibility. For example,
 backend `reason: "eos"` is exposed as `finish_reason: "stop"` with
@@ -194,8 +194,11 @@ best-effort server post-parse `phase: "tool_call"` plus `reasoning_tokens`,
 
 For chat length stops, the server adds best-effort post-parse metadata:
 `phase` is one of `reasoning`, `closing_think`, `tool_call`, `structured`, or
-`answer`; `continuation_eligible` is currently `false` because continuation
-handles are not implemented.
+`answer`. Deterministic buffered length stops in normal answer text or partial
+structured output can return a single-use `continuation_id` with
+`continuation_eligible: true`; reasoning, closing-think, tool-call, streaming,
+logprob, sampled, and active tool/thinking-budget paths report
+`continuation_eligible: false`.
 
 PARO/GGUF detailed generation reports backend finish details for EOS, token
 stops, stop sequences, length limits, sampler mode, and host-sampled thinking
@@ -205,6 +208,29 @@ counts, and the current budget phase.
 
 When a backend does not yet provide structured finish metadata, the server emits
 the conservative fallback `{"reason": finish_reason}`.
+
+### Continuation handles
+
+For deterministic buffered `/v1/completions` and `/v1/chat/completions`
+requests that end by generation length, the server may return a top-level
+`choices[].continuation_id` and mirror it in
+`choices[].finish_details.continuation_id`. Handles are app-local, single-use,
+scoped to the served model and endpoint, expire after 15 minutes, and are
+cleared on server restart.
+
+Resume by sending the returned `continuation_id` to the same endpoint. The
+original `prompt` or `messages` can be omitted on resume; chat resumes also
+inherit the stored `response_format` when the follow-up request omits it. This
+first implementation re-prefills the stored rendered prompt plus prior generated
+text instead of reusing resident KV state, and the capabilities manifest reports
+`sessions.continuations.resident_state_reuse: false`.
+
+Unsupported resume combinations fail before generation: `stream=true`,
+`n != 1`, logprobs, completion `echo=true`, non-deterministic sampling/logit
+processors, chat tools, `parallel_tool_calls`, and thinking-budget controls.
+Unknown or already consumed handles return HTTP 400
+`error.code="invalid_continuation"`; expired handles return HTTP 410
+`error.code="continuation_expired"`.
 
 ### Request deadlines and cancellation
 
@@ -399,10 +425,12 @@ generation work starts. Stateless requests without a `session` object default
 to no generated-tail retention, and `session.commit="append_none"` is accepted
 as an explicit no-retain marker. Final choice metadata reports
 `finish_details.cache_action="append_none"` for both forms.
-`continuation_id`, stateful `session.id`, unsupported `session.commit` modes,
-and other `session` payloads return HTTP 400 with
+Stateful `session.id`, unsupported `session.commit` modes, and other `session`
+payloads return HTTP 400 with
 `error.code: "unsupported_parameter"` and `error.param` set to the rejected
-field.
+field. `continuation_id` is intentionally kept in the example config's
+`do_not_send` list so local agents do not invent handles; a handle returned by
+the server can be sent back on the supported resume path described above.
 
 Validate the config against a running server with:
 

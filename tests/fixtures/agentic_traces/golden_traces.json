@@ -379,13 +379,19 @@
       "request": {
         "model": "fake-model",
         "prompt": "cut short",
-        "max_tokens": 1
+        "max_tokens": 1,
+        "logit_bias": {"12": -1}
       },
       "expected": {
         "status_code": 200,
         "finish_reason": "length",
         "text": "partial",
-        "finish_details": {"reason": "length", "length_limit": 1, "cache_action": "append_none"}
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 1,
+          "cache_action": "append_none",
+          "continuation_eligible": false
+        }
       }
     },
     {
@@ -408,19 +414,18 @@
       }
     },
     {
-      "name": "unsupported_continuation_id_chat",
+      "name": "invalid_continuation_id_chat",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
       "request": {
         "model": "fake-model",
-        "messages": [{"role": "user", "content": "Continue previous work."}],
         "continuation_id": "gen_123"
       },
       "expected": {
         "status_code": 400,
-        "error_code": "unsupported_parameter",
+        "error_code": "invalid_continuation",
         "error_param": "continuation_id",
-        "hipengine_error_code": "unsupported_parameter"
+        "hipengine_error_code": "invalid_continuation"
       }
     },
     {

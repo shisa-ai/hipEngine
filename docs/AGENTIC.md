@@ -124,8 +124,10 @@ Known baseline limitations:
 - Resident session reuse needs an explicit commit policy before hidden reasoning
   or failed/truncated tool-call attempts can safely be retained across turns.
 - Public agent/runtime capability discovery is exposed through
-  `/v1/hipengine/capabilities`, but continuation/session commit support is still
-  not implemented.
+  `/v1/hipengine/capabilities`. Limited deterministic buffered continuation
+  handles exist, but they re-prefill stored rendered prompt plus generated text;
+  stateful session commit and resident KV continuation reuse are still future
+  work.
 - Server startup supports one loaded model at a time; routing, multiple resident
   models, tensor parallelism, and model-family fallback are not yet designed.
 
@@ -275,7 +277,10 @@ Current code reality:
   `tool_calls`.
 - Chat length stops get best-effort post-parse `finish_details.phase` metadata
   (`reasoning`, `closing_think`, `tool_call`, `structured`, or `answer`) plus
-  explicit `continuation_eligible=false` until continuation handles exist.
+  deterministic buffered continuation handles for normal answer and partial
+  structured-output phases. Ineligible length stops, including reasoning,
+  closing-think, tool-call, streaming, logprob, sampled, tool, and active
+  thinking-budget paths, carry `continuation_eligible=false`.
 - Parsed chat tool-call finishes get best-effort server post-parse
   `finish_details.phase="tool_call"` plus `reasoning_tokens`, `answer_tokens`,
   and `tool_call_tokens` when the served engine exposes token counting. This is
@@ -1198,10 +1203,12 @@ Implement:
 Current code reality:
 
 - chat length stops are classified post-generation into `reasoning`,
-  `closing_think`, `tool_call`, `structured`, or `answer`, and the response
-  includes `continuation_eligible=false`;
-- no synthetic text is appended; true continuation handles and decode-loop phase
-  accounting remain P1.6 / DecodeState work.
+  `closing_think`, `tool_call`, `structured`, or `answer`;
+- deterministic buffered answer/structured length stops return single-use
+  15-minute continuation handles; ineligible length stops explicitly report
+  `continuation_eligible=false`;
+- no synthetic text is appended; decode-loop phase accounting remains
+  DecodeState work.
 
 Exit gates:
 
@@ -1224,6 +1231,22 @@ Implement:
 - expiration and cancellation cleanup. Default TTL: 15 minutes or server
   shutdown, whichever comes first. Handles are scoped to model id, tokenizer id,
   auth principal/API key, and session id.
+
+Current code reality:
+
+- app-local continuation handles are implemented for deterministic buffered
+  `/v1/completions` and `/v1/chat/completions` length stops;
+- handles are scoped to the served model and endpoint, single-use, expire after
+  15 minutes, and return stable `invalid_continuation` /
+  `continuation_expired` errors;
+- resume requests can omit the original completion prompt or chat messages, and
+  chat resumes inherit stored `response_format` when the follow-up omits it;
+- the implementation re-prefills the stored rendered prompt plus prior generated
+  text and reports `resident_state_reuse=false`; it does not yet preserve
+  decode state, tokenizer id, auth principal, RNG state, or resident KV;
+- streaming, logprobs, completion `echo`, `n != 1`, non-deterministic
+  sampling/logit processors, chat tools, and thinking-budget controls are
+  rejected on resume and are not eligible for new handles.
 
 Exit gates:
 
@@ -1671,7 +1694,10 @@ Current code reality:
   request-timeout/client-disconnect support, cache/session settings,
   loaded-model count, and
   unsupported fields.
-- Continuations, stateful `session.id`, stateful `session.commit` modes,
+- Continuations are advertised as supported with `stateful=false`,
+  `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,
+  deterministic-buffered sampling scope, length-only finishes, and no streaming
+  support. Stateful `session.id`, stateful `session.commit` modes,
   multi-model routing, and strict tool decoding are advertised as unsupported
   until their runtime paths exist. Stateless `session.commit="append_none"` is
   advertised as the only supported session policy. Request timeouts and
@@ -1679,9 +1705,11 @@ Current code reality:
   backend deadline/cancel checks and `preemptive_decode_cancel=false`; token
   diagnostics are advertised from current tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
-  `continuation_id`, stateful `session.id`, unsupported `session.commit` modes,
-  and other `session` payloads return `unsupported_parameter` with `error.param`
-  set to the rejected field.
+  stateful `session.id`, unsupported `session.commit` modes, and other
+  `session` payloads return `unsupported_parameter` with `error.param` set to
+  the rejected field. Unknown, consumed, wrong-endpoint, or wrong-model
+  `continuation_id` values return `invalid_continuation`; expired handles return
+  `continuation_expired`.
 
 Exit gates:
 
