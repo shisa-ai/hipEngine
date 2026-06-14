@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from hipengine.generation import TokenSequenceDFAState, token_sequence_state_for_tokens
+from hipengine.generation import ForcedTokenQueue, TokenSequenceDFAState, token_sequence_state_for_tokens
 
 
 def test_token_sequence_dfa_reports_partial_suffix_candidates() -> None:
@@ -47,3 +47,24 @@ def test_token_sequence_dfa_can_be_advanced_incrementally() -> None:
 def test_token_sequence_dfa_rejects_negative_token_ids() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         TokenSequenceDFAState.from_sequences(((-1,),))
+
+
+def test_forced_token_queue_pops_fifo_and_reports_json_state() -> None:
+    queue = ForcedTokenQueue((4, 5), reason="close_think")
+
+    assert queue.pending_tokens == (4, 5)
+    assert queue.to_json_dict() == {
+        "pending_tokens": [4, 5],
+        "reason": "close_think",
+    }
+    assert queue.peek() == 4
+    assert queue.pop() == 4
+    assert queue.pending_tokens == (5,)
+    queue.extend((6,), reason="grammar")
+    assert queue.pending_tokens == (5, 6)
+    assert queue.to_json_dict()["reason"] == "grammar"
+
+
+def test_forced_token_queue_rejects_negative_token_ids() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        ForcedTokenQueue((-1,))

@@ -8420,6 +8420,8 @@ class Qwen35ParoResidentSession:
         params: Any,
         state: RowSamplingState,
     ) -> Qwen35ParoAutoregressiveStepResult:
+        if state.has_forced_tokens:
+            return self._sample_from_hidden_host(hidden, params, state)
         self._project_logits_device_from_hidden(hidden)
         logits_ptr = self._native_sampler_logits_ptr(params, state)
         library = self._native_sampler_library_handle()

@@ -925,6 +925,20 @@ Exit gates:
 
 #### P1.2 Forced-token queue
 
+Current code reality:
+
+- `hipengine.generation.constraints.ForcedTokenQueue` is a torch-free FIFO queue
+  primitive for model-decoded forced tokens.
+- Host `select_token()` consumes one pending forced token before argmax or
+  sampling, records forced metadata on `SampleResult`, and updates row history
+  so the token still goes through the normal decode/KV path.
+- Pending forced tokens participate in sampler planning as
+  `forced_tokens_pending`, are rejected from the current native GPU sampler
+  route, dynamically fall back to host token selection if they appear while a
+  row is configured for native sampling, and block raw-argmax MTP verification.
+- Queue population from thinking close delimiters, JSON/tool repair, and grammar
+  processors remains future controller work.
+
 Implement:
 
 - per-row forced-token queue integrated before argmax/sampling;

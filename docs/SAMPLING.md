@@ -156,10 +156,11 @@ same processed-logit policy as autoregressive generation.
 `supports_speculative_mtp_sampling()` returns true only for `GREEDY_FAST`
 requests; `speculative_mtp_sampling_blockers()` reports the fields that require
 AR fallback today, including `logit_bias`, penalties, token stops,
-`temperature > 0`, and requested logprobs. The resident scheduler applies this
-guard before emitting speculative target-verification work, so rows that need
-processed logits cannot silently enter the raw-argmax MTP path. The public
-capabilities manifest exposes both the flat blocker field list and
+pending forced-token queues, `temperature > 0`, and requested logprobs. The
+resident scheduler applies this guard before emitting speculative
+target-verification work, so rows that need processed logits cannot silently
+enter the raw-argmax MTP path. The public capabilities manifest exposes both the
+flat blocker field list and
 `sampling.speculative_mtp.incompatible_conditions`, so clients can distinguish
 conditional blockers such as `temperature > 0` from inert greedy filters like
 `top_p`, `top_k`, and `min_p`.

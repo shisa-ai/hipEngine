@@ -970,6 +970,8 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
         row_index=state.row_index,
         generated_tokens=tuple(state.generated_tokens),
         step_index=state.step_index,
+        forced_tokens_pending=state.forced_tokens,
+        forced_token_reason=state.forced_token_reason,
     )
 
 

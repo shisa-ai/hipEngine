@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from hipengine.generation.constraints import ForcedTokenQueue
+
 _LOGIT_BIAS_EMPTY: tuple[tuple[int, float], ...] = ()
 _UINT64_MASK = (1 << 64) - 1
 _SEED_MASK = (1 << 63) - 1
@@ -28,6 +30,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "frequency_penalty",
     "stop_token_ids",
     "stop_token_sequences",
+    "forced_tokens_pending",
     "logprobs",
     "top_logprobs",
 )
@@ -39,6 +42,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "frequency_penalty": "frequency_penalty != 0.0",
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
+    "forced_tokens_pending": "one or more forced tokens pending",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
 }
@@ -76,6 +80,8 @@ class RowSamplingState:
     row_index: int = 0
     generated_tokens: Sequence[int] = ()
     step_index: int = 0
+    forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
+    forced_token_reason: str | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -85,6 +91,15 @@ class RowSamplingState:
         self.request_id = int(self.request_id)
         self.row_index = int(self.row_index)
         self.step_index = int(self.step_index)
+        if isinstance(self.forced_tokens_pending, ForcedTokenQueue):
+            forced = self.forced_tokens_pending
+        else:
+            forced = ForcedTokenQueue(
+                self.forced_tokens_pending,
+                reason=self.forced_token_reason,
+            )
+        self.forced_tokens_pending = forced
+        self.forced_token_reason = forced.reason
         if self.step_index < 0:
             raise ValueError("step_index must be non-negative")
         self._rng = np.random.Generator(np.random.PCG64(self.seed))
@@ -107,6 +122,28 @@ class RowSamplingState:
         self.generated_tokens.append(int(token_id))
         self.step_index += 1
 
+    @property
+    def forced_tokens(self) -> tuple[int, ...]:
+        return self.forced_tokens_pending.pending_tokens
+
+    @property
+    def has_forced_tokens(self) -> bool:
+        return bool(self.forced_tokens_pending)
+
+    def queue_forced_tokens(self, token_ids: Iterable[int], *, reason: str | None = None) -> None:
+        self.forced_tokens_pending.extend(token_ids, reason=reason)
+        if reason is not None:
+            self.forced_token_reason = str(reason)
+
+    def peek_forced_token(self) -> int | None:
+        return self.forced_tokens_pending.peek()
+
+    def pop_forced_token(self) -> int | None:
+        token_id = self.forced_tokens_pending.pop()
+        if not self.forced_tokens_pending:
+            self.forced_token_reason = None
+        return token_id
+
 
 @dataclass(frozen=True, slots=True)
 class SampleResult:
@@ -118,6 +155,9 @@ class SampleResult:
     mode: SamplingMode
     candidate_count: int
     top_logprobs: tuple[tuple[int, float], ...] = ()
+    forced: bool = False
+    forced_reason: str | None = None
+    forced_tokens_remaining: int = 0
 
 
 LogitBiasInput = Mapping[int | str, float] | Iterable[tuple[int | str, float]] | None
@@ -232,6 +272,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("stop_token_ids")
     if normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)):
         names.append("stop_token_sequences")
+    if _forced_tokens_pending(params):
+        names.append("forced_tokens_pending")
     return tuple(names)
 
 
@@ -240,6 +282,15 @@ def _stop_token_ids(params: Any) -> tuple[int, ...]:
     if raw_ids is None:
         raw_ids = getattr(params, "stop_tokens", ())
     return tuple(int(token) for token in raw_ids)
+
+
+def _forced_tokens_pending(params: Any) -> tuple[int, ...]:
+    queue = getattr(params, "forced_tokens_pending", ())
+    if isinstance(queue, ForcedTokenQueue):
+        return queue.pending_tokens
+    if queue is None:
+        return ()
+    return tuple(int(token) for token in queue)
 
 
 def supports_native_gpu_sampling(params: Any) -> bool:
@@ -254,6 +305,8 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     if float(getattr(params, "temperature", 0.0)) <= 0.0:
         return False
     if int(getattr(params, "top_logprobs", 0)) > 0:
+        return False
+    if _forced_tokens_pending(params):
         return False
     top_k = int(getattr(params, "top_k", 0))
     if top_k > _MAX_NATIVE_GPU_TOP_K:
@@ -380,6 +433,28 @@ def select_token(
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
+    forced_token_id = row_state.peek_forced_token()
+    if forced_token_id is not None:
+        token_id = int(forced_token_id)
+        if token_id < 0 or token_id >= source.size:
+            raise ValueError(f"forced token id {token_id} is outside vocab size {source.size}")
+        forced_reason = row_state.forced_token_reason
+        row_state.pop_forced_token()
+        row_state.observe(token_id)
+        logprob, top_logprobs = (None, ())
+        if requested_logprobs and np.isfinite(processed[token_id]):
+            logprob, top_logprobs = _logprob_summary(processed, token_id, requested_top_logprobs)
+        return SampleResult(
+            token_id=token_id,
+            logit=float(processed[token_id]),
+            logprob=logprob,
+            mode=SamplingMode.PROCESSED_ARGMAX if temperature <= 0.0 else SamplingMode.HOST_LOGITS_SAMPLE,
+            candidate_count=int(np.isfinite(processed).sum()),
+            top_logprobs=top_logprobs,
+            forced=True,
+            forced_reason=forced_reason,
+            forced_tokens_remaining=len(row_state.forced_tokens_pending),
+        )
     if temperature <= 0.0:
         token_id = _argmax_lower_id(processed)
         logprob, top_logprobs = _logprob_summary(processed, token_id, requested_top_logprobs) if requested_logprobs else (None, ())
@@ -556,6 +631,7 @@ def _apply_probability_filters(
 
 __all__ = [
     "RowSamplingState",
+    "ForcedTokenQueue",
     "SampleResult",
     "SamplerPlan",
     "SamplingMode",

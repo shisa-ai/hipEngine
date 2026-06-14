@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -72,6 +72,54 @@ class TokenSequenceDFAState:
         }
 
 
+@dataclass(slots=True)
+class ForcedTokenQueue:
+    """Mutable FIFO queue for tokens that must be emitted before sampling."""
+
+    tokens: Iterable[int] = ()
+    reason: str | None = None
+    _pending: list[int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        pending = [int(token) for token in self.tokens]
+        if any(token < 0 for token in pending):
+            raise ValueError("forced tokens must be non-negative token ids")
+        self._pending = pending
+        self.reason = None if self.reason is None else str(self.reason)
+
+    @property
+    def pending_tokens(self) -> tuple[int, ...]:
+        return tuple(self._pending)
+
+    def __bool__(self) -> bool:
+        return bool(self._pending)
+
+    def __len__(self) -> int:
+        return len(self._pending)
+
+    def peek(self) -> int | None:
+        return self._pending[0] if self._pending else None
+
+    def pop(self) -> int | None:
+        if not self._pending:
+            return None
+        return self._pending.pop(0)
+
+    def extend(self, token_ids: Iterable[int], *, reason: str | None = None) -> None:
+        tokens = tuple(int(token) for token in token_ids)
+        if any(token < 0 for token in tokens):
+            raise ValueError("forced tokens must be non-negative token ids")
+        self._pending.extend(tokens)
+        if reason is not None:
+            self.reason = str(reason)
+
+    def to_json_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"pending_tokens": list(self._pending)}
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
+
+
 def normalize_token_sequences(sequences: Iterable[Iterable[int]] | None) -> tuple[tuple[int, ...], ...]:
     if sequences is None:
         return ()
@@ -123,6 +171,7 @@ def _longest_prefix_suffix(
 
 
 __all__ = [
+    "ForcedTokenQueue",
     "TokenSequenceDFAState",
     "normalize_token_sequences",
     "token_sequence_state_for_tokens",

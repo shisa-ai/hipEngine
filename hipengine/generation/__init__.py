@@ -20,6 +20,7 @@ from hipengine.generation.batch_scheduler import (
     SpeculativeVerifyWork,
 )
 from hipengine.generation.constraints import (
+    ForcedTokenQueue,
     TokenSequenceDFAState,
     normalize_token_sequences,
     token_sequence_state_for_tokens,
@@ -102,6 +103,7 @@ __all__ = [
     "EngineLoopEvent",
     "EngineLoopRunner",
     "FinishDetails",
+    "ForcedTokenQueue",
     "GenerationTelemetry",
     "GeneratedToken",
     "GenerationKey",

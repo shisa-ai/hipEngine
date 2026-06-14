@@ -87840,3 +87840,25 @@ Validation:
 - `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/__init__.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_constraints.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
 - `python3 -m pytest tests/test_generation_constraints.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `22 passed`.
 - `python3 -m pytest tests/test_generation_registry.py tests/test_model_quant_and_imports.py -q` -> `12 passed`.
+
+## 2026-06-14 - AGENTIC forced-token queue primitive
+
+Advanced P1.2 by adding `ForcedTokenQueue` and wiring host token selection to
+consume one pending forced token before argmax/sampling. Forced selections now
+update row history, report `SampleResult.forced` / `forced_reason` /
+`forced_tokens_remaining`, and leave invalid forced token ids in the queue.
+Pending forced tokens are treated as an active processor in `plan_sampler()`,
+are rejected from the current native GPU sampler route, and are exposed as a
+raw-argmax MTP blocker in the capabilities manifest. The resident native-sampler
+route now falls back to host token selection for any row with pending forced
+tokens. Queue population from thinking budgets, JSON/tool repair, and grammars
+remains future controller work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_constraints.py tests/test_sampling.py tests/test_server_api.py tests/test_gpu_sampler_kernel.py`.
+- `python3 -m pytest tests/test_generation_constraints.py tests/test_sampling.py tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `30 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `18 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_model_quant_and_imports.py tests/test_agentic_harness_traces.py -q` -> `20 passed`.
+- `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_native_sampler_route_falls_back_to_host_for_forced_tokens -q` -> `1 passed`.
+- `python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `9 passed`.

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from hipengine.generation.sampling import (
+    ForcedTokenQueue,
     RowSamplingState,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
@@ -71,6 +72,13 @@ def test_stop_token_sequences_are_active_processors() -> None:
     assert normalize_stop_token_sequences([[10, 11], [10, 11], []]) == ((10, 11),)
 
 
+def test_forced_tokens_are_active_processors() -> None:
+    plan = plan_sampler(_params(temperature=0.0, forced_tokens_pending=(10, 11)))
+
+    assert plan.mode is SamplingMode.PROCESSED_ARGMAX
+    assert plan.active_processors == ("forced_tokens_pending",)
+
+
 def test_sampler_plan_uses_host_logits_for_non_greedy_without_gpu_sampler() -> None:
     plan = plan_sampler(_params(temperature=0.7, top_p=0.9))
 
@@ -112,7 +120,12 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=65)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_p=0.9)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_logprobs=1)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, forced_tokens_pending=(1,))) is False
     assert plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert (
+        plan_sampler(_params(temperature=0.7, forced_tokens_pending=(1,)), native_gpu_available=True).mode
+        is SamplingMode.HOST_LOGITS_SAMPLE
+    )
 
 
 def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
@@ -132,6 +145,9 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     )
     assert speculative_mtp_sampling_blockers(_params(stop_token_sequences=((10, 11),))) == (
         "stop_token_sequences",
+    )
+    assert speculative_mtp_sampling_blockers(_params(forced_tokens_pending=(10, 11))) == (
+        "forced_tokens_pending",
     )
     assert speculative_mtp_sampling_blockers(
         SimpleNamespace(
@@ -178,6 +194,59 @@ def test_processed_argmax_reports_requested_logprobs() -> None:
     assert result.mode is SamplingMode.PROCESSED_ARGMAX
     assert result.top_logprobs[0][0] == 1
     assert len(result.top_logprobs) == 2
+
+
+def test_forced_token_queue_overrides_argmax_and_updates_history() -> None:
+    state = RowSamplingState(
+        forced_tokens_pending=ForcedTokenQueue((2, 1), reason="close_think"),
+    )
+
+    first = select_token(
+        np.array([1.0, 10.0, 0.5], dtype=np.float32),
+        _params(temperature=0.0),
+        state,
+    )
+    second = select_token(
+        np.array([1.0, 10.0, 0.5], dtype=np.float32),
+        _params(temperature=0.0),
+        state,
+    )
+
+    assert first.token_id == 2
+    assert first.forced is True
+    assert first.forced_reason == "close_think"
+    assert first.forced_tokens_remaining == 1
+    assert second.token_id == 1
+    assert second.forced is True
+    assert second.forced_reason == "close_think"
+    assert second.forced_tokens_remaining == 0
+    assert state.generated_tokens == [2, 1]
+    assert state.forced_tokens == ()
+
+
+def test_forced_token_queue_overrides_sampling() -> None:
+    forced = RowSamplingState(seed=123, forced_tokens_pending=(3,), forced_token_reason="grammar")
+    forced_result = select_token(
+        np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float32),
+        _params(temperature=0.8, seed=123),
+        forced,
+    )
+
+    assert forced_result.token_id == 3
+    assert forced_result.mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert forced_result.forced is True
+    assert forced_result.forced_reason == "grammar"
+    assert forced.generated_tokens == [3]
+
+
+def test_forced_token_outside_vocab_does_not_consume_queue() -> None:
+    state = RowSamplingState(forced_tokens_pending=(5,), forced_token_reason="bad")
+
+    with pytest.raises(ValueError, match="outside vocab"):
+        select_token(np.array([1.0, 2.0], dtype=np.float32), _params(), state)
+
+    assert state.forced_tokens == (5,)
+    assert state.generated_tokens == []
 
 
 def test_logit_bias_and_penalties_apply_before_processed_argmax() -> None:

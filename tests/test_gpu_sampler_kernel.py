@@ -108,6 +108,33 @@ def test_sampler_wrapper_validates_shapes_before_loading_hip() -> None:
         sample_topk_temperature_f32_rows_i32(0, 0, 0, 0, None, None, None, rows=1, vocab_size=16, top_k=4, step_index=-1)
 
 
+def test_native_sampler_route_falls_back_to_host_for_forced_tokens() -> None:
+    from hipengine.generation.sampling import RowSamplingState
+    from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
+
+    session = object.__new__(Qwen35ParoResidentSession)
+    state = RowSamplingState(forced_tokens_pending=(7,), forced_token_reason="grammar")
+    params = _request_params(temperature=0.7)
+    hidden = SimpleNamespace(ptr=123)
+    calls: list[tuple[object, object, RowSamplingState]] = []
+
+    def fake_host_sample(self, hidden_arg, params_arg, state_arg):
+        calls.append((hidden_arg, params_arg, state_arg))
+        return SimpleNamespace(token_id=7)
+
+    session._native_sampling_params = params
+    session._native_sampling_state = state
+    session._host_sampling_params = None
+    session._host_sampling_state = None
+    session._host_sampling_states_by_slot = None
+    session._sample_from_hidden_host = MethodType(fake_host_sample, session)
+
+    result = session._sample_from_hidden(hidden)
+
+    assert result.token_id == 7
+    assert calls == [(hidden, params, state)]
+
+
 def _splitmix64(value: int) -> int:
     z = (value + _SPLITMIX_INC) & _MASK64
     z = ((z ^ (z >> 30)) * _SPLITMIX_MUL1) & _MASK64
