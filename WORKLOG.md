@@ -91573,3 +91573,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC streaming chat deadline trace
+
+Added a required golden harness trace for a streaming chat backend deadline
+exception. The deterministic fake engine now supports `fake_exception:
+"deadline"`, and the trace pins the SSE error event, canonical
+`deadline_exceeded` taxonomy, `timeout_ms` parameter, hipEngine extension event,
+and finish details. Updated `docs/AGENTIC.md` to reflect backend deadline
+HTTP/SSE coverage in the trace bundle.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/agentic-traces.json` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `54 passed`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.

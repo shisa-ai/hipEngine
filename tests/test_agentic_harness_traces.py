@@ -11,7 +11,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import FinishDetails, GenerationCancelled, GenerationOutput, TokenLogprob
+from hipengine.generation import (
+    FinishDetails,
+    GenerationCancelled,
+    GenerationDeadlineExceeded,
+    GenerationOutput,
+    TokenLogprob,
+)
 from hipengine.server import ServerConfig, create_app
 from hipengine.server.api import OpenAIHTTPError, _RequestControl, _await_with_request_control
 
@@ -96,6 +102,7 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
             "deadline_error_completion",
             "backend_cancelled_completion_error",
             "backend_cancelled_completion_stream_error",
+            "backend_deadline_chat_stream_error",
             "request_control_cancelled",
         }
     ),
@@ -122,6 +129,10 @@ class TraceLLM:
                 raise AssertionError("cancelled trace expected a cancellation token")
             sampling_params.cancellation_token.cancel()
             raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
+        if self.fake_exception == "deadline":
+            if sampling_params.deadline_at is None:
+                raise AssertionError("deadline trace expected a deadline")
+            raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
         if self.detailed_outputs:
             if len(self.detailed_outputs) < len(prompts):
                 raise AssertionError("not enough fake detailed outputs for trace request")
@@ -144,6 +155,10 @@ class TraceLLM:
                 raise AssertionError("cancelled trace expected a cancellation token")
             sampling_params.cancellation_token.cancel()
             raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
+        if self.fake_exception == "deadline":
+            if sampling_params.deadline_at is None:
+                raise AssertionError("deadline trace expected a deadline")
+            raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
         yield from self.stream_chunks or self.outputs or [f"generated:{prompt}"]
 
     def count_tokens(self, text: str) -> int:

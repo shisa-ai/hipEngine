@@ -1648,6 +1648,29 @@
       }
     },
     {
+      "name": "backend_deadline_chat_stream_error",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_exception": "deadline",
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "slow chat"}],
+        "max_tokens": 4,
+        "stream": true,
+        "timeout_ms": 5000,
+        "stream_options": {"include_hipengine": true}
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "error",
+        "error_code": "deadline_exceeded",
+        "error_param": "timeout_ms",
+        "hipengine_error_code": "deadline_exceeded",
+        "hipengine_event": "error",
+        "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": true}
+      }
+    },
+    {
       "name": "invalid_continuation_id_chat",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
