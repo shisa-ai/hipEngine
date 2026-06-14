@@ -88980,3 +88980,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC structured replay coverage
+
+Added replay-artifact regression coverage for structured-output
+result-validation failures. Non-streaming completion `response_format`
+violations and streaming chat `response_format` violations now assert normal
+HTTP 200 schema-violation responses, replay `result` payloads with affected
+choice metadata, and prompt/generated text redaction.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_captures_completion_structured_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_structured_result_validation_failure -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

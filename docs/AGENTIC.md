@@ -2002,6 +2002,9 @@ Current code reality:
 - `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
   and replaces request strings with SHA-256/length metadata. The explicit
   `none` mode stores raw strings for local debugging only.
+- Tests cover default-off behavior, failed HTTP request redaction, strict tool
+  validation failures, streaming strict tool failures, completion structured
+  failures, and streaming chat structured failures.
 
 Exit gates:
 

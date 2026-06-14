@@ -5003,6 +5003,68 @@ def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None
     assert "secret chat prompt" not in serialized
 
 
+def test_replay_artifact_captures_completion_structured_result_validation_failure(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(outputs=["not json"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "secret structured prompt",
+            "response_format": {"type": "json_object"},
+            "max_tokens": 16,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert choice["text"] == ""
+
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["request"]["path"] == "/v1/completions"
+    assert artifact["request"]["json"]["prompt"]["redacted"] == "sha256"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.prompt",
+            "sha256": artifact["request"]["json"]["prompt"]["sha256"],
+            "length": len("secret structured prompt"),
+        }
+    ]
+    assert artifact["sampling"]["response_format"] == {"type": "json_object"}
+    assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
+    assert artifact["error"] is None
+    assert artifact["result"] == {
+        "type": "agentic_result_validation",
+        "finish_details": _stateless_finish_details("schema_violation"),
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "finish_details": _stateless_finish_details("schema_violation"),
+            }
+        ],
+    }
+    assert "secret structured prompt" not in serialized
+    assert "not json" not in serialized
+
+
 def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) -> None:
     replay_dir = tmp_path / "replay"
     app = create_app(
@@ -5073,6 +5135,58 @@ def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) ->
     assert artifact["token_counts"]["source"] == "chat_prompt"
     assert "secret tool task" not in serialized
     assert "ordinary answer" not in serialized
+
+
+def test_replay_artifact_captures_streaming_structured_result_validation_failure(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(stream_chunks=["not json"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret streaming structured task"}],
+            "response_format": {"type": "json_object"},
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "max_tokens": 16,
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
+    assert done["choices"][0]["hipengine"]["finish_details"] == _stateless_finish_details("schema_violation")
+
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["request"]["path"] == "/v1/chat/completions"
+    assert artifact["sampling"]["response_format"] == {"type": "json_object"}
+    assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
+    assert artifact["error"] is None
+    assert artifact["result"]["choices"] == [
+        {
+            "index": 0,
+            "finish_reason": "stop",
+            "finish_details": _stateless_finish_details("schema_violation"),
+        }
+    ]
+    assert "secret streaming structured task" not in serialized
+    assert "not json" not in serialized
 
 
 def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tmp_path) -> None:
