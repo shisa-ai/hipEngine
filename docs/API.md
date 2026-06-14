@@ -152,6 +152,10 @@ the same single-model route policy under `error.hipengine.routing`, plus
 Context-overflow errors include `error.fit_context` and, after the requested
 model has matched, `error.hipengine.routing` with `matched: true` and
 `reason: "context_overflow"`.
+Admission rejections such as generation queue cap or chat-session cap failures
+use `engine_busy`; when they occur after the served model has matched, the
+payload includes `error.hipengine.routing` with `matched: true`,
+`reason: "engine_busy"`, and an `overload_source`.
 
 ### Streaming usage and hipEngine metadata
 
@@ -595,7 +599,7 @@ strict tool result-validation emits it as a normal chat
 | `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context` with max allowed/recommended `max_tokens`, overflow tokens, and matched-route diagnostics under `error.hipengine.routing`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
-| `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation. |
+| `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation; matched request routes include `error.hipengine.routing` with an `overload_source`. |
 | `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`; `error.hipengine.routing` describes the failed single-model match. |
 | `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
 

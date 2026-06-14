@@ -89775,3 +89775,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC overload routing diagnostics
+
+Added matched-route metadata to current admission overload errors. Generation
+queue-cap rejections can now carry `error.hipengine.routing` with
+`reason="engine_busy"` and `overload_source="generation_queue_cap"`, and
+app-local chat-session cap rejections include the same matched route metadata
+with `overload_source="chat_session_cap"` before generation/session allocation.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_cap_rejects_new_sessions_before_generation tests/test_server_api.py::test_generation_batcher_rejects_when_queue_cap_is_full -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

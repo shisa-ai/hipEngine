@@ -1098,8 +1098,9 @@ def _routing_rejection_metadata(
     requested_model: str | None,
     reason: str,
     engine: Any | None,
+    details: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         **_routing_response_metadata(
             config,
             requested_model=requested_model,
@@ -1108,6 +1109,9 @@ def _routing_rejection_metadata(
         "matched": True,
         "reason": str(reason),
     }
+    if details is not None:
+        payload.update(dict(details))
+    return payload
 
 
 def _choice_telemetry_capability() -> dict[str, Any]:
@@ -1510,7 +1514,7 @@ class _GenerationBatcher:
     def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
         return self._max_active_requests is None or len(group) < self._max_active_requests
 
-    def _raise_if_full(self) -> None:
+    def _raise_if_full(self, *, error_extra: Mapping[str, Any] | None = None) -> None:
         if self._max_queue_size is None:
             return
         if len(self._queue) < self._max_queue_size:
@@ -1520,6 +1524,7 @@ class _GenerationBatcher:
             "generation queue is full",
             error_type="rate_limit_error",
             code="engine_busy",
+            extra=error_extra,
             headers={"Retry-After": str(self._retry_after_seconds)},
         )
 
@@ -1529,11 +1534,12 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         detailed: bool = False,
+        error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[list[Any]] = loop.create_future()
-        self._raise_if_full()
+        self._raise_if_full(error_extra=error_extra)
         self._queue.append(
             _QueuedGeneration(
                 prompts=prompt_tuple,
@@ -1546,13 +1552,19 @@ class _GenerationBatcher:
             self._worker = loop.create_task(self._run())
         return await future
 
-    async def stream(self, prompts: Sequence[str], sampling: SamplingParams) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        prompts: Sequence[str],
+        sampling: SamplingParams,
+        *,
+        error_extra: Mapping[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
         """Yield generated text through a per-request queue owned by the batcher."""
 
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
-        self._raise_if_full()
+        self._raise_if_full(error_extra=error_extra)
         item = _QueuedGeneration(
             prompts=prompt_tuple,
             sampling=sampling,
@@ -1930,6 +1942,25 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
         }
 
+    def route_rejection_extra(
+        *,
+        requested_model: str | None,
+        reason: str,
+        engine: Any | None = None,
+        details: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "hipengine": {
+                "routing": _routing_rejection_metadata(
+                    config,
+                    requested_model=requested_model,
+                    reason=reason,
+                    engine=getattr(app.state, "hipengine_llm", None) if engine is None else engine,
+                    details=details,
+                )
+            }
+        }
+
     async def reserve_chat_session_if_needed(request: ChatCompletionRequest) -> str | None:
         session_id = _session_id(request)
         if session_id is None:
@@ -1946,6 +1977,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "chat session is being created",
                     error_type="rate_limit_error",
                     code="engine_busy",
+                    extra=route_rejection_extra(
+                        requested_model=request.model,
+                        reason="engine_busy",
+                        details={"overload_source": "chat_session_pending"},
+                    ),
                     headers={"Retry-After": str(config.queue_retry_after_seconds)},
                 )
                 _record_openai_error(app.state.hipengine_server_metrics, exc)
@@ -1958,6 +1994,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "chat session limit is full",
                     error_type="rate_limit_error",
                     code="engine_busy",
+                    extra=route_rejection_extra(
+                        requested_model=request.model,
+                        reason="engine_busy",
+                        details={
+                            "overload_source": "chat_session_cap",
+                            "max_active_chat_sessions": int(config.max_chat_sessions),
+                        },
+                    ),
                     headers={"Retry-After": str(config.queue_retry_after_seconds)},
                 )
                 _record_openai_error(app.state.hipengine_server_metrics, exc)
@@ -2669,7 +2713,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
             else:
-                raw_outputs = await generation_batcher.submit(tuple(prompts), sampling, detailed=True)
+                raw_outputs = await generation_batcher.submit(
+                    tuple(prompts),
+                    sampling,
+                    detailed=True,
+                    error_extra=route_rejection_extra(
+                        requested_model=request.model,
+                        reason="engine_busy",
+                        engine=engine,
+                        details={
+                            "overload_source": "generation_queue_cap",
+                            "max_queued_requests": config.max_queued_requests,
+                        },
+                    ),
+                )
         except GenerationDeadlineExceeded as exc:
             raise _deadline_exceeded_error(exc.finish_details) from exc
         except GenerationCancelled as exc:
@@ -2791,7 +2848,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
-            async for token in _iterate_with_request_control(generation_batcher.stream((prompt,), sampling), control):
+            async for token in _iterate_with_request_control(
+                generation_batcher.stream(
+                    (prompt,),
+                    sampling,
+                    error_extra=route_rejection_extra(
+                        requested_model=request.model,
+                        reason="engine_busy",
+                        engine=engine,
+                        details={
+                            "overload_source": "generation_queue_cap",
+                            "max_queued_requests": config.max_queued_requests,
+                        },
+                    ),
+                ),
+                control,
+            ):
                 text = str(token)
                 if not text:
                     continue
@@ -4043,7 +4115,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
-            async for token in _iterate_with_request_control(generation_batcher.stream((prompt,), sampling), control):
+            async for token in _iterate_with_request_control(
+                generation_batcher.stream(
+                    (prompt,),
+                    sampling,
+                    error_extra=route_rejection_extra(
+                        requested_model=request.model,
+                        reason="engine_busy",
+                        engine=engine,
+                        details={
+                            "overload_source": "generation_queue_cap",
+                            "max_queued_requests": config.max_queued_requests,
+                        },
+                    ),
+                ),
+                control,
+            ):
                 text = str(token)
                 if not text:
                     continue

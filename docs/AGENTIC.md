@@ -1759,13 +1759,15 @@ Current state:
 - The OpenAI server batcher has an opt-in queue cap via
   `--max-queued-requests` / `HIPENGINE_MAX_QUEUED_REQUESTS`. When the queued
   request count is already at the configured cap, the request is rejected before
-  enqueue with HTTP 429, canonical `engine_busy`, and `Retry-After: 1`.
+  enqueue with HTTP 429, canonical `engine_busy`, `Retry-After: 1`, and matched
+  `error.hipengine.routing` metadata with
+  `overload_source="generation_queue_cap"` for HTTP generation callers.
 - App-local chat transcript sessions have an opt-in cap via
   `--max-chat-sessions` / `HIPENGINE_MAX_CHAT_SESSIONS`. New `session.id`
   requests that would allocate a transcript are rejected before prompt
   preparation/generation with the same HTTP 429 `engine_busy` and
-  `Retry-After: 1`; existing sessions may continue, and deleting a session frees
-  capacity.
+  `Retry-After: 1` plus `overload_source="chat_session_cap"` route metadata;
+  existing sessions may continue, and deleting a session frees capacity.
 - The OpenAI server batcher also has an opt-in active backend request cap via
   `--max-active-requests` / `HIPENGINE_MAX_ACTIVE_REQUESTS`. It limits how many
   HTTP requests can be coalesced into one active backend generation batch;
@@ -2135,6 +2137,9 @@ Current code reality:
   `error.hipengine.routing` metadata with `reason="context_overflow"` alongside
   the existing `error.fit_context` diagnostics; live SSE context-overflow errors
   preserve the same nested error diagnostics.
+- Admission-overload requests that match the served model include matched
+  `error.hipengine.routing` metadata with `reason="engine_busy"` and an
+  `overload_source` such as `generation_queue_cap` or `chat_session_cap`.
 - Multiple resident models, per-model VRAM admission, unload/eviction, and
   cross-model request targeting remain future routing work.
 
@@ -2162,9 +2167,12 @@ Current code reality:
   the failed exact-match route metadata.
 - Context-overflow routing is covered after the current single-model route
   matches: buffered and live SSE errors keep `error.fit_context` plus matched
-  route metadata. Unsupported grammar and overload requests fail through their
-  own stable pre-generation errors. They are not capability-routed across
-  alternate models yet because multi-model routing does not exist.
+  route metadata.
+- Overload routing is covered for current admission caps: generation queue cap
+  and app-local chat-session cap errors carry matched route metadata plus an
+  overload source. Unsupported grammar requests fail through their own stable
+  pre-generation errors. They are not capability-routed across alternate models
+  yet because multi-model routing does not exist.
 
 #### P6.3 Tensor parallelism / multi-GPU plan
 

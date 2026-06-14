@@ -1871,6 +1871,18 @@ def test_chat_session_cap_rejects_new_sessions_before_generation() -> None:
     assert rejected.headers["retry-after"] == "1"
     assert rejected.json()["error"]["code"] == "engine_busy"
     assert rejected.json()["error"]["message"] == "chat session limit is full"
+    assert rejected.json()["error"]["hipengine"] == {
+        "code": "engine_busy",
+        "status_code": 429,
+        "retryable": True,
+        "routing": {
+            **_routing_metadata(),
+            "matched": True,
+            "reason": "engine_busy",
+            "overload_source": "chat_session_cap",
+            "max_active_chat_sessions": 1,
+        },
+    }
     assert "sess_two" not in app.state.hipengine_chat_sessions
     assert app.state.hipengine_server_metrics.request_rejected_total == 1
     assert len(fake.calls) == 1
@@ -2047,11 +2059,30 @@ def test_generation_batcher_rejects_when_queue_cap_is_full() -> None:
         first = asyncio.create_task(batcher.submit(("one",), sampling))
         await asyncio.sleep(0)
         with pytest.raises(OpenAIHTTPError) as exc_info:
-            await batcher.submit(("two",), sampling)
+            await batcher.submit(
+                ("two",),
+                sampling,
+                error_extra={
+                    "hipengine": {
+                        "routing": {
+                            "reason": "engine_busy",
+                            "overload_source": "generation_queue_cap",
+                        }
+                    }
+                },
+            )
 
         exc = exc_info.value
         assert exc.status_code == 429
         assert exc.code == "engine_busy"
+        assert exc.extra == {
+            "hipengine": {
+                "routing": {
+                    "reason": "engine_busy",
+                    "overload_source": "generation_queue_cap",
+                }
+            }
+        }
         assert exc.headers == {"Retry-After": "2"}
         assert await first == ["generated:one"]
         assert fake.calls == [(("one",), sampling)]
