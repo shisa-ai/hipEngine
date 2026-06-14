@@ -504,6 +504,18 @@ continuation-handle count. It does not return transcript, prompt, generated, or
 tool-result text. `DELETE /v1/hipengine/sessions/{session_id}` removes one
 app-local transcript session and returns `deleted: true` or `false`.
 
+Authenticated `GET /v1/hipengine/sessions/{session_id}/snapshot` exports a
+versioned `hipengine.chat_session_snapshot.v1` snapshot for that app-local
+transcript session. Unlike the metadata list, this response intentionally
+includes the visible transcript messages so a client can save it. The snapshot
+records served model id, backend, quant, storage, timestamps, and
+`resident_state_reuse=false`; it does not include resident KV, tokenizer state,
+or decode/sampling state. Authenticated
+`POST /v1/hipengine/sessions/{session_id}/snapshot` restores the snapshot into
+the same session id after validating schema, model id, backend, quant, storage,
+and message shape. Incompatible or corrupted snapshots fail before creating the
+session.
+
 Validate the config against a running server with:
 
 ```bash

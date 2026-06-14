@@ -89086,3 +89086,20 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `19 passed`.
 - `python3 -m ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC app-local session snapshots
+
+Added authenticated export/restore for app-local chat transcript session
+snapshots at `/v1/hipengine/sessions/{session_id}/snapshot`. Snapshots are
+versioned, include visible transcript messages plus served model/backend/quant
+metadata, explicitly report no resident KV reuse, and restore only after schema,
+model, storage, timestamp, and message-shape validation.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_session_metadata_list_and_delete_are_authenticated tests/test_server_api.py::test_chat_session_snapshot_export_restore_round_trips_visible_transcript tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_incompatible_model tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_shape -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `24 passed`.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

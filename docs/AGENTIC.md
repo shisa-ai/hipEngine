@@ -1622,6 +1622,21 @@ Exit gates:
 - corrupted/incompatible snapshots fail safely;
 - snapshot files never include secrets or unredacted debug payloads by default.
 
+Current code reality:
+
+- App-local transcript sessions support authenticated snapshot export and
+  restore at `/v1/hipengine/sessions/{session_id}/snapshot`.
+  Snapshots are versioned as `hipengine.chat_session_snapshot.v1`, include the
+  visible transcript messages, served model id, backend, quant, storage, and
+  timestamps, and explicitly report `resident_state_reuse=false`.
+- Restore validates snapshot schema, same session id, model id, backend, quant,
+  storage, resident-state flag, timestamps, and message shape before creating or
+  replacing the app-local transcript session. Incompatible snapshots fail with
+  stable `invalid_request` errors and do not create a session.
+- Resident KV payload references, prefix token blobs, tokenizer state, and
+  decode/sampling state are not snapshotted yet; restored sessions re-render the
+  transcript through the normal prompt path.
+
 ### P4 — Scheduler, batching, and native sampling polish
 
 These items overlap with `docs/SAMPLING.md`; keep the detailed sampler plan

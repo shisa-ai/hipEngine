@@ -160,6 +160,7 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     )
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
+_CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_json",
@@ -962,6 +963,11 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "max_active": None if max_active is None else int(max_active),
         "list_endpoint": "/v1/hipengine/sessions",
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
+        "snapshot_schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
+        "snapshot_export_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
+        "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
+        "snapshot_includes_transcript": True,
+        "snapshot_resident_state_reuse": False,
     }
 
 
@@ -1687,6 +1693,87 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "created": int(record.created),
             "updated": int(record.updated),
         }
+
+    def chat_session_snapshot(record: _ChatSessionRecord) -> dict[str, Any]:
+        return {
+            "object": "hipengine.session.snapshot",
+            "schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
+            "model": {
+                "id": config.model_id,
+                "backend": config.backend,
+                "quant": config.quant,
+            },
+            "session": {
+                **chat_session_metadata(record),
+                "includes_transcript": True,
+            },
+            "resident_state_reuse": False,
+            "messages": [dict(message) for message in record.messages],
+        }
+
+    def restore_chat_session_from_snapshot(session_id: str, snapshot: Mapping[str, Any]) -> _ChatSessionRecord:
+        if snapshot.get("schema") != _CHAT_SESSION_SNAPSHOT_SCHEMA:
+            raise OpenAIHTTPError(
+                400,
+                f"session snapshot schema must be {_CHAT_SESSION_SNAPSHOT_SCHEMA!r}",
+                code="invalid_request",
+                param="schema",
+            )
+        model = snapshot.get("model")
+        if not isinstance(model, Mapping):
+            raise OpenAIHTTPError(400, "session snapshot model must be an object", code="invalid_request", param="model")
+        expected_model = {
+            "id": config.model_id,
+            "backend": config.backend,
+            "quant": config.quant,
+        }
+        for key, expected in expected_model.items():
+            if model.get(key) != expected:
+                raise OpenAIHTTPError(
+                    400,
+                    f"session snapshot model.{key} is incompatible with this server",
+                    code="invalid_request",
+                    param=f"model.{key}",
+                )
+        session = snapshot.get("session")
+        if not isinstance(session, Mapping):
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot session must be an object",
+                code="invalid_request",
+                param="session",
+            )
+        if session.get("storage") != "app_local_transcript":
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot storage must be app_local_transcript",
+                code="invalid_request",
+                param="session.storage",
+            )
+        if session.get("resident_state_reuse") is not False:
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot resident_state_reuse must be false",
+                code="invalid_request",
+                param="session.resident_state_reuse",
+            )
+        snapshot_id = session.get("id")
+        if snapshot_id != session_id:
+            raise OpenAIHTTPError(
+                400,
+                "session snapshot id must match the restore path",
+                code="invalid_request",
+                param="session.id",
+            )
+        messages = _chat_session_snapshot_messages(snapshot.get("messages"))
+        created = _chat_session_snapshot_time(session.get("created"), param="session.created")
+        updated = _chat_session_snapshot_time(session.get("updated"), param="session.updated")
+        return _ChatSessionRecord(
+            id=session_id,
+            messages=messages,
+            created=created,
+            updated=updated,
+        )
 
     def chat_session_summary() -> dict[str, Any]:
         return {
@@ -2825,6 +2912,52 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "deleted": deleted,
             "storage": "app_local_transcript",
             "resident_state_reuse": False,
+        }
+
+    @app.get("/v1/hipengine/sessions/{session_id}/snapshot")
+    async def export_session_snapshot(session_id: str, _auth: None = Depends(require_auth)) -> dict[str, Any]:
+        async with chat_session_lock:
+            record = chat_sessions.get(session_id)
+            if record is None:
+                raise OpenAIHTTPError(
+                    404,
+                    "chat session does not exist",
+                    code="invalid_request",
+                    param="session_id",
+                )
+            return chat_session_snapshot(record)
+
+    @app.post("/v1/hipengine/sessions/{session_id}/snapshot")
+    async def restore_session_snapshot(
+        session_id: str,
+        snapshot: dict[str, Any],
+        _auth: None = Depends(require_auth),
+    ) -> dict[str, Any]:
+        record = restore_chat_session_from_snapshot(session_id, snapshot)
+        async with chat_session_lock:
+            is_new = session_id not in chat_sessions
+            if (
+                is_new
+                and config.max_chat_sessions is not None
+                and len(chat_sessions) >= int(config.max_chat_sessions)
+            ):
+                exc = OpenAIHTTPError(
+                    429,
+                    "chat session limit is full",
+                    error_type="rate_limit_error",
+                    code="engine_busy",
+                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
+                )
+                _record_openai_error(app.state.hipengine_server_metrics, exc)
+                raise exc
+            chat_sessions[session_id] = record
+        return {
+            "object": "hipengine.session.restored",
+            "id": session_id,
+            "restored": True,
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+            "message_count": len(record.messages),
         }
 
     if metrics_mode == "prometheus":
@@ -6019,6 +6152,75 @@ def _assistant_visible_session_message(message: Mapping[str, Any]) -> dict[str, 
     if tool_calls:
         payload["tool_calls"] = list(tool_calls)
     return payload
+
+
+def _chat_session_snapshot_messages(value: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise OpenAIHTTPError(
+            400,
+            "session snapshot messages must be an array",
+            code="invalid_request",
+            param="messages",
+        )
+    return tuple(
+        _chat_session_snapshot_message(item, index=index)
+        for index, item in enumerate(value)
+    )
+
+
+def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot messages[{index}] must be an object",
+            code="invalid_request",
+            param=f"messages[{index}]",
+        )
+    allowed = {"role", "content", "name", "tool_call_id", "tool_calls"}
+    extra = sorted(str(key) for key in value if str(key) not in allowed)
+    if extra:
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot messages[{index}].{extra[0]} is not supported",
+            code="invalid_request",
+            param=f"messages[{index}].{extra[0]}",
+        )
+    role = value.get("role")
+    if not isinstance(role, str) or not role.strip():
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot messages[{index}].role must be a non-empty string",
+            code="invalid_request",
+            param=f"messages[{index}].role",
+        )
+    payload: dict[str, Any] = {"role": role}
+    for key in ("content", "name", "tool_call_id"):
+        if key in value:
+            payload[key] = value.get(key)
+    if "tool_calls" in value:
+        tool_calls = value.get("tool_calls")
+        if not isinstance(tool_calls, Sequence) or isinstance(tool_calls, (str, bytes)):
+            raise OpenAIHTTPError(
+                400,
+                f"session snapshot messages[{index}].tool_calls must be an array",
+                code="invalid_request",
+                param=f"messages[{index}].tool_calls",
+            )
+        payload["tool_calls"] = [dict(call) if isinstance(call, Mapping) else call for call in tool_calls]
+    return payload
+
+
+def _chat_session_snapshot_time(value: Any, *, param: str) -> float:
+    if isinstance(value, bool):
+        value = None
+    if not isinstance(value, (int, float)) or float(value) < 0:
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {param} must be a non-negative timestamp",
+            code="invalid_request",
+            param=param,
+        )
+    return float(value)
 
 
 def _chat_request_with_messages(
