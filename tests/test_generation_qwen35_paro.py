@@ -746,6 +746,18 @@ def test_qwen35_paro_generator_env_routes_supported_c1_request_to_native_sampler
     assert not any(call[0] == "configure_host_sampler" for call in calls)
     assert ("step", 100, 2, True) in calls
     assert calls[-1] == ("configure_native_sampler", None, None, None)
+    assert _decode_state(generator.last_generation_outputs[0]) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_fast_path_blockers": ["temperature"],
+        "sampler_mode": "gpu_sample",
+        "full_vocab_logits_d2h": False,
+        "logits_d2h_bytes": 0,
+    }
 
 
 def test_qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback(monkeypatch) -> None:

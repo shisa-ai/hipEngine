@@ -247,6 +247,8 @@ class DecodeState:
     sampler_fallback_reason: str | None = None
     budget_pressure: str | None = None
     sampler_mode: str | None = None
+    full_vocab_logits_d2h: bool | None = None
+    logits_d2h_bytes: int | None = None
     continuation_eligible: bool = False
 ```
 
@@ -864,7 +866,9 @@ Current code reality:
   sampler mode, stop suffix match/partial-suffix state where applicable, and
   sampled thinking-budget phase, reasoning/answer counts, budget pressure,
   pending forced-token state when row state is available, and sampler fallback
-  reasons for processed-argmax / host-logits paths.
+  reasons for processed-argmax / host-logits paths. PARO c=1 native sampled
+  paths also mark `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in the
+  decode-state snapshot when the native GPU sampler route actually runs.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
   the final `finish_details` alongside the backend-authored `decode_state`.
@@ -1799,13 +1803,12 @@ Current state:
   `top_p`/`min_p`, counter-based row/step RNG, selected-token logprob output,
   and small-vocab GPU1 CPU-reference fixtures;
 - supported PARO c=1 sampled requests can route through those kernels with
-  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`;
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`. PARO c=1 sampled telemetry reports
+  `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` when that native
+  route actually runs, so server metadata can distinguish it from host-logits
+  fallback paths;
 - c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
   default-path promotion remain unimplemented.
-
-Remaining implementation:
-
-- metadata proving full-vocab D2H logits copies are avoided on promoted paths.
 
 Exit gates:
 

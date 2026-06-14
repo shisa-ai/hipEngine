@@ -379,6 +379,7 @@ class Qwen35ParoOneTokenGenerator:
         sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
         state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         _configure_sampled_session(session, sampling_request, state, plan=plan)
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(plan)
         generated_text: list[str] = []
         generated_token_ids: list[int] = []
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
@@ -421,6 +422,8 @@ class Qwen35ParoOneTokenGenerator:
                         sampler_fast_path_blockers=plan.fast_path_blockers,
                         sampler_fallback_reason=plan.fallback_reason,
                         sampling_state=state,
+                        full_vocab_logits_d2h=full_vocab_logits_d2h,
+                        logits_d2h_bytes=logits_d2h_bytes,
                     ),
                 )
 
@@ -466,6 +469,8 @@ class Qwen35ParoOneTokenGenerator:
                     sampler_fast_path_blockers=plan.fast_path_blockers,
                     sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=state,
+                    full_vocab_logits_d2h=full_vocab_logits_d2h,
+                    logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
         finally:
@@ -861,6 +866,7 @@ class Qwen35ParoOneTokenGenerator:
         }
         plan = plan_sampler(request, native_gpu_available=False)
         sampler_mode = plan.mode.value
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(plan)
         return [
             _generation_output_from_steps(
                 session.tokenizer,
@@ -886,6 +892,8 @@ class Qwen35ParoOneTokenGenerator:
                     sampler_fast_path_blockers=plan.fast_path_blockers,
                     sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=sampling_state_snapshots.get(request_id),
+                    full_vocab_logits_d2h=full_vocab_logits_d2h,
+                    logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
             for request_id in request_ids
@@ -984,6 +992,7 @@ class Qwen35ParoOneTokenGenerator:
         sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
         state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         _configure_sampled_session(session, sampling_request, state, plan=plan)
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(plan)
         generated_token_ids: list[int] = []
         live_phase = None if state.thinking_budget is not None else "answer"
         try:
@@ -1006,6 +1015,8 @@ class Qwen35ParoOneTokenGenerator:
                     sampler_fast_path_blockers=plan.fast_path_blockers,
                     sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=state,
+                    full_vocab_logits_d2h=full_vocab_logits_d2h,
+                    logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
             if _is_finished(
@@ -1038,6 +1049,8 @@ class Qwen35ParoOneTokenGenerator:
                         sampler_fast_path_blockers=plan.fast_path_blockers,
                         sampler_fallback_reason=plan.fallback_reason,
                         sampling_state=state,
+                        full_vocab_logits_d2h=full_vocab_logits_d2h,
+                        logits_d2h_bytes=logits_d2h_bytes,
                     ),
                 )
                 current_token_id = int(result.token_id)
@@ -1226,6 +1239,8 @@ def _telemetry_for_tokens(
     sampler_fast_path_blockers: tuple[str, ...] = (),
     sampler_fallback_reason: str | None = None,
     sampling_state: RowSamplingState | None = None,
+    full_vocab_logits_d2h: bool | None = None,
+    logits_d2h_bytes: int | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
     return GenerationTelemetry.from_decode_counts(
@@ -1243,7 +1258,15 @@ def _telemetry_for_tokens(
         active_processors=active_processors,
         sampler_fast_path_blockers=sampler_fast_path_blockers,
         sampler_fallback_reason=sampler_fallback_reason,
+        full_vocab_logits_d2h=full_vocab_logits_d2h,
+        logits_d2h_bytes=logits_d2h_bytes,
     )
+
+
+def _sampler_logits_d2h_metadata(plan: Any) -> tuple[bool | None, int | None]:
+    if getattr(plan, "mode", None) is SamplingMode.GPU_SAMPLE:
+        return False, 0
+    return None, None
 
 
 def _decode_state_from_sampling_state(state: RowSamplingState | None) -> dict[str, Any]:

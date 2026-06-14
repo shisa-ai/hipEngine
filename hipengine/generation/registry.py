@@ -161,6 +161,10 @@ def _nonnegative_int(value: Any, default: int = 0) -> int:
     return max(0, int(default if value is None else value))
 
 
+def _optional_nonnegative_int(value: Any) -> int | None:
+    return None if value is None else _nonnegative_int(value)
+
+
 def _pending_token_tuple(value: Any) -> tuple[int, ...]:
     return () if value is None else tuple(int(token) for token in value)
 
@@ -194,6 +198,8 @@ class DecodeState:
     sampler_fallback_reason: str | None = None
     budget_pressure: str | None = None
     sampler_mode: str | None = None
+    full_vocab_logits_d2h: bool | None = None
+    logits_d2h_bytes: int | None = None
     continuation_eligible: bool = False
 
     def __post_init__(self) -> None:
@@ -217,6 +223,12 @@ class DecodeState:
         )
         object.__setattr__(self, "budget_pressure", None if self.budget_pressure is None else str(self.budget_pressure))
         object.__setattr__(self, "sampler_mode", None if self.sampler_mode is None else str(self.sampler_mode))
+        object.__setattr__(
+            self,
+            "full_vocab_logits_d2h",
+            None if self.full_vocab_logits_d2h is None else bool(self.full_vocab_logits_d2h),
+        )
+        object.__setattr__(self, "logits_d2h_bytes", _optional_nonnegative_int(self.logits_d2h_bytes))
         object.__setattr__(self, "continuation_eligible", bool(self.continuation_eligible))
 
     @classmethod
@@ -242,6 +254,8 @@ class DecodeState:
                 sampler_fallback_reason=value.get("sampler_fallback_reason"),
                 budget_pressure=value.get("budget_pressure"),
                 sampler_mode=value.get("sampler_mode"),
+                full_vocab_logits_d2h=value.get("full_vocab_logits_d2h"),
+                logits_d2h_bytes=value.get("logits_d2h_bytes"),
                 continuation_eligible=bool(value.get("continuation_eligible", False)),
             )
         return cls(
@@ -262,6 +276,8 @@ class DecodeState:
             sampler_fallback_reason=getattr(value, "sampler_fallback_reason", None),
             budget_pressure=getattr(value, "budget_pressure", None),
             sampler_mode=getattr(value, "sampler_mode", None),
+            full_vocab_logits_d2h=getattr(value, "full_vocab_logits_d2h", None),
+            logits_d2h_bytes=getattr(value, "logits_d2h_bytes", None),
             continuation_eligible=bool(getattr(value, "continuation_eligible", False)),
         )
 
@@ -321,6 +337,10 @@ class DecodeState:
             payload["budget_pressure"] = self.budget_pressure
         if self.sampler_mode is not None:
             payload["sampler_mode"] = self.sampler_mode
+        if self.full_vocab_logits_d2h is not None:
+            payload["full_vocab_logits_d2h"] = self.full_vocab_logits_d2h
+        if self.logits_d2h_bytes is not None:
+            payload["logits_d2h_bytes"] = self.logits_d2h_bytes
         return payload
 
 
@@ -379,6 +399,8 @@ class GenerationTelemetry:
         sampler_fast_path_blockers: tuple[str, ...] = (),
         sampler_fallback_reason: str | None = None,
         budget_pressure: str | None = None,
+        full_vocab_logits_d2h: bool | None = None,
+        logits_d2h_bytes: int | None = None,
         continuation_eligible: bool = False,
         event: str | None = None,
     ) -> "GenerationTelemetry":
@@ -401,6 +423,8 @@ class GenerationTelemetry:
                 sampler_fallback_reason=sampler_fallback_reason,
                 budget_pressure=budget_pressure,
                 sampler_mode=sampler_mode,
+                full_vocab_logits_d2h=full_vocab_logits_d2h,
+                logits_d2h_bytes=logits_d2h_bytes,
                 continuation_eligible=continuation_eligible,
             ),
             event=event,

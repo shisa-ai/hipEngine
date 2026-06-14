@@ -42,6 +42,8 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
                 "active_processors": "logit_bias",
                 "sampler_fast_path_blockers": ["logit_bias"],
                 "sampler_fallback_reason": "processed_logits_required",
+                "full_vocab_logits_d2h": False,
+                "logits_d2h_bytes": "0",
             },
             "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
         },
@@ -61,6 +63,8 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
             "sampler_fast_path_blockers": ["logit_bias"],
             "sampler_fallback_reason": "processed_logits_required",
             "sampler_mode": "greedy_fast",
+            "full_vocab_logits_d2h": False,
+            "logits_d2h_bytes": 0,
         },
         "event": "done",
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
@@ -78,6 +82,8 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         budget_pressure="hard_close",
         sampler_mode="processed_argmax",
         sampler_fallback_reason="processed_logits_required",
+        full_vocab_logits_d2h=True,
+        logits_d2h_bytes=1024,
     )
 
     assert telemetry.to_json_dict()["decode_state"] == {
@@ -93,6 +99,8 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "sampler_fallback_reason": "processed_logits_required",
         "budget_pressure": "hard_close",
         "sampler_mode": "processed_argmax",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 1024,
     }
 
 

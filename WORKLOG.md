@@ -90616,3 +90616,20 @@ Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py -q` -> `280 passed`.
 - `git diff --check -- hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.
 - `python3 -m ruff check hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` still fails on pre-existing unrelated `F811` duplicate test name and `F841` unused local in untouched hunks of `tests/test_generation_batch_scheduler.py`.
+
+## 2026-06-15 - AGENTIC native sampler D2H telemetry
+
+`DecodeState` now accepts optional `full_vocab_logits_d2h` and
+`logits_d2h_bytes` fields. PARO c=1 sampled requests that actually run through
+the opt-in native GPU sampler (`HIPENGINE_QWEN35_NATIVE_SAMPLER=1`) emit
+`full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in backend-authored
+telemetry, making the no-full-vocab-readback property visible to OpenAI
+responses with hipEngine metadata. Host fallback telemetry is unchanged.
+Updated AGENTIC/API/SAMPLING docs to document the fields and retire the P4.2
+native-sampler metadata gap for the current c=1 route.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> passed.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state -q` -> `36 passed`.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py docs/API.md docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> clean.

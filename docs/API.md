@@ -186,7 +186,8 @@ Those token-bearing chunks also include a canonical
 `choices[].hipengine.decode_state` snapshot with row index, step index, phase,
 prompt/generated token counts, continuation eligibility, and sampler/processor
 metadata when the backend provides it (`active_processors`,
-`sampler_fast_path_blockers`, `sampler_fallback_reason`, and `sampler_mode`).
+`sampler_fast_path_blockers`, `sampler_fallback_reason`, `sampler_mode`,
+`full_vocab_logits_d2h`, and `logits_d2h_bytes`).
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
 the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.
