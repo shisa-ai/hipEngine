@@ -169,6 +169,19 @@ class SubmitPollTextGenerator:
             for chunk in streamer(request):
                 yield GenerationStreamChunk.from_value(chunk)
             return
+        detailed = getattr(self._inner, "generate_detailed", None)
+        if callable(detailed):
+            for output in self.generate_detailed(request):
+                generation_output = (
+                    output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+                )
+                yield GenerationStreamChunk(
+                    text=generation_output.text,
+                    token_logprobs=generation_output.token_logprobs,
+                    finish_details=generation_output.finish_details,
+                    telemetry=generation_output.telemetry,
+                )
+            return
         for text in self.generate(request):
             yield GenerationStreamChunk(text=str(text))
 

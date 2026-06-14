@@ -978,7 +978,11 @@ Current code reality:
   The scheduler submit/poll wrapper preserves an inner generator's
   `stream_detailed()` chunks instead of downgrading them to plain text, so
   wrapped `LLM.stream_detailed()` / server streaming paths keep backend-authored
-  telemetry when the underlying generator provides it.
+  telemetry when the underlying generator provides it. If a wrapped backend only
+  exposes `generate_detailed()`, the adapter now bridges those detailed final
+  outputs into `GenerationStreamChunk` values before falling back to plain text,
+  preserving finish details and final decode-state telemetry through buffered
+  stream paths.
   Buffered streaming preserves backend final telemetry on choice `done` chunks
   and now emits server-derived token/decode-state snapshots for opt-in buffered
   answer/reasoning/tool/structured deltas when tokenizer counting is available.

@@ -91724,3 +91724,20 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC submit/poll detailed stream fallback
+
+`SubmitPollTextGenerator.stream_detailed()` now preserves `GenerationOutput`
+finish details and telemetry when a wrapped backend exposes `generate_detailed()`
+but not `stream_detailed()`. The fallback bridges detailed outputs into
+`GenerationStreamChunk` values before downgrading to plain text, so buffered
+streaming through the submit/poll adapter can keep final backend decode-state
+metadata.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_stream_detailed_telemetry tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_generate_detailed_telemetry_for_stream -q` -> `3 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `36 passed`.
+- `python3 -m py_compile hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> passed.
+- `python3 -m ruff check hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.

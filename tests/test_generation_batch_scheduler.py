@@ -32,6 +32,7 @@ from hipengine.generation import (
     EngineLoopConfig,
     GeneratedToken,
     GenerationRequest,
+    GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
@@ -15871,6 +15872,71 @@ def test_submit_poll_text_generator_preserves_stream_detailed_telemetry() -> Non
         "sampler_mode": "processed_argmax",
     }
     assert list(adapter.stream(request)) == ["alpha"]
+    assert inner.requests == [request, request]
+
+
+def test_submit_poll_text_generator_preserves_generate_detailed_telemetry_for_stream() -> None:
+    class DetailedGenerateOnlyGenerator(_FakeTextGenerator):
+        def generate_detailed(self, request: GenerationRequest):
+            self.requests.append(request)
+            return [
+                GenerationOutput(
+                    text=f"detailed:{prompt}",
+                    finish_details={"reason": "length", "length_limit": 3},
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=2 + row,
+                        generated_tokens=3,
+                        phase="answer",
+                        sampler_mode="host_logits_sample",
+                        request_id=f"row-{row}",
+                        row_index=row,
+                    ),
+                )
+                for row, prompt in enumerate(request.prompts)
+            ]
+
+    inner = DetailedGenerateOnlyGenerator()
+    adapter = SubmitPollTextGenerator(inner)
+    request = GenerationRequest(
+        prompts=("one", "two"),
+        max_tokens=3,
+        temperature=0.7,
+        top_p=1.0,
+        ignore_eos=False,
+        seed=9,
+        row_seeds=(90, 91),
+    )
+
+    chunks = list(adapter.stream_detailed(request))
+
+    assert [chunk.text for chunk in chunks] == ["detailed:one", "detailed:two"]
+    assert [chunk.finish_details.to_json_dict() for chunk in chunks if chunk.finish_details is not None] == [
+        {"reason": "length", "length_limit": 3},
+        {"reason": "length", "length_limit": 3},
+    ]
+    assert [chunk.telemetry.to_json_dict()["decode_state"] for chunk in chunks if chunk.telemetry is not None] == [
+        {
+            "row_index": 0,
+            "step_index": 3,
+            "prompt_tokens": 2,
+            "generated_tokens": 3,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "request_id": "row-0",
+            "sampler_mode": "host_logits_sample",
+        },
+        {
+            "row_index": 1,
+            "step_index": 3,
+            "prompt_tokens": 3,
+            "generated_tokens": 3,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "request_id": "row-1",
+            "sampler_mode": "host_logits_sample",
+        },
+    ]
+    assert list(adapter.stream(request)) == ["detailed:one", "detailed:two"]
     assert inner.requests == [request, request]
 
 
