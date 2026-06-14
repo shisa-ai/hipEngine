@@ -404,6 +404,12 @@ class Qwen35ParoOneTokenGenerator:
             generated_text.append(next_result.token_text)
             generated_token_ids.append(int(next_result.token_id))
             generated_steps.append(next_result)
+            _queue_json_object_close_if_needed(
+                state,
+                session.tokenizer,
+                next_result.token_text,
+                remaining_tokens=max_tokens - len(generated_token_ids),
+            )
             if _is_finished(
                 session.tokenizer,
                 generated_token_ids,
@@ -450,6 +456,12 @@ class Qwen35ParoOneTokenGenerator:
                 generated_text.append(result.token_text)
                 generated_token_ids.append(int(result.token_id))
                 generated_steps.append(result)
+                _queue_json_object_close_if_needed(
+                    state,
+                    session.tokenizer,
+                    result.token_text,
+                    remaining_tokens=max_tokens - len(generated_token_ids),
+                )
                 current_token_id = int(result.token_id)
                 if _is_finished(
                     session.tokenizer,
@@ -804,6 +816,9 @@ class Qwen35ParoOneTokenGenerator:
                         raise RuntimeError("packed native prefill did not produce next-token logits")
                     output_steps[request_id].append(result)
                     generated_ids[request_id].append(int(result.token_id))
+                    snapshot = _clone_row_sampling_state(scheduler.sampler_state(request_id))
+                    snapshot.observe(result.token_id)
+                    sampling_state_snapshots[request_id] = snapshot
                     finished = max_tokens <= 1 or _is_finished(
                         session.tokenizer,
                         generated_ids[request_id],
@@ -812,19 +827,22 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_sequences=request.stop_token_sequences,
                     )
                     if finished:
-                        snapshot = _clone_row_sampling_state(scheduler.sampler_state(request_id))
-                        snapshot.observe(result.token_id)
-                        sampling_state_snapshots[request_id] = snapshot
                         generated.append(GeneratedToken(request_id, result.token_id, finished=True))
                     else:
-                        scheduler.sampler_state(request_id).observe(result.token_id)
-                        sampling_state_snapshots[request_id] = _clone_row_sampling_state(
-                            scheduler.sampler_state(request_id)
+                        owner_state = scheduler.sampler_state(request_id)
+                        owner_state.observe(result.token_id)
+                        _queue_json_object_close_if_needed(
+                            owner_state,
+                            session.tokenizer,
+                            result.token_text,
+                            remaining_tokens=max_tokens - len(generated_ids[request_id]),
                         )
+                        sampling_state_snapshots[request_id] = _clone_row_sampling_state(owner_state)
                         next_token_by_request[request_id] = int(result.token_id)
                 if generated:
-                    for done in scheduler.record_generated(generated):
-                        next_token_by_request.pop(done.request_id, None)
+                    completed_ids = {done.request_id for done in scheduler.record_generated(generated)}
+                    for done in completed_ids:
+                        next_token_by_request.pop(done, None)
 
             decode_steps = 0
             serial_decode_fallback = False
@@ -855,11 +873,15 @@ class Qwen35ParoOneTokenGenerator:
                 raise_if_generation_deadline_expired(request)
                 serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
                 generated = []
+                decode_results_by_request: dict[int, Qwen35ParoAutoregressiveStepResult] = {}
                 for request_id, result in zip(request_ids_for_step, results, strict=True):
                     if result is None:
                         raise RuntimeError("decode step did not produce next-token logits")
                     output_steps[request_id].append(result)
                     generated_ids[request_id].append(int(result.token_id))
+                    snapshot = _clone_row_sampling_state(scheduler.sampler_state(request_id))
+                    snapshot.observe(result.token_id)
+                    sampling_state_snapshots[request_id] = snapshot
                     finished = _is_finished(
                         session.tokenizer,
                         generated_ids[request_id],
@@ -867,15 +889,24 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_ids=request.stop_token_ids,
                         stop_token_sequences=request.stop_token_sequences,
                     )
-                    snapshot = _clone_row_sampling_state(scheduler.sampler_state(request_id))
-                    snapshot.observe(result.token_id)
-                    sampling_state_snapshots[request_id] = snapshot
                     generated.append(GeneratedToken(request_id, result.token_id, finished=finished))
-                    if not finished:
-                        next_token_by_request[request_id] = int(result.token_id)
+                    decode_results_by_request[int(request_id)] = result
                 completed = scheduler.record_generated(generated)
-                for done in completed:
-                    next_token_by_request.pop(done.request_id, None)
+                completed_ids = {done.request_id for done in completed}
+                for done in completed_ids:
+                    next_token_by_request.pop(done, None)
+                for request_id, result in decode_results_by_request.items():
+                    if request_id in completed_ids:
+                        continue
+                    owner_state = scheduler.sampler_state(request_id)
+                    _queue_json_object_close_if_needed(
+                        owner_state,
+                        session.tokenizer,
+                        result.token_text,
+                        remaining_tokens=max_tokens - len(generated_ids[request_id]),
+                    )
+                    sampling_state_snapshots[request_id] = _clone_row_sampling_state(owner_state)
+                    next_token_by_request[request_id] = int(result.token_id)
                 decode_steps += 1
         finally:
             configure_rows(None, None)
@@ -1046,6 +1077,12 @@ class Qwen35ParoOneTokenGenerator:
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
             generated_token_ids.append(int(next_result.token_id))
+            _queue_json_object_close_if_needed(
+                state,
+                session.tokenizer,
+                next_result.token_text,
+                remaining_tokens=max_tokens - len(generated_token_ids),
+            )
             yield GenerationStreamChunk(
                 next_result.token_text,
                 token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, next_result, request),
@@ -1082,6 +1119,12 @@ class Qwen35ParoOneTokenGenerator:
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
                 generated_token_ids.append(int(result.token_id))
+                _queue_json_object_close_if_needed(
+                    state,
+                    session.tokenizer,
+                    result.token_text,
+                    remaining_tokens=max_tokens - len(generated_token_ids),
+                )
                 yield GenerationStreamChunk(
                     result.token_text,
                     token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, result, request),
@@ -1198,6 +1241,7 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
         force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=request.force_sequence_completion_reason,
+        json_object_close_forcing=request.json_object_close_forcing,
         thinking_close_token_ids=request.thinking_close_token_ids,
         thinking_hard_token_cap=request.thinking_hard_token_cap,
         thinking_soft_close_window=request.thinking_soft_close_window,
@@ -1229,6 +1273,7 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
             post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
             force_sequence_completion_token_sequences=state.force_sequence_completion_token_sequences,
             force_sequence_completion_reason=state.force_sequence_completion_reason,
+            json_object_close_forcing=state.json_object_close_forcing,
             thinking_budget=thinking_budget,
         )
     return RowSamplingState(
@@ -1244,6 +1289,7 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
         post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
         force_sequence_completion_token_sequences=state.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=state.force_sequence_completion_reason,
+        json_object_close_forcing=state.json_object_close_forcing,
     )
 
 
@@ -1422,6 +1468,7 @@ def _row_sampling_state(
         post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
         force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=request.force_sequence_completion_reason,
+        json_object_close_forcing=request.json_object_close_forcing,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 
@@ -1541,6 +1588,52 @@ def _request_with_tokenizer_eos(
     if eos_token_id is None:
         return request
     return replace(request, eos_token_id=eos_token_id)
+
+
+def _queue_json_object_close_if_needed(
+    state: RowSamplingState,
+    tokenizer: Any | None,
+    token_text: str,
+    *,
+    remaining_tokens: int,
+) -> None:
+    state.observe_text_for_json_object_close(
+        token_text,
+        remaining_tokens=remaining_tokens,
+        encode_text=lambda text: _tokenize_constraint_text(tokenizer, text),
+    )
+
+
+def _tokenize_constraint_text(tokenizer: Any | None, text: str) -> tuple[int, ...]:
+    if tokenizer is None:
+        return ()
+    encode = getattr(tokenizer, "encode", None)
+    if callable(encode):
+        try:
+            token_ids = tuple(int(token) for token in encode(str(text)))
+        except Exception:
+            token_ids = ()
+        if token_ids:
+            return token_ids
+    token_to_id = getattr(tokenizer, "token_to_id", None)
+    whole = _lookup_token_id(token_to_id, str(text))
+    if whole is not None:
+        return (whole,)
+    pieces: list[int] = []
+    for char in str(text):
+        token_id = _lookup_token_id(token_to_id, char)
+        if token_id is None:
+            return ()
+        pieces.append(token_id)
+    return tuple(pieces)
+
+
+def _lookup_token_id(token_to_id: Any, token: str) -> int | None:
+    try:
+        value = token_to_id(token) if callable(token_to_id) else token_to_id.get(token)
+    except Exception:
+        return None
+    return None if value is None else int(value)
 
 
 def _is_finished(

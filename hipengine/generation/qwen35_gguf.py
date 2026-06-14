@@ -202,6 +202,12 @@ class Qwen35GGUFBringupGenerator:
         sample = _select_from_gguf_logits(result, sampling_request, state)
         samples.append(sample)
         generated_ids = [int(sample.token_id)]
+        _gguf_queue_json_object_close_if_needed(
+            state,
+            self.tokenizer,
+            _gguf_token_text(self.tokenizer, sample),
+            remaining_tokens=request.max_tokens - len(generated_ids),
+        )
         if _gguf_finished(generated_ids, self.tokenizer, request):
             return _gguf_generation_output(
                 self.tokenizer,
@@ -229,6 +235,12 @@ class Qwen35GGUFBringupGenerator:
             sample = _select_from_gguf_logits(step, sampling_request, state)
             samples.append(sample)
             generated_ids.append(int(sample.token_id))
+            _gguf_queue_json_object_close_if_needed(
+                state,
+                self.tokenizer,
+                _gguf_token_text(self.tokenizer, sample),
+                remaining_tokens=request.max_tokens - len(generated_ids),
+            )
             if _gguf_finished(generated_ids, self.tokenizer, request):
                 break
         return _gguf_generation_output(
@@ -306,6 +318,12 @@ class Qwen35GGUFBringupGenerator:
         full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
         sample = _select_from_gguf_logits(result, sampling_request, state)
         generated_ids.append(int(sample.token_id))
+        _gguf_queue_json_object_close_if_needed(
+            state,
+            self.tokenizer,
+            _gguf_token_text(self.tokenizer, sample),
+            remaining_tokens=request.max_tokens - len(generated_ids),
+        )
         yield GenerationStreamChunk(
             self.tokenizer.decode([generated_ids[-1]]),
             token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
@@ -330,6 +348,12 @@ class Qwen35GGUFBringupGenerator:
             full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(step)
             sample = _select_from_gguf_logits(step, sampling_request, state)
             generated_ids.append(int(sample.token_id))
+            _gguf_queue_json_object_close_if_needed(
+                state,
+                self.tokenizer,
+                _gguf_token_text(self.tokenizer, sample),
+                remaining_tokens=request.max_tokens - len(generated_ids),
+            )
             yield GenerationStreamChunk(
                 self.tokenizer.decode([generated_ids[-1]]),
                 token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
@@ -410,6 +434,7 @@ def _gguf_row_sampling_state(
         post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
         force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=request.force_sequence_completion_reason,
+        json_object_close_forcing=request.json_object_close_forcing,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 
@@ -443,12 +468,33 @@ def _gguf_stream_token_logprobs(
 def _gguf_token_logprob(tokenizer: Qwen35GGUFTokenizer, sample: Any) -> TokenLogprob:
     return TokenLogprob(
         token_id=sample.token_id,
-        token_text=tokenizer.decode([int(sample.token_id)]),
+        token_text=_gguf_token_text(tokenizer, sample),
         logprob=sample.logprob,
         top_logprobs=tuple(
             (token_id, tokenizer.decode([int(token_id)]), logprob)
             for token_id, logprob in sample.top_logprobs
         ),
+    )
+
+
+def _gguf_token_text(tokenizer: Qwen35GGUFTokenizer, sample: Any) -> str:
+    token_text = getattr(sample, "token_text", None)
+    if token_text is not None:
+        return str(token_text)
+    return tokenizer.decode([int(sample.token_id)])
+
+
+def _gguf_queue_json_object_close_if_needed(
+    state: RowSamplingState,
+    tokenizer: Qwen35GGUFTokenizer,
+    token_text: str,
+    *,
+    remaining_tokens: int,
+) -> None:
+    state.observe_text_for_json_object_close(
+        token_text,
+        remaining_tokens=remaining_tokens,
+        encode_text=lambda text: tuple(int(token) for token in tokenizer.encode(str(text))),
     )
 
 

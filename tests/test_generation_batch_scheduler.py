@@ -16188,6 +16188,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
             post_thinking_forced_token_reason="tool_choice_required",
             force_sequence_completion_token_sequences=((46, 47),),
             force_sequence_completion_reason="tool_call_close_repair",
+            json_object_close_forcing=True,
             thinking_close_token_ids=(42, 43),
             thinking_hard_token_cap=8,
             thinking_soft_close_window=2,
@@ -16241,6 +16242,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.post_thinking_forced_token_reasons == (None, "tool_choice_required", None)
     assert block.force_sequence_completion_rows == ((), ((46, 47),), ())
     assert block.force_sequence_completion_reasons == (None, "tool_call_close_repair", None)
+    assert block.json_object_close_forcing_rows == (False, True, False)
     assert block.thinking_close_token_rows == ((), (42, 43), ())
     assert block.thinking_hard_token_caps == (None, 8, None)
     assert block.thinking_soft_close_windows == (0, 2, 0)
@@ -16257,6 +16259,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r1).post_thinking_forced_token_reason == "tool_choice_required"
     assert block.params_for(r1).force_sequence_completion_token_sequences == ((46, 47),)
     assert block.params_for(r1).force_sequence_completion_reason == "tool_call_close_repair"
+    assert block.params_for(r1).json_object_close_forcing is True
     assert block.params_for(r1).thinking_close_token_ids == (42, 43)
     assert block.params_for(r1).thinking_hard_token_cap == 8
     assert block.params_for(r1).thinking_soft_close_window == 2
@@ -16276,6 +16279,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
         "thinking_budget",
         "post_thinking_forced_tokens_pending",
         "force_sequence_completion_token_sequences",
+        "json_object_close_forcing",
     )
     assert block.sampler_plan_for(r2).active_processors == (
         "logit_bias",
@@ -16309,6 +16313,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
                 "thinking_budget",
                 "post_thinking_forced_tokens_pending",
                 "force_sequence_completion_token_sequences",
+                "json_object_close_forcing",
             ],
             "sampler_fast_path_blockers": [
                 "temperature",
@@ -16322,6 +16327,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
                 "thinking_budget",
                 "post_thinking_forced_tokens_pending",
                 "force_sequence_completion_token_sequences",
+                "json_object_close_forcing",
             ],
             "native_gpu_available": False,
             "uses_host_logits": True,
@@ -16974,6 +16980,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
             PerRowSamplingParams(force_sequence_completion_token_sequences=((101, 102),)),
             "force_sequence_completion_token_sequences",
         ),
+        (PerRowSamplingParams(json_object_close_forcing=True), "json_object_close_forcing"),
         (
             PerRowSamplingParams(thinking_close_token_ids=(201, 202), thinking_hard_token_cap=4),
             "thinking_budget",

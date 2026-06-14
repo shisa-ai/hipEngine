@@ -20,10 +20,10 @@ class _FakeTokenizer:
     eos_token_id = 99
 
     def encode(self, prompt: str) -> list[int]:
-        return {"first": [10, 11], "second": [20]}[prompt]
+        return {"first": [10, 11], "second": [20], "{": [5], "}": [4]}[prompt]
 
     def decode(self, ids) -> str:
-        table = {1: "B", 2: "C", 3: "D", 16: "Q", 99: "<eos>"}
+        table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>"}
         return "".join(table[int(token)] for token in ids)
 
 
@@ -125,6 +125,47 @@ def test_gguf_sampled_request_forced_token_overrides_logits(monkeypatch) -> None
     assert decode_state["forced_token_id"] == 2
     assert decode_state["forced_token_reason"] == "tool_choice_required"
     assert decode_state["forced_tokens_remaining"] == 0
+
+
+def test_gguf_json_object_close_forcing_goes_through_decode(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 5] = 10.0
+            return SimpleNamespace(token_id=5, logits=logits)
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 6] = 10.0
+            logits[0, 4] = 1.0
+            return SimpleNamespace(token_id=6, logits=logits)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(_request(max_tokens=2, json_object_close_forcing=True))
+
+    assert outputs[0].text == "{}"
+    assert ("step", 5, True) in calls
+    decode_state = _decode_state(outputs[0])
+    assert decode_state["forced_token_id"] == 4
+    assert decode_state["forced_token_reason"] == "json_object_close_forcing"
+    assert decode_state["forced_tokens_remaining"] == 0
+    assert "json_object_close_forcing" in decode_state["active_processors"]
+    assert "json_object_close_forcing" in decode_state["sampler_fast_path_blockers"]
 
 
 def test_gguf_sampled_post_thinking_forced_tokens_queue_after_close(monkeypatch) -> None:

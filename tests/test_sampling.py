@@ -51,6 +51,7 @@ def _params(**overrides):
         "post_thinking_forced_token_reason": None,
         "force_sequence_completion_token_sequences": (),
         "force_sequence_completion_reason": None,
+        "json_object_close_forcing": False,
         "thinking_close_token_ids": (),
         "thinking_hard_token_cap": None,
         "thinking_soft_close_window": 0,
@@ -82,6 +83,7 @@ def _speculative_mtp_blocker_cases():
         "force_sequence_completion_token_sequences": _params(
             force_sequence_completion_token_sequences=((10, 11),),
         ),
+        "json_object_close_forcing": _params(json_object_close_forcing=True),
         "thinking_budget": _params(thinking_close_token_ids=(10, 11), thinking_hard_token_cap=2),
         "logprobs": _params(logprobs=True),
         "top_logprobs": _params(top_logprobs=2),
@@ -205,6 +207,7 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
         supports_native_gpu_sampling(_params(temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)))
         is False
     )
+    assert supports_native_gpu_sampling(_params(temperature=0.7, json_object_close_forcing=True)) is False
     assert (
         supports_native_gpu_sampling(
             _params(temperature=0.7, thinking_close_token_ids=(4, 5), thinking_hard_token_cap=8)
@@ -263,6 +266,9 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     )
     assert speculative_mtp_sampling_blockers(_params(force_sequence_completion_token_sequences=((10, 11),))) == (
         "force_sequence_completion_token_sequences",
+    )
+    assert speculative_mtp_sampling_blockers(_params(json_object_close_forcing=True)) == (
+        "json_object_close_forcing",
     )
     assert speculative_mtp_sampling_blockers(
         _params(
@@ -414,6 +420,39 @@ def test_forced_token_queue_overrides_suppression() -> None:
     assert result.forced is True
     assert result.logprob is None
     assert result.active_processors == ("suppress_token_ids", "forced_tokens_pending")
+
+
+def test_json_object_close_forcing_queues_suffix_at_budget_boundary() -> None:
+    state = RowSamplingState(json_object_close_forcing=True)
+    state.observe_text_for_json_object_close(
+        "{",
+        remaining_tokens=1,
+        encode_text=lambda text: (3,) if text == "}" else (),
+    )
+
+    result = select_token(
+        np.array([10.0, 9.0, 8.0, 0.0], dtype=np.float32),
+        _params(json_object_close_forcing=True),
+        state,
+    )
+
+    assert result.token_id == 3
+    assert result.forced is True
+    assert result.forced_reason == "json_object_close_forcing"
+    assert result.active_processors == ("json_object_close_forcing", "forced_tokens_pending")
+    assert result.fast_path_blockers == ("json_object_close_forcing", "forced_tokens_pending")
+
+
+def test_json_object_close_forcing_suppresses_eos_until_complete() -> None:
+    result = select_token(
+        np.array([10.0, 9.0, 8.0], dtype=np.float32),
+        _params(json_object_close_forcing=True, eos_token_id=0),
+        RowSamplingState(json_object_close_forcing=True),
+    )
+
+    assert result.token_id == 1
+    assert result.active_processors == ("json_object_close_forcing",)
+    assert result.fast_path_blockers == ("json_object_close_forcing",)
 
 
 def test_thinking_budget_hard_close_queues_forced_tokens_before_selection() -> None:

@@ -66,6 +66,7 @@ class PerRowSamplingParams:
     post_thinking_forced_token_reason: str | None = None
     force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
     force_sequence_completion_reason: str | None = None
+    json_object_close_forcing: bool = False
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -151,6 +152,7 @@ class PerRowSamplingParams:
             "force_sequence_completion_reason",
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
         )
+        object.__setattr__(self, "json_object_close_forcing", bool(self.json_object_close_forcing))
         object.__setattr__(self, "thinking_close_token_ids", close_token_ids)
         object.__setattr__(
             self,
@@ -189,6 +191,7 @@ class SamplerParamsBlock:
     post_thinking_forced_token_reasons: tuple[str | None, ...] = ()
     force_sequence_completion_rows: tuple[tuple[tuple[int, ...], ...], ...] = ()
     force_sequence_completion_reasons: tuple[str | None, ...] = ()
+    json_object_close_forcing_rows: tuple[bool, ...] = ()
     thinking_close_token_rows: tuple[tuple[int, ...], ...] = ()
     thinking_hard_token_caps: tuple[int | None, ...] = ()
     thinking_soft_close_windows: tuple[int, ...] = ()
@@ -235,6 +238,10 @@ class SamplerParamsBlock:
             _check_len("force_sequence_completion_reasons", self.force_sequence_completion_reasons, rows)
         else:
             object.__setattr__(self, "force_sequence_completion_reasons", tuple(None for _ in range(rows)))
+        if self.json_object_close_forcing_rows:
+            _check_len("json_object_close_forcing_rows", self.json_object_close_forcing_rows, rows)
+        else:
+            object.__setattr__(self, "json_object_close_forcing_rows", tuple(False for _ in range(rows)))
         if self.thinking_close_token_rows:
             _check_len("thinking_close_token_rows", self.thinking_close_token_rows, rows)
         else:
@@ -301,6 +308,11 @@ class SamplerParamsBlock:
             "force_sequence_completion_reasons",
             tuple(None if reason is None else str(reason) for reason in self.force_sequence_completion_reasons),
         )
+        object.__setattr__(
+            self,
+            "json_object_close_forcing_rows",
+            tuple(bool(value) for value in self.json_object_close_forcing_rows),
+        )
         close_token_rows = tuple(tuple(int(token) for token in row) for row in self.thinking_close_token_rows)
         if any(token < 0 for row in close_token_rows for token in row):
             raise ValueError("thinking_close_token_rows must contain non-negative token ids")
@@ -360,6 +372,7 @@ class SamplerParamsBlock:
             post_thinking_forced_token_reasons=tuple(row.post_thinking_forced_token_reason for row in params),
             force_sequence_completion_rows=tuple(row.force_sequence_completion_token_sequences for row in params),
             force_sequence_completion_reasons=tuple(row.force_sequence_completion_reason for row in params),
+            json_object_close_forcing_rows=tuple(row.json_object_close_forcing for row in params),
             thinking_close_token_rows=tuple(row.thinking_close_token_ids for row in params),
             thinking_hard_token_caps=tuple(row.thinking_hard_token_cap for row in params),
             thinking_soft_close_windows=tuple(row.thinking_soft_close_window for row in params),
@@ -388,6 +401,7 @@ class SamplerParamsBlock:
             post_thinking_forced_token_reason=self.post_thinking_forced_token_reasons[index],
             force_sequence_completion_token_sequences=self.force_sequence_completion_rows[index],
             force_sequence_completion_reason=self.force_sequence_completion_reasons[index],
+            json_object_close_forcing=self.json_object_close_forcing_rows[index],
             thinking_close_token_ids=self.thinking_close_token_rows[index],
             thinking_hard_token_cap=self.thinking_hard_token_caps[index],
             thinking_soft_close_window=self.thinking_soft_close_windows[index],
@@ -920,6 +934,7 @@ class ResidentBatchScheduler:
             post_thinking_forced_token_reason=sampling_params.post_thinking_forced_token_reason,
             force_sequence_completion_token_sequences=sampling_params.force_sequence_completion_token_sequences,
             force_sequence_completion_reason=sampling_params.force_sequence_completion_reason,
+            json_object_close_forcing=sampling_params.json_object_close_forcing,
             thinking_budget=thinking_budget_state_from_params(sampling_params),
         )
         self._observability[rid] = _RequestObservabilityState(

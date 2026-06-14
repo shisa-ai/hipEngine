@@ -745,6 +745,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "guided_diff_fence_labels": ["diff", "patch"],
         "strict_decoding": False,
         "strict_result_validation": True,
+        "decode_time_close_forcing": "host_json_object_suffix",
         "length_finish_structural_validation": "root_object_json_prefix",
         "result_validation_failure_reasons": ["schema_violation"],
         "schema_validation": "json_schema_subset",
@@ -989,6 +990,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "suppress_token_ids" in body["sampling"]["parameters"]
     assert "min_tokens" in body["sampling"]["parameters"]
     assert "eos_token_id" in body["sampling"]["parameters"]
+    assert "json_object_close_forcing" in body["sampling"]["parameters"]
     assert body["sampling"]["native_gpu"] == {
         "enabled": False,
         "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
@@ -1017,6 +1019,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "forced_tokens_pending",
             "post_thinking_forced_tokens_pending",
             "force_sequence_completion_token_sequences",
+            "json_object_close_forcing",
             "thinking_budget",
             "combined_top_k_with_top_p_or_min_p",
         ],
@@ -1040,6 +1043,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "forced_tokens_pending",
             "post_thinking_forced_tokens_pending",
             "force_sequence_completion_token_sequences",
+            "json_object_close_forcing",
             "thinking_budget",
             "logprobs",
             "top_logprobs",
@@ -1058,6 +1062,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "forced_tokens_pending": "one or more forced tokens pending",
             "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
             "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
+            "json_object_close_forcing": "JSON object close forcing active",
             "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
@@ -4258,6 +4263,85 @@ def test_completions_response_format_json_object_validates_result() -> None:
     assert invalid_choice["text"] == ""
     assert invalid_choice["finish_reason"] == "stop"
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
+@pytest.mark.parametrize(
+    ("payload", "output", "expected"),
+    [
+        ({"response_format": {"type": "json_object"}}, '{"ok":true}', True),
+        (
+            {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "object_result",
+                        "schema": {
+                            "type": "object",
+                            "properties": {"ok": {"type": "boolean"}},
+                            "required": ["ok"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+            },
+            '{"ok":true}',
+            True,
+        ),
+        (
+            {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "array_result",
+                        "schema": {"type": "array", "items": {"type": "integer"}},
+                    },
+                },
+            },
+            "[1]",
+            False,
+        ),
+        ({"guided_json": True}, '{"ok":true}', True),
+        (
+            {
+                "guided_json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"ok": {"type": "boolean"}},
+                        "required": ["ok"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            '{"ok":true}',
+            True,
+        ),
+    ],
+)
+def test_completions_structured_json_lowers_close_forcing(
+    payload: dict[str, Any],
+    output: str,
+    expected: bool,
+) -> None:
+    fake = FakeLLM(outputs=[output])
+    client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=fake,
+        )
+    )
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            **payload,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.calls[0][1].json_object_close_forcing is expected
+    assert fake.calls[0][1].max_tokens == 16
 
 
 def test_completions_response_format_length_rejects_invalid_json_continuation() -> None:

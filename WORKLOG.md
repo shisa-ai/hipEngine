@@ -91516,3 +91516,31 @@ preemption and broader cache/KV runtime telemetry.
 Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_backend_deadline_exception_maps_to_completion_408 tests/test_server_api.py::test_streaming_completion_backend_cancelled_exception_emits_error_and_done tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_checks_deadline_after_prefill tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_checks_cancellation_after_prefill tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_deadline_after_step tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_cancellation_after_step -q` -> `7 passed`.
 - `git diff --check -- docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON object close forcing
+
+Implemented narrow host decode-time JSON object close-suffix forcing for
+JSON-object requests and object-root JSON Schema / guided-JSON requests.
+`json_object_close_forcing` now flows from OpenAI server request lowering
+through `SamplingParams`, `GenerationRequest`, PARO/GGUF row state, and c>N
+scheduler sampler blocks. The shared `RowSamplingState` observes generated text
+with `JsonObjectConstraintState`, suppresses EOS while an object is incomplete,
+and queues the tokenizer-lowered close suffix through `ForcedTokenQueue` only
+when the remaining decode budget exactly fits the suffix. This keeps the forced
+suffix on the normal decode/KV path without claiming full JSON grammar or schema
+decoding. The field is advertised as a native-GPU and MTP blocker; request
+fields remain validation controls, while the derived close-forcing processor is
+the AR-only blocker.
+
+Validation found and fixed a c>N PARO regression where prefill tokens were
+recorded against scheduler decode budget too early. The c>N sampled path now
+preserves the existing ownership split: unfinished prefill tokens update sampler
+state directly, and post-prefill decode tokens go through scheduler
+`record_generated()` for length accounting.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `20 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling tests/test_server_api.py::test_completions_structured_json_lowers_close_forcing tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m py_compile hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

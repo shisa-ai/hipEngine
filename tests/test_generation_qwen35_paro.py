@@ -124,6 +124,22 @@ def test_qwen35_paro_row_sampling_state_repairs_tool_close_suffix() -> None:
     assert state.forced_token_reason == "tool_call_close_repair"
 
 
+def test_qwen35_paro_row_sampling_state_queues_json_object_close_suffix() -> None:
+    request = _request(json_object_close_forcing=True)
+    state = qwen35._row_sampling_state(request, [1, 2], row_index=0)
+    tokenizer = SimpleNamespace(encode=lambda text: [71] if text == "}" else [])
+
+    qwen35._queue_json_object_close_if_needed(
+        state,
+        tokenizer,
+        "{",
+        remaining_tokens=1,
+    )
+
+    assert state.forced_tokens == (71,)
+    assert state.forced_token_reason == "json_object_close_forcing"
+
+
 def test_qwen35_paro_telemetry_reports_post_thinking_forced_queue() -> None:
     request = _request(
         thinking_close_token_ids=(42, 43),
@@ -266,6 +282,69 @@ def test_qwen35_paro_sampled_request_forced_token_overrides_logits(monkeypatch) 
     assert decode_state["forced_token_id"] == 2
     assert decode_state["forced_token_reason"] == "tool_choice_required"
     assert decode_state["forced_tokens_remaining"] == 0
+
+
+def test_qwen35_paro_json_object_close_forcing_goes_through_decode(monkeypatch) -> None:
+    class FakeSession:
+        tokenizer = SimpleNamespace(
+            encode=lambda text: [2] if text == "}" else [],
+            token_to_id=lambda token: None,
+        )
+        vocab_size = 3
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            self.params = None
+            self.state = None
+
+        def configure_host_sampler(self, params, state):
+            self.params = params
+            self.state = state
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            assert self.params is not None
+            assert self.state is not None
+            sample_result = select_token(
+                np.array([0.0, 10.0, 1.0], dtype=np.float32),
+                self.params,
+                self.state,
+            )
+            assert sample_result.forced is False
+            return _result(sample_result.token_id, "{")
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            assert self.params is not None
+            assert self.state is not None
+            sample_result = select_token(
+                np.array([9.0, 8.0, 0.0], dtype=np.float32),
+                self.params,
+                self.state,
+            )
+            return _result(
+                sample_result.token_id,
+                "}",
+                forced=sample_result.forced,
+                forced_reason=sample_result.forced_reason,
+                forced_tokens_remaining=sample_result.forced_tokens_remaining,
+            )
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(_request(max_tokens=2, json_object_close_forcing=True))
+
+    assert out == ["{}"]
+    decode_state = _decode_state(generator.last_generation_outputs[0])
+    assert decode_state["active_processors"] == ["json_object_close_forcing"]
+    assert decode_state["forced_token_id"] == 2
+    assert decode_state["forced_token_reason"] == "json_object_close_forcing"
+    assert decode_state["forced_tokens_remaining"] == 0
+    assert decode_state["sampler_mode"] == "processed_argmax"
 
 
 def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context() -> None:

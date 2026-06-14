@@ -431,27 +431,29 @@ Current code reality:
   on host logits, and flow through scheduler per-row sampler blocks. `logit_bias`
   and penalty processors are also covered by standalone native sampler tests;
   suppress-token ids and min-token/EOS policy make the native sampler route fall
-  back to host. Token-level thinking-budget hard close and token-sequence
-  completion repair now follow the same planning contract: they bind to host row
-  state, block native GPU sampling, and are reported as speculative/MTP
-  blockers. Explicit `eos_token_id` is also an MTP-only blocker because the
-  current speculative accept path records accepted target tokens as unfinished
-  until the decode budget is exhausted. None of these processors are compatible
-  with MTP verification yet because verify top-1 is raw argmax and commit does
-  not apply AR finish policy.
+  back to host. Token-level thinking-budget hard close, token-sequence
+  completion repair, and JSON object close-suffix forcing now follow the same
+  planning contract: they bind to host row state, block native GPU sampling, and
+  are reported as speculative/MTP blockers. Explicit `eos_token_id` is also an
+  MTP-only blocker because the current speculative accept path records accepted
+  target tokens as unfinished until the decode budget is exhausted. None of
+  these processors are compatible with MTP verification yet because verify top-1
+  is raw argmax and commit does not apply AR finish policy.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
   before materializing target verification metadata. The capabilities manifest
   advertises this guard, the blocker fields, and condition strings such as
   `temperature > 0` and `eos_token_id set` instead of relying only on prose.
-- Result-validation-only controls (`response_format`, `guided_json`,
+- Post-generation validation controls (`response_format`, `guided_json`,
   `guided_regex`, `guided_choice`, `guided_patch`, and `guided_diff`) are not
-  MTP blockers in the current contract because they do not alter target token
-  selection; they add prompt hints and validate visible output after generation.
-  If any of these are promoted to decode-time grammar masks or forced-token
-  repair, that promoted path must be represented as an explicit processor
-  blocker until target verification applies the same constraint.
+  MTP blockers as request fields; they add prompt hints and validate visible
+  output after generation. Object-root JSON requests that enable host
+  close-suffix forcing are represented separately as the
+  `json_object_close_forcing` processor blocker. If any remaining validation
+  control is promoted to decode-time grammar masks or forced-token repair, that
+  promoted path must be represented as an explicit processor blocker until
+  target verification applies the same constraint.
 
 Default rule:
 
@@ -459,10 +461,11 @@ Default rule:
   active pre-selection processors and no logprob/metadata requirement that would
   force processed logits.
 - If `logit_bias`, penalties, suppressions, forced tokens, sequence-completion
-  repair, grammar constraints, thinking budget processors, `temperature > 0`,
-  explicit EOS finish policy, or requested logprobs are active, route to AR
-  `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE` until the verifier can produce the
-  same processed target selection and finish policy per verify row.
+  repair, JSON object close forcing, grammar constraints, thinking budget
+  processors, `temperature > 0`, explicit EOS finish policy, or requested
+  logprobs are active, route to AR `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE`
+  until the verifier can produce the same processed target selection and finish
+  policy per verify row.
 
 Future exact speculative support:
 
@@ -507,13 +510,17 @@ Current code reality:
   safe. It is covered by fixtures for complete objects, nested object/array
   suffixes, escaped delimiters inside strings, and invalid root/trailing/mismatch
   cases.
-- JSON/tool/patch constraints are still result-validation-only in the public
-  server path. The JSON object state is wired into length-finished
-  root-object JSON continuation eligibility for JSON-object and JSON Schema
-  result-validation requests, so structurally invalid prefixes report
-  `schema_violation` and remain non-continuable, but it is not yet wired into
-  token masks, decode-time close forcing, or sampler/MTP compatibility
-  decisions.
+- Full JSON/tool/patch grammar constraints are still absent from the public
+  server path. The JSON object state is wired into length-finished root-object
+  JSON continuation eligibility for JSON-object and JSON Schema result-
+  validation requests, so structurally invalid prefixes report
+  `schema_violation` and remain non-continuable. It is also wired into host
+  decode-time close-suffix forcing for JSON-object requests and object-root
+  JSON Schema / guided-JSON requests: when the remaining decode budget exactly
+  fits the tokenizer-lowered close suffix, the suffix is queued through
+  `ForcedTokenQueue` so it still goes through normal model decode/KV updates.
+  Full token masks, schema grammar constraints, and native/MTP parity remain
+  future work.
 
 ### Session/cache control
 
@@ -1266,8 +1273,9 @@ Current code reality:
   rules. Once a configured delimiter prefix is selected, the remaining delimiter
   suffix is queued as forced tokens. The server uses this today for selected
   tool-name prefix completion and required/specific tool-call `</tool_call>`
-  close repair. JSON close-brace repair and grammar processors remain future
-  server/controller work.
+  close repair, plus JSON-object structural close-suffix forcing for object-root
+  structured-output requests when the remaining budget exactly fits the lowered
+  suffix. Full grammar processors remain future server/controller work.
 
 Implement:
 
@@ -1560,14 +1568,17 @@ Current state:
   finishes preserve visible partial text; structurally repairable root-object
   JSON prefixes may create deterministic continuation handles, while
   structurally invalid root-object prefixes report `schema_violation` and
-  `continuation_eligible=false`.
+  `continuation_eligible=false`. JSON-object and object-root JSON Schema
+  requests also enable host decode-time close-suffix forcing when the remaining
+  budget exactly fits the lowered suffix.
 - `guided_json` is accepted for completion and chat requests as a
-  post-generation validation-only JSON guidance field. `true` uses JSON-object
-  validation; schema objects, `{"schema": ...}` wrappers, and JSON strings
-  containing schema objects use the same fail-closed JSON Schema subset as
-  `response_format` and strict tool schemas. Invalid stop-finished outputs are
-  suppressed with `finish_details.reason="schema_violation"`. Length-finished
-  structurally repairable root-object JSON prefixes keep their text and may use
+  post-generation JSON guidance field with the same object-root close-forcing
+  behavior as `response_format`. `true` uses JSON-object validation; schema
+  objects, `{"schema": ...}` wrappers, and JSON strings containing schema
+  objects use the same fail-closed JSON Schema subset as `response_format` and
+  strict tool schemas. Invalid stop-finished outputs are suppressed with
+  `finish_details.reason="schema_violation"`. Length-finished structurally
+  repairable root-object JSON prefixes keep their text and may use
   deterministic buffered continuation handles; structurally invalid root-object
   prefixes keep their text but report `schema_violation` and
   `continuation_eligible=false`.
@@ -1595,10 +1606,12 @@ Current state:
   capabilities manifest advertises the supported format, fence labels, allowed
   `fenced` policies, and default policy under `features.structured_outputs`.
 - Auto-mode constraints, full argument/schema grammar forcing, and
-  grammar-constrained JSON/tool generation remain future work. A shared
-  `JsonObjectConstraintState` exists for structural JSON-object balance and
-  close-suffix fixtures, but public structured-output controls still use
-  post-generation result validation rather than decode-time masks.
+  grammar-constrained JSON/tool generation remain future work. Public
+  structured-output controls still use post-generation result validation for
+  schema correctness, but JSON-object and object-root JSON Schema / guided-JSON
+  requests now also use `JsonObjectConstraintState` for host decode-time
+  structural close-suffix forcing when the remaining budget exactly fits the
+  suffix.
 
 #### P2.1 Strict tool-call mode
 
@@ -1673,9 +1686,10 @@ Current code reality:
   keywords are rejected before generation, and annotation keys are ignored by
   validation;
 - `response_format={"type":"text"}` is a no-op;
-- `guided_json` is implemented as a validation-only alternate request field for
-  JSON-object and JSON-schema result validation, with identical schema subset,
-  streaming buffering, continuation inheritance, and failure semantics;
+- `guided_json` is implemented as an alternate request field for JSON-object
+  and JSON-schema result validation plus object-root close-suffix forcing, with
+  identical schema subset, streaming buffering, continuation inheritance, and
+  failure semantics;
 - `guided_regex` is implemented as prompt-hint plus Python `re.fullmatch()`
   post-generation result validation against a non-empty regex string. Streaming
   requests use buffered response paths so invalid regex results are not emitted
@@ -1685,8 +1699,11 @@ Current code reality:
   use buffered response paths so invalid choices are not emitted as successful
   deltas, and deterministic buffered continuation handles inherit the original
   choice list across partial length stops;
-- decode-time close-brace/quote enforcement and schema-constrained generation
-  remain future grammar work.
+- host decode-time structural close-suffix forcing is implemented for
+  JSON-object mode and object-root JSON Schema / guided-JSON requests. It can
+  force braces/brackets when the remaining budget exactly fits the suffix, but
+  quote/string repair, token masks, and schema-constrained generation remain
+  future grammar work.
 
 #### P2.4 Guidance / grammar plugin interface
 
@@ -1710,13 +1727,16 @@ Current code reality:
   unsupported grammar/guidance fields (`grammar`, `guided_grammar`, and
   `guided_decoding_backend`).
   JSON, regex, choice, and patch/diff guidance are reported separately under
-  `features.grammars.result_validation_only` because they are validation-only,
-  not grammar decoding.
+  `features.grammars.result_validation_only` because they do not install
+  grammar masks; the narrow object-root close-suffix path is advertised
+  separately under `features.structured_outputs.decode_time_close_forcing`.
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
-  set to the rejected field. JSON-object / JSON-schema / guided JSON / regex /
-  choice / patch-diff support remains result-validation-only, not grammar decoding.
-  Tests cover every advertised unsupported grammar/guidance field.
+  set to the rejected field. JSON-object / JSON-schema / guided JSON support
+  remains result-validation plus the narrow host close-suffix path described
+  above, not grammar decoding. Regex / choice / patch-diff support remains
+  result-validation-only. Tests cover every advertised unsupported
+  grammar/guidance field.
 
 #### P2.5 Patch/diff constrained mode
 
@@ -2023,8 +2043,9 @@ Current state:
   `sampler_fallback_reason="native_gpu_unsupported_request"` instead of the
   generic host fallback reason. The capabilities manifest now advertises the
   same current native-sampler blockers enforced by `supports_native_gpu_sampling`,
-  including forced-token queues, post-thinking forced-token queues, and
-  sequence-completion repairs. It also separates native GPU pre-selection
+  including forced-token queues, post-thinking forced-token queues,
+  sequence-completion repairs, and JSON object close forcing. It also separates
+  native GPU pre-selection
   `processors` from `post_selection_controls` for stop token ids and
   multi-token stop sequences, which PARO c=1 native sampling checks after each
   selected token;

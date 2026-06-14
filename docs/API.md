@@ -463,20 +463,28 @@ constraints remain unsupported.
 Completion and chat requests accept `response_format: {"type": "json_object"}`,
 `{"type": "json_schema", "json_schema": {"schema": ...}}`, or
 `{"type": "text"}`. JSON-object and JSON-schema modes add prompt hints and
-validate the completed visible output after generation. Valid JSON is returned
-normally; invalid stop-finished outputs return a normal response with empty
-successful content and `finish_details.reason: "schema_violation"`. Length
-finishes keep their visible partial text. Structurally repairable partial
-root-object JSON prefixes can produce deterministic continuation handles;
-prefixes that are already structurally invalid, such as mismatched close
-delimiters, report `finish_details.reason: "schema_violation"` and
-`continuation_eligible: false` while keeping coarse `finish_reason: "length"`.
-This applies to JSON-object mode and JSON Schema/guided-JSON schema requests
-when the partial output has begun with `{`. The capabilities manifest reports
-this normal-response failure reason under
+validate the completed visible output after generation. JSON-object mode, plus
+JSON Schema / guided-JSON schemas with an object root, also activates host
+decode-time close-suffix forcing on PARO/GGUF sampled rows: when the remaining
+decode budget exactly fits the tokenizer-lowered structural close suffix, the
+suffix is queued as forced tokens and still goes through normal model decode/KV
+updates. This is not full JSON grammar masking or schema-constrained decoding.
+Valid JSON is returned normally; invalid stop-finished outputs return a normal
+response with empty successful content and
+`finish_details.reason: "schema_violation"`. Length finishes keep their visible
+partial text. Structurally repairable partial root-object JSON prefixes can
+produce deterministic continuation handles; prefixes that are already
+structurally invalid, such as mismatched close delimiters, report
+`finish_details.reason: "schema_violation"` and `continuation_eligible: false`
+while keeping coarse `finish_reason: "length"`. This applies to JSON-object
+mode and JSON Schema/guided-JSON schema requests when the partial output has
+begun with `{`. The capabilities manifest reports this normal-response failure
+reason under
 `features.structured_outputs.result_validation_failure_reasons`.
 `features.structured_outputs.length_finish_structural_validation` is
 `"root_object_json_prefix"` when this structural length-finish guard is active.
+`features.structured_outputs.decode_time_close_forcing` reports
+`"host_json_object_suffix"` for the host close-forcing path.
 
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` / `required` /
@@ -484,10 +492,11 @@ argument validation: `type`, `enum`, `const`, object `properties` / `required` /
 `minLength` / `maxLength`, and numeric min/max bounds. Unsupported validation
 keywords are rejected before generation instead of being silently ignored;
 annotation keys are accepted but ignored by validation. This is result
-validation, not grammar-constrained decoding.
+validation plus object close-suffix forcing, not grammar-constrained decoding.
 
-`guided_json` is a validation-only alias for the same JSON result paths. It
-accepts `true` for JSON-object validation, a JSON Schema object, a
+`guided_json` uses the same JSON result paths and object-root close-forcing
+behavior as `response_format`. It accepts `true` for JSON-object validation, a
+JSON Schema object, a
 `{"schema": ...}` wrapper, or a string containing a JSON Schema object. It uses
 the same prompt hints, schema subset, buffered streaming behavior, length-finish
 continuation behavior, JSON-object structural invalidation, and
@@ -844,8 +853,9 @@ in local, non-sensitive debugging sessions.
   requests behind
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`,
   suppress-token ids, min-token/EOS policy, forced-token queues,
-  sequence-completion repair, thinking-budget controls, and unsupported native
-  filter combinations fall back to the host path. The capabilities manifest
+  sequence-completion repair, JSON object close forcing, thinking-budget
+  controls, and unsupported native filter combinations fall back to the host
+  path. The capabilities manifest
   distinguishes native GPU pre-selection `processors` from
   `post_selection_controls` such as stop token ids and stop token sequences,
   which PARO c=1 native sampling checks after each selected token.
@@ -854,8 +864,9 @@ in local, non-sensitive debugging sessions.
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token
   suppressions, min-token/EOS policy, explicit EOS finish policy, token stops,
   pending forced-token queues, post-thinking forced-token queues,
-  token-sequence completion repair, temperature sampling, and requested
-  logprobs require autoregressive fallback. The manifest also includes
+  token-sequence completion repair, JSON object close forcing, temperature
+  sampling, and requested logprobs require autoregressive fallback. The
+  manifest also includes
   `incompatible_conditions`, for example `temperature > 0` and
   `eos_token_id set`, so inert greedy `top_p` / `top_k` / `min_p` settings are
   not mistaken for MTP blockers.

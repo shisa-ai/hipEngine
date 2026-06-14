@@ -202,6 +202,7 @@ _NATIVE_GPU_SAMPLER_UNSUPPORTED = (
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
+    "json_object_close_forcing",
     "thinking_budget",
     "combined_top_k_with_top_p_or_min_p",
 )
@@ -916,6 +917,7 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "guided_diff_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
         "strict_decoding": False,
         "strict_result_validation": True,
+        "decode_time_close_forcing": "host_json_object_suffix",
         "length_finish_structural_validation": "root_object_json_prefix",
         "result_validation_failure_reasons": list(
             _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS
@@ -1064,6 +1066,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
                 "suppress_token_ids",
                 "min_tokens",
                 "eos_token_id",
+                "json_object_close_forcing",
                 "seed",
                 "n",
                 "stop",
@@ -3002,6 +3005,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             force_sequence_completion_reason=(
                 "tool_call_sequence_completion" if force_sequence_completion_token_sequences else None
             ),
+            json_object_close_forcing=_json_object_close_forcing(request),
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -3983,6 +3987,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "suppress_token_ids",
                     "min_tokens",
                     "eos_token_id",
+                    "json_object_close_forcing",
                     "seed",
                     "n",
                     "stop",
@@ -8721,6 +8726,25 @@ def _structured_json_object_prefix_validation(
         return False
     stripped = str(text).lstrip()
     return stripped.startswith("{")
+
+
+def _json_object_close_forcing(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    response_mode = _response_format_mode(request)
+    guided_mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
+    if response_mode == "json_object" or guided_mode == "json_object":
+        return True
+    if response_mode == "json_schema" and _json_schema_root_object(_response_format_json_schema(request)):
+        return True
+    return bool(guided_mode == "json_schema" and _json_schema_root_object(_guided_json_schema(request)))
+
+
+def _json_schema_root_object(schema: Mapping[str, Any] | None) -> bool:
+    if not isinstance(schema, Mapping):
+        return False
+    schema_type = schema.get("type")
+    if schema_type == "object":
+        return True
+    return any(key in schema for key in ("properties", "required", "additionalProperties"))
 
 
 def _guided_json_failure_reason(

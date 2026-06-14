@@ -36,6 +36,7 @@ class SamplingParams:
     post_thinking_forced_token_reason: str | None = None
     force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
     force_sequence_completion_reason: str | None = None
+    json_object_close_forcing: bool = False
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -89,6 +90,7 @@ class SamplingParams:
             "force_sequence_completion_reason",
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
         )
+        object.__setattr__(self, "json_object_close_forcing", bool(self.json_object_close_forcing))
         object.__setattr__(
             self,
             "thinking_close_token_ids",
@@ -366,6 +368,7 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         post_thinking_forced_token_reason=params.post_thinking_forced_token_reason,
         force_sequence_completion_token_sequences=params.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=params.force_sequence_completion_reason,
+        json_object_close_forcing=params.json_object_close_forcing,
         thinking_close_token_ids=params.thinking_close_token_ids,
         thinking_hard_token_cap=params.thinking_hard_token_cap,
         thinking_soft_close_window=params.thinking_soft_close_window,

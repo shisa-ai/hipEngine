@@ -8,7 +8,7 @@ GPU samplers.  They intentionally avoid torch.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 import math
@@ -42,6 +42,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
+    "json_object_close_forcing",
     "thinking_budget",
     "logprobs",
     "top_logprobs",
@@ -60,6 +61,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "forced_tokens_pending": "one or more forced tokens pending",
     "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
     "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
+    "json_object_close_forcing": "JSON object close forcing active",
     "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
@@ -106,9 +108,11 @@ class RowSamplingState:
     post_thinking_forced_token_reason: str | None = None
     force_sequence_completion_token_sequences: Sequence[Sequence[int]] = ()
     force_sequence_completion_reason: str | None = None
+    json_object_close_forcing: bool = False
     thinking_budget: ThinkingBudgetState | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
     _force_sequence_state: TokenSequenceDFAState = field(init=False, repr=False)
+    _json_object_constraint: JsonObjectConstraintState | None = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.prompt_tokens = tuple(int(token) for token in self.prompt_tokens)
@@ -128,6 +132,7 @@ class RowSamplingState:
         self.force_sequence_completion_reason = (
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason)
         )
+        self.json_object_close_forcing = bool(self.json_object_close_forcing)
         if isinstance(self.forced_tokens_pending, ForcedTokenQueue):
             forced = self.forced_tokens_pending
         else:
@@ -160,6 +165,7 @@ class RowSamplingState:
                 self._force_sequence_state = TokenSequenceDFAState.from_sequences(
                     self.force_sequence_completion_token_sequences
                 )
+        self._json_object_constraint = JsonObjectConstraintState() if self.json_object_close_forcing else None
         self._rng = np.random.Generator(np.random.PCG64(self.seed))
         if self.step_index:
             # Keep reconstructed state deterministic when a caller restores a
@@ -246,6 +252,32 @@ class RowSamplingState:
                     reason=self.force_sequence_completion_reason or "sequence_completion",
                 )
             return
+
+    def observe_text_for_json_object_close(
+        self,
+        text: str,
+        *,
+        remaining_tokens: int,
+        encode_text: Callable[[str], Iterable[int]],
+    ) -> None:
+        """Queue a structural JSON close suffix when the decode budget requires it."""
+
+        constraint = self._json_object_constraint
+        if constraint is None:
+            return
+        constraint.observe_text(str(text))
+        if constraint.invalid or constraint.complete or self.forced_tokens_pending:
+            return
+        suffix = constraint.forced_close_suffix
+        if not suffix:
+            return
+        try:
+            token_ids = tuple(int(token) for token in encode_text(suffix))
+        except Exception:
+            return
+        remaining = int(remaining_tokens)
+        if token_ids and remaining == len(token_ids):
+            self.queue_forced_tokens(token_ids, reason="json_object_close_forcing")
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +458,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("post_thinking_forced_tokens_pending")
     if _force_sequence_completion_token_sequences(params):
         names.append("force_sequence_completion_token_sequences")
+    if bool(getattr(params, "json_object_close_forcing", False)):
+        names.append("json_object_close_forcing")
     return tuple(names)
 
 
@@ -548,6 +582,8 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     if _post_thinking_forced_tokens_pending(params):
         return False
     if _force_sequence_completion_token_sequences(params):
+        return False
+    if bool(getattr(params, "json_object_close_forcing", False)):
         return False
     if thinking_budget_active(params):
         return False
@@ -679,6 +715,7 @@ def select_token(
             post_thinking_forced_token_reason=getattr(params, "post_thinking_forced_token_reason", None),
             force_sequence_completion_token_sequences=_force_sequence_completion_token_sequences(params),
             force_sequence_completion_reason=getattr(params, "force_sequence_completion_reason", None),
+            json_object_close_forcing=bool(getattr(params, "json_object_close_forcing", False)),
         )
     )
     source = np.asarray(logits, dtype=np.float32)
@@ -699,12 +736,16 @@ def select_token(
 
     row_state.prepare_for_selection()
     eos_suppressed = _apply_thinking_budget_eos_suppression(processed, params, row_state)
+    json_eos_suppressed = _apply_json_object_eos_suppression(processed, params, row_state)
     soft_close_biased = _apply_thinking_budget_soft_close_bias(processed, row_state)
     active_processors = active_processor_names(params)
     fast_path_blockers = sampler_fast_path_blockers(params)
     if eos_suppressed or soft_close_biased:
         active_processors = _append_unique(active_processors, "thinking_budget")
         fast_path_blockers = _append_unique(fast_path_blockers, "thinking_budget")
+    if json_eos_suppressed:
+        active_processors = _append_unique(active_processors, "json_object_close_forcing")
+        fast_path_blockers = _append_unique(fast_path_blockers, "json_object_close_forcing")
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
@@ -839,6 +880,20 @@ def _apply_thinking_budget_eos_suppression(logits: np.ndarray, params: Any, stat
     budget = state.thinking_budget
     eos_token_id = getattr(params, "eos_token_id", None)
     if budget is None or not budget.eos_suppression_active or budget.forced_tokens or eos_token_id is None:
+        return False
+    token_id = int(eos_token_id)
+    if token_id < 0 or token_id >= int(logits.size):
+        raise ValueError(f"eos_token_id {token_id} is outside vocab size {logits.size}")
+    logits[token_id] = -np.inf
+    return True
+
+
+def _apply_json_object_eos_suppression(logits: np.ndarray, params: Any, state: RowSamplingState) -> bool:
+    if not bool(getattr(params, "json_object_close_forcing", False)):
+        return False
+    constraint = state._json_object_constraint
+    eos_token_id = getattr(params, "eos_token_id", None)
+    if constraint is None or constraint.complete or constraint.invalid or state.forced_tokens_pending or eos_token_id is None:
         return False
     token_id = int(eos_token_id)
     if token_id < 0 or token_id >= int(logits.size):

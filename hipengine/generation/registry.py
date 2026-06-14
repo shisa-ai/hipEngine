@@ -45,6 +45,7 @@ class GenerationRequest:
     post_thinking_forced_token_reason: str | None = None
     force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
     force_sequence_completion_reason: str | None = None
+    json_object_close_forcing: bool = False
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -99,6 +100,7 @@ class GenerationRequest:
             "force_sequence_completion_reason",
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
         )
+        object.__setattr__(self, "json_object_close_forcing", bool(self.json_object_close_forcing))
         object.__setattr__(
             self,
             "thinking_close_token_ids",
