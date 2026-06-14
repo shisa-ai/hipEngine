@@ -89562,3 +89562,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC continuation response-format inheritance
+
+Made continuation resumes reject explicit `response_format` overrides. Stored
+continuation records still inherit the original response format when the resume
+request omits it, but clients can no longer validate a partial structured
+output under a new or downgraded format. The rejection is non-consuming, so a
+client can retry the same handle after dropping the override.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format tests/test_server_api.py::test_chat_continuation_resume_rejects_explicit_response_format_override -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

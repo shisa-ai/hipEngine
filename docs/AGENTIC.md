@@ -1266,11 +1266,11 @@ Current code reality:
   text and reports `resident_state_reuse=false`; it does not yet preserve
   decode state, tokenizer id, auth principal, RNG state, or resident KV;
 - streaming, logprobs, completion `echo`, `n != 1`, non-deterministic
-  sampling/logit processors, chat tools, and thinking-budget controls
-  (`reasoning_effort`, top-level budget fields, `chat_template_kwargs`, nested
-  `thinking`, and nested `reasoning`) are rejected on resume and are not
-  eligible for new handles. The capabilities manifest exposes these
-  creation/resume blockers under
+  sampling/logit processors, chat tools, explicit `response_format` overrides,
+  and thinking-budget controls (`reasoning_effort`, top-level budget fields,
+  `chat_template_kwargs`, nested `thinking`, and nested `reasoning`) are
+  rejected on resume and are not eligible for new handles. The capabilities
+  manifest exposes these creation/resume blockers under
   `sessions.continuations.ineligible_when` and
   `sessions.continuations.unsupported_resume_fields`.
 

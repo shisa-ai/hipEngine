@@ -280,6 +280,7 @@ def _continuation_capability() -> dict[str, Any]:
             "tools",
             "tool_choice",
             "parallel_tool_calls",
+            "response_format",
             "reasoning_effort",
             "max_think_tokens",
             "min_answer_tokens",
@@ -4320,6 +4321,57 @@ def test_chat_continuation_resumes_partial_json_and_inherits_response_format() -
     assert second_choice["finish_reason"] == "stop"
     assert second_choice["finish_details"] == _stateless_finish_details("eos", eos_token_id=151645)
     assert fake.calls[1][0][0].endswith('{"ok":')
+
+
+def test_chat_continuation_resume_rejects_explicit_response_format_override() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text='{"ok":',
+                finish_details=FinishDetails(reason="length", length_limit=6),
+            ),
+            GenerationOutput(text="true}", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+            "max_tokens": 6,
+        },
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    override = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "response_format": {"type": "text"},
+            "max_tokens": 4,
+        },
+    )
+
+    assert override.status_code == 400
+    assert override.json()["error"]["code"] == "unsupported_parameter"
+    assert override.json()["error"]["param"] == "response_format"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    inherited = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert inherited.status_code == 200
+    assert inherited.json()["choices"][0]["message"] == {"role": "assistant", "content": '{"ok":true}'}
+    assert len(fake.calls) == 2
 
 
 def test_streaming_chat_completion_response_format_buffers_validation() -> None:

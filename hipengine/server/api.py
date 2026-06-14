@@ -106,6 +106,7 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "tools",
     "tool_choice",
     "parallel_tool_calls",
+    "response_format",
     "reasoning_effort",
     "max_think_tokens",
     "min_answer_tokens",
@@ -6092,6 +6093,8 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
             return "tool_choice"
         if request.parallel_tool_calls is not None:
             return "parallel_tool_calls"
+        if request.response_format is not None:
+            return "response_format"
         thinking_param = _thinking_budget_sampling_unsupported_param(request)
         if thinking_param is not None:
             return thinking_param
