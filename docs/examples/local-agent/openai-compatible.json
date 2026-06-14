@@ -35,7 +35,13 @@
       "continuation_id",
       "session.id",
       "parallel_tool_calls",
-      "top_logprobs"
+      "top_logprobs",
+      "grammar",
+      "guided_json",
+      "guided_regex",
+      "guided_choice",
+      "guided_grammar",
+      "guided_decoding_backend"
     ]
   },
   "token_diagnostics": {

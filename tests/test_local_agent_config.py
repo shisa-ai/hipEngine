@@ -129,6 +129,8 @@ def test_local_agent_config_matches_capabilities() -> None:
     assert summary["tools"] is True
     assert "parallel_tool_calls" in summary["blocked_fields"]
     assert "top_logprobs" in summary["blocked_fields"]
+    assert "grammar" in summary["blocked_fields"]
+    assert "guided_json" in summary["blocked_fields"]
     for unsupported in _capabilities()["unsupported_fields"]:
         assert unsupported in summary["blocked_fields"]
 

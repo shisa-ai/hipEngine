@@ -88807,3 +88807,21 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC grammar capability contract
+
+Advertised grammar/guidance decoding as unsupported through
+`features.grammars` in `/v1/hipengine/capabilities` and replay capability
+snapshots. Known grammar request fields (`grammar`, `guided_json`,
+`guided_regex`, `guided_choice`, `guided_grammar`,
+`guided_decoding_backend`) now appear in `unsupported_fields`; sending them
+fails before generation with `unsupported_parameter`. The local-agent example
+now includes those fields in `do_not_send`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_local_agent_config.py::test_local_agent_config_matches_capabilities tests/test_local_agent_config.py::test_local_agent_config_matches_server_capabilities_manifest tests/test_local_agent_config.py::test_local_agent_chat_smoke_payload_avoids_unsupported_fields -q` -> `9 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

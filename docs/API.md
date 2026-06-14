@@ -361,6 +361,12 @@ argument validation: `type`, `enum`, `const`, object `properties` / `required` /
 `minLength` / `maxLength`, and numeric min/max bounds. This is result
 validation, not grammar-constrained decoding.
 
+Grammar/guidance request fields are not currently supported. The capabilities
+manifest reports `features.grammars.enabled=false` and lists known unsupported
+fields such as `grammar`, `guided_json`, `guided_regex`, `guided_choice`,
+`guided_grammar`, and `guided_decoding_backend`; sending them returns HTTP 400
+with `error.code: "unsupported_parameter"` and `error.param` set to the field.
+
 ### Thinking / no-think controls
 
 Chat requests accept common OpenAI/Qwen thinking controls:
@@ -448,7 +454,8 @@ defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
 hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
 explicitly sends `session.commit="append_none"` as the current stateless
 no-retain policy, and keeps stateful `session.id` out of the default streaming
-payload plus intentionally unused tool-policy fields in `do_not_send`.
+payload plus intentionally unused tool-policy and grammar/guidance fields in
+`do_not_send`.
 
 Known agent fields that are advertised as unsupported are rejected before
 generation work starts. Stateless requests without a `session` object default

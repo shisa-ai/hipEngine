@@ -85,6 +85,14 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     }
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
+_UNSUPPORTED_GRAMMAR_FIELDS = (
+    "grammar",
+    "guided_json",
+    "guided_regex",
+    "guided_choice",
+    "guided_grammar",
+    "guided_decoding_backend",
+)
 
 
 @dataclass(frozen=True)
@@ -673,6 +681,20 @@ def _structured_outputs_capability() -> dict[str, Any]:
     }
 
 
+def _grammar_capability() -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "strict_decoding": False,
+        "supported": [],
+        "unsupported_fields": list(_UNSUPPORTED_GRAMMAR_FIELDS),
+        "result_validation_only": ["json_object", "json_schema"],
+    }
+
+
+def _known_unsupported_fields() -> list[str]:
+    return list(_UNSUPPORTED_GRAMMAR_FIELDS)
+
+
 def _admission_capability(config: ServerConfig) -> dict[str, Any]:
     return {
         "queue": {
@@ -719,6 +741,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "streaming": True,
             "choice_telemetry": _choice_telemetry_capability(),
             "structured_outputs": _structured_outputs_capability(),
+            "grammars": _grammar_capability(),
             "tools": {
                 "enabled": True,
                 "strict_decoding": False,
@@ -797,7 +820,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
         "admission": _admission_capability(config),
-        "unsupported_fields": [],
+        "unsupported_fields": _known_unsupported_fields(),
     }
 
 
@@ -2821,6 +2844,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 },
                 "choice_telemetry": _choice_telemetry_capability(),
                 "structured_outputs": _structured_outputs_capability(),
+                "grammars": _grammar_capability(),
                 "finish_details": True,
                 "token_diagnostics": {
                     "tokenize": tokenizer_caps["tokenize"],
@@ -2951,7 +2975,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "multiple_models": False,
             },
             "errors": _error_taxonomy_manifest(),
-            "unsupported_fields": [],
+            "unsupported_fields": _known_unsupported_fields(),
         }
 
     @app.post("/v1/hipengine/tokenize")

@@ -1401,6 +1401,18 @@ Exit gates:
 - unsupported grammar requests fail clearly;
 - adding a new grammar does not require server/model dispatch branches.
 
+Current code reality:
+
+- `/v1/hipengine/capabilities` reports `features.grammars.enabled=false`,
+  `strict_decoding=false`, an empty supported grammar list, and known
+  unsupported grammar/guidance fields (`grammar`, `guided_json`,
+  `guided_regex`, `guided_choice`, `guided_grammar`, and
+  `guided_decoding_backend`).
+- Requests that send those grammar/guidance fields are rejected before
+  generation through the normal unsupported-parameter path with `error.param`
+  set to the rejected field. JSON-object / JSON-schema support remains
+  result-validation-only, not grammar decoding.
+
 #### P2.5 Patch/diff constrained mode
 
 Implement:
@@ -1744,8 +1756,8 @@ Current code reality:
   tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
   sampler scope, speculative/MTP sampling compatibility,
   request-timeout/client-disconnect support, backend-authored choice telemetry,
-  queue/active-request/chat-session admission caps, scheduler fairness policy,
-  cache/session settings, loaded-model count, and
+  grammar-support status, queue/active-request/chat-session admission caps,
+  scheduler fairness policy, cache/session settings, loaded-model count, and
   unsupported fields.
 - Continuations are advertised as supported with `stateful=false`,
   `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,
@@ -1760,9 +1772,10 @@ Current code reality:
   token diagnostics are advertised from current tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
   `session.id` outside buffered chat, unsupported streaming/`n`/continuation
-  combinations, unsupported `session.commit` modes, and other `session`
-  payloads return `unsupported_parameter` with `error.param` set to the rejected
-  field. Unknown, consumed, wrong-endpoint, or wrong-model
+  combinations, unsupported `session.commit` modes, known unsupported
+  grammar/guidance fields, and other `session` payloads return
+  `unsupported_parameter` with `error.param` set to the rejected field.
+  Unknown, consumed, wrong-endpoint, or wrong-model
   `continuation_id` values return `invalid_continuation`; expired handles return
   `continuation_expired`.
 
@@ -1792,7 +1805,8 @@ Current code reality:
   `session.commit="append_none"` for stateless no-retain behavior, sends tools
   per request, and keeps stateful `session.id` out of the default streaming
   payload plus intentionally unused tool-policy/logprob fields
-  (`parallel_tool_calls`, `top_logprobs`) in `do_not_send`.
+  (`parallel_tool_calls`, `top_logprobs`) and unsupported grammar/guidance
+  fields in `do_not_send`.
 - `docs/examples/pi-agent/models.json` is a checked-in pi config example for the
   Qwen 3.6 PARO endpoint. It enables pi's thinking UI with `reasoning=true` and
   `compat.thinkingFormat="qwen"` while leaving `supportsReasoningEffort=false`

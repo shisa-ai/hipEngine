@@ -445,6 +445,20 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "strict_decoding": False,
         "strict_result_validation": True,
     }
+    assert body["features"]["grammars"] == {
+        "enabled": False,
+        "strict_decoding": False,
+        "supported": [],
+        "unsupported_fields": [
+            "grammar",
+            "guided_json",
+            "guided_regex",
+            "guided_choice",
+            "guided_grammar",
+            "guided_decoding_backend",
+        ],
+        "result_validation_only": ["json_object", "json_schema"],
+    }
     assert body["features"]["token_diagnostics"] == {
         "tokenize": True,
         "detokenize": True,
@@ -660,6 +674,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "parallel_tool_calls" not in body["unsupported_fields"]
     assert "response_format" not in body["unsupported_fields"]
     assert "continuation_id" not in body["unsupported_fields"]
+    assert "grammar" in body["unsupported_fields"]
+    assert "guided_json" in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -5455,6 +5471,15 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
                 "session": {"id": "session_123"},
             },
             "continuation_id",
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "grammar": {"type": "json"},
+            },
+            "grammar",
         ),
     ],
 )
