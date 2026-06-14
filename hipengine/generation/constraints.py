@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+_PHASE_THINK = "think"
+_PHASE_CLOSING_THINK = "closing_think"
+_PHASE_ANSWER = "answer"
+_PHASE_DONE = "done"
+_THINKING_PHASES = {_PHASE_THINK, _PHASE_CLOSING_THINK, _PHASE_ANSWER, _PHASE_DONE}
+
+
 @dataclass(frozen=True, slots=True)
 class TokenSequenceDFAState:
     """Incremental matcher for token-id sequences.
@@ -120,6 +127,128 @@ class ForcedTokenQueue:
         return payload
 
 
+@dataclass(slots=True)
+class ThinkingBudgetState:
+    """Tokenizer-agnostic state for decode-time thinking budget control.
+
+    The state does not choose tokens by itself. It tracks reasoning/answer token
+    counts, detects soft/hard budget pressure, and enqueues a tokenizer-lowered
+    close sequence through ``ForcedTokenQueue`` when a controller asks it to.
+    """
+
+    close_sequence: Iterable[int] = ()
+    hard_token_cap: int | None = None
+    soft_close_window: int = 0
+    phase: str = _PHASE_THINK
+    reasoning_tokens: int = 0
+    answer_tokens: int = 0
+    forced_tokens: ForcedTokenQueue | Iterable[int] = field(default_factory=ForcedTokenQueue)
+    close_state: TokenSequenceDFAState = field(init=False)
+
+    def __post_init__(self) -> None:
+        close_sequence = tuple(int(token) for token in self.close_sequence)
+        if any(token < 0 for token in close_sequence):
+            raise ValueError("close_sequence must contain non-negative token ids")
+        if self.hard_token_cap is not None and int(self.hard_token_cap) < 0:
+            raise ValueError("hard_token_cap must be non-negative")
+        if int(self.soft_close_window) < 0:
+            raise ValueError("soft_close_window must be non-negative")
+        phase = str(self.phase)
+        if phase not in _THINKING_PHASES:
+            raise ValueError(f"phase must be one of {sorted(_THINKING_PHASES)}")
+        forced_tokens = self.forced_tokens
+        if not isinstance(forced_tokens, ForcedTokenQueue):
+            forced_tokens = ForcedTokenQueue(forced_tokens)
+        self.close_sequence = close_sequence
+        self.hard_token_cap = None if self.hard_token_cap is None else int(self.hard_token_cap)
+        self.soft_close_window = int(self.soft_close_window)
+        self.phase = phase
+        self.reasoning_tokens = _nonnegative_int(self.reasoning_tokens, name="reasoning_tokens")
+        self.answer_tokens = _nonnegative_int(self.answer_tokens, name="answer_tokens")
+        self.forced_tokens = forced_tokens
+        self.close_state = TokenSequenceDFAState.from_sequences((close_sequence,) if close_sequence else ())
+
+    @property
+    def remaining_think_tokens(self) -> int | None:
+        if self.hard_token_cap is None:
+            return None
+        return max(0, int(self.hard_token_cap) - int(self.reasoning_tokens))
+
+    @property
+    def hard_close_due(self) -> bool:
+        return (
+            self.phase == _PHASE_THINK
+            and self.hard_token_cap is not None
+            and int(self.reasoning_tokens) >= int(self.hard_token_cap)
+        )
+
+    @property
+    def soft_close_active(self) -> bool:
+        if self.phase != _PHASE_THINK or self.hard_token_cap is None or self.soft_close_window <= 0:
+            return False
+        threshold = max(0, int(self.hard_token_cap) - int(self.soft_close_window))
+        return int(self.reasoning_tokens) >= threshold
+
+    @property
+    def budget_pressure(self) -> str | None:
+        if self.hard_close_due:
+            return "hard_close"
+        if self.soft_close_active:
+            return "soft_close"
+        return None
+
+    def force_close(self, *, reason: str = "manual_close") -> bool:
+        """Queue the full close sequence if a close is possible and not pending."""
+
+        if not self.close_sequence or self.phase in {_PHASE_ANSWER, _PHASE_DONE} or self.forced_tokens:
+            return False
+        self.forced_tokens.extend(self.close_sequence, reason=reason)
+        self.phase = _PHASE_CLOSING_THINK
+        return True
+
+    def ensure_hard_close(self, *, reason: str = "thinking_hard_close") -> bool:
+        """Queue the close sequence when the hard cap has been reached."""
+
+        if not self.hard_close_due:
+            return False
+        return self.force_close(reason=reason)
+
+    def observe(self, token_id: int) -> "ThinkingBudgetState":
+        token = int(token_id)
+        if token < 0:
+            raise ValueError("observed token must be non-negative")
+        if self.phase in {_PHASE_THINK, _PHASE_CLOSING_THINK}:
+            self.reasoning_tokens += 1
+            self.close_state = self.close_state.observe(token)
+            if self.close_state.matched:
+                self.phase = _PHASE_ANSWER
+        elif self.phase == _PHASE_ANSWER:
+            self.answer_tokens += 1
+        return self
+
+    def to_json_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "phase": self.phase,
+            "reasoning_tokens": int(self.reasoning_tokens),
+            "answer_tokens": int(self.answer_tokens),
+        }
+        if self.hard_token_cap is not None:
+            payload["hard_token_cap"] = int(self.hard_token_cap)
+            payload["remaining_think_tokens"] = self.remaining_think_tokens
+        if self.soft_close_window:
+            payload["soft_close_window"] = int(self.soft_close_window)
+        if self.budget_pressure is not None:
+            payload["budget_pressure"] = self.budget_pressure
+        if self.close_sequence:
+            payload["close_sequence"] = list(self.close_sequence)
+        close_state = self.close_state.to_json_dict()
+        if close_state:
+            payload["close_state"] = close_state
+        if self.forced_tokens:
+            payload["forced_tokens"] = self.forced_tokens.to_json_dict()
+        return payload
+
+
 def normalize_token_sequences(sequences: Iterable[Iterable[int]] | None) -> tuple[tuple[int, ...], ...]:
     if sequences is None:
         return ()
@@ -140,6 +269,13 @@ def token_sequence_state_for_tokens(
     sequences: Iterable[Iterable[int]] | None,
 ) -> TokenSequenceDFAState:
     return TokenSequenceDFAState.from_sequences(sequences).observe_many(token_ids)
+
+
+def _nonnegative_int(value: Any, *, name: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return parsed
 
 
 def _matched_sequence(
@@ -172,6 +308,7 @@ def _longest_prefix_suffix(
 
 __all__ = [
     "ForcedTokenQueue",
+    "ThinkingBudgetState",
     "TokenSequenceDFAState",
     "normalize_token_sequences",
     "token_sequence_state_for_tokens",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from hipengine.generation import ForcedTokenQueue, TokenSequenceDFAState, token_sequence_state_for_tokens
+from hipengine.generation import ForcedTokenQueue, ThinkingBudgetState, TokenSequenceDFAState, token_sequence_state_for_tokens
 
 
 def test_token_sequence_dfa_reports_partial_suffix_candidates() -> None:
@@ -68,3 +68,66 @@ def test_forced_token_queue_pops_fifo_and_reports_json_state() -> None:
 def test_forced_token_queue_rejects_negative_token_ids() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         ForcedTokenQueue((-1,))
+
+
+def test_thinking_budget_state_reports_soft_and_hard_pressure() -> None:
+    state = ThinkingBudgetState(close_sequence=(10, 11), hard_token_cap=5, soft_close_window=2)
+
+    for token_id in (1, 2):
+        state.observe(token_id)
+    assert state.remaining_think_tokens == 3
+    assert state.budget_pressure is None
+
+    state.observe(3)
+    assert state.soft_close_active is True
+    assert state.budget_pressure == "soft_close"
+
+    state.observe(4).observe(5)
+    assert state.hard_close_due is True
+    assert state.budget_pressure == "hard_close"
+
+
+def test_thinking_budget_state_enqueues_hard_close_once() -> None:
+    state = ThinkingBudgetState(close_sequence=(10, 11), hard_token_cap=2)
+    state.observe(1).observe(2)
+
+    assert state.ensure_hard_close() is True
+    assert state.phase == "closing_think"
+    assert state.forced_tokens.pending_tokens == (10, 11)
+    assert state.forced_tokens.to_json_dict()["reason"] == "thinking_hard_close"
+    assert state.ensure_hard_close() is False
+
+
+def test_thinking_budget_state_transitions_to_answer_after_close_sequence() -> None:
+    state = ThinkingBudgetState(close_sequence=(10, 11), hard_token_cap=2)
+    state.observe(1).observe(2)
+    state.ensure_hard_close()
+
+    state.observe(10)
+    assert state.phase == "closing_think"
+    assert state.to_json_dict()["close_state"] == {
+        "partial_suffix": [10],
+        "candidate_sequences": [[10, 11]],
+    }
+
+    state.observe(11)
+    assert state.phase == "answer"
+    assert state.reasoning_tokens == 4
+    state.observe(99)
+    assert state.answer_tokens == 1
+
+
+def test_thinking_budget_state_manual_force_close_and_validation() -> None:
+    state = ThinkingBudgetState(close_sequence=(10, 11))
+
+    assert state.force_close(reason="controller") is True
+    assert state.forced_tokens.pending_tokens == (10, 11)
+    assert state.forced_tokens.to_json_dict()["reason"] == "controller"
+    assert state.force_close(reason="controller") is False
+
+    with pytest.raises(ValueError, match="close_sequence"):
+        ThinkingBudgetState(close_sequence=(-1,))
+    with pytest.raises(ValueError, match="hard_token_cap"):
+        ThinkingBudgetState(hard_token_cap=-1)
+    with pytest.raises(ValueError, match="phase"):
+        ThinkingBudgetState(phase="invalid")

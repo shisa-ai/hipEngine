@@ -87907,3 +87907,19 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_server_api.py -q` -> `132 passed`.
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling -q` -> `2 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `18 passed`.
+
+## 2026-06-14 - AGENTIC thinking budget state primitive
+
+Advanced P1.4 groundwork by adding
+`hipengine.generation.constraints.ThinkingBudgetState`, a torch-free token-id
+state primitive for reasoning-budget control. It tracks reasoning/answer token
+counts, reports soft/hard budget pressure, enqueues tokenizer-lowered close
+sequences through `ForcedTokenQueue`, and transitions to answer phase when the
+close DFA matches. This does not change live generation yet; tokenizer lowering,
+dynamic bias, hard/manual close wiring, and per-phase backend finish metadata
+remain future controller work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/__init__.py tests/test_generation_constraints.py`.
+- `python3 -m pytest tests/test_generation_constraints.py tests/test_generation_registry.py tests/test_model_quant_and_imports.py -q` -> `22 passed`.
+- `git diff --check` -> clean.

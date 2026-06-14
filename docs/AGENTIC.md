@@ -964,7 +964,9 @@ Current code reality:
   route, dynamically fall back to host token selection if they appear while a
   row is configured for native sampling, and block raw-argmax MTP verification.
 - Queue population from thinking close delimiters, JSON/tool repair, and grammar
-  processors remains future controller work.
+  processors remains future controller/generation-loop work, though the
+  `ThinkingBudgetState` primitive can now enqueue a tokenizer-lowered close
+  sequence when wired into a controller.
 
 Implement:
 
@@ -1035,8 +1037,14 @@ Current code reality:
   `max_tokens`, the bounded chat default, and remaining admitted context,
   prompt-hint rendering, and parser-marker validation for
   `hard_close_sequence`;
-- not implemented: tokenizer lowering, dynamic soft-close bias, hard forced
-  close, manual force hooks, EOS suppression, and per-phase finish metadata.
+- `hipengine.generation.constraints.ThinkingBudgetState` is a torch-free
+  token-id primitive that tracks reasoning/answer counts, reports soft/hard
+  budget pressure, enqueues a tokenizer-lowered close sequence through
+  `ForcedTokenQueue`, and transitions to answer phase when the close DFA
+  matches;
+- not implemented: request-time tokenizer lowering into `ThinkingBudgetState`,
+  generation-loop wiring for dynamic soft-close bias, hard/manual forced close,
+  EOS suppression, and backend-authored per-phase finish metadata.
 
 Exit gates:
 

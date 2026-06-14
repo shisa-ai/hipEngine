@@ -21,6 +21,7 @@ from hipengine.generation.batch_scheduler import (
 )
 from hipengine.generation.constraints import (
     ForcedTokenQueue,
+    ThinkingBudgetState,
     TokenSequenceDFAState,
     normalize_token_sequences,
     token_sequence_state_for_tokens,
@@ -133,6 +134,7 @@ __all__ = [
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
     "TextGenerator",
+    "ThinkingBudgetState",
     "TokenSequenceDFAState",
     "TokenLogprob",
     "active_processor_names",
