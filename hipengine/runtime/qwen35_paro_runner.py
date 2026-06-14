@@ -6279,11 +6279,13 @@ class Qwen35ParoResidentSession:
     def _allocate_verify_trunk_buffers(self) -> None:
         """Allocate the DFlash chain verifier's dedicated trunk hidden pair.
 
-        ``_launch_verify_chain_forward_accept`` writes the B+1-row verifier
-        trunk into ``verify_trunk_hidden`` and ping-pongs it against
+        ``_launch_verify_chain_forward_accept`` writes the root+candidate
+        verifier rows into ``verify_trunk_hidden`` and ping-pongs it against
         ``verify_trunk_next_hidden`` across the layer stack, so the two must be
-        DISTINCT device buffers, each sized for the full verifier-row capacity
-        (``prefill_capacity_rows``).
+        DISTINCT device buffers.  The verifier entrypoints reject
+        ``rows > max_batch_size`` and every other verifier buffer is sized to
+        ``max_batch_size``, so the trunk pair only needs that verifier-row
+        capacity -- not the full prompt prefill capacity.
 
         This is deliberately separate from main's lazy ``prefill_hidden`` (a
         single, growable, self-aliased buffer sized to the last decode step's
@@ -6291,10 +6293,14 @@ class Qwen35ParoResidentSession:
         out of bounds and faults/hangs the GPU.  Regression covered by
         ``tests/test_qwen35_resident_batch_layout.py``.
         """
-        verify_trunk_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
-        verify_trunk_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
+        verify_rows = int(self.max_batch_size)
+        if verify_rows <= 0:
+            raise ValueError("max_batch_size must be positive for verifier trunk allocation")
+        verify_trunk_nbytes = verify_rows * self.hidden_nbytes
+        verify_trunk_hidden_buf = malloc(verify_trunk_nbytes, runtime=self.runtime)
+        verify_trunk_next_hidden_buf = malloc(verify_trunk_nbytes, runtime=self.runtime)
         self.buffers.extend((verify_trunk_hidden_buf, verify_trunk_next_hidden_buf))
-        trunk_shape = (self.prefill_capacity_rows, self.config.hidden_size)
+        trunk_shape = (verify_rows, self.config.hidden_size)
         self.verify_trunk_hidden = Tensor.from_handle(
             verify_trunk_hidden_buf.ptr, trunk_shape, DType.FP16, self.device
         )

@@ -156,18 +156,21 @@ def test_qwen35_resident_prefill_hidden_buffer_is_lazy_single_buffer() -> None:
     assert session.prefill_next_hidden.ptr == 0
 
 
-def test_qwen35_resident_verify_trunk_is_distinct_full_capacity_pair() -> None:
+def test_qwen35_resident_verify_trunk_is_distinct_verifier_capacity_pair() -> None:
     # Regression: the origin/main merge replaced ours' eager, dedicated verifier
     # trunk with main's lazy single (self-aliased) `prefill_hidden` buffer sized
-    # to the last decode step's row count.  The B+1-row chain verifier forward
+    # to the last decode step's row count.  The root+candidate verifier forward
     # then wrote out of bounds -> GPU fault -> indefinite hang.  The verifier
-    # trunk must be two DISTINCT buffers, each sized for prefill_capacity_rows.
+    # trunk must be two DISTINCT buffers, each sized for max_batch_size verifier
+    # rows; prompt prefill capacity is unnecessary resident memory.
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
+    session.max_batch_size = 3
     session.config = SimpleNamespace(hidden_size=8)
-    session.prefill_capacity_rows = 4
-    session.prefill_hidden_nbytes = session.prefill_capacity_rows * 8 * DType.FP16.itemsize
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.prefill_capacity_rows = 512
+    session.prefill_hidden_nbytes = session.prefill_capacity_rows * session.hidden_nbytes
     session.buffers = []
 
     class FakeRuntime:
@@ -189,12 +192,15 @@ def test_qwen35_resident_verify_trunk_is_distinct_full_capacity_pair() -> None:
 
     session._allocate_verify_trunk_buffers()
 
-    # Two distinct device allocations, each at the full verifier-row capacity.
+    # Two distinct device allocations, each at verifier-row capacity, not full
+    # prompt prefill capacity.
+    expected_nbytes = session.max_batch_size * session.hidden_nbytes
     assert len(runtime.mallocs) == 2
-    assert all(nbytes == session.prefill_hidden_nbytes for _, nbytes in runtime.mallocs)
+    assert all(nbytes == expected_nbytes for _, nbytes in runtime.mallocs)
+    assert all(nbytes < session.prefill_hidden_nbytes for _, nbytes in runtime.mallocs)
     assert session.verify_trunk_hidden.ptr != session.verify_trunk_next_hidden.ptr
-    assert session.verify_trunk_hidden.shape == (4, 8)
-    assert session.verify_trunk_next_hidden.shape == (4, 8)
+    assert session.verify_trunk_hidden.shape == (session.max_batch_size, 8)
+    assert session.verify_trunk_next_hidden.shape == (session.max_batch_size, 8)
     # Both buffers are tracked for teardown.
     assert len(session.buffers) == 2
 
