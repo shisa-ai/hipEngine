@@ -146,7 +146,7 @@ def build_chat_smoke_payload(
                 },
             }
         ]
-        payload["tool_choice"] = str(tool_calling.get("tool_choice", "auto"))
+        payload["tool_choice"] = {"type": "function", "function": {"name": "record_result"}}
     for blocked in _string_list(chat.get("do_not_send", ()), "chat_completions.do_not_send"):
         payload.pop(blocked, None)
     return payload
@@ -171,7 +171,8 @@ def run_chat_smoke(
     timeout: float = 30.0,
 ) -> dict[str, Any]:
     payload = build_chat_smoke_payload(config, capabilities)
-    return _request_json(
+    tool_calling = _object(_object(config, "chat_completions"), "tool_calling")
+    response = _request_json(
         "POST",
         _join_url(
             base_url,
@@ -181,6 +182,52 @@ def run_chat_smoke(
         payload=payload,
         timeout=timeout,
     )
+    validate_chat_smoke_response(response, expect_tool_call=bool(tool_calling.get("enabled")))
+    return response
+
+
+def validate_chat_smoke_response(
+    response: dict[str, Any], *, expect_tool_call: bool = False
+) -> dict[str, Any]:
+    choices = _list(response.get("choices"), "chat smoke response.choices")
+    if not choices:
+        raise ConfigValidationError("chat smoke response.choices must contain at least one choice")
+    choice = _object_value(choices[0], "chat smoke response.choices[0]")
+    message = _object(choice, "message")
+    finish_reason = choice.get("finish_reason")
+    if not expect_tool_call:
+        return {"finish_reason": None if finish_reason is None else str(finish_reason)}
+    if finish_reason != "tool_calls":
+        raise ConfigValidationError(
+            "chat smoke did not finish with tool_calls; "
+            f"finish_reason={finish_reason!r}"
+        )
+    tool_calls = _list(message.get("tool_calls"), "chat smoke response message.tool_calls")
+    if len(tool_calls) != 1:
+        raise ConfigValidationError(
+            f"chat smoke expected exactly one tool call, got {len(tool_calls)}"
+        )
+    call = _object_value(tool_calls[0], "chat smoke response message.tool_calls[0]")
+    function = _object_value(call.get("function"), "chat smoke response tool call function")
+    name = function.get("name")
+    if name != "record_result":
+        raise ConfigValidationError(f"chat smoke selected unexpected tool {name!r}")
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        raise ConfigValidationError("chat smoke tool arguments must be a JSON string")
+    try:
+        decoded_args = json.loads(arguments)
+    except json.JSONDecodeError as exc:
+        raise ConfigValidationError(f"chat smoke tool arguments are not valid JSON: {exc}") from exc
+    if not isinstance(decoded_args, dict):
+        raise ConfigValidationError("chat smoke tool arguments must decode to a JSON object")
+    if "result" not in decoded_args or not isinstance(decoded_args["result"], str):
+        raise ConfigValidationError("chat smoke tool arguments must include string field 'result'")
+    return {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": sorted(str(key) for key in decoded_args),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -225,6 +272,11 @@ def main(argv: list[str] | None = None) -> int:
             timeout=max(args.timeout, 30.0),
         )
         summary["chat_smoke_object"] = response.get("object")
+        tool_calling = _object(_object(config, "chat_completions"), "tool_calling")
+        summary["chat_smoke"] = validate_chat_smoke_response(
+            response,
+            expect_tool_call=bool(tool_calling.get("enabled")),
+        )
     print(json.dumps({"ok": True, **summary}, indent=2, sort_keys=True))
     return 0
 
@@ -290,6 +342,12 @@ def _string_list(value: Any, label: str) -> list[str]:
     if not isinstance(value, (list, tuple)):
         raise ConfigValidationError(f"{label} must be a JSON array")
     return [str(item) for item in value]
+
+
+def _list(value: Any, label: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ConfigValidationError(f"{label} must be a JSON array")
+    return list(value)
 
 
 if __name__ == "__main__":

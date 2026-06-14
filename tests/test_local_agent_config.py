@@ -165,10 +165,76 @@ def test_local_agent_chat_smoke_payload_avoids_unsupported_fields() -> None:
     assert payload["stream"] is False
     assert payload["max_tokens"] == 8
     assert payload["session"] == {"commit": "append_none"}
-    assert payload["tool_choice"] == "auto"
+    assert payload["tool_choice"] == {"type": "function", "function": {"name": "record_result"}}
     assert payload["tools"][0]["function"]["name"] == "record_result"
     for unsupported in config["chat_completions"]["do_not_send"]:
         assert unsupported not in payload
+
+
+def test_local_agent_chat_smoke_response_requires_tool_call_when_enabled() -> None:
+    summary = validate_local_agent_config.validate_chat_smoke_response(
+        {
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "record_result",
+                                    "arguments": json.dumps({"result": "ok"}),
+                                },
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+        expect_tool_call=True,
+    )
+
+    assert summary == {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": ["result"],
+    }
+
+
+def test_local_agent_chat_smoke_response_allows_text_when_tools_disabled() -> None:
+    summary = validate_local_agent_config.validate_chat_smoke_response(
+        {
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "ok"},
+                }
+            ],
+        },
+        expect_tool_call=False,
+    )
+
+    assert summary == {"finish_reason": "stop"}
+
+
+def test_local_agent_chat_smoke_response_rejects_missing_tool_call() -> None:
+    with pytest.raises(validate_local_agent_config.ConfigValidationError, match="tool_calls"):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "ok"},
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
 
 
 def test_local_agent_config_rejects_missing_unsupported_blocklist() -> None:

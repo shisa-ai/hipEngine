@@ -461,6 +461,11 @@ no-retain policy, and keeps stateful `session.id` out of the default streaming
 payload plus intentionally unused tool-policy and grammar/guidance fields in
 `do_not_send`.
 
+When `--chat-smoke` is used and the config enables tools, the validator sends a
+specific `record_result` tool choice and requires the server response to contain
+that parsed tool call with valid JSON arguments. If tools are disabled, the
+smoke only requires a valid chat completion response.
+
 Known agent fields that are advertised as unsupported are rejected before
 generation work starts. Stateless requests without a `session` object default
 to no generated-tail retention, and `session.commit="append_none"` is accepted

@@ -88886,3 +88886,17 @@ Validation:
 Next: rerun the exact 24GB/GPU1 startup/scratch memory gate after the active
 server exits to confirm min-free improves from `~0.61 GiB` toward `~1.1 GiB`,
 then start the BF16 int8 prefill oracle reduction.
+
+## 2026-06-14 - AGENTIC local-agent tool-call smoke validation
+
+Strengthened `scripts/validate_local_agent_config.py --chat-smoke` so the smoke
+request explicitly chooses the `record_result` tool when tools are enabled and
+validates the parsed `tool_calls` response plus JSON arguments. Text-only smoke
+responses remain accepted when a config disables tools.
+
+Validation:
+- `python3 -m py_compile scripts/validate_local_agent_config.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py::test_local_agent_chat_smoke_payload_avoids_unsupported_fields tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_requires_tool_call_when_enabled tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_allows_text_when_tools_disabled tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_rejects_missing_tool_call -q` -> `4 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `17 passed`.
+- `python3 -m ruff check scripts/validate_local_agent_config.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- scripts/validate_local_agent_config.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
