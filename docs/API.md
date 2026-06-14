@@ -337,13 +337,16 @@ contains the canonical AGENTIC code, HTTP status, retryability, and
 `legacy_code` when the OpenAI-facing `error.code` is kept for compatibility.
 Streaming failures use the same error object inside the final SSE error chunk.
 
-Clients should handle these canonical codes from `error.hipengine.code`:
+Clients should handle these canonical codes from `error.hipengine.code` on
+error payloads. The same manifest also advertises `invalid_tool_call` because
+strict tool result-validation emits it as a normal chat
+`finish_details.reason`; it is not currently returned as an HTTP error payload.
 
 | Code | Status | Retry | Current emission |
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. |
-| `invalid_tool_call` | 400 | no | Reserved for strict tool-call failures; prompt/parse mode currently treats malformed tool JSON as assistant text. |
-| `schema_violation` | 422 | no | Request body validation errors; legacy `error.code` is `validation_error`. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for strict tool result-validation failures; malformed tool JSON remains assistant text when strict validation is inactive. |
+| `schema_violation` | 422 | no | Request body validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error`. |
 | `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |

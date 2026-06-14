@@ -127,14 +127,17 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
     "invalid_tool_call": {
         "status_code": 400,
         "retryable": False,
-        "emitted": False,
-        "description": "Reserved for strict tool-call decoding/parsing failures.",
+        "emitted": True,
+        "description": (
+            "Emitted as finish_details.reason for strict tool result-validation failures; "
+            "reserved as an HTTP error for future strict decode-time failures."
+        ),
     },
     "schema_violation": {
         "status_code": 422,
         "retryable": False,
         "emitted": True,
-        "description": "The JSON request body does not match the endpoint schema.",
+        "description": "A request, response_format result, or strict tool result schema was violated.",
     },
     "context_overflow": {
         "status_code": 400,

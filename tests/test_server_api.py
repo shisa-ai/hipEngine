@@ -304,6 +304,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         assert code in errors_by_code
     assert errors_by_code["engine_busy"]["emitted"] is True
     assert errors_by_code["engine_busy"]["status_code"] == 429
+    assert errors_by_code["invalid_tool_call"]["emitted"] is True
+    assert "finish_details.reason" in errors_by_code["invalid_tool_call"]["description"]
+    assert "response_format result" in errors_by_code["schema_violation"]["description"]
     assert {
         "legacy_code": "model_not_found",
         "code": "model_unavailable",

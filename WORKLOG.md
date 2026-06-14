@@ -87602,3 +87602,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC error taxonomy finish-detail surfaces
+
+Aligned the advertised P5.4 error taxonomy with current strict-result behavior.
+`invalid_tool_call` is now marked emitted in `/v1/hipengine/capabilities`
+because strict tool result validation returns it as a normal chat
+`finish_details.reason`; the manifest and docs clarify that it is still not an
+HTTP/SSE error payload until strict decode-time failures exist. The
+`schema_violation` description now covers request-body errors plus
+`response_format` and strict tool result schema failures.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_specific_tool_rejects_wrong_function tests/test_server_api.py::test_chat_completion_tool_choice_none_rejects_tool_call tests/test_server_api.py::test_chat_completion_strict_tool_schema_reports_schema_violation tests/test_server_api.py::test_completions_response_format_json_object_validates_result tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `91 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
