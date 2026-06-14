@@ -1671,6 +1671,27 @@
       }
     },
     {
+      "name": "backend_cancelled_chat_stream_error",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_exception": "cancelled",
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "cancel chat"}],
+        "max_tokens": 4,
+        "stream": true,
+        "stream_options": {"include_hipengine": true}
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "error",
+        "error_code": "cancelled",
+        "hipengine_error_code": "cancelled",
+        "hipengine_event": "error",
+        "finish_details": {"reason": "cancelled", "cancelled": true}
+      }
+    },
+    {
       "name": "invalid_continuation_id_chat",
       "kind": "http",
       "endpoint": "/v1/chat/completions",

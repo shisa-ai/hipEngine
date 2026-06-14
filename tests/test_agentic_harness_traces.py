@@ -103,6 +103,7 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
             "backend_cancelled_completion_error",
             "backend_cancelled_completion_stream_error",
             "backend_deadline_chat_stream_error",
+            "backend_cancelled_chat_stream_error",
             "request_control_cancelled",
         }
     ),

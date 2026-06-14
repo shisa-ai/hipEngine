@@ -91588,3 +91588,16 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `54 passed`.
 - `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC streaming chat cancellation trace
+
+Added a required golden harness trace for a streaming chat backend cancellation
+exception. The trace pins the SSE error event, canonical `cancelled` taxonomy,
+hipEngine extension event, and cancellation finish details for the chat endpoint
+using the deterministic fake-engine cancellation path.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/agentic-traces.json` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `55 passed`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
