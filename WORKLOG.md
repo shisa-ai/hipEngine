@@ -89921,3 +89921,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `227 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC guided patch capability metadata
+
+Advertised the enforced `guided_patch` / `guided_diff` unified-diff contract in
+`/v1/hipengine/capabilities`. The manifest now keeps the existing boolean
+feature flags and additionally reports supported formats, accepted `diff`/`patch`
+fence labels, allowed `fenced` policies, and the default `optional` policy so
+local agent harnesses can discover the behavior without hardcoding it. Updated
+`docs/API.md` and `docs/AGENTIC.md` to match the runtime surface.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_guided_diff_enforces_fenced_policy tests/test_server_api.py::test_guided_patch_request_validation_fails_before_generation -q` -> `11 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `228` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 228`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

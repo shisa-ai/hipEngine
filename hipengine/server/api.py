@@ -187,6 +187,8 @@ _UNSUPPORTED_GRAMMAR_FIELDS = (
 )
 _GUIDED_PATCH_FIELDS = ("guided_patch", "guided_diff")
 _GUIDED_PATCH_FORMATS = ("unified_diff",)
+_GUIDED_PATCH_FENCED_POLICIES = ("optional", "required", "forbidden")
+_GUIDED_PATCH_FENCE_LABELS = ("diff", "patch")
 _PATCH_FENCE_RE = re.compile(r"\A\s*```(?P<label>[^\n`]*)\n(?P<body>.*?)\n```\s*\Z", re.DOTALL)
 _UNIFIED_DIFF_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$")
 _UNIFIED_DIFF_METADATA_PREFIXES = (
@@ -840,6 +842,14 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "json_schema": True,
         "guided_patch": True,
         "guided_diff": True,
+        "guided_patch_formats": list(_GUIDED_PATCH_FORMATS),
+        "guided_diff_formats": list(_GUIDED_PATCH_FORMATS),
+        "guided_patch_fenced_policies": list(_GUIDED_PATCH_FENCED_POLICIES),
+        "guided_diff_fenced_policies": list(_GUIDED_PATCH_FENCED_POLICIES),
+        "guided_patch_default_fenced_policy": "optional",
+        "guided_diff_default_fenced_policy": "optional",
+        "guided_patch_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
+        "guided_diff_fence_labels": list(_GUIDED_PATCH_FENCE_LABELS),
         "strict_decoding": False,
         "strict_result_validation": True,
         "result_validation_failure_reasons": list(

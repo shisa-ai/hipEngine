@@ -1349,7 +1349,9 @@ Current state:
   result validation. Valid raw unified diffs or a single fenced `diff`/`patch`
   block are returned normally; invalid stop-finished outputs are suppressed with
   `finish_details.reason="schema_violation"`. Length-finished partial patches
-  keep their text and may use deterministic buffered continuation handles.
+  keep their text and may use deterministic buffered continuation handles. The
+  capabilities manifest advertises the supported format, fence labels, allowed
+  `fenced` policies, and default policy under `features.structured_outputs`.
 - Auto-mode constraints, full argument/schema grammar forcing, and
   grammar-constrained JSON/tool generation remain future work.
 
@@ -1485,6 +1487,9 @@ Current code reality:
   adds a unified-diff prompt hint. Stop-finished outputs that do not satisfy the
   selected policy return empty content with
   `finish_details.reason="schema_violation"`.
+- `/v1/hipengine/capabilities` reports the unified-diff format, `diff`/`patch`
+  fence labels, allowed `fenced` policies, and default `fenced` policy under
+  `features.structured_outputs` so agent harnesses can discover the contract.
 - Length-finished partial guided patches keep their partial text, are classified
   as structured length finishes, and inherit patch validation across
   deterministic buffered continuation handles.

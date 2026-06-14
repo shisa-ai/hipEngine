@@ -419,7 +419,9 @@ add a prompt hint that asks for a raw unified diff or one fenced block.
 Stop-finished outputs that do not satisfy the selected policy return empty
 successful content and `finish_details.reason: "schema_violation"`;
 length-finished partial patches keep their partial text and can produce a
-continuation handle in deterministic buffered mode.
+continuation handle in deterministic buffered mode. The capabilities manifest
+reports the supported unified-diff format, accepted fence labels, allowed
+`fenced` policies, and default policy under `features.structured_outputs`.
 
 Grammar-constrained decoding is not currently supported. The capabilities
 manifest reports `features.grammars.enabled=false`, lists true grammar fields
