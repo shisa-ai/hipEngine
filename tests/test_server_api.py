@@ -4775,6 +4775,28 @@ def test_chat_completion_required_tool_reports_missing_call() -> None:
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
+def test_chat_completion_required_tool_choice_rejects_missing_tools_without_generation() -> None:
+    fake = FakeLLM(outputs=["ordinary answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": "required",
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "tool_choice"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert fake.calls == []
+
+
 def test_chat_completion_required_tool_missing_call_preserves_length_context() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -4870,6 +4892,31 @@ def test_chat_completion_specific_tool_rejects_wrong_function() -> None:
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
     assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_specific_tool_choice_rejects_unknown_function_without_generation() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": {"type": "function", "function": {"name": "write"}},
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "tool_choice.function.name"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert fake.calls == []
 
 
 def test_chat_completion_tool_choice_none_rejects_tool_call() -> None:

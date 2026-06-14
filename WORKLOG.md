@@ -89672,3 +89672,18 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `51 passed`.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC tool-choice request validation
+
+Rejected inconsistent tool-choice requests before generation. `tool_choice`
+values that require a tool now require a non-empty `tools` list, and specific
+function choices must name a declared tool. This avoids spending backend work on
+requests that the server can prove cannot satisfy the requested tool policy.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_choice_rejects_missing_tools_without_generation tests/test_server_api.py::test_chat_completion_specific_tool_choice_rejects_unknown_function_without_generation tests/test_server_api.py::test_chat_completion_required_tool_reports_missing_call tests/test_server_api.py::test_chat_completion_specific_tool_rejects_wrong_function -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `30 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

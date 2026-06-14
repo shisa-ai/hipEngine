@@ -315,6 +315,9 @@ and validated; the first chunk carries the function name, and all chunks carry
 the same tool-call id and index. Prior assistant `tool_calls` and `role: "tool"`
 messages are also replayed into the prompt as `<tool_call>` and
 `<tool_response>` blocks so multi-turn tool loops can continue.
+Inconsistent request shapes fail before generation: `tool_choice="required"`
+or a specific function choice requires at least one `tools` entry, and a
+specific function choice must name a declared tool.
 
 Tool decoding is still prompt-and-parse, not grammar-constrained. The server now
 does strict result validation when `tool_choice` is `none`, `required`, or a

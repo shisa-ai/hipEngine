@@ -6575,7 +6575,10 @@ def _validate_response_format_request(request: CompletionRequest | ChatCompletio
 
 
 def _validate_tool_schema_requests(request: CompletionRequest | ChatCompletionRequest) -> None:
-    if not isinstance(request, ChatCompletionRequest) or not request.tools:
+    if not isinstance(request, ChatCompletionRequest):
+        return
+    _validate_tool_choice_request(request)
+    if not request.tools:
         return
     if not _strict_tool_validation_enabled(request):
         return
@@ -6591,6 +6594,56 @@ def _validate_tool_schema_requests(request: CompletionRequest | ChatCompletionRe
             continue
         param, message = schema_error
         raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
+
+
+def _validate_tool_choice_request(request: ChatCompletionRequest) -> None:
+    raw_choice = request.tool_choice
+    if raw_choice is None:
+        return
+    if isinstance(raw_choice, Mapping):
+        choice_type = str(raw_choice.get("type", "")).strip().lower()
+        if choice_type != "function":
+            raise OpenAIHTTPError(
+                400,
+                "tool_choice object must have type='function'",
+                code="invalid_request",
+                param="tool_choice.type",
+            )
+        function = raw_choice.get("function")
+        if not isinstance(function, Mapping):
+            raise OpenAIHTTPError(
+                400,
+                "tool_choice.function must be an object",
+                code="invalid_request",
+                param="tool_choice.function",
+            )
+        name = function.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise OpenAIHTTPError(
+                400,
+                "tool_choice.function.name must be a non-empty string",
+                code="invalid_request",
+                param="tool_choice.function.name",
+            )
+        mode = "function"
+        requested_name = name.strip()
+    else:
+        mode, requested_name = _tool_choice_mode(raw_choice)
+
+    if mode in {"required", "function"} and not request.tools:
+        raise OpenAIHTTPError(
+            400,
+            "tool_choice requires at least one tool",
+            code="invalid_request",
+            param="tool_choice",
+        )
+    if mode == "function" and requested_name not in _tool_map_by_name(request.tools or ()):
+        raise OpenAIHTTPError(
+            400,
+            f"tool_choice function {requested_name!r} is not declared in tools",
+            code="invalid_request",
+            param="tool_choice.function.name",
+        )
 
 
 def _response_format_mode(request: CompletionRequest | ChatCompletionRequest) -> str | None:
