@@ -136,7 +136,9 @@ For completion `echo+logprobs`, the echoed prompt is represented as a prefix
 entry with `null` logprob and generated-token offsets are shifted accordingly.
 Streaming requests with logprobs use a buffered detailed-generation path so SSE
 chunks can carry logprob metadata; ordinary streams without logprobs remain
-live token/chunk streams.
+live token/chunk streams. If a backend response path cannot provide token
+metadata for a logprobs request, the server returns HTTP 501
+`unsupported_feature` with `error.param="logprobs"`.
 
 ### Routing metadata
 

@@ -5733,10 +5733,10 @@ def _validate_logprob_details(details: Sequence[GenerationOutput], outputs: Sequ
     for output, text in zip(details, outputs, strict=True):
         if text and not output.token_logprobs:
             raise OpenAIHTTPError(
-                500,
-                "generator did not return token logprobs for a logprobs request",
+                501,
+                "logprobs are not supported by this backend response path",
                 error_type="server_error",
-                code="missing_logprobs",
+                code="unsupported_feature",
                 param="logprobs",
             )
 

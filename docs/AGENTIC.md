@@ -1743,8 +1743,10 @@ Exit gates:
 Current state: host-logits logprobs are implemented for non-streaming
 completions/chat, buffered streaming completions/chat, and completion
 `echo+logprobs` with the echoed prompt represented as one prefix entry with
-`null` prompt logprob. Remaining work is true prompt-token logprobs, native-path
-coverage, and live token-stream parity.
+`null` prompt logprob. Backend paths that cannot provide token metadata for a
+logprobs request return stable HTTP 501 `unsupported_feature` with
+`error.param="logprobs"`. Remaining work is true prompt-token logprobs,
+native-path coverage, and live token-stream parity.
 
 Implement:
 

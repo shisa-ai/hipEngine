@@ -3713,6 +3713,29 @@ def test_completions_endpoint_returns_openai_logprobs() -> None:
     assert fake.calls[0][1].top_logprobs == 2
 
 
+def test_completion_logprobs_missing_backend_metadata_returns_unsupported_feature() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=["alpha"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 1, "logprobs": 1},
+    )
+
+    assert response.status_code == 501
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_feature"
+    assert error["param"] == "logprobs"
+    assert error["hipengine"] == {
+        "code": "unsupported_feature",
+        "status_code": 501,
+        "retryable": False,
+    }
+
+
 def test_completions_endpoint_echo_logprobs_shift_generated_offsets() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -3768,6 +3791,29 @@ def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:
     assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     assert fake.stream_calls == []
     assert fake.calls[0][1].logprobs is True
+
+
+def test_streaming_completion_logprobs_missing_backend_metadata_returns_unsupported_feature() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=["alpha"], stream_chunks=["alpha"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 1, "stream": True, "logprobs": 1},
+    )
+
+    assert response.status_code == 501
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_feature"
+    assert error["param"] == "logprobs"
+    assert error["hipengine"] == {
+        "code": "unsupported_feature",
+        "status_code": 501,
+        "retryable": False,
+    }
 
 
 def test_streaming_completion_response_format_buffers_validation() -> None:
@@ -3868,6 +3914,34 @@ def test_chat_completion_returns_openai_logprobs() -> None:
     ]
     assert fake.calls[0][1].logprobs is True
     assert fake.calls[0][1].top_logprobs == 1
+
+
+def test_chat_logprobs_missing_backend_metadata_returns_unsupported_feature() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=["assistant"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 1,
+            "logprobs": True,
+        },
+    )
+
+    assert response.status_code == 501
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_feature"
+    assert error["param"] == "logprobs"
+    assert error["hipengine"] == {
+        "code": "unsupported_feature",
+        "status_code": 501,
+        "retryable": False,
+    }
 
 
 def test_streaming_chat_completion_returns_logprobs_from_buffered_path() -> None:
