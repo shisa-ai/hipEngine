@@ -280,9 +280,12 @@ can still be surfaced as an error payload. PARO/GGUF generation checks that
 token at the same cooperative boundaries as request deadlines.
 
 Set `HIPENGINE_MAX_QUEUED_REQUESTS` or `--max-queued-requests` to enable an
-OpenAI-server generation queue cap. When the batcher queue is full, new
-generation requests fail before enqueue with HTTP 429 `engine_busy` and
-`Retry-After: 1`; rejected requests do not allocate KV/session state.
+OpenAI-server generation queue cap. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
+`--max-chat-sessions` to cap app-local chat transcript sessions. When either cap
+is full, new work fails before enqueue/generation with HTTP 429 `engine_busy`
+and `Retry-After: 1`; rejected requests do not allocate KV/session state.
+Existing chat sessions may continue when the session cap is full, and deleting a
+session frees capacity.
 
 ### Tool calling
 
@@ -453,9 +456,10 @@ the server can be sent back on the supported resume path described above.
 
 Authenticated `GET /v1/hipengine/sessions` returns metadata only: active session
 count, storage type, `resident_state_reuse=false`, per-session id/message-count
-timestamps, and active continuation-handle count. It does not return transcript,
-prompt, generated, or tool-result text. `DELETE /v1/hipengine/sessions/{session_id}`
-removes one app-local transcript session and returns `deleted: true` or `false`.
+timestamps, configured `max_active` cap, pending creation count, and active
+continuation-handle count. It does not return transcript, prompt, generated, or
+tool-result text. `DELETE /v1/hipengine/sessions/{session_id}` removes one
+app-local transcript session and returns `deleted: true` or `false`.
 
 Validate the config against a running server with:
 
@@ -495,7 +499,7 @@ strict tool result-validation emits it as a normal chat
 | `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
-| `engine_busy` | 429 | yes | Generation queue cap rejected the request before enqueue. |
+| `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation. |
 | `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`. |
 | `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
 
@@ -514,8 +518,9 @@ diagnostics for model loaded state, eager warmup completion, last startup timing
 configured/effective context, KV policy/capacity estimate, KV pool counters,
 graph cache counters, selected backend/device environment, generation queue
 depth/max-depth, active worker state, app-local session counts, stored message
-counts, and continuation-handle counts. It intentionally omits prompts,
-generated text, tool results, and raw request/response payloads.
+counts, configured chat-session cap, pending session creations, and
+continuation-handle counts. It intentionally omits prompts, generated text, tool
+results, and raw request/response payloads.
 
 ## Diagnostics
 
@@ -560,8 +565,10 @@ strings and should only be used in local, non-sensitive debugging sessions.
   mid-call.
 - HTTP generation requests route through the in-process generation batcher.
   Compatible queued prompts can coalesce into one prompt-list engine call, but
-  true continuous decode, concurrent backend execution, max-active-session
-  admission, and scheduler fairness remain later runtime work.
+  true continuous decode, concurrent backend execution, and scheduler fairness
+  remain later runtime work. App-local chat transcript sessions can be capped
+  with `--max-chat-sessions`, but this is an admission limit, not a resident KV
+  fairness scheduler.
   Prometheus mode exposes `hipengine_generation_queue_depth`,
   `hipengine_generation_queue_max_depth`, and
   `hipengine_generation_worker_active` gauges for backpressure monitors.

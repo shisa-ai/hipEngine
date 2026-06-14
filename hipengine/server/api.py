@@ -114,6 +114,7 @@ class ServerConfig:
     replay_dir: str | None = None
     replay_redaction: str = "hash"
     max_queued_requests: int | None = None
+    max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
     created: int = field(default_factory=lambda: int(time.time()))
 
@@ -211,7 +212,7 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "status_code": 429,
         "retryable": True,
         "emitted": True,
-        "description": "The server admission queue is full.",
+        "description": "The server admission queue or chat-session cap is full.",
     },
     "model_unavailable": {
         "status_code": 404,
@@ -763,7 +764,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "resident_context": True,
             "commit_policy": _session_commit_policy_capability(),
             "continuations": _session_continuation_capability(),
-            "metadata": _session_metadata_capability(),
+            "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
         "unsupported_fields": [],
     }
@@ -798,12 +799,13 @@ def _session_continuation_capability() -> dict[str, Any]:
     }
 
 
-def _session_metadata_capability() -> dict[str, Any]:
+def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any]:
     return {
         "supported": True,
         "storage": "app_local_transcript",
         "resident_state_reuse": False,
         "includes_transcript": False,
+        "max_active": None if max_active is None else int(max_active),
         "list_endpoint": "/v1/hipengine/sessions",
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
     }
@@ -1492,7 +1494,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     app.state.hipengine_continuation_ttl_seconds = _CONTINUATION_TTL_SECONDS
     chat_session_lock = asyncio.Lock()
     chat_sessions: dict[str, _ChatSessionRecord] = {}
+    chat_session_pending: set[str] = set()
     app.state.hipengine_chat_sessions = chat_sessions
+    app.state.hipengine_chat_session_pending = chat_session_pending
 
     def chat_session_metadata(record: _ChatSessionRecord) -> dict[str, Any]:
         return {
@@ -1508,6 +1512,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return {
             "resident_context": True,
             "active": len(chat_sessions),
+            "pending_creations": len(chat_session_pending),
+            "max_active": None if config.max_chat_sessions is None else int(config.max_chat_sessions),
             "storage": "app_local_transcript",
             "resident_state_reuse": False,
             "total_messages": sum(len(record.messages) for record in chat_sessions.values()),
@@ -1516,6 +1522,47 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "ttl_seconds": _CONTINUATION_TTL_SECONDS,
             },
         }
+
+    async def reserve_chat_session_if_needed(request: ChatCompletionRequest) -> str | None:
+        session_id = _session_id(request)
+        if session_id is None:
+            return None
+        cache_action = _session_cache_action(request)
+        if cache_action in (None, "append_none"):
+            return None
+        async with chat_session_lock:
+            if session_id in chat_sessions:
+                return None
+            if session_id in chat_session_pending:
+                exc = OpenAIHTTPError(
+                    429,
+                    "chat session is being created",
+                    error_type="rate_limit_error",
+                    code="engine_busy",
+                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
+                )
+                _record_openai_error(app.state.hipengine_server_metrics, exc)
+                raise exc
+            if config.max_chat_sessions is not None and (
+                len(chat_sessions) + len(chat_session_pending)
+            ) >= int(config.max_chat_sessions):
+                exc = OpenAIHTTPError(
+                    429,
+                    "chat session limit is full",
+                    error_type="rate_limit_error",
+                    code="engine_busy",
+                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
+                )
+                _record_openai_error(app.state.hipengine_server_metrics, exc)
+                raise exc
+            chat_session_pending.add(session_id)
+            return session_id
+
+    async def release_chat_session_reservation(session_id: str | None) -> None:
+        if session_id is None:
+            return
+        async with chat_session_lock:
+            chat_session_pending.discard(session_id)
 
     def cleanup_expired_continuations(now: float | None = None) -> None:
         current = time.time() if now is None else float(now)
@@ -2575,6 +2622,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "resident_state_reuse": False,
             "includes_transcript": False,
             "active": len(session_payloads),
+            "pending_creations": len(chat_session_pending),
+            "max_active": None if config.max_chat_sessions is None else int(config.max_chat_sessions),
             "sessions": session_payloads,
             "continuations": {
                 "active": active_continuations,
@@ -2603,6 +2652,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     app.state.hipengine_server_metrics,
                     engine=getattr(app.state, "hipengine_llm", None),
                     generation_batcher=getattr(app.state, "hipengine_generation_batcher", None),
+                    chat_sessions=chat_sessions,
+                    pending_chat_sessions=chat_session_pending,
+                    max_chat_sessions=config.max_chat_sessions,
                 ),
                 media_type="text/plain; version=0.0.4; charset=utf-8",
             )
@@ -2830,7 +2882,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "resident_context": True,
                 "commit_policy": _session_commit_policy_capability(),
                 "continuations": _session_continuation_capability(),
-                "metadata": _session_metadata_capability(),
+                "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
@@ -3051,150 +3103,154 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         _validate_model(config, request.model)
         _validate_generation_request(config, request)
         _validate_continuation_resume_request(request)
-        continuation = await pop_continuation(request, endpoint="chat")
-        _apply_continuation_defaults(request, continuation)
-        control = _request_control(config, request, raw_request)
+        admitted_session_id = await reserve_chat_session_if_needed(request)
+        try:
+            continuation = await pop_continuation(request, endpoint="chat")
+            _apply_continuation_defaults(request, continuation)
+            control = _request_control(config, request, raw_request)
 
-        async def prepare_prompt() -> str:
-            async with session_lock:
-                engine = get_llm()
-                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
-                if continuation is not None:
-                    return continuation.resume_prompts()[0]
-                if not request.messages:
-                    raise OpenAIHTTPError(
-                        400,
-                        "messages must not be empty",
-                        code="invalid_request",
-                        param="messages",
-                    )
-                session_messages = await chat_session_prefix_messages(request)
-                render_request = request
-                if session_messages:
-                    render_request = _chat_request_with_messages(
-                        request,
-                        (*session_messages, *request.messages),
-                    )
-                return chat_prompt_for_request(render_request, engine)
+            async def prepare_prompt() -> str:
+                async with session_lock:
+                    engine = get_llm()
+                    await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                    if continuation is not None:
+                        return continuation.resume_prompts()[0]
+                    if not request.messages:
+                        raise OpenAIHTTPError(
+                            400,
+                            "messages must not be empty",
+                            code="invalid_request",
+                            param="messages",
+                        )
+                    session_messages = await chat_session_prefix_messages(request)
+                    render_request = request
+                    if session_messages:
+                        render_request = _chat_request_with_messages(
+                            request,
+                            (*session_messages, *request.messages),
+                        )
+                    return chat_prompt_for_request(render_request, engine)
 
-        prompt = await _await_with_request_control(prepare_prompt(), control)
-        if request.stream:
-            streamer = (
-                stream_chat_completion_many
-                if _request_n(request) > 1
-                or request.logprobs
-                or _response_format_result_validation(request)
-                else stream_chat_completion
-            )
-            return StreamingResponse(
-                streamer(prompt, request, control, raw_request),
-                media_type="text/event-stream",
-            )
-        n = _request_n(request)
-        prompts = tuple(prompt for _ in range(n))
-        batch = await generate_with_request_control(prompts, request, control)
-        response_id = f"chatcmpl-{uuid.uuid4().hex}"
-        created = int(time.time())
-        choices = []
-        requested_cache_action = _session_cache_action(request)
-        for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
-            previous_text = "" if continuation is None else continuation.generated_texts[index]
-            output = f"{previous_text}{output}"
-            text, finish_reason = _apply_stop(output, request.stop)
-            server_stop = text != output
-            parsed = _parse_chat_tool_calls(text)
-            tool_validation = _validate_chat_tool_result(request, parsed, text)
-            parsed = tool_validation.parsed
-            message, parsed_finish_reason = _chat_message_from_parsed(parsed)
-            if tool_validation.failed:
-                finish_reason = _strict_tool_failure_finish_reason(
-                    detail,
-                    finish_reason,
-                    server_stop=server_stop,
+            prompt = await _await_with_request_control(prepare_prompt(), control)
+            if request.stream:
+                streamer = (
+                    stream_chat_completion_many
+                    if _request_n(request) > 1
+                    or request.logprobs
+                    or _response_format_result_validation(request)
+                    else stream_chat_completion
                 )
-            else:
-                finish_reason = _finish_reason_for_output(
-                    detail,
-                    parsed_finish_reason if parsed.tool_calls else finish_reason,
-                    server_stop=server_stop,
-                    tool_calls=bool(parsed.tool_calls),
+                return StreamingResponse(
+                    streamer(prompt, request, control, raw_request),
+                    media_type="text/event-stream",
                 )
-            response_format_failure = _response_format_failure_reason(
-                request,
-                _chat_response_format_text(message),
-                finish_reason,
-            )
-            if response_format_failure is not None:
-                finish_reason = "stop"
-                message = {"role": "assistant", "content": ""}
-            if tool_validation.failed:
-                finish_reason_override = tool_validation.failure_reason
-            elif response_format_failure is not None:
-                finish_reason_override = response_format_failure
-            elif parsed.tool_calls:
-                finish_reason_override = "tool_calls"
-            elif server_stop:
-                finish_reason_override = "stop"
-            else:
-                finish_reason_override = None
-            choice = {
-                "index": index,
-                "message": message,
-                "finish_reason": finish_reason,
-                "finish_details": _chat_finish_details_payload(
-                    detail,
+            n = _request_n(request)
+            prompts = tuple(prompt for _ in range(n))
+            batch = await generate_with_request_control(prompts, request, control)
+            response_id = f"chatcmpl-{uuid.uuid4().hex}"
+            created = int(time.time())
+            choices = []
+            requested_cache_action = _session_cache_action(request)
+            for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
+                previous_text = "" if continuation is None else continuation.generated_texts[index]
+                output = f"{previous_text}{output}"
+                text, finish_reason = _apply_stop(output, request.stop)
+                server_stop = text != output
+                parsed = _parse_chat_tool_calls(text)
+                tool_validation = _validate_chat_tool_result(request, parsed, text)
+                parsed = tool_validation.parsed
+                message, parsed_finish_reason = _chat_message_from_parsed(parsed)
+                if tool_validation.failed:
+                    finish_reason = _strict_tool_failure_finish_reason(
+                        detail,
+                        finish_reason,
+                        server_stop=server_stop,
+                    )
+                else:
+                    finish_reason = _finish_reason_for_output(
+                        detail,
+                        parsed_finish_reason if parsed.tool_calls else finish_reason,
+                        server_stop=server_stop,
+                        tool_calls=bool(parsed.tool_calls),
+                    )
+                response_format_failure = _response_format_failure_reason(
+                    request,
+                    _chat_response_format_text(message),
                     finish_reason,
-                    text,
-                    reason_override=finish_reason_override,
-                    cache_action=requested_cache_action,
-                    parsed=parsed,
-                    token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
-                ),
+                )
+                if response_format_failure is not None:
+                    finish_reason = "stop"
+                    message = {"role": "assistant", "content": ""}
+                if tool_validation.failed:
+                    finish_reason_override = tool_validation.failure_reason
+                elif response_format_failure is not None:
+                    finish_reason_override = response_format_failure
+                elif parsed.tool_calls:
+                    finish_reason_override = "tool_calls"
+                elif server_stop:
+                    finish_reason_override = "stop"
+                else:
+                    finish_reason_override = None
+                choice = {
+                    "index": index,
+                    "message": message,
+                    "finish_reason": finish_reason,
+                    "finish_details": _chat_finish_details_payload(
+                        detail,
+                        finish_reason,
+                        text,
+                        reason_override=finish_reason_override,
+                        cache_action=requested_cache_action,
+                        parsed=parsed,
+                        token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
+                    ),
+                }
+                effective_cache_action = _effective_session_cache_action(
+                    requested_cache_action,
+                    choice["finish_details"],
+                )
+                if effective_cache_action != requested_cache_action:
+                    choice["finish_details"]["cache_action"] = effective_cache_action
+                if request.logprobs:
+                    choice["logprobs"] = _chat_logprobs(detail, text)
+                _mark_continuation_unavailable(choice["finish_details"])
+                if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
+                    base_prompt = prompt if continuation is None else continuation.prompts[index]
+                    record = await store_continuation(
+                        endpoint="chat",
+                        prompts=(base_prompt,),
+                        generated_texts=(text,),
+                        response_format=request.response_format,
+                    )
+                    _attach_continuation_metadata(choice, continuation_id=record.id)
+                _attach_choice_telemetry(choice, detail)
+                if n > 1:
+                    choice["request_id"] = _choice_request_id(response_id, 0, index)
+                choices.append(choice)
+                await commit_chat_session(
+                    request,
+                    request_messages=request.messages,
+                    raw_output=output,
+                    visible_message=message,
+                    cache_action=effective_cache_action,
+                )
+            response = {
+                "id": response_id,
+                "object": "chat.completion",
+                "created": created,
+                "model": config.model_id,
+                "choices": choices,
+                "usage": batch.usage,
             }
-            effective_cache_action = _effective_session_cache_action(
-                requested_cache_action,
-                choice["finish_details"],
+            await _maybe_write_agentic_result_replay_artifact(
+                config,
+                raw_request,
+                response,
+                engine=getattr(app.state, "hipengine_llm", None),
             )
-            if effective_cache_action != requested_cache_action:
-                choice["finish_details"]["cache_action"] = effective_cache_action
-            if request.logprobs:
-                choice["logprobs"] = _chat_logprobs(detail, text)
-            _mark_continuation_unavailable(choice["finish_details"])
-            if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
-                base_prompt = prompt if continuation is None else continuation.prompts[index]
-                record = await store_continuation(
-                    endpoint="chat",
-                    prompts=(base_prompt,),
-                    generated_texts=(text,),
-                    response_format=request.response_format,
-                )
-                _attach_continuation_metadata(choice, continuation_id=record.id)
-            _attach_choice_telemetry(choice, detail)
-            if n > 1:
-                choice["request_id"] = _choice_request_id(response_id, 0, index)
-            choices.append(choice)
-            await commit_chat_session(
-                request,
-                request_messages=request.messages,
-                raw_output=output,
-                visible_message=message,
-                cache_action=effective_cache_action,
-            )
-        response = {
-            "id": response_id,
-            "object": "chat.completion",
-            "created": created,
-            "model": config.model_id,
-            "choices": choices,
-            "usage": batch.usage,
-        }
-        await _maybe_write_agentic_result_replay_artifact(
-            config,
-            raw_request,
-            response,
-            engine=getattr(app.state, "hipengine_llm", None),
-        )
-        return response
+            return response
+        finally:
+            await release_chat_session_reservation(admitted_session_id)
 
     async def stream_chat_completion_many(
         prompt: str,
@@ -3684,6 +3740,9 @@ def _render_prometheus_metrics(
     *,
     engine: Any | None,
     generation_batcher: Any | None = None,
+    chat_sessions: Mapping[str, Any] | None = None,
+    pending_chat_sessions: set[str] | None = None,
+    max_chat_sessions: int | None = None,
 ) -> str:
     pool = _pool_metric_values(engine)
     graph = _graph_bucket_metric_values(engine)
@@ -3709,6 +3768,13 @@ def _render_prometheus_metrics(
         "hipengine_generation_queue_depth": queue["depth"],
         "hipengine_generation_queue_max_depth": queue["max_depth"],
         "hipengine_generation_worker_active": queue["worker_active"],
+        "hipengine_chat_sessions_active": 0.0 if chat_sessions is None else float(len(chat_sessions)),
+        "hipengine_chat_sessions_pending": (
+            0.0 if pending_chat_sessions is None else float(len(pending_chat_sessions))
+        ),
+        "hipengine_chat_sessions_max_active": (
+            0.0 if max_chat_sessions is None else float(max_chat_sessions)
+        ),
     }
     help_text = {
         "hipengine_requests_total": "Total generation requests observed by the server.",
@@ -3731,6 +3797,9 @@ def _render_prometheus_metrics(
         "hipengine_generation_queue_depth": "Current generation-batcher queue depth.",
         "hipengine_generation_queue_max_depth": "Configured generation-batcher queue cap, or 0 when unset.",
         "hipengine_generation_worker_active": "Whether the generation-batcher worker is active, as 0 or 1.",
+        "hipengine_chat_sessions_active": "Current app-local chat transcript session count.",
+        "hipengine_chat_sessions_pending": "Current app-local chat session creations in flight.",
+        "hipengine_chat_sessions_max_active": "Configured app-local chat session cap, or 0 when unset.",
     }
     counter_names = {
         "hipengine_requests_total",

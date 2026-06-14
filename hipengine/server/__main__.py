@@ -191,6 +191,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--max-chat-sessions",
+        type=_positive_int,
+        default=_env_positive_int("HIPENGINE_MAX_CHAT_SESSIONS"),
+        help=(
+            "Optional app-local chat session cap before 429 engine_busy "
+            "(env HIPENGINE_MAX_CHAT_SESSIONS; default: unlimited)"
+        ),
+    )
+    parser.add_argument(
         "--request-timeout-ms",
         type=_nonnegative_float,
         default=_env_optional_nonnegative_float("HIPENGINE_REQUEST_TIMEOUT_MS"),
@@ -264,6 +273,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         replay_dir=args.replay_dir,
         replay_redaction=args.replay_redaction,
         max_queued_requests=args.max_queued_requests,
+        max_chat_sessions=args.max_chat_sessions,
     )
     app = create_app(config)
     try:

@@ -274,12 +274,13 @@ def _session_commit_policy_capability() -> dict[str, Any]:
     }
 
 
-def _session_metadata_capability() -> dict[str, Any]:
+def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any]:
     return {
         "supported": True,
         "storage": "app_local_transcript",
         "resident_state_reuse": False,
         "includes_transcript": False,
+        "max_active": max_active,
         "list_endpoint": "/v1/hipengine/sessions",
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
     }
@@ -648,6 +649,7 @@ def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> N
             kv_storage="int8_per_token_head",
             kv_scale_dtype="fp32",
             prefix_cache="radix",
+            max_chat_sessions=6,
         ),
         llm=fake,
     )
@@ -662,6 +664,7 @@ def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> N
     assert body["cache"]["prefix_cache"] == "radix"
     assert body["cache"]["kv_storage"] == "int8_per_token_head"
     assert body["cache"]["kv_scale_dtype"] == "fp32"
+    assert body["sessions"]["metadata"]["max_active"] == 6
 
 
 def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
@@ -1016,6 +1019,8 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["sessions"] == {
         "resident_context": True,
         "active": 0,
+        "pending_creations": 0,
+        "max_active": None,
         "storage": "app_local_transcript",
         "resident_state_reuse": False,
         "total_messages": 0,
@@ -1051,6 +1056,8 @@ def test_ready_reports_chat_session_counts_without_payload_text() -> None:
     assert body["sessions"] == {
         "resident_context": True,
         "active": 1,
+        "pending_creations": 0,
+        "max_active": None,
         "storage": "app_local_transcript",
         "resident_state_reuse": False,
         "total_messages": 2,
@@ -1100,6 +1107,8 @@ def test_session_metadata_list_and_delete_are_authenticated() -> None:
     assert body["resident_state_reuse"] is False
     assert body["includes_transcript"] is False
     assert body["active"] == 1
+    assert body["pending_creations"] == 0
+    assert body["max_active"] is None
     assert body["continuations"] == {"active": 0, "ttl_seconds": 900}
     assert len(body["sessions"]) == 1
     metadata = body["sessions"][0]
@@ -1122,6 +1131,79 @@ def test_session_metadata_list_and_delete_are_authenticated() -> None:
     assert deleted_again.json()["deleted"] is False
     assert listed_after_delete.json()["active"] == 0
     assert listed_after_delete.json()["sessions"] == []
+
+
+def test_chat_session_cap_rejects_new_sessions_before_generation() -> None:
+    fake = SequentialFakeLLM(["first answer", "existing answer", "after delete answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_chat_sessions=1,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "first"}],
+            "session": {"id": "sess_one"},
+            "max_tokens": 4,
+        },
+    )
+    rejected = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "second"}],
+            "session": {"id": "sess_two"},
+            "max_tokens": 4,
+        },
+    )
+
+    assert first.status_code == 200
+    assert rejected.status_code == 429
+    assert rejected.headers["retry-after"] == "1"
+    assert rejected.json()["error"]["code"] == "engine_busy"
+    assert rejected.json()["error"]["message"] == "chat session limit is full"
+    assert "sess_two" not in app.state.hipengine_chat_sessions
+    assert app.state.hipengine_server_metrics.request_rejected_total == 1
+    assert len(fake.calls) == 1
+
+    existing = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "again"}],
+            "session": {"id": "sess_one"},
+            "max_tokens": 4,
+        },
+    )
+    assert existing.status_code == 200
+    assert len(fake.calls) == 2
+
+    deleted = client.delete("/v1/hipengine/sessions/sess_one")
+    assert deleted.json()["deleted"] is True
+
+    after_delete = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "after delete"}],
+            "session": {"id": "sess_two"},
+            "max_tokens": 4,
+        },
+    )
+    assert after_delete.status_code == 200
+    assert len(fake.calls) == 3
+    ready = client.get("/ready").json()
+    assert ready["sessions"]["active"] == 1
+    assert ready["sessions"]["max_active"] == 1
+    assert ready["sessions"]["pending_creations"] == 0
 
 
 def test_ready_reports_lazy_server_ready_without_loaded_model() -> None:
@@ -4486,6 +4568,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_STARTUP_MIN_FREE_MIB", raising=False)
     monkeypatch.delenv("HIPENGINE_REQUEST_TIMEOUT_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_QUEUED_REQUESTS", raising=False)
+    monkeypatch.delenv("HIPENGINE_MAX_CHAT_SESSIONS", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
@@ -4497,6 +4580,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert default_args.startup_min_free_mib is None
     assert default_args.request_timeout_ms is None
     assert default_args.max_queued_requests is None
+    assert default_args.max_chat_sessions is None
     assert default_args.replay_dir is None
     assert default_args.replay_redaction == "hash"
 
@@ -4510,6 +4594,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_STARTUP_MIN_FREE_MIB", "512")
     monkeypatch.setenv("HIPENGINE_REQUEST_TIMEOUT_MS", "250.5")
     monkeypatch.setenv("HIPENGINE_MAX_QUEUED_REQUESTS", "7")
+    monkeypatch.setenv("HIPENGINE_MAX_CHAT_SESSIONS", "5")
     monkeypatch.setenv("HIPENGINE_REPLAY_DIR", "/tmp/hipengine-replay")
     monkeypatch.setenv("HIPENGINE_REPLAY_REDACTION", "none")
     env_args = build_parser().parse_args(["--model", "fake-path"])
@@ -4523,6 +4608,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert env_args.startup_min_free_mib == 512
     assert env_args.request_timeout_ms == 250.5
     assert env_args.max_queued_requests == 7
+    assert env_args.max_chat_sessions == 5
     assert env_args.replay_dir == "/tmp/hipengine-replay"
     assert env_args.replay_redaction == "none"
 
@@ -4540,6 +4626,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "123.5",
             "--max-queued-requests",
             "3",
+            "--max-chat-sessions",
+            "2",
             "--chat-default-max-tokens",
             "123",
             "--replay-dir",
@@ -4558,6 +4646,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert cli_args.generation_batch_window_ms == 0.0
     assert cli_args.request_timeout_ms == 123.5
     assert cli_args.max_queued_requests == 3
+    assert cli_args.max_chat_sessions == 2
     assert cli_args.chat_default_max_tokens == 123
     assert cli_args.replay_dir == "/tmp/hipengine-cli-replay"
     assert cli_args.replay_redaction == "hash"
@@ -4939,6 +5028,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
             eager_load=False,
             metrics="prometheus",
             max_queued_requests=3,
+            max_chat_sessions=4,
         ),
         llm=fake,
     )
@@ -4950,6 +5040,9 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(before.text, "hipengine_generation_queue_depth") == 0
     assert _metric_value(before.text, "hipengine_generation_queue_max_depth") == 3
     assert _metric_value(before.text, "hipengine_generation_worker_active") == 0
+    assert _metric_value(before.text, "hipengine_chat_sessions_active") == 0
+    assert _metric_value(before.text, "hipengine_chat_sessions_pending") == 0
+    assert _metric_value(before.text, "hipengine_chat_sessions_max_active") == 4
 
     for prompt in ["one", "two three"]:
         response = client.post(
@@ -4968,6 +5061,9 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_generation_queue_depth") == 0
     assert _metric_value(metrics.text, "hipengine_generation_queue_max_depth") == 3
     assert _metric_value(metrics.text, "hipengine_generation_worker_active") == 0
+    assert _metric_value(metrics.text, "hipengine_chat_sessions_active") == 0
+    assert _metric_value(metrics.text, "hipengine_chat_sessions_pending") == 0
+    assert _metric_value(metrics.text, "hipengine_chat_sessions_max_active") == 4
     assert _metric_value(metrics.text, "hipengine_prompt_tokens_total") == 3
     assert _metric_value(metrics.text, "hipengine_completion_tokens_total") == 4
     assert _metric_value(metrics.text, "hipengine_kv_pool_current_bytes") == 4096

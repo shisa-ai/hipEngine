@@ -1676,16 +1676,23 @@ Current state:
   `--max-queued-requests` / `HIPENGINE_MAX_QUEUED_REQUESTS`. When the queued
   request count is already at the configured cap, the request is rejected before
   enqueue with HTTP 429, canonical `engine_busy`, and `Retry-After: 1`.
+- App-local chat transcript sessions have an opt-in cap via
+  `--max-chat-sessions` / `HIPENGINE_MAX_CHAT_SESSIONS`. New `session.id`
+  requests that would allocate a transcript are rejected before prompt
+  preparation/generation with the same HTTP 429 `engine_busy` and
+  `Retry-After: 1`; existing sessions may continue, and deleting a session frees
+  capacity.
 - `/ready` reports queue depth and configured max depth. Prometheus metrics
   include `hipengine_request_rejected_total`, queue depth, configured queue cap,
-  and worker-active gauges in addition to completed/failed request counters.
+  active/pending/max chat-session gauges, and worker-active gauges in addition
+  to completed/failed request counters.
 - Default behavior remains unlimited server queueing until a cap is configured.
-  Max active sessions and a scheduler fairness policy remain future runtime
-  work.
+  Default chat-session behavior remains unlimited until a cap is configured.
+  Scheduler fairness remains future runtime work.
 
 Implement:
 
-- max active requests and max active sessions;
+- max active request/concurrent backend cap;
 - scheduler fairness policy visible in metrics.
 
 Exit gates:
@@ -1876,8 +1883,9 @@ Current code reality:
   HTTP error payload. `schema_violation` can likewise be a request-body error or
   a normal `finish_details.reason` for invalid `response_format` / strict tool
   schema results.
-- `engine_busy` currently means the opt-in OpenAI server queue cap rejected a
-  request before enqueue with HTTP 429 and `Retry-After: 1`.
+- `engine_busy` currently means the opt-in OpenAI server queue cap or app-local
+  chat-session cap rejected a request before generation with HTTP 429 and
+  `Retry-After: 1`.
 - `routing_failed` is reserved in the manifest and marked `emitted=false` until
   multi-model routing exists. HTTP/SSE `invalid_tool_call` errors remain future
   strict decode-time work.
@@ -1907,7 +1915,8 @@ Current code reality:
   last startup timings, configured/effective context, KV policy and capacity
   estimate, KV pool metrics, graph cache metrics, backend/device environment,
   generation queue depth/worker state, active session count, stored-message
-  count, continuation-handle count, and loaded-model count.
+  count, pending session creations, configured session cap, continuation-handle
+  count, and loaded-model count.
 - Readiness is `false` for eager-load servers until startup preparation and
   warmup complete. Lazy-load servers report ready after startup with
   `model.loaded=false` until the first lazy model load.

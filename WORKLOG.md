@@ -88720,3 +88720,22 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC chat session admission cap
+
+Added an opt-in app-local chat transcript session cap with
+`--max-chat-sessions` / `HIPENGINE_MAX_CHAT_SESSIONS`. New `session.id`
+requests that would allocate a transcript are rejected before prompt
+preparation/generation with HTTP 429 `engine_busy` and `Retry-After: 1`; existing
+sessions continue, and deleting a session frees capacity. `/ready`,
+`/v1/hipengine/sessions`, `/v1/hipengine/capabilities`, replay capability
+snapshots, and Prometheus metrics now expose max/pending/active chat-session
+state without transcript text.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_cap_rejects_new_sessions_before_generation tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_capabilities_endpoint_reports_auto_chat_default_and_cache_config -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check` -> clean.
