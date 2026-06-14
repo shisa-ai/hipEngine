@@ -90633,3 +90633,19 @@ Validation:
 - `python3 -m pytest tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state -q` -> `36 passed`.
 - `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py docs/API.md docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC host-logits D2H telemetry
+
+PARO/GGUF host-logits sampled paths now expose the opposite side of the native
+sampler transfer signal. When the resident session/logits object provides a
+vocabulary width, backend decode-state telemetry marks
+`full_vocab_logits_d2h=true` and reports the per-token full-vocab FP32 vector
+size in `logits_d2h_bytes`. The PARO native GPU sampler route still reports
+`false/0`, so OpenAI metadata can distinguish native selected-token readbacks
+from compatibility host-logits selection.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> passed.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state -q` -> `45 passed`.
+- `python3 -m ruff check hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/API.md docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> clean.

@@ -348,6 +348,7 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
 
     class FakeSession:
         tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        vocab_size = 128
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
             pass
@@ -398,6 +399,8 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
         "sampler_fast_path_blockers": ["temperature"],
         "sampler_fallback_reason": "host_sampling_required",
         "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 512,
     }
     assert calls[0][0] == "configure_host_sampler"
     assert calls[0][1] == 0.7
@@ -765,6 +768,7 @@ def test_qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback(mon
 
     class FakeSession:
         tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        vocab_size = 128
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
             pass
@@ -815,12 +819,15 @@ def test_qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback(mon
         "sampler_fast_path_blockers": ["temperature", "top_logprobs"],
         "sampler_fallback_reason": "native_gpu_unsupported_request",
         "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 512,
     }
 
 
 def test_qwen35_paro_native_opt_in_stream_reports_unsupported_top_k_fallback(monkeypatch) -> None:
     class FakeSession:
         tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        vocab_size = 128
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
             pass
@@ -860,6 +867,8 @@ def test_qwen35_paro_native_opt_in_stream_reports_unsupported_top_k_fallback(mon
         "sampler_fast_path_blockers": ["temperature"],
         "sampler_fallback_reason": "native_gpu_unsupported_request",
         "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 512,
     }
 
 

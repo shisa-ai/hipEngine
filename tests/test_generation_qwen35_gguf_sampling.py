@@ -318,6 +318,8 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
         "sampler_fast_path_blockers": ["temperature"],
         "sampler_fallback_reason": "host_sampling_required",
         "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 12,
     }
     assert ("prefill", (10, 11), True) in calls
     assert ("step", 1, True) in calls
@@ -454,6 +456,8 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
             "sampler_fast_path_blockers": ["temperature"],
             "sampler_fallback_reason": "host_sampling_required",
             "sampler_mode": "host_logits_sample",
+            "full_vocab_logits_d2h": True,
+            "logits_d2h_bytes": 12,
         },
         {
             "row_index": 0,
@@ -465,6 +469,8 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
             "sampler_fast_path_blockers": ["temperature"],
             "sampler_fallback_reason": "host_sampling_required",
             "sampler_mode": "host_logits_sample",
+            "full_vocab_logits_d2h": True,
+            "logits_d2h_bytes": 12,
         },
     ]
     assert calls == [
@@ -522,6 +528,8 @@ def test_gguf_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> N
         "sampler_fallback_reason": "processed_logits_required",
         "budget_pressure": "hard_close",
         "sampler_mode": "processed_argmax",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 12,
     }
 
 
@@ -751,5 +759,7 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
         "sampler_fast_path_blockers": ["temperature", "stop_token_sequences"],
         "sampler_fallback_reason": "host_sampling_required",
         "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 12,
     }
     assert len([call for call in calls if call[0] == "step"]) == 1

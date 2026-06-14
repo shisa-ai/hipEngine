@@ -379,7 +379,10 @@ class Qwen35ParoOneTokenGenerator:
         sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
         state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         _configure_sampled_session(session, sampling_request, state, plan=plan)
-        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(plan)
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
+            plan,
+            vocab_size=getattr(session, "vocab_size", None),
+        )
         generated_text: list[str] = []
         generated_token_ids: list[int] = []
         generated_steps: list[Qwen35ParoAutoregressiveStepResult] = []
@@ -866,7 +869,10 @@ class Qwen35ParoOneTokenGenerator:
         }
         plan = plan_sampler(request, native_gpu_available=False)
         sampler_mode = plan.mode.value
-        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(plan)
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
+            plan,
+            vocab_size=getattr(session, "vocab_size", None),
+        )
         return [
             _generation_output_from_steps(
                 session.tokenizer,
@@ -992,7 +998,10 @@ class Qwen35ParoOneTokenGenerator:
         sampling_request = _request_with_tokenizer_eos(request, session.tokenizer)
         state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         _configure_sampled_session(session, sampling_request, state, plan=plan)
-        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(plan)
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
+            plan,
+            vocab_size=getattr(session, "vocab_size", None),
+        )
         generated_token_ids: list[int] = []
         live_phase = None if state.thinking_budget is not None else "answer"
         try:
@@ -1263,9 +1272,21 @@ def _telemetry_for_tokens(
     )
 
 
-def _sampler_logits_d2h_metadata(plan: Any) -> tuple[bool | None, int | None]:
-    if getattr(plan, "mode", None) is SamplingMode.GPU_SAMPLE:
+def _sampler_logits_d2h_metadata(
+    plan: Any,
+    *,
+    vocab_size: Any | None = None,
+) -> tuple[bool | None, int | None]:
+    mode = getattr(plan, "mode", None)
+    if mode is SamplingMode.GPU_SAMPLE:
         return False, 0
+    if mode in (SamplingMode.HOST_LOGITS_SAMPLE, SamplingMode.PROCESSED_ARGMAX):
+        try:
+            size = int(vocab_size)
+        except (TypeError, ValueError):
+            return None, None
+        if size > 0:
+            return True, size * 4
     return None, None
 
 

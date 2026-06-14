@@ -37,7 +37,10 @@ Already available or recently added:
 - Resident session/context preallocation hooks for server use.
 - Eager model warmup before server readiness.
 - Host-backed functional sampling for PARO/GGUF c=1 and serialized multi-row
-  requests; greedy-equivalent requests stay on the graph/argmax fast path.
+  requests; when the vocabulary/logits width is known, backend decode-state
+  telemetry marks the full-vocab host readback with `full_vocab_logits_d2h=true`
+  and per-token `logits_d2h_bytes`. Greedy-equivalent requests stay on the
+  graph/argmax fast path.
 - A default-off PARO c=1 native GPU sampler route exists for supported sampled
   requests via `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; it covers logit
   bias/history-penalty processors, full-vocab temperature sampling, bounded
@@ -866,9 +869,11 @@ Current code reality:
   sampler mode, stop suffix match/partial-suffix state where applicable, and
   sampled thinking-budget phase, reasoning/answer counts, budget pressure,
   pending forced-token state when row state is available, and sampler fallback
-  reasons for processed-argmax / host-logits paths. PARO c=1 native sampled
-  paths also mark `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in the
-  decode-state snapshot when the native GPU sampler route actually runs.
+  reasons for processed-argmax / host-logits paths. PARO/GGUF host-logits
+  sampled paths also mark `full_vocab_logits_d2h=true` with per-token vector
+  byte counts when the vocabulary/logits width is known. PARO c=1 native
+  sampled paths mark `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in
+  the decode-state snapshot when the native GPU sampler route actually runs.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
   the final `finish_details` alongside the backend-authored `decode_state`.
@@ -1805,8 +1810,9 @@ Current state:
 - supported PARO c=1 sampled requests can route through those kernels with
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`. PARO c=1 sampled telemetry reports
   `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` when that native
-  route actually runs, so server metadata can distinguish it from host-logits
-  fallback paths;
+  route actually runs. PARO/GGUF host-logits fallback paths report
+  `full_vocab_logits_d2h=true` plus known per-token vector bytes, so server
+  metadata can distinguish native sampling from host readback selection;
 - c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
   default-path promotion remain unimplemented.
 

@@ -196,6 +196,7 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
+        full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
         sample = _select_from_gguf_logits(result, sampling_request, state)
         samples.append(sample)
         generated_ids = [int(sample.token_id)]
@@ -210,12 +211,18 @@ class Qwen35GGUFBringupGenerator:
                     request,
                     row_index=row_index,
                     sampling_state=state,
+                    full_vocab_logits_d2h=full_vocab_logits_d2h,
+                    logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
         for _ in range(request.max_tokens - 1):
             raise_if_generation_deadline_expired(request)
             step = session.step(generated_ids[-1], return_logits=True)
             raise_if_generation_deadline_expired(request)
+            step_full_vocab_logits_d2h, step_logits_d2h_bytes = _gguf_logits_d2h_metadata(step)
+            if step_full_vocab_logits_d2h is not None:
+                full_vocab_logits_d2h = step_full_vocab_logits_d2h
+                logits_d2h_bytes = step_logits_d2h_bytes
             sample = _select_from_gguf_logits(step, sampling_request, state)
             samples.append(sample)
             generated_ids.append(int(sample.token_id))
@@ -231,6 +238,8 @@ class Qwen35GGUFBringupGenerator:
                 request,
                 row_index=row_index,
                 sampling_state=state,
+                full_vocab_logits_d2h=full_vocab_logits_d2h,
+                logits_d2h_bytes=logits_d2h_bytes,
             ),
         )
 
@@ -290,6 +299,7 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
+        full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
         sample = _select_from_gguf_logits(result, sampling_request, state)
         generated_ids.append(int(sample.token_id))
         yield GenerationStreamChunk(
@@ -301,6 +311,8 @@ class Qwen35GGUFBringupGenerator:
                 row_index=row_index,
                 sampling_state=state,
                 phase=live_phase,
+                full_vocab_logits_d2h=full_vocab_logits_d2h,
+                logits_d2h_bytes=logits_d2h_bytes,
             ),
         )
         if _gguf_finished(generated_ids, self.tokenizer, request):
@@ -309,6 +321,7 @@ class Qwen35GGUFBringupGenerator:
             raise_if_generation_deadline_expired(request)
             step = session.step(generated_ids[-1], return_logits=True)
             raise_if_generation_deadline_expired(request)
+            full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(step)
             sample = _select_from_gguf_logits(step, sampling_request, state)
             generated_ids.append(int(sample.token_id))
             yield GenerationStreamChunk(
@@ -320,6 +333,8 @@ class Qwen35GGUFBringupGenerator:
                     row_index=row_index,
                     sampling_state=state,
                     phase=live_phase,
+                    full_vocab_logits_d2h=full_vocab_logits_d2h,
+                    logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
             if _gguf_finished(generated_ids, self.tokenizer, request):
@@ -335,6 +350,28 @@ def _select_from_gguf_logits(
     if logits is None:
         raise RuntimeError("GGUF sampled generation requires logits from the resident session")
     return select_token(logits.reshape(-1), request, state)
+
+
+def _gguf_logits_d2h_metadata(result: Any) -> tuple[bool | None, int | None]:
+    logits = getattr(result, "logits", None)
+    if logits is None:
+        return None, None
+    size = getattr(logits, "size", None)
+    itemsize = getattr(getattr(logits, "dtype", None), "itemsize", None)
+    try:
+        if int(size) > 0 and int(itemsize) > 0:
+            return True, int(size) * int(itemsize)
+    except (TypeError, ValueError):
+        pass
+    shape = getattr(logits, "shape", None)
+    if shape:
+        try:
+            vocab_size = int(shape[-1])
+        except (TypeError, ValueError):
+            return True, None
+        if vocab_size > 0:
+            return True, vocab_size * 4
+    return True, None
 
 
 def _request_with_tokenizer_eos(
@@ -404,6 +441,8 @@ def _gguf_telemetry(
     row_index: int,
     sampling_state: RowSamplingState | None = None,
     phase: str | None = None,
+    full_vocab_logits_d2h: bool | None = None,
+    logits_d2h_bytes: int | None = None,
 ) -> GenerationTelemetry:
     plan = plan_sampler(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
@@ -421,6 +460,8 @@ def _gguf_telemetry(
         active_processors=plan.active_processors,
         sampler_fast_path_blockers=plan.fast_path_blockers,
         sampler_fallback_reason=plan.fallback_reason,
+        full_vocab_logits_d2h=full_vocab_logits_d2h,
+        logits_d2h_bytes=logits_d2h_bytes,
     )
 
 
