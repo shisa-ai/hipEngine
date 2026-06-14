@@ -71,7 +71,11 @@ class Qwen35ParoOneTokenGenerator:
             raise ValueError("max_tokens must be non-negative")
         raise_if_generation_deadline_expired(request)
         native_gpu_available = _native_gpu_sampler_route_available(prompt_count=len(request.prompts))
-        plan = plan_sampler(request, native_gpu_available=native_gpu_available)
+        plan = plan_sampler(
+            request,
+            native_gpu_available=native_gpu_available,
+            native_gpu_requested=_native_gpu_sampler_requested(),
+        )
         if request.max_tokens == 0:
             self.last_batch_generation = None
             self.last_generation_outputs = tuple(
@@ -228,7 +232,11 @@ class Qwen35ParoOneTokenGenerator:
             raise ValueError("max_tokens must be non-negative")
         raise_if_generation_deadline_expired(request)
         native_gpu_available = _native_gpu_sampler_route_available(prompt_count=1)
-        plan = plan_sampler(request, native_gpu_available=native_gpu_available)
+        plan = plan_sampler(
+            request,
+            native_gpu_available=native_gpu_available,
+            native_gpu_requested=_native_gpu_sampler_requested(),
+        )
         if request.max_tokens == 0:
             return
         runner = self._get_runner()
@@ -867,7 +875,7 @@ class Qwen35ParoOneTokenGenerator:
             "native_caware_decode": False,
             "throughput_claim_eligible": False,
         }
-        plan = plan_sampler(request, native_gpu_available=False)
+        plan = plan_sampler(request, native_gpu_requested=_native_gpu_sampler_requested())
         sampler_mode = plan.mode.value
         full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
             plan,
@@ -1381,7 +1389,11 @@ def _configure_host_sampler(
 
 
 def _native_gpu_sampler_route_available(*, prompt_count: int) -> bool:
-    return int(prompt_count) == 1 and _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER")
+    return int(prompt_count) == 1 and _native_gpu_sampler_requested()
+
+
+def _native_gpu_sampler_requested() -> bool:
+    return _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER")
 
 
 def _session_capacity_for(required_sequence_length: int) -> int:

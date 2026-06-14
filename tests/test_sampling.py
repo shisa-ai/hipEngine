@@ -220,6 +220,14 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     )
 
 
+def test_sampler_plan_reports_requested_native_gpu_unavailable() -> None:
+    plan = plan_sampler(_params(temperature=0.7, top_k=4), native_gpu_requested=True)
+
+    assert plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert plan.native_gpu_available is False
+    assert plan.fallback_reason == "native_gpu_unsupported_request"
+
+
 def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     assert tuple(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS) == SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     assert SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS["temperature"] == "temperature > 0"

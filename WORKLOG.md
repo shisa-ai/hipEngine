@@ -90732,3 +90732,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` initially exposed the stale
   batcher stream assertion; after the fix -> `257 passed`.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC PARO c>N native fallback metadata
+
+PARO sampled c>N batches still execute through scheduler-owned host sampling,
+but the sampler plan can now distinguish "native GPU sampler was requested but
+this route shape is unsupported" from ordinary host sampling. When
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=1` is set for a c>N sampled PARO batch,
+per-choice decode-state telemetry reports
+`sampler_fallback_reason="native_gpu_unsupported_request"` instead of the
+generic `host_sampling_required`. This closes part of the native sampler
+fallback-metadata gap without routing c>N batches through native sampling.
+Updated AGENTIC/SAMPLING docs to keep c>N/GGUF native execution and performance
+promotion listed as future work.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py::test_sampler_plan_reports_requested_native_gpu_unavailable tests/test_sampling.py::test_native_gpu_sampler_support_rejects_unwired_shapes tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill -q` -> `4 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py -q` -> `76 passed`.
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_qwen35_paro.py && python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q && python3 -m ruff check hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_qwen35_paro.py && git diff --check -- hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_qwen35_paro.py docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> `1 passed`, `All checks passed!`, clean.

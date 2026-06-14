@@ -561,6 +561,7 @@ def plan_sampler(
     params: Any,
     *,
     native_gpu_available: bool = False,
+    native_gpu_requested: bool = False,
     native_only: bool = False,
 ) -> SamplerPlan:
     """Choose the token-selection mode for a request."""
@@ -585,7 +586,11 @@ def plan_sampler(
         return SamplerPlan(SamplingMode.GPU_SAMPLE, processors, native_gpu_available, fast_path_blockers)
     if native_only:
         raise NotImplementedError("native GPU sampling is not available for this request")
-    fallback_reason = "native_gpu_unsupported_request" if native_gpu_available else "host_sampling_required"
+    fallback_reason = (
+        "native_gpu_unsupported_request"
+        if native_gpu_available or native_gpu_requested
+        else "host_sampling_required"
+    )
     return SamplerPlan(
         SamplingMode.HOST_LOGITS_SAMPLE,
         processors,

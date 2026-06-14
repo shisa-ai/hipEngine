@@ -1075,7 +1075,18 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
     ]
 
 
-def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("native_requested", "expected_fallback"),
+    [
+        (False, "host_sampling_required"),
+        (True, "native_gpu_unsupported_request"),
+    ],
+)
+def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
+    monkeypatch,
+    native_requested: bool,
+    expected_fallback: str,
+) -> None:
     calls = []
     token_rows = {"alpha": [10, 11], "beta": [20]}
 
@@ -1130,6 +1141,10 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) ->
     )
     runner = object()
     generator._runner = runner
+    if native_requested:
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
 
     out = generator.generate(_request(prompts=("alpha", "beta"), max_tokens=2, temperature=0.7, seed=5))
 
@@ -1155,8 +1170,8 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) ->
         ["temperature"],
     ]
     assert [_decode_state(output)["sampler_fallback_reason"] for output in generator.last_generation_outputs] == [
-        "host_sampling_required",
-        "host_sampling_required",
+        expected_fallback,
+        expected_fallback,
     ]
 
 
