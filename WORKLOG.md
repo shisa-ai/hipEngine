@@ -87740,3 +87740,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_parallel_tool_call_indexes tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure -q` -> `7 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
+
+## 2026-06-14 - PARO GPU1 serve OOM memory trace
+
+Investigated `HIP_VISIBLE_DEVICES=1 hipengine serve --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed --kv-storage int8_per_token_head` stream OOMs on the 24 GiB GPU1. Direct in-process tracing with `quant=w4_paro` showed `max_sequence_length=128000` prepares successfully but leaves only ~3.23 GiB live HIP free after resident allocation, despite the startup KV capacity log's pre-allocation `usable=5.49 GiB` estimate. A tiny prompt streams successfully, so retained KV allocation is not the immediate failure.
+
+Synthetic prompt prefill trace at 128k context:
+- 2048 prompt tokens succeeded but transient free memory dipped to ~0.40 GiB. Large allocations included `linear_attn.tree_recurrent_state` 2.00 GiB for a 1024-row chunk and grouped-MoE/full-attn scratch growth.
+- 4096 prompt tokens reproduced `HIP error 2: out of memory` during full-attention grouped-MoE prefill. After `linear_attn.tree_recurrent_state` (2.00 GiB), scratch growth for 4096 rows drove free memory to 0 before `moe.grouped.selected_out` (16 MiB) could allocate.
+- Lowering resident context gives enough transient headroom for the same 4096-token prompt: `max_sequence_length=96256` left ~3.93 GiB free after prepare and succeeded; `max_sequence_length=64512` left ~4.60 GiB and succeeded.
+
+Conclusion: the observed server OOM is request-time transient prefill scratch pressure, not failure to preallocate retained int8 KV. Immediate mitigation is serving GPU1 with `--max-context-tokens 96000` or lower for ~4k-token prompts; 128k is too tight on the 24 GiB card with the current full-attn grouped-MoE prefill scratch policy.
+
+Validation/commands:
+- `HIP_VISIBLE_DEVICES=1 python3 - <<'PY' ... llm.prepare(max_sequence_length=128000, SamplingParams(kv_storage='int8_per_token_head')); llm.stream(' one'*4096, max_tokens=1) ... PY` -> reproduced HIP OOM at `moe.grouped.selected_out` allocation.
+- Same direct smoke with `max_sequence_length=96000` -> prepared 96256 tokens, 4096-token prompt succeeded, after-prepare free ~3.928 GiB.
+- Same direct smoke with `max_sequence_length=64000` -> prepared 64512 tokens, 4096-token prompt succeeded, after-prepare free ~4.596 GiB.
