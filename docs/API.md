@@ -188,8 +188,10 @@ object with `metadata_version`, `event`, and `timing.elapsed_ms`. After the
 first generated chunk, timing also includes server-measured `ttft_ms`; final
 done/usage payloads include `decode_elapsed_ms` and `decode_tokens_per_second`
 when generated-token counts are available. The top-level `hipengine` object also
-includes `routing` metadata for the current single-model exact route. Choice
-chunks also get
+includes backend `GenerationTelemetry.timing` values with a `backend_` prefix
+when a live stream chunk or final buffered response provides them, for example
+`backend_prefill_ms` and `backend_decode_ms`. It also includes `routing`
+metadata for the current single-model exact route. Choice chunks also get
 `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, `structured`, or
 `done`) when a phase is known. Structured phases are server-authored final
 metadata for buffered result-validation streams; they are not decode-time
@@ -215,6 +217,9 @@ prefill / c-aware decode / serial fallback flags when that metadata is known.
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
 the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.
+Backend-authored `GenerationTelemetry.timing` remains unprefixed under
+`choices[].hipengine.timing` and is mirrored with `backend_` prefixes under the
+top-level stream timing object for the same SSE event.
 If the final live `GenerationStreamChunk` carries backend-authored
 `finish_details`, the final choice chunk uses those details and maps the public
 `finish_reason` from them unless server post-processing, such as stop-string
@@ -244,17 +249,18 @@ available.
 
 The `/v1/hipengine/capabilities` manifest reports the same extension under
 `features.stream_metadata`, including metadata version, event names, timing
-field names, token-accounting/decode-state scopes (`live_delta`,
-`buffered_delta`, and `final_choice` when tokenizer counting is available), and
+field names plus the `backend_*` namespace for backend-authored timing,
+token-accounting/decode-state scopes (`live_delta`, `buffered_delta`, and
+`final_choice` when tokenizer counting is available), and
 backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `buffered_done`) for engines that emit `GenerationStreamChunk` or
 `GenerationOutput` telemetry. It also reports the optional backend-authored
 field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
 
-Cache hit/miss, backend prefill timing, budget pressure, per-request KV-byte
-deltas, and backend-authored per-phase token metadata are omitted until the
-runtime exposes those signals.
+Cache hit/miss, budget pressure, per-request KV-byte deltas, and
+backend-authored per-phase token metadata are omitted until the runtime exposes
+those signals.
 
 ### Choice telemetry
 

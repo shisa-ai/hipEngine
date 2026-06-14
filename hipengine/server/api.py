@@ -3908,9 +3908,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "ttft_ms",
                         "decode_elapsed_ms",
                         "decode_tokens_per_second",
+                        "backend_*",
                     ],
                     "server_wall_timing": True,
-                    "backend_prefill_timing": False,
+                    "backend_prefill_timing": "GenerationTelemetry.timing_when_available",
                     "choice_phase": True,
                     "choice_finish_details": True,
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
@@ -5160,6 +5161,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=finish_details,
                 done_tokens=final_tokens,
                 token_accounting=token_accounting,
+                stream_chunk=done_stream_chunk,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -9874,6 +9876,7 @@ def _stream_hipengine_payload(
     usage: Mapping[str, int] | None = None,
     tokens: Mapping[str, int] | None = None,
     token_event: bool = False,
+    backend_timing: Mapping[str, float] | None = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
@@ -9890,6 +9893,9 @@ def _stream_hipengine_payload(
             payload["timing"] = {
                 "elapsed_ms": round(max(0.0, (time.perf_counter() - stream_started_at) * 1000.0), 3)
             }
+    backend_timing_payload = _backend_stream_timing_payload(backend_timing)
+    if backend_timing_payload:
+        payload.setdefault("timing", {}).update(backend_timing_payload)
     if usage is not None:
         payload["usage"] = dict(usage)
     if routing is not None:
@@ -9897,6 +9903,26 @@ def _stream_hipengine_payload(
     if kv_pool is not None:
         payload["kv_pool"] = dict(kv_pool)
     return payload
+
+
+def _backend_stream_timing_payload(timing: Mapping[str, float] | None) -> dict[str, float]:
+    if not timing:
+        return {}
+    payload: dict[str, float] = {}
+    for raw_key, raw_value in timing.items():
+        key = str(raw_key).strip()
+        if not key:
+            continue
+        value = float(raw_value)
+        if not math.isfinite(value):
+            continue
+        payload[key if key.startswith("backend_") else f"backend_{key}"] = value
+    return payload
+
+
+def _stream_chunk_backend_timing(stream_chunk: GenerationStreamChunk | None) -> Mapping[str, float] | None:
+    telemetry = None if stream_chunk is None else stream_chunk.telemetry
+    return None if telemetry is None else telemetry.timing
 
 
 def _choice_hipengine_payload(
@@ -9955,6 +9981,7 @@ def _attach_stream_hipengine(
     usage: Mapping[str, int] | None = None,
     tokens: Mapping[str, int] | None = None,
     token_event: bool = False,
+    backend_timing: Mapping[str, float] | None = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
@@ -9965,6 +9992,7 @@ def _attach_stream_hipengine(
             usage=usage,
             tokens=tokens,
             token_event=token_event,
+            backend_timing=backend_timing,
             routing=routing,
             kv_pool=kv_pool,
         )
@@ -10008,6 +10036,7 @@ def _completion_stream_delta(
             stream_started_at=stream_started_at,
             tokens=tokens,
             token_event=bool(text),
+            backend_timing=_stream_chunk_backend_timing(stream_chunk),
             routing=routing,
         )
     )
@@ -10057,6 +10086,7 @@ def _completion_stream_done(
             event="done",
             stream_started_at=stream_started_at,
             tokens=tokens,
+            backend_timing=_stream_chunk_backend_timing(stream_chunk),
             routing=routing,
             kv_pool=kv_pool,
         )
@@ -10322,6 +10352,7 @@ def _chat_stream_delta(
             stream_started_at=stream_started_at,
             tokens=tokens,
             token_event=bool(text),
+            backend_timing=_stream_chunk_backend_timing(stream_chunk),
             routing=routing,
         )
     )
@@ -10376,6 +10407,7 @@ def _chat_stream_tool_call(
             stream_started_at=stream_started_at,
             tokens=tokens,
             token_event=True,
+            backend_timing=_stream_chunk_backend_timing(stream_chunk),
             routing=routing,
         )
     )
@@ -10557,6 +10589,7 @@ def _chat_stream_done(
             event="done",
             stream_started_at=stream_started_at,
             tokens=tokens,
+            backend_timing=_stream_chunk_backend_timing(stream_chunk),
             routing=routing,
             kv_pool=kv_pool,
         )

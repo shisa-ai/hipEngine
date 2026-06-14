@@ -666,9 +666,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "ttft_ms",
             "decode_elapsed_ms",
             "decode_tokens_per_second",
+            "backend_*",
         ],
         "server_wall_timing": True,
-        "backend_prefill_timing": False,
+        "backend_prefill_timing": "GenerationTelemetry.timing_when_available",
         "choice_phase": True,
         "choice_finish_details": True,
         "choice_token_accounting": True,
@@ -5573,6 +5574,7 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
                     native_compact_prefill=True,
                     native_caware_decode=True,
                     serial_decode_fallback=False,
+                    timing={"prefill_ms": 3.5, "decode_ms": 1.25},
                 ),
             )
         ],
@@ -5646,8 +5648,11 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
             "native_caware_decode": True,
             "serial_decode_fallback": False,
         },
+        "timing": {"prefill_ms": 3.5, "decode_ms": 1.25},
         "finish_details": _stateless_finish_details("stop"),
     }
+    assert done["hipengine"]["timing"]["backend_prefill_ms"] == 3.5
+    assert done["hipengine"]["timing"]["backend_decode_ms"] == 1.25
     assert fake.stream_calls == []
 
 
@@ -6086,6 +6091,7 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
                     sampler_mode="processed_argmax",
                     sampler_fallback_reason="processed_logits_required",
                     sampler_fast_path_blockers=("logit_bias",),
+                    timing={"prefill_ms": 2.0},
                 ),
             ),
             GenerationOutput(
@@ -6098,6 +6104,7 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
                     sampler_mode="host_logits_sample",
                     sampler_fallback_reason="host_sampling_required",
                     sampler_fast_path_blockers=("temperature",),
+                    timing={"prefill_ms": 2.5},
                 ),
             ),
         ],
@@ -6182,6 +6189,7 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_fallback_reason": "processed_logits_required",
             "sampler_mode": "processed_argmax",
         },
+        "timing": {"prefill_ms": 2.0},
         "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "streamed_tokens": 1,
@@ -6201,12 +6209,15 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_fallback_reason": "host_sampling_required",
             "sampler_mode": "host_logits_sample",
         },
+        "timing": {"prefill_ms": 2.5},
         "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "streamed_tokens": 1,
             "answer_tokens": 1,
         },
     }
+    assert done_payloads[0]["hipengine"]["timing"]["backend_prefill_ms"] == 2.0
+    assert done_payloads[1]["hipengine"]["timing"]["backend_prefill_ms"] == 2.5
     assert fake.stream_calls == []
 
 
@@ -9319,6 +9330,7 @@ def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
                     forced_tokens_remaining=1,
                     active_processors=("logit_bias",),
                     sampler_fast_path_blockers=("logit_bias",),
+                    timing={"prefill_ms": 4.0, "decode_ms": 2.0},
                 ),
             )
         ],
@@ -9357,12 +9369,18 @@ def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
             "sampler_fallback_reason": "processed_logits_required",
             "sampler_mode": "processed_argmax",
         },
+        "timing": {"prefill_ms": 4.0, "decode_ms": 2.0},
         "tokens": {
             "streamed_tokens": 2,
             "delta_tokens": 2,
             "answer_tokens": 2,
         },
     }
+    assert content["hipengine"]["timing"]["backend_prefill_ms"] == 4.0
+    assert content["hipengine"]["timing"]["backend_decode_ms"] == 2.0
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["hipengine"]["timing"]["backend_prefill_ms"] == 4.0
+    assert done["hipengine"]["timing"]["backend_decode_ms"] == 2.0
 
 
 def test_streaming_chat_completion_prefers_backend_chunk_finish_details() -> None:
@@ -9610,6 +9628,12 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
             "answer_tokens": 1,
         },
     }
+    assert payloads[0]["hipengine"]["timing"]["backend_prefill_ms"] == 4.0
+    assert payloads[0]["hipengine"]["timing"]["backend_decode_ms"] == 2.0
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["hipengine"]["timing"] == {"prefill_ms": 4.0, "decode_ms": 2.0}
+    assert done["hipengine"]["timing"]["backend_prefill_ms"] == 4.0
+    assert done["hipengine"]["timing"]["backend_decode_ms"] == 2.0
 
 
 def test_streaming_completion_prefers_backend_chunk_finish_details() -> None:
@@ -10023,6 +10047,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "forced_tokens_pending",
             "post_thinking_forced_tokens_pending",
             "force_sequence_completion_token_sequences",
+            "json_object_close_forcing",
             "thinking_budget",
             "logprobs",
             "top_logprobs",
@@ -10041,6 +10066,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "forced_tokens_pending": "one or more forced tokens pending",
             "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
             "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
+            "json_object_close_forcing": "JSON object close forcing active",
             "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",

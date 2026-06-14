@@ -91659,3 +91659,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_is_scoped_to_auth_principal tests/test_server_api.py::test_completion_continuation_is_scoped_to_session_id tests/test_server_api.py::test_completion_continuation_is_scoped_to_tokenizer_metadata tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `6 passed`.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC backend stream timing metadata
+
+Opt-in SSE metadata now mirrors backend `GenerationTelemetry.timing` into the
+top-level `hipengine.timing` object with `backend_` prefixes while preserving
+the raw backend timing payload under `choices[].hipengine.timing`. Live
+completion/chat stream chunks and final buffered done chunks share the behavior,
+and buffered tool streams now pass the final backend stream chunk into the
+parsed stream emitter so backend telemetry is available on the final done event.
+The capabilities manifest and AGENTIC/API docs now advertise backend timing as
+available when generation telemetry supplies it instead of listing backend
+prefill timing as omitted.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

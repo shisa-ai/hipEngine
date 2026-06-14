@@ -151,15 +151,17 @@ Known baseline limitations:
   server-measured elapsed time, TTFT, decode-rate timing, final finish details,
   and best-effort token accounting. When a backend yields
   `GenerationStreamChunk.telemetry`, the server preserves that decode-state
-  snapshot in the choice payload and adds only server-derived token counters.
+  snapshot and raw backend `timing` payload in the choice payload, adds only
+  server-derived token counters, and mirrors backend timing into top-level SSE
+  `hipengine.timing` with `backend_` prefixes such as `backend_prefill_ms`.
   When the final live chunk also carries `GenerationStreamChunk.finish_details`,
   the server uses those backend-authored details on the final choice unless
   server post-processing, such as stop-string trimming or tool/structured
   validation, overrides the result.
   Final done/usage chunks also include sanitized server-observed KV pool stats
   when the served engine exposes them. Exact backend-authored per-phase counts,
-  prefill timing, cache hit/miss state, per-request KV-byte deltas, and budget
-  pressure still need broader runtime signals.
+  cache hit/miss state, per-request KV-byte deltas, and budget pressure still
+  need broader runtime signals.
 - Public agent/runtime capability discovery is exposed through
   `/v1/hipengine/capabilities`. Limited deterministic buffered continuation
   handles exist, but they re-prefill stored rendered prompt plus generated text;
@@ -1073,6 +1075,10 @@ Current code reality:
   usage chunks mirror `usage` under top-level `hipengine.usage`. Live backend
   `GenerationStreamChunk.finish_details` can seed those final choice details
   when server-side post-processing does not override them.
+- Backend-authored `GenerationTelemetry.timing` remains available under
+  `choices[].hipengine.timing` and is mirrored into top-level
+  `hipengine.timing` with `backend_` prefixes when a live stream chunk or final
+  buffered response provides it.
 - Final done/usage chunks include top-level `hipengine.kv_pool` with sanitized
   server-observed KV pool stats when the served engine exposes them.
 - `/v1/hipengine/capabilities` advertises the stream metadata scopes separately:
@@ -1083,9 +1089,9 @@ Current code reality:
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
-- Backend-authored prefill timing, cache hit/miss, per-request KV-byte deltas,
-  budget-pressure, and authoritative per-phase token counts are still omitted
-  until generation/runtime code emits those signals.
+- Cache hit/miss, per-request KV-byte deltas, budget-pressure, and
+  authoritative per-phase token counts are still omitted until
+  generation/runtime code emits those signals.
 
 Exit gates:
 
