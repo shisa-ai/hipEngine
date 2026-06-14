@@ -90061,3 +90061,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 234`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC continuation tokenizer scope
+
+Scoped deterministic buffered continuation handles to tokenizer compatibility
+metadata in addition to served model, endpoint, and authenticated principal.
+Continuation records now store the tokenizer implementation name plus
+tokenize/detokenize/count-token capability flags, reject resumes when the loaded
+tokenizer metadata no longer matches, and preserve the handle on mismatch so
+the rightful compatible resume path can still consume it. The capabilities
+manifest now lists `tokenizer` under `sessions.continuations.scoped_to`.
+Updated `docs/API.md` and `docs/AGENTIC.md` accordingly.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_is_scoped_to_tokenizer_metadata tests/test_server_api.py::test_completion_continuation_is_scoped_to_auth_principal -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `235` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 235`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

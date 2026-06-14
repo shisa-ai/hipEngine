@@ -1051,7 +1051,7 @@ def _session_continuation_capability() -> dict[str, Any]:
         "resident_state_reuse": False,
         "single_use": True,
         "ttl_seconds": _CONTINUATION_TTL_SECONDS,
-        "scoped_to": ["served_model", "endpoint", "auth_principal"],
+        "scoped_to": ["served_model", "endpoint", "tokenizer", "auth_principal"],
         "supported_endpoints": ["completions", "chat_completions"],
         "supported_finishes": ["length"],
         "supported_streaming": False,
@@ -1818,6 +1818,7 @@ class _ContinuationRecord:
     endpoint: str
     model_id: str
     auth_principal: str
+    tokenizer: dict[str, Any]
     prompts: tuple[str, ...]
     generated_texts: tuple[str, ...]
     created: float
@@ -1905,7 +1906,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "backend": config.backend,
                 "quant": config.quant,
             },
-            "tokenizer": _chat_session_snapshot_tokenizer_metadata(
+            "tokenizer": _tokenizer_compatibility_metadata(
                 getattr(app.state, "hipengine_llm", None)
             ),
             "session": {
@@ -2139,6 +2140,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     code="invalid_continuation",
                     param="continuation_id",
                 )
+            current_engine = getattr(app.state, "hipengine_llm", None)
+            if (
+                current_engine is not None
+                and record.tokenizer != _tokenizer_compatibility_metadata(current_engine)
+            ):
+                raise OpenAIHTTPError(
+                    400,
+                    "continuation_id is scoped to a different tokenizer",
+                    code="invalid_continuation",
+                    param="continuation_id",
+                )
             cleanup_expired_continuations()
             return continuations.pop(continuation_id)
 
@@ -2158,6 +2170,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             endpoint=endpoint,
             model_id=config.model_id,
             auth_principal=auth_principal,
+            tokenizer=_tokenizer_compatibility_metadata(getattr(app.state, "hipengine_llm", None)),
             prompts=tuple(str(prompt) for prompt in prompts),
             generated_texts=tuple(str(text) for text in generated_texts),
             created=now,
@@ -6100,7 +6113,7 @@ def _tokenizer_capability_flags(engine: Any | None) -> dict[str, bool]:
     }
 
 
-def _chat_session_snapshot_tokenizer_metadata(engine: Any | None) -> dict[str, Any]:
+def _tokenizer_compatibility_metadata(engine: Any | None) -> dict[str, Any]:
     flags = _tokenizer_capability_flags(engine)
     target = getattr(engine, "_text_generator", None) or engine
     return {
@@ -6127,7 +6140,7 @@ def _validate_chat_session_snapshot_tokenizer_metadata(
         )
     if current_engine is None:
         return
-    expected = _chat_session_snapshot_tokenizer_metadata(current_engine)
+    expected = _tokenizer_compatibility_metadata(current_engine)
     for key, expected_value in expected.items():
         if value.get(key) != expected_value:
             raise OpenAIHTTPError(
