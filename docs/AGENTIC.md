@@ -1687,8 +1687,14 @@ Current code reality:
   authenticated metadata-only endpoints, and `/ready` reports active session,
   stored-message, and continuation-handle counts without exposing transcript
   text.
-- Forkable pinned prefixes, rollback, resident KV cache handles, and prefix-vs-
-  turn-history eviction policy remain future work.
+- App-local transcript sessions can be forked with
+  `POST /v1/hipengine/sessions/{session_id}/fork` into a new session id. Forks
+  clone the visible transcript messages at request time, respect the configured
+  chat-session cap, report `resident_state_reuse=false`, and then diverge
+  independently on later commits. This gives agent harnesses a branch primitive
+  without exposing transcript text through metadata endpoints.
+- Forkable pinned prefixes, rollback, resident KV cache handles, resident KV
+  fork/rollback, and prefix-vs-turn-history eviction policy remain future work.
 
 #### P3.4 Context fitting and auto-clear policy
 

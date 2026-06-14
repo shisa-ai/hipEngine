@@ -418,6 +418,8 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "max_active": max_active,
         "list_endpoint": "/v1/hipengine/sessions",
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
+        "fork_endpoint": "/v1/hipengine/sessions/{session_id}/fork",
+        "fork_resident_state_reuse": False,
         "snapshot_schema": "hipengine.chat_session_snapshot.v1",
         "snapshot_export_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
@@ -1642,6 +1644,153 @@ def test_session_metadata_list_and_delete_are_authenticated() -> None:
     assert deleted_again.json()["deleted"] is False
     assert listed_after_delete.json()["active"] == 0
     assert listed_after_delete.json()["sessions"] == []
+
+
+def test_chat_session_fork_branches_visible_transcript_without_cross_contamination() -> None:
+    fake = SequentialFakeLLM(["base answer", "left answer", "right answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "base prompt"}],
+            "session": {"id": "sess_root"},
+            "max_tokens": 4,
+        },
+    )
+    unauthorized = client.post("/v1/hipengine/sessions/sess_root/fork", json={"id": "sess_branch"})
+    forked = client.post(
+        "/v1/hipengine/sessions/sess_root/fork",
+        headers=headers,
+        json={"id": "sess_branch"},
+    )
+    continued_root = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "left turn"}],
+            "session": {"id": "sess_root"},
+            "max_tokens": 4,
+        },
+    )
+    continued_branch = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "right turn"}],
+            "session": {"id": "sess_branch"},
+            "max_tokens": 4,
+        },
+    )
+    listed = client.get("/v1/hipengine/sessions", headers=headers)
+
+    assert created.status_code == 200
+    assert unauthorized.status_code == 401
+    assert forked.status_code == 200
+    assert forked.json() == {
+        "object": "hipengine.session.forked",
+        "source_id": "sess_root",
+        "id": "sess_branch",
+        "forked": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "message_count": 2,
+    }
+    assert continued_root.status_code == 200
+    assert continued_branch.status_code == 200
+    root_prompt = fake.calls[1][0][0]
+    branch_prompt = fake.calls[2][0][0]
+    assert "base prompt" in root_prompt
+    assert "base answer" in root_prompt
+    assert "left turn" in root_prompt
+    assert "right turn" not in root_prompt
+    assert "base prompt" in branch_prompt
+    assert "base answer" in branch_prompt
+    assert "right turn" in branch_prompt
+    assert "left turn" not in branch_prompt
+    body = listed.json()
+    assert body["active"] == 2
+    counts = {session["id"]: session["message_count"] for session in body["sessions"]}
+    assert counts == {"sess_root": 4, "sess_branch": 4}
+    assert "base prompt" not in json.dumps(body)
+    assert "base answer" not in json.dumps(body)
+
+
+def test_chat_session_fork_rejects_existing_target_and_session_cap() -> None:
+    fake = SequentialFakeLLM(["root answer", "target answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+            max_chat_sessions=2,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    root = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "root"}],
+            "session": {"id": "sess_root"},
+            "max_tokens": 4,
+        },
+    )
+    target = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "target"}],
+            "session": {"id": "sess_target"},
+            "max_tokens": 4,
+        },
+    )
+    existing = client.post(
+        "/v1/hipengine/sessions/sess_root/fork",
+        headers=headers,
+        json={"id": "sess_target"},
+    )
+    full = client.post(
+        "/v1/hipengine/sessions/sess_root/fork",
+        headers=headers,
+        json={"id": "sess_new"},
+    )
+    missing = client.post(
+        "/v1/hipengine/sessions/sess_missing/fork",
+        headers=headers,
+        json={"id": "sess_other"},
+    )
+
+    assert root.status_code == 200
+    assert target.status_code == 200
+    assert existing.status_code == 400
+    assert existing.json()["error"]["param"] == "id"
+    assert full.status_code == 429
+    assert full.json()["error"]["code"] == "engine_busy"
+    assert full.headers["retry-after"] == "1"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["param"] == "session_id"
+    assert set(app.state.hipengine_chat_sessions) == {"sess_root", "sess_target"}
 
 
 def test_chat_session_snapshot_export_restore_round_trips_visible_transcript() -> None:

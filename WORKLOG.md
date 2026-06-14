@@ -90585,3 +90585,17 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'replay_artifact or streaming_completion_backend_cancelled_exception or streaming_chat_backend_deadline_exception or streaming_completion_timeout'` -> `15 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC app-local session fork
+
+Added `POST /v1/hipengine/sessions/{session_id}/fork` for authenticated
+app-local transcript sessions. The endpoint clones the source visible
+transcript into a new session id, rejects missing sources, empty/same/existing
+targets, and chat-session-cap overflow, and reports
+`resident_state_reuse=false` so clients do not confuse it with resident KV
+forking. Updated API and AGENTIC docs plus capability metadata.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'chat_session_fork or session_metadata_list_and_delete or chat_session_snapshot_export_restore or capabilities_endpoint_reports_manifest_and_auth or replay_artifact_redacts_failed_request'` -> `6 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `8 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

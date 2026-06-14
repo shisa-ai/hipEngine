@@ -86,6 +86,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
+| `POST /v1/hipengine/sessions/{session_id}/fork` | Built in | Authenticated app-local transcript fork into a new session id. Clones visible transcript messages only; no resident KV state is reused. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
@@ -589,6 +590,14 @@ timestamps, configured `max_active` cap, pending creation count, and active
 continuation-handle count. It does not return transcript, prompt, generated, or
 tool-result text. `DELETE /v1/hipengine/sessions/{session_id}` removes one
 app-local transcript session and returns `deleted: true` or `false`.
+
+Authenticated `POST /v1/hipengine/sessions/{session_id}/fork` with body
+`{"id":"new_session_id"}` clones the source app-local transcript into the target
+session id. The fork preserves visible transcript messages as of the request and
+then the two sessions diverge independently on later commits. It rejects missing
+source sessions, empty or existing target ids, same-id forks, and configured
+chat-session cap overflow. Forks are transcript-only:
+`resident_state_reuse=false`, no resident KV state is copied.
 
 Authenticated `GET /v1/hipengine/sessions/{session_id}/snapshot` exports a
 versioned `hipengine.chat_session_snapshot.v1` snapshot for that app-local

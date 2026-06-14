@@ -1103,6 +1103,8 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "max_active": None if max_active is None else int(max_active),
         "list_endpoint": "/v1/hipengine/sessions",
         "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
+        "fork_endpoint": "/v1/hipengine/sessions/{session_id}/fork",
+        "fork_resident_state_reuse": False,
         "snapshot_schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
         "snapshot_export_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
@@ -1298,6 +1300,10 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
+
+
+class SessionForkRequest(_OpenAIBaseModel):
+    id: str
 
 
 class TokenizeRequest(_OpenAIBaseModel):
@@ -3503,6 +3509,74 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "deleted": deleted,
             "storage": "app_local_transcript",
             "resident_state_reuse": False,
+        }
+
+    @app.post("/v1/hipengine/sessions/{session_id}/fork")
+    async def fork_session(
+        session_id: str,
+        request: SessionForkRequest,
+        _auth: None = Depends(require_auth),
+    ) -> dict[str, Any]:
+        target_id = str(request.id).strip()
+        if not target_id:
+            raise OpenAIHTTPError(
+                400,
+                "target session id must be a non-empty string",
+                code="invalid_request",
+                param="id",
+            )
+        if target_id == session_id:
+            raise OpenAIHTTPError(
+                400,
+                "target session id must differ from source session id",
+                code="invalid_request",
+                param="id",
+            )
+        async with chat_session_lock:
+            source = chat_sessions.get(session_id)
+            if source is None:
+                raise OpenAIHTTPError(
+                    404,
+                    "chat session does not exist",
+                    code="invalid_request",
+                    param="session_id",
+                )
+            if target_id in chat_sessions:
+                raise OpenAIHTTPError(
+                    400,
+                    "target chat session already exists",
+                    code="invalid_request",
+                    param="id",
+                )
+            if (
+                config.max_chat_sessions is not None
+                and len(chat_sessions) >= int(config.max_chat_sessions)
+            ):
+                exc = OpenAIHTTPError(
+                    429,
+                    "chat session limit is full",
+                    error_type="rate_limit_error",
+                    code="engine_busy",
+                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
+                )
+                _record_openai_error(app.state.hipengine_server_metrics, exc)
+                raise exc
+            now = time.time()
+            forked = _ChatSessionRecord(
+                id=target_id,
+                messages=tuple(dict(message) for message in source.messages),
+                created=now,
+                updated=now,
+            )
+            chat_sessions[target_id] = forked
+        return {
+            "object": "hipengine.session.forked",
+            "source_id": session_id,
+            "id": target_id,
+            "forked": True,
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+            "message_count": len(forked.messages),
         }
 
     @app.get("/v1/hipengine/sessions/{session_id}/snapshot")
