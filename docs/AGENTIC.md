@@ -315,7 +315,8 @@ Current code reality:
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
   before materializing target verification metadata. The capabilities manifest
-  advertises this guard and the blocker fields instead of relying only on prose.
+  advertises this guard, the blocker fields, and condition strings such as
+  `temperature > 0` instead of relying only on prose.
 
 Default rule:
 

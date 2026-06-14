@@ -87618,3 +87618,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_specific_tool_rejects_wrong_function tests/test_server_api.py::test_chat_completion_tool_choice_none_rejects_tool_call tests/test_server_api.py::test_chat_completion_strict_tool_schema_reports_schema_violation tests/test_server_api.py::test_completions_response_format_json_object_validates_result tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content -q` -> `6 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `91 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC MTP sampler blocker condition manifest
+
+Added sampler-owned condition strings for the raw-argmax MTP incompatibility
+list and exposed them through
+`sampling.speculative_mtp.incompatible_conditions` in the capabilities manifest.
+This makes the logit-bias/sampling policy machine-readable without implying
+that inert greedy `top_p` / `top_k` / `min_p` settings block MTP; the flat field
+list remains for clients that only need a conservative summary.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `20 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_emits_speculative_verify_work -q` -> `2 passed`.
+- `git diff --check -- hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py docs/API.md docs/AGENTIC.md docs/SAMPLING.md`.

@@ -420,7 +420,9 @@ strings and should only be used in local, non-sensitive debugging sessions.
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token
   stops, temperature sampling, and requested logprobs require autoregressive
-  fallback.
+  fallback. The manifest also includes `incompatible_conditions`, for example
+  `temperature > 0`, so inert greedy `top_p` / `top_k` / `min_p` settings are
+  not mistaken for MTP blockers.
 - Non-text chat content parts are rejected.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
   available, one-token stops lower to runtime `stop_token_ids` and multi-token

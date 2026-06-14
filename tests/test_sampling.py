@@ -7,6 +7,8 @@ import pytest
 
 from hipengine.generation.sampling import (
     RowSamplingState,
+    SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
+    SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     SamplingMode,
     derive_row_seed,
     normalize_logit_bias_pairs,
@@ -114,6 +116,9 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
 
 
 def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
+    assert tuple(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS) == SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
+    assert SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS["temperature"] == "temperature > 0"
+
     greedy_inert = _params(temperature=0.0, top_p=0.1, top_k=4, min_p=0.5)
     assert supports_speculative_mtp_sampling(greedy_inert) is True
     assert speculative_mtp_sampling_blockers(greedy_inert) == ()

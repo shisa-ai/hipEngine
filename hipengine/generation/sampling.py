@@ -31,6 +31,17 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "logprobs",
     "top_logprobs",
 )
+SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
+    "temperature": "temperature > 0",
+    "logit_bias": "non-empty logit_bias",
+    "repetition_penalty": "repetition_penalty != 1.0",
+    "presence_penalty": "presence_penalty != 0.0",
+    "frequency_penalty": "frequency_penalty != 0.0",
+    "stop_token_ids": "one or more token stop ids",
+    "stop_token_sequences": "one or more multi-token stop sequences",
+    "logprobs": "logprobs requested",
+    "top_logprobs": "top_logprobs > 0",
+}
 
 
 class SamplingMode(str, Enum):
@@ -549,6 +560,7 @@ __all__ = [
     "SamplerPlan",
     "SamplingMode",
     "SPECULATIVE_MTP_INCOMPATIBLE_FIELDS",
+    "SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS",
     "active_processor_names",
     "derive_row_seed",
     "normalize_logit_bias_pairs",
