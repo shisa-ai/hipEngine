@@ -17,6 +17,7 @@ from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
+from hipengine.generation.registry import FinishDetails
 from hipengine.generation.sampling import (
     RowSamplingState,
     normalize_logit_bias_pairs,
@@ -410,6 +411,7 @@ class RequestObservability:
     bucket_key: str | None
     admission_blocked_reason: str | None
     finish_reason: str
+    finish_details: FinishDetails
     submitted_timestamp: float
     admitted_timestamp: float | None
     completion_timestamp: float
@@ -424,6 +426,7 @@ class RequestObservability:
             "bucket_key": self.bucket_key,
             "admission_blocked_reason": self.admission_blocked_reason,
             "finish_reason": self.finish_reason,
+            "finish_details": self.finish_details.to_json_dict(),
             "submitted_timestamp": self.submitted_timestamp,
             "admitted_timestamp": self.admitted_timestamp,
             "completion_timestamp": self.completion_timestamp,
@@ -437,6 +440,7 @@ class CompletedRequest:
     generated_tokens: tuple[int, ...]
     finished: bool
     finish_reason: str
+    finish_details: FinishDetails
     observability: RequestObservability
 
     def to_json_dict(self) -> dict[str, object]:
@@ -446,6 +450,7 @@ class CompletedRequest:
             "generated_tokens": list(self.generated_tokens),
             "finished": self.finished,
             "finish_reason": self.finish_reason,
+            "finish_details": self.finish_details.to_json_dict(),
             "observability": self.observability.to_json_dict(),
         }
 
@@ -1477,6 +1482,7 @@ class ResidentBatchScheduler:
     def _complete_request(self, request: RequestState, *, finish_reason: str) -> CompletedRequest:
         now = self._clock()
         self._update_kv_pages(request)
+        finish_details = _finish_details_for_scheduler_reason(finish_reason, request)
         state = self._observability.pop(
             request.request_id,
             _RequestObservabilityState(submitted_at=now, admitted_at=now),
@@ -1492,6 +1498,7 @@ class ResidentBatchScheduler:
             bucket_key=state.bucket_key,
             admission_blocked_reason=state.admission_blocked_reason,
             finish_reason=finish_reason,
+            finish_details=finish_details,
             submitted_timestamp=state.submitted_at,
             admitted_timestamp=state.admitted_at,
             completion_timestamp=now,
@@ -1502,6 +1509,7 @@ class ResidentBatchScheduler:
             generated_tokens=request.generated_tokens,
             finished=True,
             finish_reason=finish_reason,
+            finish_details=finish_details,
             observability=observability,
         )
         self._sampling.pop(done.request_id, None)
@@ -1510,6 +1518,17 @@ class ResidentBatchScheduler:
         if self._reclaim_callback is not None:
             self._reclaim_callback(done)
         return done
+
+
+def _finish_details_for_scheduler_reason(finish_reason: str, request: RequestState) -> FinishDetails:
+    reason = str(finish_reason)
+    if reason == "timeout":
+        return FinishDetails(reason="deadline_exceeded", deadline_exceeded=True)
+    if reason in {"cancel", "disconnect"}:
+        return FinishDetails(reason="cancelled", cancelled=True)
+    if reason == "length":
+        return FinishDetails(reason="length", length_limit=request.max_new_tokens)
+    return FinishDetails(reason=reason)
 
 
 def _stable_sampler_seed(*, base_seed: int, request_id: int, row_index: int) -> int:

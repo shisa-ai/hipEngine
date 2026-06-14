@@ -1051,6 +1051,11 @@ Current code reality:
   `cancel`, `disconnect`, and `timeout` exits. Active rows are removed from the
   batch, scheduler-owned sampler state is dropped, and the reclaim callback runs
   so KV reservations can be released while surviving rows continue decoding.
+  Completed scheduler rows and per-request observability now carry structured
+  `FinishDetails`: `cancel`/`disconnect` map to
+  `{"reason":"cancelled","cancelled":true}`, `timeout` maps to
+  `{"reason":"deadline_exceeded","deadline_exceeded":true}`, and length exits
+  include the scheduler row's decode limit.
 - PARO and GGUF resident generation paths check deadlines before and after
   tokenization/prefill/decode calls and check cancellation tokens at the same
   cooperative boundaries, including host-sampled and scheduler-owned PARO c>N
@@ -1060,8 +1065,8 @@ Current code reality:
 
 Remaining implementation:
 
-- native row-level `cancelled=true` finish details remain future work when a
-  lower layer stops only one row inside a still-live batch.
+- true mid-kernel or mid-graph preemption remains future work; cancellation and
+  deadline checks still happen at cooperative boundaries.
 
 Exit gates:
 

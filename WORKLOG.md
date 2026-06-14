@@ -90599,3 +90599,20 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'chat_session_fork or session_metadata_list_and_delete or chat_session_snapshot_export_restore or capabilities_endpoint_reports_manifest_and_auth or replay_artifact_redacts_failed_request'` -> `6 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `8 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC scheduler row finish details
+
+`ResidentBatchScheduler` completed rows now carry structured
+`FinishDetails` alongside the existing internal `finish_reason` string. Row
+`cancel` and `disconnect` exits map to `reason=cancelled,cancelled=true`,
+`timeout` maps to `reason=deadline_exceeded,deadline_exceeded=true`, and
+length exits include the row `max_new_tokens` limit. The same details are
+serialized on `CompletedRequest.to_json_dict()` and per-request observability
+payloads so retained-batch artifacts and reclaim callbacks can distinguish
+cancel/deadline rows while surviving rows continue decoding.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` -> passed.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q` -> `280 passed`.
+- `git diff --check -- hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m ruff check hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` still fails on pre-existing unrelated `F811` duplicate test name and `F841` unused local in untouched hunks of `tests/test_generation_batch_scheduler.py`.

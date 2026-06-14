@@ -15968,6 +15968,7 @@ def test_resident_scheduler_completion_observability_and_pool_counters() -> None
     )
     assert observed["admission_blocked_reason"] is None
     assert observed["finish_reason"] == "length"
+    assert observed["finish_details"] == {"reason": "length", "length_limit": 1}
     assert observed["completion_timestamp"] == 102.0
 
     now = 103.0
@@ -15977,6 +15978,7 @@ def test_resident_scheduler_completion_observability_and_pool_counters() -> None
     assert blocked_done is not None
     assert blocked_done.observability.admission_blocked_reason == "capacity"
     assert blocked_done.observability.finish_reason == "cancel"
+    assert blocked_done.finish_details.to_json_dict() == {"reason": "cancelled", "cancelled": True}
 
     pool = ChunkedKVPool(page_bytes=4096, initial_pages=2, low_water_pages=1, chunk_pages=2)
     allocation = pool.allocate(3)
@@ -16336,11 +16338,11 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
 
 def test_resident_scheduler_control_exits_reclaim_active_rows_and_kv() -> None:
-    reclaimed: list[tuple[int, str]] = []
+    reclaimed: list[tuple[int, str, dict[str, object]]] = []
     policy = FixedPagedKVPolicy(block_size=16, total_capacity_tokens=128)
 
     def reclaim(done) -> None:
-        reclaimed.append((done.request_id, done.finish_reason))
+        reclaimed.append((done.request_id, done.finish_reason, done.finish_details.to_json_dict()))
         policy.reclaim(done.request_id)
 
     scheduler = ResidentBatchScheduler(capacity=4, context_bucket_size=4, reclaim_callback=reclaim)
@@ -16361,14 +16363,24 @@ def test_resident_scheduler_control_exits_reclaim_active_rows_and_kv() -> None:
         assert scheduler.next_prefill_work(chunk_size=8) is not None
 
     r_cancel, r_timeout, r_disconnect, r_survivor = request_ids
-    assert scheduler.cancel(r_cancel) is not None
-    assert scheduler.timeout(r_timeout) is not None
-    assert scheduler.disconnect(r_disconnect) is not None
+    canceled = scheduler.cancel(r_cancel)
+    timed_out = scheduler.timeout(r_timeout)
+    disconnected = scheduler.disconnect(r_disconnect)
+    assert canceled is not None
+    assert timed_out is not None
+    assert disconnected is not None
+    assert canceled.finish_details.to_json_dict() == {"reason": "cancelled", "cancelled": True}
+    assert canceled.to_json_dict()["finish_details"] == {"reason": "cancelled", "cancelled": True}
+    assert canceled.observability.to_json_dict()["finish_details"] == {"reason": "cancelled", "cancelled": True}
+    assert timed_out.finish_details.to_json_dict() == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+    assert timed_out.to_json_dict()["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+    assert timed_out.observability.to_json_dict()["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+    assert disconnected.finish_details.to_json_dict() == {"reason": "cancelled", "cancelled": True}
 
     assert reclaimed == [
-        (r_cancel, "cancel"),
-        (r_timeout, "timeout"),
-        (r_disconnect, "disconnect"),
+        (r_cancel, "cancel", {"reason": "cancelled", "cancelled": True}),
+        (r_timeout, "timeout", {"reason": "deadline_exceeded", "deadline_exceeded": True}),
+        (r_disconnect, "disconnect", {"reason": "cancelled", "cancelled": True}),
     ]
     assert set(policy.reservations) == {r_survivor}
     assert scheduler.active_count == 1
@@ -16384,10 +16396,10 @@ def test_resident_scheduler_control_exits_reclaim_active_rows_and_kv() -> None:
 
     assert [(item.request_id, item.finish_reason) for item in completed] == [(r_survivor, "stop")]
     assert reclaimed == [
-        (r_cancel, "cancel"),
-        (r_timeout, "timeout"),
-        (r_disconnect, "disconnect"),
-        (r_survivor, "stop"),
+        (r_cancel, "cancel", {"reason": "cancelled", "cancelled": True}),
+        (r_timeout, "timeout", {"reason": "deadline_exceeded", "deadline_exceeded": True}),
+        (r_disconnect, "disconnect", {"reason": "cancelled", "cancelled": True}),
+        (r_survivor, "stop", {"reason": "stop"}),
     ]
     assert policy.reservations == {}
     assert scheduler.active_count == 0
@@ -17076,6 +17088,8 @@ def test_resident_batch_scheduler_enforces_pending_queue_limit() -> None:
     canceled = scheduler.cancel(r1, reason="timeout")
     assert canceled is not None
     assert canceled.finish_reason == "timeout"
+    assert canceled.finish_details.to_json_dict() == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+    assert canceled.to_json_dict()["observability"]["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
     assert scheduler.pending_count == 0
     r2 = scheduler.submit([5], max_new_tokens=1, request_id=14)
     assert r2 == 14
