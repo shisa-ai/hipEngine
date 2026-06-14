@@ -884,6 +884,94 @@
       ]
     },
     {
+      "name": "session_rollback_visible_transcript_sequence",
+      "kind": "http_sequence",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "base answer",
+        "second answer",
+        "after rollback answer"
+      ],
+      "steps": [
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "base prompt"}],
+            "session": {"id": "sess_rollback_trace"},
+            "max_tokens": 4
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "base answer",
+            "finish_details": {
+              "reason": "stop",
+              "cache_action": "append_visible_only"
+            }
+          }
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "second turn"}],
+            "session": {"id": "sess_rollback_trace"},
+            "max_tokens": 4
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "second answer",
+            "finish_details": {
+              "reason": "stop",
+              "cache_action": "append_visible_only"
+            },
+            "prompt_contains": ["base prompt", "base answer", "second turn"]
+          }
+        },
+        {
+          "endpoint": "/v1/hipengine/sessions/sess_rollback_trace/rollback",
+          "request": {"message_count": 2},
+          "expected": {
+            "status_code": 200,
+            "object": "hipengine.session.rolled_back",
+            "rolled_back": true,
+            "resident_state_reuse": false,
+            "previous_message_count": 4,
+            "message_count": 2,
+            "response_excludes": [
+              "base prompt",
+              "base answer",
+              "second turn",
+              "second answer"
+            ]
+          }
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "after rollback turn"}],
+            "session": {"id": "sess_rollback_trace", "commit": "append_none"},
+            "max_tokens": 4
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "after rollback answer",
+            "finish_details": {
+              "reason": "stop",
+              "cache_action": "append_none"
+            },
+            "prompt_contains": [
+              "base prompt",
+              "base answer",
+              "after rollback turn"
+            ],
+            "prompt_excludes": ["second turn", "second answer"]
+          }
+        }
+      ]
+    },
+    {
       "name": "length_finish_completion",
       "kind": "http",
       "endpoint": "/v1/completions",

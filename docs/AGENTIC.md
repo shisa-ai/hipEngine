@@ -2240,7 +2240,8 @@ Current code reality:
   from the next prompt, completion length finish metadata, chat reasoning/
   closing-think/answer/structured/tool-call length phase metadata,
   continuation-eligible answer and structured length stops, a multi-request
-  continuation-resume sequence, guided patch/diff validation success and
+  continuation-resume sequence, transcript session rollback that trims later
+  turns from the next prompt, guided patch/diff validation success and
   fail-closed rejection paths, context-overflow fit data, wrong-model routing
   errors, unsupported parameter/feature errors, request schema-validation
   errors, streaming context-overflow SSE error chunks, chat-session-cap
@@ -2255,8 +2256,8 @@ Current code reality:
   coverage guard keeps the required server-side agentic pattern buckets
   explicit: multi-turn tool loops, reasoning/no-thinking controls, tool
   validation and compatibility, structured agent outputs, session/snapshot/
-  continuation behavior, finish-phase/sampling contracts, and server error
-  paths.
+  rollback/continuation behavior, finish-phase/sampling contracts, and server
+  error paths.
 - `tests/test_agentic_server_conformance.py` adds a compact client-pattern
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay

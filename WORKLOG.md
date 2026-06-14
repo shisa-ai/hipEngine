@@ -91303,3 +91303,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC rollback golden trace
+
+Added rollback to the checked-in agentic golden trace matrix. The new trace
+builds a visible transcript across two turns, rolls it back to the first
+assistant turn by `message_count`, verifies the rollback response remains
+metadata-only, and proves the next prompt excludes the rolled-back user/assistant
+turn. The trace coverage guard now requires the rollback sequence under
+session/snapshot/continuation behavior.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `52 passed`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.

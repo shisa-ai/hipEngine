@@ -62,6 +62,7 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
             "stateless_session_append_none_completion",
             "session_reasoning_tool_loop_sequence",
             "session_snapshot_restore_reasoning_tool_loop_sequence",
+            "session_rollback_visible_transcript_sequence",
             "length_finish_chat_answer_continuation",
             "length_finish_chat_structured_continuation",
             "continuation_resume_chat_answer_sequence",
@@ -354,6 +355,12 @@ def _assert_generic_response(payload: dict[str, Any], expected: dict[str, Any]) 
         assert payload["deleted"] is expected["deleted"]
     if "restored" in expected:
         assert payload["restored"] is expected["restored"]
+    if "rolled_back" in expected:
+        assert payload["rolled_back"] is expected["rolled_back"]
+    if "resident_state_reuse" in expected:
+        assert payload["resident_state_reuse"] is expected["resident_state_reuse"]
+    if "previous_message_count" in expected:
+        assert payload["previous_message_count"] == expected["previous_message_count"]
     if "message_count" in expected:
         assert payload["message_count"] == expected["message_count"]
     if "snapshot_messages" in expected:
