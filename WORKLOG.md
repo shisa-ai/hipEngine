@@ -89284,3 +89284,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC snapshot message field validation
+
+Extended app-local session snapshot restore validation beyond top-level message
+keys. Restore now validates `content` as text/null/text parts, requires
+`name`/`tool_call_id` metadata to be non-empty strings when present, and keeps
+corrupted message fields from creating a session that would fail only on the
+next rendered turn.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_shape tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_fields tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape -q` -> `16 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
