@@ -2031,9 +2031,9 @@ Current code reality:
   sampler scope, speculative/MTP sampling compatibility,
   tool/structured-output result-validation failure reason sets,
   request-timeout/client-disconnect support, backend-authored choice telemetry,
-  grammar-support status, queue/active-request/chat-session admission caps,
-  scheduler fairness policy, cache/session settings, loaded-model count, and
-  unsupported fields.
+  the optional `decode_state` field vocabulary, grammar-support status,
+  queue/active-request/chat-session admission caps, scheduler fairness policy,
+  cache/session settings, loaded-model count, and unsupported fields.
 - Continuations are advertised as supported with `stateful=false`,
   `resident_state_reuse=false`, `single_use=true`, tokenizer and
   authenticated-principal scope, a 15-minute TTL, deterministic-buffered

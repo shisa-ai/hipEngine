@@ -91051,3 +91051,17 @@ Validation:
 - `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> passed.
 - `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC choice telemetry manifest fields
+
+Aligned `/v1/hipengine/capabilities` with the expanded decode-state telemetry
+contract. `features.choice_telemetry.decode_state_fields` now enumerates the
+stable optional field vocabulary, including sampler processor metadata,
+logits-readback metadata, forced-token state, budget fields, and the PARO c>N
+scheduler execution fields. Updated API/AGENTIC docs and the manifest test.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

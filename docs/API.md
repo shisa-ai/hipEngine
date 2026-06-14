@@ -233,7 +233,9 @@ The `/v1/hipengine/capabilities` manifest reports the same extension under
 field names, token-accounting/decode-state scopes (`live_delta`,
 `buffered_delta`, and `final_choice` when tokenizer counting is available), and
 backend telemetry scopes (`live_chunk` and `buffered_done`) for engines that
-emit `GenerationStreamChunk` or `GenerationOutput` telemetry.
+emit `GenerationStreamChunk` or `GenerationOutput` telemetry. It also reports
+the optional backend-authored field vocabulary under
+`features.choice_telemetry.decode_state_fields`.
 
 Cache hit/miss, backend prefill timing, budget pressure, per-request KV-byte
 deltas, and backend-authored per-phase token metadata are omitted until the
