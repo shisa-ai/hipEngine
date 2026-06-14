@@ -237,6 +237,25 @@ def test_local_agent_chat_smoke_response_rejects_missing_tool_call() -> None:
         )
 
 
+def test_local_agent_chat_smoke_response_rejects_raw_tool_call_markup() -> None:
+    with pytest.raises(validate_local_agent_config.ConfigValidationError, match="raw <tool_call> text"):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+                        },
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
+
+
 def test_local_agent_config_rejects_missing_unsupported_blocklist() -> None:
     config = validate_local_agent_config.load_config(CONFIG_PATH)
     config["chat_completions"]["do_not_send"] = []
@@ -385,6 +404,24 @@ def test_pi_agent_chat_smoke_response_rejects_missing_tool_call() -> None:
                     {
                         "finish_reason": "stop",
                         "message": {"role": "assistant", "content": "ok"},
+                    }
+                ],
+            }
+        )
+
+
+def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="raw <tool_call> text"):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+                        },
                     }
                 ],
             }

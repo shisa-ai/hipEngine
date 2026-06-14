@@ -198,6 +198,12 @@ def validate_chat_smoke_response(
     if not expect_tool_call:
         return {"finish_reason": None if finish_reason is None else str(finish_reason)}
     if finish_reason != "tool_calls":
+        content = message.get("content")
+        if isinstance(content, str) and "<tool_call>" in content:
+            raise ConfigValidationError(
+                "chat smoke returned raw <tool_call> text instead of parsed message.tool_calls; "
+                "check that the client is using /v1/chat/completions with tools enabled"
+            )
         raise ConfigValidationError(
             "chat smoke did not finish with tool_calls; "
             f"finish_reason={finish_reason!r}"

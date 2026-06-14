@@ -1854,7 +1854,8 @@ Current code reality:
   list and prove the generated smoke payload strips every `do_not_send` field.
   When tools are enabled, the local-agent `--chat-smoke` request forces the
   `record_result` function and requires a parsed tool call with valid JSON
-  arguments; when tools are disabled, it only validates a normal chat response.
+  arguments; raw `<tool_call>` assistant text is rejected as a config/server
+  mismatch. When tools are disabled, it only validates a normal chat response.
 - `scripts/validate_pi_agent_models.py` validates the checked-in pi
   `models.json` shape offline and fails on the common `reasoning=false` or
   missing `compat.thinkingFormat="qwen"` misconfiguration that disables pi's

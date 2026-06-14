@@ -89071,3 +89071,18 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
 - `python3 -m json.tool docs/examples/local-agent/openai-compatible.json >/tmp/hipengine-local-agent-config.jsoncheck`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/examples/local-agent/openai-compatible.json docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC pi raw tool-call smoke diagnostics
+
+Hardened the pi and adapter-neutral local-agent chat-smoke validators for the
+common failure mode where the response contains literal Qwen `<tool_call>` text
+instead of OpenAI-compatible `message.tool_calls`. The validators now emit an
+actionable config/server mismatch error before the generic missing-tool-call
+failure.
+
+Validation:
+- `python3 -m py_compile scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_rejects_raw_tool_call_markup tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup -q` -> `2 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `19 passed`.
+- `python3 -m ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

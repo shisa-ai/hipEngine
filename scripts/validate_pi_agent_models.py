@@ -193,12 +193,18 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
     if not choices:
         raise PiConfigValidationError("chat smoke response.choices must contain at least one choice")
     choice = _object_value(choices[0], "chat smoke response.choices[0]")
+    message = _object(choice, "message", label="chat smoke response.choices[0].message")
     if choice.get("finish_reason") != "tool_calls":
+        content = message.get("content")
+        if isinstance(content, str) and "<tool_call>" in content:
+            raise PiConfigValidationError(
+                "chat smoke returned raw <tool_call> text instead of parsed message.tool_calls; "
+                "check that pi is using the OpenAI chat-completions adapter with tools enabled"
+            )
         raise PiConfigValidationError(
             "chat smoke did not finish with tool_calls; "
             f"finish_reason={choice.get('finish_reason')!r}"
         )
-    message = _object(choice, "message", label="chat smoke response.choices[0].message")
     tool_calls = _list(message.get("tool_calls"), "chat smoke response message.tool_calls")
     if len(tool_calls) != 1:
         raise PiConfigValidationError(
