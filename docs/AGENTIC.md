@@ -907,6 +907,23 @@ Build this on top of P0 telemetry rather than as a Qwen-only special case.
 
 #### P1.1 General logit-processor framework
 
+Current code reality:
+
+- `hipengine.generation.sampling.plan_sampler()` reports both
+  `active_processors` and `fast_path_blockers`, so callers can distinguish
+  token-selection processors from fields such as `temperature` / requested
+  logprobs that also leave the graph argmax fast path.
+- Host `select_token()` returns the same processor/blocker metadata on
+  `SampleResult`; row-local forced-token queues are included even when they were
+  not part of request-level params.
+- `DecodeState` serializes `active_processors` and
+  `sampler_fast_path_blockers`, and PARO/GGUF final telemetry snapshots attach
+  those fields for sampled / processed requests.
+- Suppress-token ids, min-token/EOS policy, dynamic thinking-budget processors,
+  and grammar masks remain future processor stack work. Live per-token backend
+  telemetry still needs to emit these fields before server stream metadata can
+  become authoritative.
+
 Implement:
 
 - a pure processor plan that decides `GREEDY_FAST`, `PROCESSED_ARGMAX`,

@@ -16,6 +16,7 @@ from hipengine.generation.sampling import (
     normalize_stop_token_sequences,
     plan_sampler,
     row_seed_for_index,
+    sampler_fast_path_blockers,
     select_token,
     speculative_mtp_sampling_blockers,
     supports_native_gpu_sampling,
@@ -49,6 +50,7 @@ def test_sampler_plan_keeps_inert_top_p_top_k_on_greedy_fast_path() -> None:
 
     assert plan.mode is SamplingMode.GREEDY_FAST
     assert plan.active_processors == ()
+    assert plan.fast_path_blockers == ()
 
 
 def test_sampler_plan_uses_processed_argmax_for_active_processors() -> None:
@@ -56,12 +58,14 @@ def test_sampler_plan_uses_processed_argmax_for_active_processors() -> None:
 
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
     assert plan.active_processors == ("presence_penalty",)
+    assert plan.fast_path_blockers == ("presence_penalty",)
 
 
 def test_sampler_plan_uses_processed_argmax_for_logprobs() -> None:
     plan = plan_sampler(_params(temperature=0.0, logprobs=True, top_logprobs=2))
 
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
+    assert plan.fast_path_blockers == ("logprobs", "top_logprobs")
 
 
 def test_stop_token_sequences_are_active_processors() -> None:
@@ -77,6 +81,10 @@ def test_forced_tokens_are_active_processors() -> None:
 
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
     assert plan.active_processors == ("forced_tokens_pending",)
+    assert sampler_fast_path_blockers(_params(temperature=0.7, logit_bias={1: 2.0})) == (
+        "temperature",
+        "logit_bias",
+    )
 
 
 def test_sampler_plan_uses_host_logits_for_non_greedy_without_gpu_sampler() -> None:
@@ -181,6 +189,8 @@ def test_greedy_tie_break_selects_lower_token_id() -> None:
     assert result.logit == 3.0
     assert result.logprob is None
     assert result.mode is SamplingMode.GREEDY_FAST
+    assert result.active_processors == ()
+    assert result.fast_path_blockers == ()
 
 
 def test_processed_argmax_reports_requested_logprobs() -> None:
@@ -216,6 +226,8 @@ def test_forced_token_queue_overrides_argmax_and_updates_history() -> None:
     assert first.forced is True
     assert first.forced_reason == "close_think"
     assert first.forced_tokens_remaining == 1
+    assert first.active_processors == ("forced_tokens_pending",)
+    assert first.fast_path_blockers == ("forced_tokens_pending",)
     assert second.token_id == 1
     assert second.forced is True
     assert second.forced_reason == "close_think"

@@ -225,12 +225,15 @@ def _gguf_telemetry(
     *,
     row_index: int,
 ) -> GenerationTelemetry:
+    plan = plan_sampler(request)
     return GenerationTelemetry.from_decode_counts(
         row_index=row_index,
         prompt_tokens=len(prompt_ids),
         generated_tokens=len(generated_ids),
-        sampler_mode=_sampler_mode_value(request),
+        sampler_mode=plan.mode.value,
         stop_suffix_state=_gguf_stop_suffix_state(generated_ids, request.stop_token_sequences),
+        active_processors=plan.active_processors,
+        sampler_fast_path_blockers=plan.fast_path_blockers,
     )
 
 

@@ -286,6 +286,7 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
         "generated_tokens": 2,
         "phase": "done",
         "continuation_eligible": False,
+        "sampler_fast_path_blockers": ["temperature"],
         "sampler_mode": "host_logits_sample",
     }
     assert calls[0][0] == "configure_host_sampler"
@@ -436,6 +437,8 @@ def test_qwen35_paro_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch
         "phase": "done",
         "continuation_eligible": False,
         "stop_suffix_state": {"matched_sequence": [100, 101]},
+        "active_processors": ["stop_token_sequences"],
+        "sampler_fast_path_blockers": ["stop_token_sequences"],
         "sampler_mode": "processed_argmax",
     }
     assert len([call for call in calls if call[0] == "step"]) == 1
@@ -621,6 +624,10 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(monkeypatch) ->
     assert [_decode_state(output)["sampler_mode"] for output in generator.last_generation_outputs] == [
         "host_logits_sample",
         "host_logits_sample",
+    ]
+    assert [_decode_state(output)["sampler_fast_path_blockers"] for output in generator.last_generation_outputs] == [
+        ["temperature"],
+        ["temperature"],
     ]
 
 

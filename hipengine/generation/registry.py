@@ -113,6 +113,14 @@ def _pending_token_tuple(value: Any) -> tuple[int, ...]:
     return () if value is None else tuple(int(token) for token in value)
 
 
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)
+
+
 @dataclass(frozen=True)
 class DecodeState:
     """Per-row decode phase and token-accounting snapshot."""
@@ -129,6 +137,8 @@ class DecodeState:
     structured_tokens: int = 0
     stop_suffix_state: Any | None = None
     forced_tokens_pending: tuple[int, ...] = ()
+    active_processors: tuple[str, ...] = ()
+    sampler_fast_path_blockers: tuple[str, ...] = ()
     budget_pressure: str | None = None
     sampler_mode: str | None = None
     continuation_eligible: bool = False
@@ -145,6 +155,8 @@ class DecodeState:
         object.__setattr__(self, "tool_call_tokens", _nonnegative_int(self.tool_call_tokens))
         object.__setattr__(self, "structured_tokens", _nonnegative_int(self.structured_tokens))
         object.__setattr__(self, "forced_tokens_pending", _pending_token_tuple(self.forced_tokens_pending))
+        object.__setattr__(self, "active_processors", _string_tuple(self.active_processors))
+        object.__setattr__(self, "sampler_fast_path_blockers", _string_tuple(self.sampler_fast_path_blockers))
         object.__setattr__(self, "budget_pressure", None if self.budget_pressure is None else str(self.budget_pressure))
         object.__setattr__(self, "sampler_mode", None if self.sampler_mode is None else str(self.sampler_mode))
         object.__setattr__(self, "continuation_eligible", bool(self.continuation_eligible))
@@ -167,6 +179,8 @@ class DecodeState:
                 structured_tokens=value.get("structured_tokens", 0),
                 stop_suffix_state=value.get("stop_suffix_state"),
                 forced_tokens_pending=value.get("forced_tokens_pending", ()),
+                active_processors=value.get("active_processors", ()),
+                sampler_fast_path_blockers=value.get("sampler_fast_path_blockers", ()),
                 budget_pressure=value.get("budget_pressure"),
                 sampler_mode=value.get("sampler_mode"),
                 continuation_eligible=bool(value.get("continuation_eligible", False)),
@@ -184,6 +198,8 @@ class DecodeState:
             structured_tokens=getattr(value, "structured_tokens", 0),
             stop_suffix_state=getattr(value, "stop_suffix_state", None),
             forced_tokens_pending=getattr(value, "forced_tokens_pending", ()),
+            active_processors=getattr(value, "active_processors", ()),
+            sampler_fast_path_blockers=getattr(value, "sampler_fast_path_blockers", ()),
             budget_pressure=getattr(value, "budget_pressure", None),
             sampler_mode=getattr(value, "sampler_mode", None),
             continuation_eligible=bool(getattr(value, "continuation_eligible", False)),
@@ -235,6 +251,10 @@ class DecodeState:
             payload["stop_suffix_state"] = self.stop_suffix_state
         if self.forced_tokens_pending:
             payload["forced_tokens_pending"] = list(self.forced_tokens_pending)
+        if self.active_processors:
+            payload["active_processors"] = list(self.active_processors)
+        if self.sampler_fast_path_blockers:
+            payload["sampler_fast_path_blockers"] = list(self.sampler_fast_path_blockers)
         if self.budget_pressure is not None:
             payload["budget_pressure"] = self.budget_pressure
         if self.sampler_mode is not None:
@@ -289,6 +309,8 @@ class GenerationTelemetry:
         sampler_mode: str | None = None,
         stop_suffix_state: Any | None = None,
         forced_tokens_pending: tuple[int, ...] = (),
+        active_processors: tuple[str, ...] = (),
+        sampler_fast_path_blockers: tuple[str, ...] = (),
         budget_pressure: str | None = None,
         continuation_eligible: bool = False,
         event: str | None = None,
@@ -303,6 +325,8 @@ class GenerationTelemetry:
                 phase=phase,
                 stop_suffix_state=stop_suffix_state,
                 forced_tokens_pending=forced_tokens_pending,
+                active_processors=active_processors,
+                sampler_fast_path_blockers=sampler_fast_path_blockers,
                 budget_pressure=budget_pressure,
                 sampler_mode=sampler_mode,
                 continuation_eligible=continuation_eligible,

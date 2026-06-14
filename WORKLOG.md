@@ -87873,3 +87873,19 @@ Follow-ups recorded in the doc: add production-shaped startup chat smoke, config
 Validation:
 - Re-read `docs/OOM.md` end-to-end after writing.
 - `git diff --staged` reviewed before commit.
+
+## 2026-06-14 - AGENTIC sampler processor telemetry
+
+Advanced P1.1 observability by exposing sampler fast-path blockers separately
+from active processors. `SamplerPlan` now carries `fast_path_blockers`, host
+`SampleResult` returns both processor/blocker tuples, and row-local forced-token
+queues are reported even when they are only present on row state. `DecodeState`
+serializes `active_processors` and `sampler_fast_path_blockers`, with PARO/GGUF
+final telemetry snapshots now attaching those fields for sampled or processed
+requests. Dynamic budget processors, suppress/EOS policy, grammar masks, and
+live backend-authored stream metadata remain future work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_registry.py -q` -> `27 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry -q` -> `19 passed`.

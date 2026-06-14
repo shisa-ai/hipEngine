@@ -64,6 +64,7 @@ class SamplerPlan:
     mode: SamplingMode
     active_processors: tuple[str, ...] = ()
     native_gpu_available: bool = False
+    fast_path_blockers: tuple[str, ...] = ()
 
     @property
     def uses_host_logits(self) -> bool:
@@ -158,6 +159,8 @@ class SampleResult:
     forced: bool = False
     forced_reason: str | None = None
     forced_tokens_remaining: int = 0
+    active_processors: tuple[str, ...] = ()
+    fast_path_blockers: tuple[str, ...] = ()
 
 
 LogitBiasInput = Mapping[int | str, float] | Iterable[tuple[int | str, float]] | None
@@ -277,6 +280,21 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
     return tuple(names)
 
 
+def sampler_fast_path_blockers(params: Any) -> tuple[str, ...]:
+    """Return request fields that make the graph argmax fast path inexact."""
+
+    validate_sampling_params(params)
+    blockers: list[str] = []
+    if float(getattr(params, "temperature", 0.0)) > 0.0:
+        blockers.append("temperature")
+    blockers.extend(active_processor_names(params))
+    if bool(getattr(params, "logprobs", False)):
+        blockers.append("logprobs")
+    if int(getattr(params, "top_logprobs", 0)) > 0:
+        blockers.append("top_logprobs")
+    return tuple(dict.fromkeys(blockers))
+
+
 def _stop_token_ids(params: Any) -> tuple[int, ...]:
     raw_ids = getattr(params, "stop_token_ids", None)
     if raw_ids is None:
@@ -327,18 +345,19 @@ def plan_sampler(
 
     validate_sampling_params(params)
     processors = active_processor_names(params)
+    fast_path_blockers = sampler_fast_path_blockers(params)
     temperature = float(getattr(params, "temperature", 0.0))
     needs_logits = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     if temperature <= 0.0:
         if processors or needs_logits:
-            return SamplerPlan(SamplingMode.PROCESSED_ARGMAX, processors, native_gpu_available)
-        return SamplerPlan(SamplingMode.GREEDY_FAST, processors, native_gpu_available)
+            return SamplerPlan(SamplingMode.PROCESSED_ARGMAX, processors, native_gpu_available, fast_path_blockers)
+        return SamplerPlan(SamplingMode.GREEDY_FAST, processors, native_gpu_available, fast_path_blockers)
     native_ready = native_gpu_available and supports_native_gpu_sampling(params)
     if native_ready:
-        return SamplerPlan(SamplingMode.GPU_SAMPLE, processors, native_gpu_available)
+        return SamplerPlan(SamplingMode.GPU_SAMPLE, processors, native_gpu_available, fast_path_blockers)
     if native_only:
         raise NotImplementedError("native GPU sampling is not available for this request")
-    return SamplerPlan(SamplingMode.HOST_LOGITS_SAMPLE, processors, native_gpu_available)
+    return SamplerPlan(SamplingMode.HOST_LOGITS_SAMPLE, processors, native_gpu_available, fast_path_blockers)
 
 
 def speculative_mtp_sampling_blockers(params: Any) -> tuple[str, ...]:
@@ -349,18 +368,7 @@ def speculative_mtp_sampling_blockers(params: Any) -> tuple[str, ...]:
     the same greedy fast path, with no processed logits or sampler metadata.
     """
 
-    plan = plan_sampler(params, native_gpu_available=False)
-    if plan.mode is SamplingMode.GREEDY_FAST:
-        return ()
-    blockers: list[str] = []
-    if float(getattr(params, "temperature", 0.0)) > 0.0:
-        blockers.append("temperature")
-    blockers.extend(plan.active_processors)
-    if bool(getattr(params, "logprobs", False)):
-        blockers.append("logprobs")
-    if int(getattr(params, "top_logprobs", 0)) > 0:
-        blockers.append("top_logprobs")
-    return tuple(dict.fromkeys(blockers))
+    return sampler_fast_path_blockers(params)
 
 
 def supports_speculative_mtp_sampling(params: Any) -> bool:
@@ -430,6 +438,8 @@ def select_token(
     _apply_logit_bias(processed, normalize_logit_bias_pairs(getattr(params, "logit_bias", None)))
     _apply_history_penalties(processed, params, row_state)
 
+    active_processors = active_processor_names(params)
+    fast_path_blockers = sampler_fast_path_blockers(params)
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
@@ -444,6 +454,8 @@ def select_token(
         logprob, top_logprobs = (None, ())
         if requested_logprobs and np.isfinite(processed[token_id]):
             logprob, top_logprobs = _logprob_summary(processed, token_id, requested_top_logprobs)
+        result_processors = _append_unique(active_processors, "forced_tokens_pending")
+        result_blockers = _append_unique(fast_path_blockers, "forced_tokens_pending")
         return SampleResult(
             token_id=token_id,
             logit=float(processed[token_id]),
@@ -454,6 +466,8 @@ def select_token(
             forced=True,
             forced_reason=forced_reason,
             forced_tokens_remaining=len(row_state.forced_tokens_pending),
+            active_processors=result_processors,
+            fast_path_blockers=result_blockers,
         )
     if temperature <= 0.0:
         token_id = _argmax_lower_id(processed)
@@ -463,9 +477,11 @@ def select_token(
             token_id=token_id,
             logit=float(processed[token_id]),
             logprob=logprob,
-            mode=SamplingMode.GREEDY_FAST if not active_processor_names(params) and not requested_logprobs else SamplingMode.PROCESSED_ARGMAX,
+            mode=SamplingMode.GREEDY_FAST if not active_processors and not requested_logprobs else SamplingMode.PROCESSED_ARGMAX,
             candidate_count=int(np.isfinite(processed).sum()),
             top_logprobs=top_logprobs,
+            active_processors=active_processors,
+            fast_path_blockers=fast_path_blockers,
         )
 
     scaled = processed / temperature
@@ -500,7 +516,13 @@ def select_token(
         mode=SamplingMode.HOST_LOGITS_SAMPLE,
         candidate_count=int(retained_ids.size),
         top_logprobs=top_logprobs,
+        active_processors=active_processors,
+        fast_path_blockers=fast_path_blockers,
     )
+
+
+def _append_unique(values: tuple[str, ...], value: str) -> tuple[str, ...]:
+    return values if value in values else (*values, value)
 
 
 def _apply_logit_bias(logits: np.ndarray, pairs: tuple[tuple[int, float], ...]) -> None:
@@ -643,6 +665,7 @@ __all__ = [
     "normalize_stop_token_sequences",
     "plan_sampler",
     "row_seed_for_index",
+    "sampler_fast_path_blockers",
     "select_token",
     "speculative_mtp_sampling_blockers",
     "supports_native_gpu_sampling",

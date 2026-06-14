@@ -354,6 +354,8 @@ class Qwen35ParoOneTokenGenerator:
                         row_index=row_index,
                         sampler_mode=plan.mode.value,
                         stop_token_sequences=request.stop_token_sequences,
+                        active_processors=plan.active_processors,
+                        sampler_fast_path_blockers=plan.fast_path_blockers,
                     ),
                 )
 
@@ -392,6 +394,8 @@ class Qwen35ParoOneTokenGenerator:
                     row_index=row_index,
                     sampler_mode=plan.mode.value,
                     stop_token_sequences=request.stop_token_sequences,
+                    active_processors=plan.active_processors,
+                    sampler_fast_path_blockers=plan.fast_path_blockers,
                 ),
             )
         finally:
@@ -751,7 +755,8 @@ class Qwen35ParoOneTokenGenerator:
             "native_caware_decode": False,
             "throughput_claim_eligible": False,
         }
-        sampler_mode = plan_sampler(request, native_gpu_available=False).mode.value
+        plan = plan_sampler(request, native_gpu_available=False)
+        sampler_mode = plan.mode.value
         return [
             _generation_output_from_steps(
                 session.tokenizer,
@@ -772,6 +777,8 @@ class Qwen35ParoOneTokenGenerator:
                     request_id=str(request_id),
                     sampler_mode=sampler_mode,
                     stop_token_sequences=request.stop_token_sequences,
+                    active_processors=plan.active_processors,
+                    sampler_fast_path_blockers=plan.fast_path_blockers,
                 ),
             )
             for request_id in request_ids
@@ -1010,6 +1017,8 @@ def _telemetry_for_tokens(
     sampler_mode: str,
     stop_token_sequences: tuple[tuple[int, ...], ...],
     request_id: str | None = None,
+    active_processors: tuple[str, ...] = (),
+    sampler_fast_path_blockers: tuple[str, ...] = (),
 ) -> GenerationTelemetry:
     return GenerationTelemetry.from_decode_counts(
         request_id=request_id,
@@ -1018,6 +1027,8 @@ def _telemetry_for_tokens(
         generated_tokens=len(generated_token_ids),
         sampler_mode=sampler_mode,
         stop_suffix_state=_stop_suffix_state(generated_token_ids, stop_token_sequences),
+        active_processors=active_processors,
+        sampler_fast_path_blockers=sampler_fast_path_blockers,
     )
 
 
