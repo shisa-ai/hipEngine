@@ -1897,8 +1897,10 @@ logprobs request return stable HTTP 501 `unsupported_feature` with
 `error.param="logprobs"`, and the capabilities manifest advertises that
 fallback under `features.logprobs.missing_backend_metadata_error`. Server
 golden traces cover representative completion/chat logprob success and the
-missing-backend-metadata fallback. Remaining work is true prompt-token
-logprobs, native-path coverage, and live token-stream parity.
+missing-backend-metadata fallback. PARO c>N host-sampled final outputs preserve
+per-token selected logprob and top-logprob metadata from scheduler step results.
+Remaining work is true prompt-token logprobs, native-path coverage, and live
+token-stream parity.
 
 Implement:
 

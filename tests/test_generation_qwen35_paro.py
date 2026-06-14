@@ -1252,7 +1252,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     class FakeSession:
         tokenizer = SimpleNamespace(
             token_to_id=lambda token: None,
-            decode=lambda ids: {100: "A", 101: "B", 200: "C", 201: "D"}[int(ids[0])],
+            decode=lambda ids: {100: "A", 101: "B", 200: "C", 201: "D"}.get(int(ids[0]), "?"),
         )
         block_size = 256
         vocab_size = 512
@@ -1277,13 +1277,24 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
         def prefill_native_packed(self, slab, *, sample: bool = True):
             calls.append(("prefill_native_packed", slab.request_ids, slab.physical_slot_ids, sample))
             return tuple(
-                _result(100 + request_id, {0: "A", 1: "B"}[request_id])
+                _result(
+                    100 + request_id,
+                    {0: "A", 1: "B"}[request_id],
+                    logprob={0: -0.1, 1: -0.2}[request_id],
+                    top_logprobs=(
+                        (100 + request_id, {0: -0.1, 1: -0.2}[request_id]),
+                        (300 + request_id, -1.5),
+                    ),
+                )
                 for request_id in slab.request_ids
             )
 
         def step_batch_serial(self, token_ids, *, positions, slots, sample: bool = True):
             calls.append(("step_batch_serial", tuple(token_ids), tuple(positions), tuple(slots), sample))
-            return (_result(200, "C"), _result(201, "D"))
+            return (
+                _result(200, "C", logprob=-0.3, top_logprobs=((200, -0.3), (400, -1.7))),
+                _result(201, "D", logprob=-0.4, top_logprobs=((201, -0.4), (401, -1.8))),
+            )
 
         def batch_execution_metadata(self, *, scheduler_owned: bool = False, native_decode: bool = False):
             calls.append(("batch_execution_metadata", scheduler_owned, native_decode))
@@ -1353,6 +1364,26 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     assert [_decode_state(output)["logits_d2h_bytes"] for output in generator.last_generation_outputs] == [
         2048,
         2048,
+    ]
+    assert [
+        [(token.token_id, token.token_text, token.logprob) for token in output.token_logprobs]
+        for output in generator.last_generation_outputs
+    ] == [
+        [(100, "A", -0.1), (200, "C", -0.3)],
+        [(101, "B", -0.2), (201, "D", -0.4)],
+    ]
+    assert [
+        [token.top_logprobs for token in output.token_logprobs]
+        for output in generator.last_generation_outputs
+    ] == [
+        [
+            ((100, "A", -0.1), (300, "?", -1.5)),
+            ((200, "C", -0.3), (400, "?", -1.7)),
+        ],
+        [
+            ((101, "B", -0.2), (301, "?", -1.5)),
+            ((201, "D", -0.4), (401, "?", -1.8)),
+        ],
     ]
 
 

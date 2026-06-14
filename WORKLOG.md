@@ -90914,3 +90914,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `4 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `259 passed`.
 - `python3 -m py_compile tests/test_server_api.py && python3 -m ruff check tests/test_server_api.py && git diff --check -- tests/test_server_api.py` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC c>N sampled logprob parity coverage
+
+Pinned PARO scheduler-owned c>N sampled final-output logprob metadata. The
+sampled batch fixture now returns finite selected-token logprobs and top-logprob
+candidate lists for prefill and decode steps, and asserts
+`GenerationOutput.token_logprobs` preserves the per-row metadata after scheduler
+ordering, host-sampler state snapshots, and native-requested fallback routing.
+Updated AGENTIC's logprobs parity section to reflect that c>N host-sampled final
+outputs preserve step-result logprob metadata while native/live-stream parity
+remains future work.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill -q` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q && python3 -m py_compile tests/test_generation_qwen35_paro.py && python3 -m ruff check tests/test_generation_qwen35_paro.py && git diff --check -- tests/test_generation_qwen35_paro.py docs/AGENTIC.md` -> `30 passed`, `All checks passed!` / clean.
