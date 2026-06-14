@@ -87266,3 +87266,27 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `50 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.
+
+## 2026-06-14 - AGENTIC local-agent config snippet
+
+Added `docs/examples/local-agent/openai-compatible.json` as a checked-in
+adapter-neutral OpenAI-compatible local-agent config. It defaults to
+deterministic Qwen-friendly chat (`temperature=0`, `reasoning_effort=none`),
+bounded `max_tokens=4096`, SSE usage/hipEngine metadata, request timeout,
+per-request tools, and an explicit `do_not_send` block for unsupported/session
+fields plus fields the recommended config intentionally avoids.
+
+Added `scripts/validate_local_agent_config.py`, which validates the config
+against a running server's `/v1/hipengine/capabilities` manifest and optionally
+sends a small chat/tools smoke request. Added unit coverage against the real
+in-process capabilities manifest, unsupported-field blocklist validation, and
+smoke-payload generation to ensure recommended requests do not send
+`do_not_send` fields.
+
+Validation:
+- `python3 -m json.tool docs/examples/local-agent/openai-compatible.json >/tmp/hipengine-local-agent-config.json`.
+- `python3 -m py_compile scripts/validate_local_agent_config.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas -q` -> `3 passed`.
+- `python3 scripts/validate_local_agent_config.py --help >/tmp/hipengine-local-agent-validator-help.txt`.
+- `git diff --check -- docs/AGENTIC.md docs/API.md docs/examples/local-agent/openai-compatible.json scripts/validate_local_agent_config.py tests/test_local_agent_config.py`.

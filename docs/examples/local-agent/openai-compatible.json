@@ -1,0 +1,43 @@
+{
+  "schema": "hipengine.local_agent.v1",
+  "server": {
+    "base_url": "http://127.0.0.1:8000/v1",
+    "api_key_env": "HIPENGINE_API_KEY",
+    "capabilities_path": "/hipengine/capabilities"
+  },
+  "model": {
+    "source": "capabilities.model.id"
+  },
+  "chat_completions": {
+    "endpoint": "/chat/completions",
+    "defaults": {
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "max_tokens": 4096,
+      "stream": true,
+      "stream_options": {
+        "include_usage": true,
+        "include_hipengine": true
+      },
+      "timeout_ms": 120000,
+      "reasoning_effort": "none"
+    },
+    "tool_calling": {
+      "enabled": true,
+      "tool_choice": "auto",
+      "strict_decoding_required": false,
+      "send_tools_per_request": true
+    },
+    "do_not_send": [
+      "continuation_id",
+      "session.commit",
+      "response_format",
+      "parallel_tool_calls",
+      "top_logprobs"
+    ]
+  },
+  "token_diagnostics": {
+    "count_before_send": true,
+    "fit_context_before_large_requests": true
+  }
+}

@@ -241,6 +241,28 @@ pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`
 set to `false` if you only want the Qwen flag and not OpenAI
 `reasoning_effort`.
 
+### Local-agent config validation
+
+A minimal OpenAI-compatible local-agent config is checked in at
+`docs/examples/local-agent/openai-compatible.json`. It discovers the served
+model id from `/v1/hipengine/capabilities`, uses deterministic Qwen-friendly
+defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
+hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
+and keeps unsupported/session/structured-output fields in `do_not_send`.
+
+Validate the config against a running server with:
+
+```bash
+python3 scripts/validate_local_agent_config.py \
+  --config docs/examples/local-agent/openai-compatible.json \
+  --base-url http://127.0.0.1:8000/v1
+```
+
+If `HIPENGINE_API_KEY` is set, the validator uses it automatically. Add
+`--chat-smoke` to POST a small non-streaming chat request with the documented
+tool schema shape and verify that the generated request does not include fields
+listed in `do_not_send`.
+
 ## Diagnostics
 
 Unsupported/unknown request fields, validation failures, and generation failures

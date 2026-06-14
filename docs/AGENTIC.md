@@ -1302,6 +1302,33 @@ Implement:
   max-token behavior, and unsupported fields;
 - a smoke command that validates the config against a running server.
 
+Current code reality:
+
+- `docs/examples/local-agent/openai-compatible.json` is a checked-in
+  adapter-neutral config for OpenAI-compatible local agents. It points at
+  `/v1`, reads the served model id from `/v1/hipengine/capabilities`, defaults
+  to deterministic Qwen-friendly chat (`temperature=0`, `reasoning_effort=none`),
+  bounds ordinary generations to `max_tokens=4096`, enables SSE usage and
+  hipEngine extension metadata, sets a request `timeout_ms`, sends tools
+  per request, and keeps unsupported/session/structured-output fields in
+  `do_not_send`.
+- `scripts/validate_local_agent_config.py` validates the snippet against a
+  running server capability manifest and can optionally POST a small
+  chat/tools smoke request:
+
+  ```bash
+  python3 scripts/validate_local_agent_config.py \
+    --config docs/examples/local-agent/openai-compatible.json \
+    --base-url http://127.0.0.1:8000/v1 \
+    --chat-smoke
+  ```
+
+- Unit tests keep the snippet synchronized with the advertised unsupported-field
+  list and prove the generated smoke payload strips every `do_not_send` field.
+  Existing server fake-session tests cover parsed Qwen tool calls in
+  non-streaming and streaming responses; deterministic multi-turn golden traces
+  remain P5.3.
+
 Exit gates:
 
 - snippets stay synchronized with `docs/API.md`;
