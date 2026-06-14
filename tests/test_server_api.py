@@ -372,6 +372,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         ],
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
+        "no_tool_start_suppression": True,
     }
     assert body["features"]["reasoning_controls"] == {
         "enabled": True,
@@ -2681,6 +2682,30 @@ def test_chat_completion_tool_choice_none_rejects_tool_call() -> None:
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == {"reason": "invalid_tool_call"}
     assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> None:
+    fake = FakeLLM(outputs=["plain answer"], token_map={"<tool_call>": [77, 78]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "answer without tools"}],
+            "tool_choice": "none",
+            "suppress_token_ids": [13],
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["<tool_call>"]
+    assert fake.calls[-1][1].suppress_token_ids == (13, 77)
+    assert response.json()["choices"][0]["message"]["content"] == "plain answer"
 
 
 def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:

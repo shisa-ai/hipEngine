@@ -57,6 +57,7 @@ from hipengine.kvcache import resolve_prefix_cache_mode
 _LOGGER = logging.getLogger("uvicorn.error")
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
 _THINKING_CLOSE_MARKER = "</think>"
+_TOOL_CALL_START_MARKER = "<tool_call>"
 
 
 @dataclass(frozen=True)
@@ -578,6 +579,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "strict_result_validation": True,
                 "schema_validation": "function_strict",
                 "schema_subset": _tool_schema_subset(),
+                "no_tool_start_suppression": False,
             },
             "reasoning_controls": {
                 "enabled": True,
@@ -1704,6 +1706,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest)
             else {}
         )
+        no_tool_suppress_token_ids = (
+            _no_tool_sampling_suppress_token_ids(request, engine)
+            if isinstance(request, ChatCompletionRequest)
+            else ()
+        )
+        suppress_token_ids = tuple(
+            dict.fromkeys(
+                (
+                    *(int(token) for token in (request.suppress_token_ids or ())),
+                    *no_tool_suppress_token_ids,
+                )
+            )
+        )
         return SamplingParams(
             max_tokens=_request_max_tokens(
                 request,
@@ -1722,7 +1737,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             presence_penalty=float(request.presence_penalty if request.presence_penalty is not None else 0.0),
             frequency_penalty=float(request.frequency_penalty if request.frequency_penalty is not None else 0.0),
             logit_bias=request.logit_bias or (),
-            suppress_token_ids=tuple(int(token) for token in (request.suppress_token_ids or ())),
+            suppress_token_ids=suppress_token_ids,
             min_tokens=int(request.min_tokens if request.min_tokens is not None else 0),
             eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
             stop_token_ids=stop_token_ids,
@@ -2247,6 +2262,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "schema_subset": _tool_schema_subset(),
                     "format": "qwen_tool_call_json",
                     "parallel_tool_calls": True,
+                    "no_tool_start_suppression": tokenizer_caps["tokenize"],
                 },
                 "reasoning_controls": {
                     "enabled": True,
@@ -4713,6 +4729,24 @@ def _thinking_budget_sampling_kwargs(
         "thinking_hard_token_cap": thinking.hard_think_cap,
         "thinking_soft_close_window": 0 if thinking.soft_close_window is None else thinking.soft_close_window,
     }
+
+
+def _no_tool_sampling_suppress_token_ids(
+    request: ChatCompletionRequest,
+    engine: Any,
+) -> tuple[int, ...]:
+    if not request.tools:
+        return ()
+    mode, _name = _tool_choice_mode(request.tool_choice)
+    if mode != "none":
+        return ()
+    try:
+        token_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
+    except OpenAIHTTPError:
+        return ()
+    if not token_ids:
+        return ()
+    return (int(token_ids[0]),)
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

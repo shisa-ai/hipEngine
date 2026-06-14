@@ -88386,3 +88386,23 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py tests/test_generation_constraints.py -q` -> `43 passed`.
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_local_agent_config.py -q` -> `10 passed`.
 - `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC no-tool start suppression
+
+Implemented the first decode-time guard for strict no-tool mode. Chat requests
+with `tools` and `tool_choice="none"` now best-effort tokenize the Qwen
+`<tool_call>` start marker and merge its first token into `suppress_token_ids`.
+This reuses the existing sampler processor path, so host sampling suppresses
+tool-call starts while tokenizer-unavailable models keep the previous
+post-generation validation behavior. The tools capability manifest now reports
+tokenizer-dependent `no_tool_start_suppression` while keeping
+`strict_decoding=false` because required/specific tool forcing and grammar
+constraints are still future work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_tool_choice_none_suppresses_tool_call_start_token tests/test_server_api.py::test_chat_completion_tool_choice_none_rejects_tool_call tests/test_local_agent_config.py -q` -> `12 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `121 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

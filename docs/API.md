@@ -259,7 +259,10 @@ tool names, one-call-vs-parallel policy, malformed tool-call blocks, and the
 declared function `parameters` JSON schema subset. Strict failures return a
 normal chat response with no successful `tool_calls`, `finish_reason: "stop"`,
 and `finish_details.reason` set to `invalid_tool_call`,
-`tool_required_not_satisfied`, or `schema_violation`.
+`tool_required_not_satisfied`, or `schema_violation`. When `tool_choice="none"`
+and tokenization is available, the sampler also suppresses the first token of
+the Qwen `<tool_call>` start marker; this is a no-tool guard, not full
+grammar-constrained tool decoding.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 object `properties` / `required` / `additionalProperties: false`, array `items`

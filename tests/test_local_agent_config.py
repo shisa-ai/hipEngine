@@ -59,6 +59,7 @@ def _capabilities(**overrides):
                 "strict_decoding": False,
                 "strict_result_validation": True,
                 "parallel_tool_calls": True,
+                "no_tool_start_suppression": True,
             },
             "reasoning_controls": {
                 "enabled": True,

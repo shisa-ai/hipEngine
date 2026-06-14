@@ -1197,13 +1197,17 @@ Current state:
 - Strict failures return normal chat responses with no successful `tool_calls`,
   coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
   `invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
+- For `tool_choice="none"`, chat sampling suppresses the first token of the
+  Qwen `<tool_call>` start marker when tokenization is available. This keeps
+  no-tool requests on the existing processor path while preserving result
+  validation as the final guard.
 - `response_format={"type":"json_object"}` and
   `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
   accepted for completion and chat requests as post-generation result
   validation. Valid visible JSON is returned normally; invalid stop-finished
   outputs return `finish_details.reason="schema_violation"`.
-- Decode-time suppression/forcing and grammar-constrained JSON/tool generation
-  remain future work.
+- Required/specific-tool forcing, auto-mode constraints, and
+  grammar-constrained JSON/tool generation remain future work.
 
 #### P2.1 Strict tool-call mode
 
@@ -1219,7 +1223,7 @@ Exit gates:
 
 - server result-validation fixtures cover `none`, `required`, and specific
   function choice; decode-time fixtures still need to cover `auto` and
-  constrained no-tool/required behavior;
+  constrained required behavior;
 - no-tool mode suppresses `<tool_call>` starts;
 - required-tool mode does not return ordinary prose as success.
 
@@ -1571,8 +1575,9 @@ Current code reality:
   forcing lazy model load.
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
-  Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
-  parameters and execution modes, strict tool result-validation support,
+  Qwen chat-template family, tools/reasoning/logprobs/streaming support,
+  no-tool start-marker suppression, sampling parameters and execution modes,
+  strict tool result-validation support,
   JSON-object and JSON-schema structured-output result validation, the
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
