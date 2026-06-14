@@ -969,6 +969,47 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     assert fit_body["thinking_budget"]["close_token_ids"] == [42, 43, 44]
 
 
+def test_token_diagnostics_report_unbounded_nested_reasoning_control() -> None:
+    fake = FakeLLM(token_map={"</think>": [42, 43]})
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=512,
+            chat_default_max_tokens=128,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    payload = {
+        "messages": [{"role": "user", "content": "think without hard cap"}],
+        "max_tokens": 64,
+        "reasoning": {"effort": "low", "allow_unbounded": True},
+    }
+
+    count = client.post("/v1/hipengine/count_tokens", json=payload)
+    fit = client.post("/v1/hipengine/fit_context", json=payload)
+
+    assert count.status_code == 200
+    assert fit.status_code == 200
+    for body in (count.json(), fit.json()):
+        budget = body["thinking_budget"]
+        assert budget["enabled"] is True
+        assert budget["effort"] == "low"
+        assert budget["allow_unbounded"] is True
+        assert budget["min_answer_tokens"] == 32
+        assert budget["close_text"] == "</think>"
+        assert budget["close_token_ids"] == [42, 43]
+        assert "hard_think_cap" not in budget
+        assert budget["initial_state"] == {
+            "phase": "think",
+            "reasoning_tokens": 0,
+            "answer_tokens": 0,
+            "close_sequence": [42, 43],
+        }
+
+
 def test_token_diagnostics_use_session_prefix_for_chat() -> None:
     fake = SequentialFakeLLM(["stored answer", "follow-up answer"])
     app = create_app(

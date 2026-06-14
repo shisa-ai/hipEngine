@@ -940,9 +940,10 @@ Current code reality:
   `session.id`, the stored app-local transcript is prepended before rendering,
   and the response reports session prefix/request/rendered message counts plus
   `resident_state_reuse=false`. Chat count/fit diagnostics also expose lowered
-  thinking-budget close tokens and the initialized `ThinkingBudgetState` payload
-  when tokenization is available; capability metadata advertises that diagnostic
-  lowering/state support separately from live token-budget enforcement.
+  thinking-budget close tokens, the initialized `ThinkingBudgetState` payload,
+  and `allow_unbounded=true` when that merged control is active and tokenization
+  is available; capability metadata advertises that diagnostic lowering/state
+  support separately from live token-budget enforcement.
 - `/fit_context` uses the same context arithmetic and chat default max-token
   policy as generation admission, and reports the current clear policy as
   `reject` with no automatic truncation/dropping.

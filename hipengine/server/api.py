@@ -5788,6 +5788,7 @@ def _diagnostic_thinking_budget_payload(
     payload: dict[str, Any] = {
         "enabled": True,
         "effort": thinking.effort,
+        "allow_unbounded": True if thinking.allow_unbounded else None,
         "max_think_tokens": thinking.max_think_tokens,
         "min_answer_tokens": thinking.min_answer_tokens,
         "hard_think_cap": thinking.hard_think_cap,

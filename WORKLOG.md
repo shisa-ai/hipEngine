@@ -89528,3 +89528,19 @@ from a universal TheRock 7.13 uplift. GPU0/W7900 7.13 was mixed and mostly
 flat-to-slightly-lower decode; GPU1 is consistently faster for these gates while
 using the same tracked memory footprint. Treat as diagnostic/no-promote single
 runs unless repeated/correctness-gated.
+
+## 2026-06-14 - AGENTIC unbounded thinking diagnostics
+
+Extended chat token diagnostics to report `allow_unbounded=true` in the
+`thinking_budget` payload when nested `thinking` or `reasoning` controls merge
+to an unbounded hard-cap policy. Count/fit diagnostics now distinguish an
+intentional unbounded request from a missing hard cap while still reporting the
+answer reserve, lowered close-token ids, and initialized `ThinkingBudgetState`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_report_unbounded_nested_reasoning_control -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

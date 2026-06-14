@@ -436,8 +436,9 @@ sampler `min_tokens` / `eos_token_id` still suppresses EOS for ordinary
 generation independent of thinking-budget phase policy. Chat `count_tokens` and
 `fit_context` diagnostics also honor app-local `session.id` transcript prefixes,
 lower the configured close sequence into token ids, and return an initial
-thinking-budget state for harness/debug verification when tokenization is
-available. The capabilities manifest exposes enforcement under
+thinking-budget state plus `allow_unbounded=true` when that merged control is
+active for harness/debug verification when tokenization is available. The
+capabilities manifest exposes enforcement under
 `features.reasoning_controls.token_budget_enforced`,
 `hard_close_token_forcing`, `soft_close_bias`, `eos_suppression`,
 `diagnostic_close_token_lowering`, and `diagnostic_initial_state`.
