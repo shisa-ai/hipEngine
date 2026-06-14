@@ -16,6 +16,7 @@ from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
+    GenerationStreamChunk,
     GenerationTelemetry,
     TokenLogprob,
     register_text_generator,
@@ -218,6 +219,10 @@ class Qwen35ParoOneTokenGenerator:
         return tuple(int(token) for token in prompt_ids)
 
     def stream(self, request: GenerationRequest) -> Iterator[str]:
+        for chunk in self.stream_detailed(request):
+            yield chunk.text
+
+    def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
         if len(request.prompts) != 1:
             raise ValueError("streaming currently supports exactly one prompt")
         if request.max_tokens < 0:
@@ -897,7 +902,7 @@ class Qwen35ParoOneTokenGenerator:
         kv_policy,
         deadline_at: float | None,
         cancellation_token: Any | None,
-    ) -> Iterator[str]:
+    ) -> Iterator[GenerationStreamChunk]:
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
@@ -915,7 +920,18 @@ class Qwen35ParoOneTokenGenerator:
         raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
-        yield next_result.token_text
+        generated_token_ids = [int(next_result.token_id)]
+        yield GenerationStreamChunk(
+            next_result.token_text,
+            telemetry=_telemetry_for_tokens(
+                prompt_ids,
+                generated_token_ids,
+                row_index=0,
+                sampler_mode=SamplingMode.GREEDY_FAST.value,
+                phase="answer",
+                stop_token_sequences=(),
+            ),
+        )
         if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
             return
 
@@ -926,7 +942,18 @@ class Qwen35ParoOneTokenGenerator:
             raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
             if result is None:
                 raise RuntimeError("decode step did not produce next-token logits")
-            yield result.token_text
+            generated_token_ids.append(int(result.token_id))
+            yield GenerationStreamChunk(
+                result.token_text,
+                telemetry=_telemetry_for_tokens(
+                    prompt_ids,
+                    generated_token_ids,
+                    row_index=0,
+                    sampler_mode=SamplingMode.GREEDY_FAST.value,
+                    phase="answer",
+                    stop_token_sequences=(),
+                ),
+            )
             current_token_id = result.token_id
             if not ignore_eos and _is_eos(session.tokenizer, result.token_id):
                 return
@@ -942,7 +969,7 @@ class Qwen35ParoOneTokenGenerator:
         ignore_eos: bool,
         kv_policy,
         plan,
-    ) -> Iterator[str]:
+    ) -> Iterator[GenerationStreamChunk]:
         raise_if_generation_deadline_expired(request)
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
         raise_if_generation_deadline_expired(request)
@@ -959,14 +986,29 @@ class Qwen35ParoOneTokenGenerator:
         state = _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         _configure_sampled_session(session, sampling_request, state, plan=plan)
         generated_token_ids: list[int] = []
+        live_phase = None if state.thinking_budget is not None else "answer"
         try:
             raise_if_generation_deadline_expired(request)
             next_result = session.prefill_native(prompt_ids, sample=True)
             raise_if_generation_deadline_expired(request)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
-            yield next_result.token_text
             generated_token_ids.append(int(next_result.token_id))
+            yield GenerationStreamChunk(
+                next_result.token_text,
+                telemetry=_telemetry_for_tokens(
+                    prompt_ids,
+                    generated_token_ids,
+                    row_index=row_index,
+                    sampler_mode=plan.mode.value,
+                    stop_token_sequences=request.stop_token_sequences,
+                    phase=live_phase,
+                    active_processors=plan.active_processors,
+                    sampler_fast_path_blockers=plan.fast_path_blockers,
+                    sampler_fallback_reason=plan.fallback_reason,
+                    sampling_state=state,
+                ),
+            )
             if _is_finished(
                 session.tokenizer,
                 generated_token_ids,
@@ -983,8 +1025,22 @@ class Qwen35ParoOneTokenGenerator:
                 raise_if_generation_deadline_expired(request)
                 if result is None:
                     raise RuntimeError("decode step did not produce next-token logits")
-                yield result.token_text
                 generated_token_ids.append(int(result.token_id))
+                yield GenerationStreamChunk(
+                    result.token_text,
+                    telemetry=_telemetry_for_tokens(
+                        prompt_ids,
+                        generated_token_ids,
+                        row_index=row_index,
+                        sampler_mode=plan.mode.value,
+                        stop_token_sequences=request.stop_token_sequences,
+                        phase=live_phase,
+                        active_processors=plan.active_processors,
+                        sampler_fast_path_blockers=plan.fast_path_blockers,
+                        sampler_fallback_reason=plan.fallback_reason,
+                        sampling_state=state,
+                    ),
+                )
                 current_token_id = int(result.token_id)
                 if _is_finished(
                     session.tokenizer,
@@ -1166,6 +1222,7 @@ def _telemetry_for_tokens(
     sampler_mode: str,
     stop_token_sequences: tuple[tuple[int, ...], ...],
     request_id: str | None = None,
+    phase: str | None = None,
     active_processors: tuple[str, ...] = (),
     sampler_fast_path_blockers: tuple[str, ...] = (),
     sampler_fallback_reason: str | None = None,
@@ -1177,7 +1234,7 @@ def _telemetry_for_tokens(
         row_index=row_index,
         prompt_tokens=len(prompt_ids),
         generated_tokens=len(generated_token_ids),
-        phase=state_payload.get("phase", "done"),
+        phase=phase or state_payload.get("phase", "done"),
         reasoning_tokens=int(state_payload.get("reasoning_tokens", 0)),
         answer_tokens=int(state_payload.get("answer_tokens", 0)),
         forced_tokens_pending=tuple(state_payload.get("forced_tokens_pending", ())),

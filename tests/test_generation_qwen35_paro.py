@@ -11,6 +11,7 @@ from hipengine.generation import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationRequest,
+    GenerationStreamChunk,
 )
 from hipengine.generation.sampling import select_token
 from hipengine.runtime.qwen35_paro_runner import (
@@ -403,6 +404,163 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
     assert calls[0][3] == (10, 11)
     assert ("step", 100, 2, True) in calls
     assert calls[-1] == ("configure_host_sampler", None, None, None)
+
+
+def test_qwen35_paro_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append(("step", token_id, position, sample))
+            return _result(101, "B") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    chunks = list(generator.stream_detailed(_request(max_tokens=2)))
+
+    assert [chunk.text for chunk in chunks] == ["A", "B"]
+    assert all(isinstance(chunk, GenerationStreamChunk) for chunk in chunks)
+    assert [_decode_state(chunk) for chunk in chunks] == [
+        {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 2,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_mode": "greedy_fast",
+        },
+        {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 2,
+            "generated_tokens": 2,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_mode": "greedy_fast",
+        },
+    ]
+    assert calls == [
+        ("init", runner, 4096),
+        ("prefill_native", (10, 11), True),
+        ("step", 100, 2, True),
+    ]
+
+
+def test_qwen35_paro_stream_text_wrapper_preserves_plain_chunks(monkeypatch) -> None:
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            return _result(100, "A") if sample else None
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            return _result(101, "B") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    assert list(generator.stream(_request(max_tokens=2))) == ["A", "B"]
+
+
+def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def configure_host_sampler(self, params, state):
+            calls.append(
+                (
+                    "configure_host_sampler",
+                    None if params is None else params.temperature,
+                    None if state is None else state.seed,
+                    None if state is None else state.prompt_tokens,
+                )
+            )
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append(("step", token_id, position, sample))
+            return _result(101, "B") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    chunks = list(generator.stream_detailed(_request(max_tokens=2, temperature=0.7, seed=5)))
+
+    assert [chunk.text for chunk in chunks] == ["A", "B"]
+    assert [_decode_state(chunk) for chunk in chunks] == [
+        {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 2,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_mode": "host_logits_sample",
+        },
+        {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 2,
+            "generated_tokens": 2,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_mode": "host_logits_sample",
+        },
+    ]
+    assert calls[0][0] == "configure_host_sampler"
+    assert calls[0][1] == 0.7
+    assert isinstance(calls[0][2], int)
+    assert calls[0][3] == (10, 11)
+    assert calls[1:] == [
+        ("prefill_native", (10, 11), True),
+        ("step", 100, 2, True),
+        ("configure_host_sampler", None, None, None),
+    ]
 
 
 def test_qwen35_paro_generator_checks_deadline_after_prefill(monkeypatch) -> None:

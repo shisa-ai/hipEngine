@@ -90507,3 +90507,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion or streaming_completion or generation_batcher_stream'` -> `29 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py docs/AGENTIC.md docs/API.md` -> clean.
+
+## 2026-06-15 - AGENTIC PARO live stream telemetry
+
+Threaded `GenerationStreamChunk` through the PARO c=1 true streaming lower
+loops. `Qwen35ParoOneTokenGenerator.stream()` remains a plain text iterator, and
+new `stream_detailed()` chunks carry backend-authored live `GenerationTelemetry`
+for greedy and sampled answer tokens, including sampler mode, fast-path
+blockers, and fallback reason for host sampled rows. Updated `docs/AGENTIC.md`
+to mark PARO c=1 live telemetry implemented and keep GGUF/buffered/c>N/native
+scheduler stream telemetry as follow-up work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `25 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.

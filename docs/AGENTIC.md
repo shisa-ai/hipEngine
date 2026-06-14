@@ -109,23 +109,28 @@ Known baseline limitations:
   EOS token id is available, and the hard cap forces the close sequence. Native
   GPU/MTP parity remains future work.
 - Server-side reasoning/tool parsing lives above generation. PARO/GGUF
-  generation loops emit final decode-state telemetry snapshots, but they do not
-  yet expose canonical live token-level phase state for reasoning, answer,
-  tool-call, or structured-output spans.
+  generation loops emit final decode-state telemetry snapshots. PARO c=1 true
+  streaming also emits live `GenerationStreamChunk` snapshots for greedy and
+  sampled answer tokens, including sampler mode and fallback/blocker metadata.
+  GGUF, buffered streaming, and canonical live reasoning/tool-call/structured
+  phases still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
   phase/counts, and host-sampled thinking-budget forced close. Backend
-  cancellation/deadline, cache behavior, sampler fallback, budget pressure, and
-  canonical live per-phase token counts still need generation-loop signals.
+  cancellation/deadline, cache behavior, canonical live per-phase token counts,
+  and broader budget-pressure/cache/KV runtime signals still need generation-loop
+  coverage.
 - Streaming logprobs are buffered detailed responses, not live per-token engine
   streams. Completion `echo+logprobs` does not compute real prompt-token
   logprobs yet; the echoed prompt is represented as a prefix entry with `null`
   logprob.
 - Streaming supports opt-in `stream_options.include_hipengine` metadata with
   server-measured elapsed time, TTFT, decode-rate timing, final finish details,
-  and best-effort token accounting. Exact backend-authored per-phase counts,
-  prefill timing, cache state, KV bytes, and budget pressure still need runtime
-  signals.
+  and best-effort token accounting. When a backend yields
+  `GenerationStreamChunk.telemetry`, the server preserves that decode-state
+  snapshot in the choice payload and adds only server-derived token counters.
+  Exact backend-authored per-phase counts, prefill timing, cache state, KV
+  bytes, and budget pressure still need broader runtime signals.
 - Public agent/runtime capability discovery is exposed through
   `/v1/hipengine/capabilities`. Limited deterministic buffered continuation
   handles exist, but they re-prefill stored rendered prompt plus generated text;
@@ -861,9 +866,10 @@ Current code reality:
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
   the final `finish_details` alongside the backend-authored `decode_state`.
-- PARO/GGUF still need to emit live per-token `GenerationStreamChunk` telemetry
-  from their lower loops, and real continuation eligibility remains future
-  lower-loop work.
+- PARO c=1 true streaming emits live per-token `GenerationStreamChunk`
+  telemetry for greedy and sampled answer tokens. GGUF, buffered streaming,
+  c>N/scheduler paths, canonical tool/structured phases, and real continuation
+  eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -1087,9 +1093,11 @@ Current code reality:
   forced-token override. They are exposed through public/server request fields,
   scheduler per-row blocks, planner metadata, fast-path blockers, capabilities,
   and MTP blocker lists. The native GPU sampler route falls back to host when
-  either processor is active. Dynamic thinking-budget processors and grammar
-  masks still need to emit these fields on native/live stream paths before
-  server stream metadata can become fully backend-authoritative.
+  either processor is active. PARO c=1 sampled streaming now emits the planner's
+  processor/blocker fields and fallback reason on live chunks. GGUF, native GPU,
+  c>N/scheduler paths, dynamic thinking-budget processors, and grammar masks
+  still need the same lower-loop stream metadata before server streams can
+  become fully backend-authoritative.
 
 Implement:
 
@@ -2368,10 +2376,11 @@ session transcript commit policy, deterministic continuations, host processor
 stack, thinking-budget hard/soft close, strict tool result validation, and
 golden harness traces are now implemented. Good next logical units, in order:
 
-1. **Live backend DecodeState telemetry:** make PARO/GGUF streaming loops emit
-   per-token `GenerationStreamChunk` snapshots for phase, forced-token state,
-   budget pressure, and continuation eligibility instead of relying on server
-   post-parse inference.
+1. **Live backend DecodeState telemetry:** extend GGUF, buffered streaming, and
+   c>N/native scheduler paths to emit per-token `GenerationStreamChunk`
+   snapshots for phase, forced-token state, budget pressure, and continuation
+   eligibility instead of relying on server post-parse inference. PARO c=1 true
+   streaming already emits greedy/sampled answer-token snapshots.
 2. **Native/scheduler controlled-decoding parity:** extend c>N/GGUF/native GPU
    sampler paths to emit the same processor metadata, fallback reasons, and
    logprob semantics as host AR sampling, or reject clearly.
