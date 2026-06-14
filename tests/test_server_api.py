@@ -4718,6 +4718,71 @@ def test_streaming_completion_response_format_buffers_validation() -> None:
     assert fake.stream_calls == []
 
 
+def test_streaming_completion_response_format_emits_structured_metadata() -> None:
+    structured_text = '{"ok": true, "path": "README.md"}'
+    fake = FakeLLM(outputs=[structured_text], stream_chunks=["wrong"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "return json",
+            "stream": True,
+            "response_format": {"type": "json_object"},
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    delta = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0].get("text"))
+    assert delta["choices"][0]["text"] == structured_text
+    assert delta["choices"][0]["hipengine"] == {
+        "phase": "structured",
+        "tokens": {
+            "streamed_tokens": 4,
+            "delta_tokens": 4,
+            "structured_tokens": 4,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": 0,
+            "generated_tokens": 4,
+            "phase": "structured",
+            "continuation_eligible": False,
+            "structured_tokens": 4,
+        },
+    }
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "structured",
+        "finish_details": _stateless_finish_details("stop"),
+        "tokens": {
+            "prompt_tokens": 2,
+            "completion_tokens": 4,
+            "total_tokens": 6,
+            "streamed_tokens": 4,
+            "structured_tokens": 4,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": 2,
+            "generated_tokens": 4,
+            "phase": "structured",
+            "continuation_eligible": False,
+            "structured_tokens": 4,
+        },
+    }
+    usage = next(payload for payload in payloads if payload.get("usage"))
+    assert usage["usage"] == {"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6}
+    assert fake.stream_calls == []
+
+
 def test_streaming_completion_response_format_json_schema_buffers_validation() -> None:
     fake = FakeLLM(outputs=['{"ok":"yes","path":"README.md"}'], stream_chunks=['{"ok":true}'])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -5922,6 +5987,65 @@ def test_streaming_chat_completion_response_format_buffers_validation() -> None:
         "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
+
+
+def test_streaming_chat_completion_response_format_emits_structured_metadata() -> None:
+    structured_text = '{"ok": true, "path": "README.md"}'
+    fake = FakeLLM(outputs=[structured_text], stream_chunks=["wrong"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = next(
+        payload
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    )
+    assert content["choices"][0]["delta"] == {"content": structured_text}
+    assert content["choices"][0]["hipengine"] == {
+        "phase": "structured",
+        "tokens": {
+            "streamed_tokens": 4,
+            "delta_tokens": 4,
+            "structured_tokens": 4,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": 0,
+            "generated_tokens": 4,
+            "phase": "structured",
+            "continuation_eligible": False,
+            "structured_tokens": 4,
+        },
+    }
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    done_hipengine = done["choices"][0]["hipengine"]
+    assert done_hipengine["phase"] == "structured"
+    assert done_hipengine["finish_details"] == _stateless_finish_details("stop")
+    assert done_hipengine["tokens"] == {
+        "streamed_tokens": 4,
+        "structured_tokens": 4,
+    }
+    assert done_hipengine["decode_state"]["generated_tokens"] == 4
+    assert done_hipengine["decode_state"]["phase"] == "structured"
+    assert done_hipengine["decode_state"]["structured_tokens"] == 4
+    usage = next(payload for payload in payloads if payload.get("usage"))
+    assert usage["usage"]["completion_tokens"] == 4
+    assert fake.stream_calls == []
 
 
 def test_streaming_chat_completion_response_format_json_schema_buffers_validation() -> None:

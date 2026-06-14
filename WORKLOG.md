@@ -90823,3 +90823,19 @@ Updated API/AGENTIC docs and the exact manifest test expectation.
 Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC structured stream conformance tests
+
+Added server-level tests for successful buffered `response_format` streaming on
+both `/v1/completions` and `/v1/chat/completions`. The tests pin that valid
+structured output is emitted exactly once from the buffered path, does not call
+the live stream backend, and exposes per-choice `hipengine.phase="structured"`
+with `structured_tokens` and matching decode-state snapshots. Existing invalid
+JSON buffering tests remain the schema-violation coverage.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_response_format_emits_structured_metadata tests/test_server_api.py::test_streaming_chat_completion_response_format_emits_structured_metadata tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_response_format_emits_structured_metadata tests/test_server_api.py::test_streaming_chat_completion_response_format_emits_structured_metadata tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_json_schema_buffers_validation -q` -> `6 passed`.
+- `python3 -m py_compile tests/test_server_api.py && python3 -m ruff check tests/test_server_api.py && git diff --check -- tests/test_server_api.py WORKLOG.md` -> `All checks passed!` / clean.
+- `python3 -m pytest tests/test_server_api.py -q` -> `259 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `77 passed`.
