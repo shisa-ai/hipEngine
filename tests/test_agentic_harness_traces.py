@@ -242,6 +242,10 @@ def _assert_stream_response(text: str, expected: dict[str, Any]) -> None:
     payloads = _sse_payloads(text)
     final = payloads[-1]
     assert final["choices"][0]["finish_reason"] == expected["finish_reason"]
+    if "error_code" in expected:
+        _assert_error_response(final, expected)
+    if "hipengine_event" in expected:
+        assert final["hipengine"]["event"] == expected["hipengine_event"]
     if "finish_details" in expected:
         assert final["choices"][0]["finish_details"] == expected["finish_details"]
     if "reasoning_content" in expected:

@@ -90229,3 +90229,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC golden streaming error trace
+
+Added golden-trace support for SSE error payload assertions and covered the
+streaming context-overflow contract. The new trace asserts the stream returns
+HTTP 200 with a final `finish_reason="error"` chunk, canonical
+`context_overflow` taxonomy metadata, `fit_context` retry data, and
+`hipengine.event="error"`. Updated `docs/AGENTIC.md` P5.3 current-reality text
+to distinguish streaming context-overflow error coverage from ordinary HTTP
+errors.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_trace[context_overflow_completion_stream_error] -q` -> `1 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `39 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.

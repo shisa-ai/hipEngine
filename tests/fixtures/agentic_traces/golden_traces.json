@@ -1066,6 +1066,40 @@
       }
     },
     {
+      "name": "context_overflow_completion_stream_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "server_config": {"max_context_tokens": 5},
+      "request": {
+        "model": "fake-model",
+        "prompt": "one two three four",
+        "max_tokens": 2,
+        "stream": true,
+        "stream_options": {"include_hipengine": true}
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "error",
+        "error_code": "context_length_exceeded",
+        "error_param": "max_tokens",
+        "hipengine_error_code": "context_overflow",
+        "hipengine_event": "error",
+        "fit_context": {
+          "prompt_tokens": 4,
+          "max_context_tokens": 5,
+          "effective_max_tokens": 2,
+          "max_allowed_max_tokens": 0,
+          "recommended_max_tokens": 0,
+          "required_context_tokens": 7,
+          "overflow_tokens": 2,
+          "fits": false,
+          "clear_policy": "reject",
+          "would_truncate": false,
+          "would_drop": []
+        }
+      }
+    },
+    {
       "name": "model_unavailable_completion_error",
       "kind": "http",
       "endpoint": "/v1/completions",
