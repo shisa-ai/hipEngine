@@ -90352,3 +90352,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC golden trace coverage guard
+
+Added an explicit coverage guard for the deterministic server-side agentic
+trace suite. The guard names the required buckets for tool loops, reasoning and
+no-thinking controls, tool validation/compatibility, structured agent outputs,
+session/snapshot/continuation behavior, finish-phase and sampling contracts,
+and server error paths so a future trace edit cannot silently drop a core
+agentic pattern. Updated `docs/AGENTIC.md` P5.3 to document the guard.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `46 passed`.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py docs/AGENTIC.md WORKLOG.md` -> clean.

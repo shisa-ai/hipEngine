@@ -2014,7 +2014,12 @@ Current code reality:
   OpenAI-compatible server with deterministic fake generation and strips only
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,
   parsed tool calls, reasoning deltas, finish details, and expected absence of
-  raw tool markup where strict validation handles malformed output.
+  raw tool markup where strict validation handles malformed output. A dedicated
+  coverage guard keeps the required server-side agentic pattern buckets
+  explicit: multi-turn tool loops, reasoning/no-thinking controls, tool
+  validation and compatibility, structured agent outputs, session/snapshot/
+  continuation behavior, finish-phase/sampling contracts, and server error
+  paths.
 - `tests/test_agentic_server_conformance.py` adds a compact client-pattern
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay

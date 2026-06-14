@@ -18,6 +18,82 @@ from hipengine.server.api import OpenAIHTTPError, _RequestControl, _await_with_r
 
 TRACE_PATH = Path(__file__).resolve().parent / "fixtures" / "agentic_traces" / "golden_traces.json"
 
+_REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
+    "tool_loop": frozenset(
+        {
+            "tool_loop_turn_1_non_streaming",
+            "tool_loop_turn_2_non_streaming_final_answer",
+            "tool_call_streaming",
+        }
+    ),
+    "reasoning_controls": frozenset(
+        {
+            "reasoning_tool_call_non_streaming",
+            "reasoning_tool_call_streaming",
+            "reasoning_split_non_streaming",
+            "no_think_prompt_rendering",
+            "reasoning_effort_low_prompt_budget",
+        }
+    ),
+    "tool_validation": frozenset(
+        {
+            "strict_malformed_tool_call_non_streaming",
+            "duplicated_tool_call_start_compat_non_streaming",
+            "auto_unknown_tool_name_non_streaming",
+            "required_tool_missing_non_streaming",
+            "specific_tool_wrong_function_non_streaming",
+            "tool_choice_none_rejects_tool_call_non_streaming",
+            "parallel_tool_calls_without_opt_in_non_streaming",
+            "parallel_tool_calls_streaming",
+        }
+    ),
+    "structured_agent_outputs": frozenset(
+        {
+            "json_schema_violation_chat",
+            "guided_patch_chat_reasoning_fenced_diff",
+            "guided_diff_completion_rejects_prefaced_patch",
+        }
+    ),
+    "sessions_and_continuations": frozenset(
+        {
+            "stateless_session_append_none_completion",
+            "session_reasoning_tool_loop_sequence",
+            "session_snapshot_restore_reasoning_tool_loop_sequence",
+            "length_finish_chat_answer_continuation",
+            "length_finish_chat_structured_continuation",
+            "continuation_resume_chat_answer_sequence",
+            "invalid_continuation_id_chat",
+            "continuation_expired_completion_sequence",
+        }
+    ),
+    "finish_phase_and_sampling": frozenset(
+        {
+            "length_finish_completion",
+            "length_finish_chat_reasoning_phase",
+            "length_finish_chat_closing_think_phase",
+            "length_finish_chat_partial_tool_call",
+            "completion_logprobs_success",
+            "chat_logprobs_success",
+            "completion_logprobs_missing_backend_metadata_error",
+        }
+    ),
+    "server_error_paths": frozenset(
+        {
+            "context_overflow_completion_error",
+            "context_overflow_completion_stream_error",
+            "model_unavailable_completion_error",
+            "unsupported_parameter_completion_error",
+            "schema_violation_missing_prompt_error",
+            "unsupported_feature_tokenize_error",
+            "engine_busy_chat_session_cap_sequence",
+            "deadline_error_completion",
+            "backend_cancelled_completion_error",
+            "backend_cancelled_completion_stream_error",
+            "request_control_cancelled",
+        }
+    ),
+}
+
 
 class TraceLLM:
     def __init__(self, trace: dict[str, Any]) -> None:
@@ -89,6 +165,16 @@ def _load_traces() -> list[dict[str, Any]]:
         payload = json.load(handle)
     assert payload["schema"] == "hipengine.agentic_traces.v1"
     return list(payload["traces"])
+
+
+def test_agentic_golden_traces_cover_required_server_patterns() -> None:
+    trace_names = {trace["name"] for trace in _load_traces()}
+    missing = {
+        category: sorted(required - trace_names)
+        for category, required in _REQUIRED_AGENTIC_TRACE_COVERAGE.items()
+        if not required.issubset(trace_names)
+    }
+    assert not missing
 
 
 @pytest.mark.parametrize("trace", _load_traces(), ids=lambda trace: trace["name"])
