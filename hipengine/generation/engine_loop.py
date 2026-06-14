@@ -17,7 +17,12 @@ from typing import Iterable, Protocol, Sequence
 
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
-from hipengine.generation.registry import GenerationOutput, GenerationRequest, TextGenerator
+from hipengine.generation.registry import (
+    GenerationOutput,
+    GenerationRequest,
+    GenerationStreamChunk,
+    TextGenerator,
+)
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
 DEFAULT_KV_POOL_INITIAL_PAGES = 128
@@ -150,12 +155,22 @@ class SubmitPollTextGenerator:
         return [runner.outputs[request_id] for request_id in request_ids]
 
     def stream(self, request: GenerationRequest) -> Iterator[str]:
+        for chunk in self.stream_detailed(request):
+            yield str(chunk)
+
+    def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
+        detailed_streamer = getattr(self._inner, "stream_detailed", None)
+        if callable(detailed_streamer):
+            for chunk in detailed_streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
+            return
         streamer = getattr(self._inner, "stream", None)
         if callable(streamer):
-            yield from streamer(request)
+            for chunk in streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
             return
         for text in self.generate(request):
-            yield text
+            yield GenerationStreamChunk(text=str(text))
 
 
 class _SubmitPollTextRunner:

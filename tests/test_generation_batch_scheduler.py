@@ -32,6 +32,8 @@ from hipengine.generation import (
     EngineLoopConfig,
     GeneratedToken,
     GenerationRequest,
+    GenerationStreamChunk,
+    GenerationTelemetry,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     GraphBucketCache,
     PerRowSamplingParams,
@@ -15824,6 +15826,52 @@ def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> No
     assert outputs == ["generated:one:70", "generated:two:71", "generated:three:72"]
     assert [seen.prompts for seen in inner.requests] == [("one", "two", "three")]
     assert inner.requests[0] == request
+
+
+def test_submit_poll_text_generator_preserves_stream_detailed_telemetry() -> None:
+    class DetailedStreamGenerator(_FakeTextGenerator):
+        def stream_detailed(self, request: GenerationRequest):
+            self.requests.append(request)
+            yield GenerationStreamChunk(
+                "alpha",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=1,
+                    phase="answer",
+                    sampler_mode="processed_argmax",
+                    request_id="row-0",
+                ),
+            )
+
+        def stream(self, request: GenerationRequest):  # pragma: no cover
+            raise AssertionError("stream_detailed should be preferred")
+
+    inner = DetailedStreamGenerator()
+    adapter = SubmitPollTextGenerator(inner)
+    request = GenerationRequest(
+        prompts=("one",),
+        max_tokens=1,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+    )
+
+    chunks = list(adapter.stream_detailed(request))
+
+    assert [chunk.text for chunk in chunks] == ["alpha"]
+    assert chunks[0].telemetry is not None
+    assert chunks[0].telemetry.to_json_dict()["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "request_id": "row-0",
+        "sampler_mode": "processed_argmax",
+    }
+    assert list(adapter.stream(request)) == ["alpha"]
+    assert inner.requests == [request, request]
 
 
 def test_engine_loop_cli_env_defaults_match_docs() -> None:

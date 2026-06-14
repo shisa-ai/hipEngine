@@ -91350,3 +91350,18 @@ Validation:
 - `python3 -m py_compile hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> passed.
 - `python3 -m ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC submit/poll stream telemetry preservation
+
+Closed a telemetry loss in the scheduler submit/poll wrapper. `SubmitPollTextGenerator`
+now exposes `stream_detailed()` and prefers an inner generator's detailed stream
+chunks before falling back to plain `stream()` or generated text. Plain `stream()`
+delegates through the detailed path, so existing text streaming behavior remains
+unchanged while wrapped `LLM.stream_detailed()` and server streaming keep backend
+`GenerationStreamChunk.telemetry` when the underlying generator provides it.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_stream_detailed_telemetry tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds tests/test_llm_generate.py::test_llm_stream_detailed_preserves_backend_stream_telemetry -q` -> `3 passed`.
+- `python3 -m py_compile hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> passed.
+- `python3 -m ruff check hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.

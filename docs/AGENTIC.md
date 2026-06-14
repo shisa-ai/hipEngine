@@ -924,6 +924,10 @@ Current code reality:
 - PARO and GGUF c=1 true streaming emit live per-token
   `GenerationStreamChunk` telemetry for greedy and sampled answer tokens,
   including host-sampled budget-pressure metadata when row state is available.
+  The scheduler submit/poll wrapper preserves an inner generator's
+  `stream_detailed()` chunks instead of downgrading them to plain text, so
+  wrapped `LLM.stream_detailed()` / server streaming paths keep backend-authored
+  telemetry when the underlying generator provides it.
   Buffered streaming preserves backend final telemetry on choice `done` chunks
   and now emits server-derived token/decode-state snapshots for opt-in buffered
   answer/reasoning/tool/structured deltas when tokenizer counting is available.
@@ -2602,13 +2606,14 @@ stack, thinking-budget hard/soft close, strict tool result validation, and
 golden harness traces are now implemented. Good next logical units, in order:
 
 1. **Live backend DecodeState telemetry:** buffered streaming now carries safe
-   backend sampler/execution metadata on opt-in deltas, but still needs
-   backend-authored per-token snapshots for forced-token state, budget pressure,
-   stop suffixes, and continuation eligibility. Extend c>N/native scheduler
-   paths from their current final execution-path/fallback snapshots to per-token
-   `GenerationStreamChunk` snapshots instead of relying on server post-parse
-   inference. PARO/GGUF c=1 true streaming already emits greedy/sampled
-   answer-token snapshots.
+   backend sampler/execution metadata on opt-in deltas, and the submit/poll
+   wrapper preserves underlying `stream_detailed()` telemetry, but lower loops
+   still need backend-authored per-token snapshots for forced-token state,
+   budget pressure, stop suffixes, and continuation eligibility. Extend
+   c>N/native scheduler paths from their current final execution-path/fallback
+   snapshots to per-token `GenerationStreamChunk` snapshots instead of relying
+   on server post-parse inference. PARO/GGUF c=1 true streaming already emits
+   greedy/sampled answer-token snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
    per-row planner metadata for native fallback/rejection decisions, and PARO
    c>N sampled batches record it in runtime diagnostics. c>N/GGUF/native GPU
