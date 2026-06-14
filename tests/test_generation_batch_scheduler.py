@@ -37,6 +37,7 @@ from hipengine.generation import (
     PerRowSamplingParams,
     ResidentBatchScheduler,
     ResidentEngineLoop,
+    SamplingMode,
     SubmitPollTextGenerator,
     SpeculativeCommitPlan,
     SpeculativeStateCommitPlan,
@@ -16213,6 +16214,94 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r1).thinking_soft_close_window == 2
     assert block.params_for(r2).forced_tokens_pending == (55, 56)
     assert block.params_for(r2).forced_token_reason == "tool_choice_required"
+    assert block.sampler_plan_for(r0).mode is SamplingMode.PROCESSED_ARGMAX
+    assert block.sampler_plan_for(r0).active_processors == ("stop_token_ids",)
+    assert block.sampler_plan_for(r1).mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert block.sampler_plan_for(r1).active_processors == (
+        "logit_bias",
+        "repetition_penalty",
+        "presence_penalty",
+        "frequency_penalty",
+        "suppress_token_ids",
+        "min_tokens",
+        "stop_token_sequences",
+        "thinking_budget",
+        "post_thinking_forced_tokens_pending",
+        "force_sequence_completion_token_sequences",
+    )
+    assert block.sampler_plan_for(r2).active_processors == (
+        "logit_bias",
+        "repetition_penalty",
+        "presence_penalty",
+        "frequency_penalty",
+        "forced_tokens_pending",
+    )
+    assert block.sampler_plans(native_gpu_requested=True)[1].fallback_reason == "native_gpu_unsupported_request"
+    assert block.sampler_plan_metadata(native_gpu_requested=True) == (
+        {
+            "request_id": r0,
+            "mode": "processed_argmax",
+            "active_processors": ["stop_token_ids"],
+            "sampler_fast_path_blockers": ["stop_token_ids"],
+            "native_gpu_available": False,
+            "uses_host_logits": True,
+            "sampler_fallback_reason": "processed_logits_required",
+        },
+        {
+            "request_id": r1,
+            "mode": "host_logits_sample",
+            "active_processors": [
+                "logit_bias",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty",
+                "suppress_token_ids",
+                "min_tokens",
+                "stop_token_sequences",
+                "thinking_budget",
+                "post_thinking_forced_tokens_pending",
+                "force_sequence_completion_token_sequences",
+            ],
+            "sampler_fast_path_blockers": [
+                "temperature",
+                "logit_bias",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty",
+                "suppress_token_ids",
+                "min_tokens",
+                "stop_token_sequences",
+                "thinking_budget",
+                "post_thinking_forced_tokens_pending",
+                "force_sequence_completion_token_sequences",
+            ],
+            "native_gpu_available": False,
+            "uses_host_logits": True,
+            "sampler_fallback_reason": "native_gpu_unsupported_request",
+        },
+        {
+            "request_id": r2,
+            "mode": "host_logits_sample",
+            "active_processors": [
+                "logit_bias",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty",
+                "forced_tokens_pending",
+            ],
+            "sampler_fast_path_blockers": [
+                "temperature",
+                "logit_bias",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty",
+                "forced_tokens_pending",
+            ],
+            "native_gpu_available": False,
+            "uses_host_logits": True,
+            "sampler_fallback_reason": "native_gpu_unsupported_request",
+        },
+    )
     assert scheduler.sampler_state(r1).thinking_budget is not None
     assert scheduler.sampler_state(r1).thinking_budget.close_sequence == (42, 43)
     assert scheduler.sampler_state(r1).post_thinking_forced_tokens_pending.pending_tokens == (44, 45)

@@ -1163,6 +1163,11 @@ Current code reality:
   `active_processors`, `fast_path_blockers`, and `fallback_reason`, so callers
   can distinguish token-selection processors from fields such as `temperature`
   / requested logprobs that also leave the graph argmax fast path.
+- Scheduler-owned `SamplerParamsBlock` rows expose the same planner decision
+  through `sampler_plan_for()`, `sampler_plans()`, and JSON-ready
+  `sampler_plan_metadata()`, so c>N/native scheduler callers can inspect
+  per-row processor blockers and native-fallback reasons without duplicating
+  sampling policy.
 - Host `select_token()` returns the same processor/blocker metadata on
   `SampleResult`; row-local forced-token queues are included even when they were
   not part of request-level params.
@@ -1929,6 +1934,22 @@ Exit gates:
 - semantics match independent c=1 where expected;
 - unsupported processor combinations fall back or reject explicitly.
 
+Current code reality:
+
+- The scheduler owns per-request `RowSamplingState` and per-row
+  `PerRowSamplingParams` for c>N batches. Its `SamplerParamsBlock` preserves
+  row-aligned sampler knobs, deterministic per-row seeds, forced-token queues,
+  post-thinking forced-token queues, sequence-completion repair metadata, and
+  thinking-budget fields.
+- `SamplerParamsBlock` now exposes the shared `plan_sampler()` outcome for each
+  request row, plus JSON-ready per-row metadata containing sampler mode,
+  active processors, fast-path blockers, host-logits use, native availability,
+  and fallback reason. This gives native/scheduler decode callers a single
+  policy source for controlled-decoding fallback/rejection decisions.
+- True batched sampled decode is still not native-promoted: PARO c>N sampled
+  batches use native packed prefill plus serial host-sampler decode, while GGUF
+  sampled requests stay on host sampling.
+
 #### P4.2 GPU sampler kernels
 
 Current state:
@@ -2584,9 +2605,10 @@ golden harness traces are now implemented. Good next logical units, in order:
    `GenerationStreamChunk` snapshots instead of relying on server post-parse
    inference. PARO/GGUF c=1 true streaming already emits greedy/sampled
    answer-token snapshots.
-2. **Native/scheduler controlled-decoding parity:** extend c>N/GGUF/native GPU
-   sampler paths to emit the same processor metadata, fallback reasons, and
-   logprob semantics as host AR sampling, or reject clearly.
+2. **Native/scheduler controlled-decoding parity:** scheduler row blocks now
+   expose per-row planner metadata for native fallback/rejection decisions, but
+   c>N/GGUF/native GPU sampler paths still need emitted chunk/final metadata and
+   logprob semantics to match host AR sampling everywhere.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier applies the same
    logit bias, penalties, suppressions, forced-token, thinking-budget, and

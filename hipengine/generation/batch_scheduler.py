@@ -20,8 +20,10 @@ from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkIte
 from hipengine.generation.registry import FinishDetails
 from hipengine.generation.sampling import (
     RowSamplingState,
+    SamplerPlan,
     normalize_logit_bias_pairs,
     normalize_stop_token_sequences,
+    plan_sampler,
     speculative_mtp_sampling_blockers,
     thinking_budget_state_from_params,
 )
@@ -390,6 +392,74 @@ class SamplerParamsBlock:
             thinking_hard_token_cap=self.thinking_hard_token_caps[index],
             thinking_soft_close_window=self.thinking_soft_close_windows[index],
         )
+
+    def sampler_plan_for(
+        self,
+        request_id: int,
+        *,
+        native_gpu_available: bool = False,
+        native_gpu_requested: bool = False,
+        native_only: bool = False,
+    ) -> SamplerPlan:
+        """Return the shared sampler planner decision for one row."""
+
+        return plan_sampler(
+            self.params_for(request_id),
+            native_gpu_available=bool(native_gpu_available),
+            native_gpu_requested=bool(native_gpu_requested),
+            native_only=bool(native_only),
+        )
+
+    def sampler_plans(
+        self,
+        *,
+        native_gpu_available: bool = False,
+        native_gpu_requested: bool = False,
+        native_only: bool = False,
+    ) -> tuple[SamplerPlan, ...]:
+        """Return sampler planner decisions aligned with ``request_ids``."""
+
+        return tuple(
+            self.sampler_plan_for(
+                request_id,
+                native_gpu_available=native_gpu_available,
+                native_gpu_requested=native_gpu_requested,
+                native_only=native_only,
+            )
+            for request_id in self.request_ids
+        )
+
+    def sampler_plan_metadata(
+        self,
+        *,
+        native_gpu_available: bool = False,
+        native_gpu_requested: bool = False,
+        native_only: bool = False,
+    ) -> tuple[dict[str, object], ...]:
+        """Return JSON-ready per-row sampler policy metadata."""
+
+        rows: list[dict[str, object]] = []
+        for request_id, plan in zip(
+            self.request_ids,
+            self.sampler_plans(
+                native_gpu_available=native_gpu_available,
+                native_gpu_requested=native_gpu_requested,
+                native_only=native_only,
+            ),
+            strict=True,
+        ):
+            payload: dict[str, object] = {
+                "request_id": int(request_id),
+                "mode": plan.mode.value,
+                "active_processors": list(plan.active_processors),
+                "sampler_fast_path_blockers": list(plan.fast_path_blockers),
+                "native_gpu_available": bool(plan.native_gpu_available),
+                "uses_host_logits": bool(plan.uses_host_logits),
+            }
+            if plan.fallback_reason is not None:
+                payload["sampler_fallback_reason"] = plan.fallback_reason
+            rows.append(payload)
+        return tuple(rows)
 
 
 @dataclass(frozen=True, slots=True)

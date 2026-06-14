@@ -91318,3 +91318,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `52 passed`.
 - `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC scheduler sampler plan metadata
+
+Added per-row sampler planner helpers to `SamplerParamsBlock`. Native/c>N
+scheduler callers can now ask the row block for the shared `plan_sampler()`
+decision, aligned plan tuples, or JSON-ready policy metadata covering sampler
+mode, active processors, fast-path blockers, host-logits use, native sampler
+availability, and fallback reason. This keeps logit bias, stop controls,
+thinking-budget, and forced-token fallback/rejection decisions sourced from the
+same planner used by host AR sampling.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy -q` -> `3 passed`.
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` -> passed.
+- `python3 -m ruff check hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.
