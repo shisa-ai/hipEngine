@@ -89656,3 +89656,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_endpoint_rejects_non_text_content_parts -q` -> `2 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC golden continuation-resume trace
+
+Extended the deterministic AGENTIC trace runner with `http_sequence` traces that
+share one fake backend and FastAPI app across multiple requests. Added a chat
+answer continuation sequence that captures a returned `continuation_id`,
+resumes with it, verifies the combined visible answer, and asserts the second
+backend prompt ends with the first partial answer.
+
+Validation:
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `26 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `51 passed`.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md` -> clean.

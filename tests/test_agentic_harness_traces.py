@@ -39,9 +39,17 @@ class TraceLLM:
         if self.generate_delay_s > 0.0:
             time.sleep(self.generate_delay_s)
         if self.detailed_outputs:
-            return self.detailed_outputs[: len(prompts)]
+            if len(self.detailed_outputs) < len(prompts):
+                raise AssertionError("not enough fake detailed outputs for trace request")
+            outputs = self.detailed_outputs[: len(prompts)]
+            del self.detailed_outputs[: len(prompts)]
+            return outputs
         if self.outputs:
-            return self.outputs[: len(prompts)]
+            if len(self.outputs) < len(prompts):
+                raise AssertionError("not enough fake outputs for trace request")
+            outputs = self.outputs[: len(prompts)]
+            del self.outputs[: len(prompts)]
+            return outputs
         return [f"generated:{prompt}" for prompt in prompts]
 
     def stream(self, prompt: str, sampling_params: SamplingParams):
@@ -65,27 +73,94 @@ def test_agentic_golden_trace(trace: dict[str, Any]) -> None:
     if trace["kind"] == "request_control_cancelled":
         _assert_request_control_cancelled(trace)
         return
+    if trace["kind"] == "http_sequence":
+        _assert_http_sequence_trace(trace)
+        return
     assert trace["kind"] == "http"
     fake = TraceLLM(trace)
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
         llm=fake,
     )
-    response = TestClient(app).post(trace["endpoint"], json=trace["request"])
-    expected = trace["expected"]
+    _assert_http_exchange(
+        TestClient(app),
+        fake,
+        endpoint=trace["endpoint"],
+        request_payload=trace["request"],
+        expected=trace["expected"],
+    )
+
+
+def _assert_http_sequence_trace(trace: dict[str, Any]) -> None:
+    fake = TraceLLM(trace)
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    client = TestClient(app)
+    context: dict[str, Any] = {}
+    for step in trace["steps"]:
+        endpoint = str(step.get("endpoint") or trace.get("endpoint"))
+        request_payload = _resolve_trace_values(step["request"], context)
+        payload = _assert_http_exchange(
+            client,
+            fake,
+            endpoint=endpoint,
+            request_payload=request_payload,
+            expected=step["expected"],
+        )
+        _capture_trace_values(payload, expected=step["expected"], context=context)
+
+
+def _assert_http_exchange(
+    client: TestClient,
+    fake: TraceLLM,
+    *,
+    endpoint: str,
+    request_payload: dict[str, Any],
+    expected: dict[str, Any],
+) -> dict[str, Any] | None:
+    call_index = len(fake.calls)
+    response = client.post(endpoint, json=request_payload)
 
     assert response.status_code == expected["status_code"]
     _assert_response_exclusions(response.text, expected)
     if response.status_code >= 400:
-        _assert_error_response(response.json(), expected)
-        return
-    if trace["request"].get("stream"):
+        payload = response.json()
+        _assert_error_response(payload, expected)
+        return payload
+    if request_payload.get("stream"):
         _assert_stream_response(response.text, expected)
-    elif trace["endpoint"].endswith("/chat/completions"):
-        _assert_chat_response(response.json(), expected)
+        payload = None
     else:
-        _assert_completion_response(response.json(), expected)
-    _assert_prompt_expectations(fake, expected)
+        payload = response.json()
+        if endpoint.endswith("/chat/completions"):
+            _assert_chat_response(payload, expected)
+        else:
+            _assert_completion_response(payload, expected)
+    _assert_prompt_expectations(fake, expected, call_index=call_index)
+    return payload
+
+
+def _resolve_trace_values(value: Any, context: dict[str, Any]) -> Any:
+    if isinstance(value, str) and value.startswith("$"):
+        return context[value[1:]]
+    if isinstance(value, list):
+        return [_resolve_trace_values(item, context) for item in value]
+    if isinstance(value, dict):
+        return {key: _resolve_trace_values(item, context) for key, item in value.items()}
+    return value
+
+
+def _capture_trace_values(
+    payload: dict[str, Any] | None,
+    *,
+    expected: dict[str, Any],
+    context: dict[str, Any],
+) -> None:
+    if payload is None or not expected.get("continuation_id"):
+        return
+    context["continuation_id"] = payload["choices"][0]["continuation_id"]
 
 
 def _assert_chat_response(payload: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -173,10 +248,10 @@ def _assert_response_exclusions(text: str, expected: dict[str, Any]) -> None:
         assert str(needle) not in text
 
 
-def _assert_prompt_expectations(fake: TraceLLM, expected: dict[str, Any]) -> None:
-    if not fake.calls:
+def _assert_prompt_expectations(fake: TraceLLM, expected: dict[str, Any], *, call_index: int = 0) -> None:
+    if call_index >= len(fake.calls):
         return
-    prompt = fake.calls[0][0][0]
+    prompt = fake.calls[call_index][0][0]
     for needle in expected.get("prompt_contains", ()):
         assert str(needle) in prompt
     for needle in expected.get("prompt_excludes", ()):
