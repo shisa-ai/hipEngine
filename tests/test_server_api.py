@@ -9319,6 +9319,66 @@ def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
     }
 
 
+def test_streaming_chat_completion_prefers_backend_chunk_finish_details() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                "backend reply",
+                finish_details=FinishDetails(
+                    reason="length",
+                    length_limit=4,
+                    sampler_mode="processed_argmax",
+                    phase="answer",
+                    continuation_eligible=False,
+                ),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=7,
+                    generated_tokens=4,
+                    phase="answer",
+                    sampler_mode="processed_argmax",
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    expected_finish = {
+        "reason": "length",
+        "length_limit": 4,
+        "cache_action": "append_none",
+        "sampler_mode": "processed_argmax",
+        "phase": "answer",
+        "continuation_eligible": False,
+    }
+    assert done["choices"][0]["finish_reason"] == "length"
+    assert done["choices"][0]["finish_details"] == expected_finish
+    assert done["choices"][0]["hipengine"]["finish_details"] == expected_finish
+    assert done["choices"][0]["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 4,
+        "prompt_tokens": 7,
+        "generated_tokens": 4,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "sampler_mode": "processed_argmax",
+    }
+
+
 def test_streaming_completion_uses_engine_stream_and_usage() -> None:
     fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["alpha", " beta"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -9503,6 +9563,63 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
             "delta_tokens": 1,
             "answer_tokens": 1,
         },
+    }
+
+
+def test_streaming_completion_prefers_backend_chunk_finish_details() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                "alpha",
+                finish_details=FinishDetails(
+                    reason="length",
+                    length_limit=4,
+                    sampler_mode="host_logits_sample",
+                ),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=5,
+                    generated_tokens=4,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 1,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    expected_finish = {
+        "reason": "length",
+        "length_limit": 4,
+        "cache_action": "append_none",
+        "sampler_mode": "host_logits_sample",
+    }
+    assert done["choices"][0]["finish_reason"] == "length"
+    assert done["choices"][0]["finish_details"] == expected_finish
+    assert done["choices"][0]["hipengine"]["finish_details"] == expected_finish
+    assert done["choices"][0]["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 4,
+        "prompt_tokens": 5,
+        "generated_tokens": 4,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "sampler_mode": "host_logits_sample",
     }
 
 

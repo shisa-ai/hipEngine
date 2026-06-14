@@ -152,6 +152,10 @@ Known baseline limitations:
   and best-effort token accounting. When a backend yields
   `GenerationStreamChunk.telemetry`, the server preserves that decode-state
   snapshot in the choice payload and adds only server-derived token counters.
+  When the final live chunk also carries `GenerationStreamChunk.finish_details`,
+  the server uses those backend-authored details on the final choice unless
+  server post-processing, such as stop-string trimming or tool/structured
+  validation, overrides the result.
   Final done/usage chunks also include sanitized server-observed KV pool stats
   when the served engine exposes them. Exact backend-authored per-phase counts,
   prefill timing, cache hit/miss state, per-request KV-byte deltas, and budget
@@ -930,6 +934,8 @@ Current code reality:
   stream yields `GenerationStreamChunk.telemetry`, the SSE choice-level
   `hipengine.decode_state` preserves that backend-authored snapshot and only
   layers server-derived stream token counters beside it.
+  Live `GenerationStreamChunk.finish_details` is also preserved on final choice
+  chunks when no server-side stop/tool/structured override changes the result.
 - Token-emitting PARO/GGUF generation loops now author final
   `GenerationTelemetry` snapshots with prompt/generated token counts, row index,
   sampler mode, stop suffix match/partial-suffix state where applicable, and
@@ -1060,7 +1066,9 @@ Current code reality:
   that decode-state snapshot while retaining server-derived phase and token
   counts.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
-  usage chunks mirror `usage` under top-level `hipengine.usage`.
+  usage chunks mirror `usage` under top-level `hipengine.usage`. Live backend
+  `GenerationStreamChunk.finish_details` can seed those final choice details
+  when server-side post-processing does not override them.
 - Final done/usage chunks include top-level `hipengine.kv_pool` with sanitized
   server-observed KV pool stats when the served engine exposes them.
 - `/v1/hipengine/capabilities` advertises the stream metadata scopes separately:

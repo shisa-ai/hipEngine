@@ -739,11 +739,14 @@ class GenerationStreamChunk:
 
     text: str
     token_logprobs: tuple[TokenLogprob, ...] = ()
+    finish_details: FinishDetails | None = None
     telemetry: GenerationTelemetry | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
         object.__setattr__(self, "token_logprobs", tuple(self.token_logprobs))
+        if self.finish_details is not None:
+            object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
         if self.telemetry is not None:
             object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
 
@@ -755,6 +758,7 @@ class GenerationStreamChunk:
             return cls(
                 text=str(value.get("text", "")),
                 token_logprobs=tuple(value.get("token_logprobs", ()) or ()),
+                finish_details=value.get("finish_details"),
                 telemetry=value.get("telemetry"),
             )
         return cls(text=str(value))

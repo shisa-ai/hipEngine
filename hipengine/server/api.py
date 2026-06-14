@@ -3194,6 +3194,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
 
         full_text: list[str] = []
+        last_stream_chunk: GenerationStreamChunk | None = None
         try:
             _validate_generation_request(config, request)
 
@@ -3251,6 +3252,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 control,
             ):
                 stream_chunk = _coerce_generation_stream_chunk(token)
+                last_stream_chunk = stream_chunk
                 text = stream_chunk.text
                 if not text:
                     continue
@@ -3467,6 +3469,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
         raw_text = "".join(full_text)
         text, finish_reason = _apply_stop(raw_text, request.stop)
+        server_stop = text != raw_text
+        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
+        done_stream_chunk = None if server_stop else last_stream_chunk
+        finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(engine, (prompt,), [text])
         app.state.hipengine_server_metrics.record_success(usage)
         cache_action = _session_cache_action(request)
@@ -3482,11 +3488,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             config.model_id,
             finish_reason,
             finish_details=_finish_details_payload(
-                None,
+                backend_detail,
                 finish_reason,
                 cache_action=cache_action,
             ),
             tokens=final_tokens,
+            stream_chunk=done_stream_chunk,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing_metadata,
@@ -4775,6 +4782,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
         full_text: list[str] = []
+        last_stream_chunk: GenerationStreamChunk | None = None
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
 
@@ -4841,6 +4849,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 control,
             ):
                 stream_chunk = _coerce_generation_stream_chunk(token)
+                last_stream_chunk = stream_chunk
                 text = stream_chunk.text
                 if not text:
                     continue
@@ -5083,10 +5092,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
         raw_text = "".join(full_text)
         text, finish_reason = _apply_stop(raw_text, request.stop)
-        if text != raw_text:
+        server_stop = text != raw_text
+        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
+        done_stream_chunk = None if server_stop else last_stream_chunk
+        if server_stop:
             # Stop strings can split across yielded chunks; current streaming keeps
             # transport simple and reports the stop after generation completes.
             finish_reason = "stop"
+        else:
+            finish_reason = _finish_reason_for_output(backend_detail, finish_reason)
         usage = _usage(engine, (prompt,), [text])
         app.state.hipengine_server_metrics.record_success(usage)
         cache_action = _session_cache_action(request)
@@ -5146,12 +5160,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 created,
                 config.model_id,
                 finish_reason,
-                finish_details=_finish_details_payload(
-                    None,
+                finish_details=_chat_finish_details_payload(
+                    backend_detail,
                     finish_reason,
+                    text,
                     cache_action=cache_action,
                 ),
                 tokens=final_tokens,
+                stream_chunk=done_stream_chunk,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -6565,23 +6581,32 @@ def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
     if isinstance(value, GenerationStreamChunk):
         return value
     token_logprobs = getattr(value, "token_logprobs", None)
+    finish_details = getattr(value, "finish_details", None)
     telemetry = getattr(value, "telemetry", None)
-    if token_logprobs is not None or telemetry is not None:
+    if token_logprobs is not None or finish_details is not None or telemetry is not None:
         return GenerationStreamChunk(
             text=str(getattr(value, "text", value)),
             token_logprobs=tuple(token_logprobs or ()),
+            finish_details=finish_details,
             telemetry=telemetry,
         )
-    if isinstance(value, Mapping) and ("text" in value or "token_logprobs" in value or "telemetry" in value):
+    if isinstance(value, Mapping) and (
+        "text" in value or "token_logprobs" in value or "finish_details" in value or "telemetry" in value
+    ):
         return GenerationStreamChunk.from_value(value)
     return GenerationStreamChunk(text=str(value))
 
 
 def _stream_chunk_from_detail(text: str, detail: GenerationOutput | None) -> GenerationStreamChunk | None:
-    telemetry = None if detail is None else detail.telemetry
-    if telemetry is None:
+    if detail is None or (detail.finish_details is None and detail.telemetry is None):
         return None
-    return GenerationStreamChunk(text=str(text), telemetry=telemetry)
+    return GenerationStreamChunk(text=str(text), finish_details=detail.finish_details, telemetry=detail.telemetry)
+
+
+def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) -> GenerationOutput | None:
+    if chunk is None or (chunk.finish_details is None and chunk.telemetry is None):
+        return None
+    return GenerationOutput(text=str(text), finish_details=chunk.finish_details, telemetry=chunk.telemetry)
 
 
 def _buffered_delta_stream_chunk(

@@ -91601,3 +91601,20 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `55 passed`.
 - `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC live stream finish details
+
+Extended `GenerationStreamChunk` with optional backend-authored
+`finish_details` and taught completion/chat live streaming to use the final
+chunk's finish metadata on the SSE done choice when server-side stop trimming
+or tool/structured validation did not override the result. The done choice also
+receives the final backend stream chunk for opt-in hipEngine telemetry, so live
+streams can now surface backend-authored length/sampler finish details instead
+of forcing the server to infer them after text concatenation.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_finish_details tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_finish_details tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `9 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_stream_detailed_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry -q` -> `6 passed`.
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

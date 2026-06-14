@@ -215,6 +215,10 @@ prefill / c-aware decode / serial fallback flags when that metadata is known.
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
 the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.
+If the final live `GenerationStreamChunk` carries backend-authored
+`finish_details`, the final choice chunk uses those details and maps the public
+`finish_reason` from them unless server post-processing, such as stop-string
+trimming or tool/structured validation, overrides the result.
 Buffered SSE paths that run detailed generation, such as completion `echo`
 streaming, chat `n>1`, logprob streaming, and result-validation buffering,
 preserve backend `GenerationOutput.telemetry` on the final choice `done` chunk.
