@@ -90539,3 +90539,19 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `15 passed`.
 - `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC buffered stream final telemetry
+
+Buffered SSE paths now preserve backend-authored final
+`GenerationOutput.telemetry` on choice `done` chunks when
+`stream_options.include_hipengine=true`. This covers paths that intentionally
+buffer through detailed generation, including completion `echo`, chat `n>1`,
+logprob streaming, and result-validation buffering. Live per-token buffered
+snapshots remain future work; AGENTIC/API docs now distinguish that from final
+done-chunk telemetry.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `6 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

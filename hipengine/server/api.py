@@ -3909,6 +3909,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     config.model_id,
                     final_texts,
                     choices,
+                    details=batch.details,
                     usage=batch.usage if _stream_include_usage(request) else None,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
@@ -4214,6 +4215,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     index=index,
                     logprobs=logprobs,
                     finish_details=finish_details,
+                    stream_chunk=_stream_chunk_from_detail("", detail),
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
@@ -5959,6 +5961,13 @@ def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
     if isinstance(value, Mapping) and ("text" in value or "telemetry" in value):
         return GenerationStreamChunk.from_value(value)
     return GenerationStreamChunk(text=str(value))
+
+
+def _stream_chunk_from_detail(text: str, detail: GenerationOutput | None) -> GenerationStreamChunk | None:
+    telemetry = None if detail is None else detail.telemetry
+    if telemetry is None:
+        return None
+    return GenerationStreamChunk(text=str(text), telemetry=telemetry)
 
 
 def _validate_logprob_details(details: Sequence[GenerationOutput], outputs: Sequence[str]) -> None:
@@ -8779,6 +8788,7 @@ def _completion_stream_done(
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -8796,6 +8806,7 @@ def _completion_stream_done(
             "done",
             finish_details=finish_payload,
             tokens=tokens,
+            stream_chunk=stream_chunk,
         )
     return _sse(
         _attach_stream_hipengine(
@@ -8908,12 +8919,18 @@ def _completion_stream(
     texts: Sequence[str],
     choices: Sequence[dict[str, Any]],
     *,
+    details: Sequence[GenerationOutput] | None = None,
     usage: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
+    details_by_index = (
+        {index: detail for index, detail in enumerate(details)}
+        if details is not None
+        else {}
+    )
     for index, text in enumerate(texts):
         choice = choices_by_index.get(index, {})
         yield _completion_stream_delta(
@@ -8941,6 +8958,7 @@ def _completion_stream(
             index=choice["index"],
             finish_details=choice.get("finish_details"),
             tokens=final_tokens,
+            stream_chunk=_stream_chunk_from_detail("", details_by_index.get(int(choice["index"]))),
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
@@ -9123,6 +9141,7 @@ def _chat_stream_parsed(
     logprobs: Mapping[str, Any] | None = None,
     finish_details: Mapping[str, Any] | None = None,
     done_tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -9177,6 +9196,7 @@ def _chat_stream_parsed(
         index=index,
         finish_details=finish_details,
         tokens=done_tokens,
+        stream_chunk=stream_chunk,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
@@ -9192,6 +9212,7 @@ def _chat_stream_done(
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -9208,6 +9229,7 @@ def _chat_stream_done(
             "done",
             finish_details=finish_payload,
             tokens=tokens,
+            stream_chunk=stream_chunk,
         )
     return _sse(
         _attach_stream_hipengine(

@@ -189,6 +189,10 @@ metadata when the backend provides it (`active_processors`,
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
 the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.
+Buffered SSE paths that run detailed generation, such as completion `echo`
+streaming, chat `n>1`, logprob streaming, and result-validation buffering,
+preserve backend `GenerationOutput.telemetry` on the final choice `done` chunk
+when it is present.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. Streaming error chunks use top-level

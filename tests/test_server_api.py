@@ -4369,6 +4369,61 @@ def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:
     assert fake.calls[0][1].logprobs is True
 
 
+def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-stream"],
+        stream_chunks=["wrong"],
+        detailed_outputs=[
+            GenerationOutput(
+                text="alpha",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=7,
+                    generated_tokens=3,
+                    phase="done",
+                    sampler_mode="processed_argmax",
+                    sampler_fallback_reason="processed_logits_required",
+                    sampler_fast_path_blockers=("logit_bias",),
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 1,
+            "stream": True,
+            "echo": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert payloads[0]["choices"][0]["text"] == "helloalpha"
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 3,
+            "prompt_tokens": 7,
+            "generated_tokens": 3,
+            "phase": "done",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["logit_bias"],
+            "sampler_fallback_reason": "processed_logits_required",
+            "sampler_mode": "processed_argmax",
+        },
+        "finish_details": _stateless_finish_details("stop"),
+    }
+    assert fake.stream_calls == []
+
+
 def test_streaming_completion_logprobs_missing_backend_metadata_returns_unsupported_feature() -> None:
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model"),
@@ -4555,6 +4610,91 @@ def test_streaming_chat_completion_returns_logprobs_from_buffered_path() -> None
     assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     assert fake.stream_calls == []
     assert fake.calls[0][1].logprobs is True
+
+
+def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-stream"],
+        stream_chunks=["wrong"],
+        detailed_outputs=[
+            GenerationOutput(
+                text="first",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    row_index=0,
+                    prompt_tokens=11,
+                    generated_tokens=1,
+                    phase="done",
+                    sampler_mode="processed_argmax",
+                    sampler_fallback_reason="processed_logits_required",
+                    sampler_fast_path_blockers=("logit_bias",),
+                ),
+            ),
+            GenerationOutput(
+                text="second",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    row_index=1,
+                    prompt_tokens=11,
+                    generated_tokens=2,
+                    phase="done",
+                    sampler_mode="host_logits_sample",
+                    sampler_fallback_reason="host_sampling_required",
+                    sampler_fast_path_blockers=("temperature",),
+                ),
+            ),
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "n": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done_payloads = [
+        payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"]
+    ]
+    assert [payload["choices"][0]["index"] for payload in done_payloads] == [0, 1]
+    assert done_payloads[0]["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 11,
+            "generated_tokens": 1,
+            "phase": "done",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["logit_bias"],
+            "sampler_fallback_reason": "processed_logits_required",
+            "sampler_mode": "processed_argmax",
+        },
+        "finish_details": _stateless_finish_details("stop"),
+    }
+    assert done_payloads[1]["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "decode_state": {
+            "row_index": 1,
+            "step_index": 2,
+            "prompt_tokens": 11,
+            "generated_tokens": 2,
+            "phase": "done",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_mode": "host_logits_sample",
+        },
+        "finish_details": _stateless_finish_details("stop"),
+    }
+    assert fake.stream_calls == []
 
 
 def test_chat_completion_renders_messages_to_prompt() -> None:
