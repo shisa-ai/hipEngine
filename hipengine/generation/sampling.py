@@ -35,6 +35,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "frequency_penalty",
     "suppress_token_ids",
     "min_tokens",
+    "eos_token_id",
     "stop_token_ids",
     "stop_token_sequences",
     "forced_tokens_pending",
@@ -52,6 +53,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "frequency_penalty": "frequency_penalty != 0.0",
     "suppress_token_ids": "one or more suppressed token ids",
     "min_tokens": "min_tokens > 0",
+    "eos_token_id": "eos_token_id set",
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
@@ -608,7 +610,10 @@ def speculative_mtp_sampling_blockers(params: Any) -> tuple[str, ...]:
     the same greedy fast path, with no processed logits or sampler metadata.
     """
 
-    return sampler_fast_path_blockers(params)
+    blockers = list(sampler_fast_path_blockers(params))
+    if getattr(params, "eos_token_id", None) is not None:
+        blockers.append("eos_token_id")
+    return tuple(dict.fromkeys(blockers))
 
 
 def supports_speculative_mtp_sampling(params: Any) -> bool:

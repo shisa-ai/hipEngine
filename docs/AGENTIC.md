@@ -432,14 +432,17 @@ Current code reality:
   back to host. Token-level thinking-budget hard close and token-sequence
   completion repair now follow the same planning contract: they bind to host row
   state, block native GPU sampling, and are reported as speculative/MTP
-  blockers. None of these processors are compatible with MTP verification yet
-  because verify top-1 is raw argmax.
+  blockers. Explicit `eos_token_id` is also an MTP-only blocker because the
+  current speculative accept path records accepted target tokens as unfinished
+  until the decode budget is exhausted. None of these processors are compatible
+  with MTP verification yet because verify top-1 is raw argmax and commit does
+  not apply AR finish policy.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
   before materializing target verification metadata. The capabilities manifest
   advertises this guard, the blocker fields, and condition strings such as
-  `temperature > 0` instead of relying only on prose.
+  `temperature > 0` and `eos_token_id set` instead of relying only on prose.
 - Result-validation-only controls (`response_format`, `guided_json`,
   `guided_regex`, `guided_choice`, `guided_patch`, and `guided_diff`) are not
   MTP blockers in the current contract because they do not alter target token
@@ -454,10 +457,10 @@ Default rule:
   active pre-selection processors and no logprob/metadata requirement that would
   force processed logits.
 - If `logit_bias`, penalties, suppressions, forced tokens, sequence-completion
-  repair, grammar constraints, thinking budget processors, `temperature > 0`, or
-  requested logprobs are active, route to AR `PROCESSED_ARGMAX` /
-  `HOST_LOGITS_SAMPLE` until the verifier can produce the same processed target
-  selection per verify row.
+  repair, grammar constraints, thinking budget processors, `temperature > 0`,
+  explicit EOS finish policy, or requested logprobs are active, route to AR
+  `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE` until the verifier can produce the
+  same processed target selection and finish policy per verify row.
 
 Future exact speculative support:
 
@@ -2623,9 +2626,9 @@ golden harness traces are now implemented. Good next logical units, in order:
    sampler paths still need emitted chunk/final metadata and logprob semantics
    to match host AR sampling everywhere.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
-   limited to greedy-fast requests until the target verifier applies the same
-   logit bias, penalties, suppressions, forced-token, thinking-budget, and
-   logprob policy as AR sampling.
+   limited to greedy-fast requests until the target verifier and commit path
+   apply the same EOS finish, logit bias, penalties, suppressions, forced-token,
+   thinking-budget, and logprob policy as AR sampling.
 4. **Decode-time grammar constraints:** add tokenizer-aware JSON/tool/patch
    grammars on the shared DFA/forced-token path, including close-brace/quote and
    tool-argument schema enforcement.

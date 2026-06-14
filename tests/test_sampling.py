@@ -69,6 +69,7 @@ def _speculative_mtp_blocker_cases():
         "frequency_penalty": _params(frequency_penalty=0.1),
         "suppress_token_ids": _params(suppress_token_ids=(7,)),
         "min_tokens": _params(min_tokens=2, eos_token_id=9),
+        "eos_token_id": _params(eos_token_id=9),
         "stop_token_ids": _params(stop_token_ids=(99,)),
         "stop_token_sequences": _params(stop_token_sequences=((10, 11),)),
         "forced_tokens_pending": _params(forced_tokens_pending=(10, 11)),
@@ -248,6 +249,10 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     )
     assert speculative_mtp_sampling_blockers(_params(min_tokens=2, eos_token_id=9)) == (
         "min_tokens",
+        "eos_token_id",
+    )
+    assert speculative_mtp_sampling_blockers(_params(eos_token_id=9)) == (
+        "eos_token_id",
     )
     assert speculative_mtp_sampling_blockers(_params(stop_token_sequences=((10, 11),))) == (
         "stop_token_sequences",

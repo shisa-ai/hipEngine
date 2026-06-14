@@ -91381,3 +91381,20 @@ Validation:
 - `python3 -m py_compile tests/test_generation_qwen35_paro.py` -> passed.
 - `python3 -m ruff check tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_generation_qwen35_paro.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC MTP EOS finish blocker
+
+Tightened the speculative/MTP compatibility guard for EOS-sensitive requests.
+`speculative_mtp_sampling_blockers()` now treats explicit `eos_token_id` as an
+MTP-only blocker while leaving ordinary AR sampler fast-path planning unchanged.
+The current speculative accept path records verified target tokens as unfinished
+until length exhaustion, so serving MTP with an EOS finish policy would diverge
+from AR generation unless the verifier/commit path learns the same finish rule.
+Capabilities, API docs, and AGENTIC now advertise `eos_token_id set` as a
+concrete incompatible condition.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `4 passed`.
+- `python3 -m py_compile hipengine/generation/sampling.py tests/test_sampling.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/generation/sampling.py tests/test_sampling.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/sampling.py tests/test_sampling.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
