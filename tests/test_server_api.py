@@ -4532,6 +4532,42 @@ def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_t
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
 
 
+def test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=['<tool_call>{"name":"bash","arguments":</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "strict": True,
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+
+
 def test_streaming_chat_completion_preserves_parallel_tool_call_indexes() -> None:
     output = (
         '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'

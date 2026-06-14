@@ -1461,9 +1461,9 @@ Current code reality:
   `finish_details.reason="tool_calls"` for parsed tool calls, or the same
   strict-result failure details as non-streaming when validation rejects the
   parsed call;
-- covered fixtures include single-call streaming, strict schema failure, and
-  multi-call streaming with preserved indexes. True token-incremental argument
-  chunking remains future decode/streaming work.
+- covered fixtures include single-call streaming, malformed JSON strict failure,
+  strict schema failure, and multi-call streaming with preserved indexes. True
+  token-incremental argument chunking remains future decode/streaming work.
 
 Exit gates:
 

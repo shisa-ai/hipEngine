@@ -89042,3 +89042,16 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC streaming malformed tool JSON coverage
+
+Added a strict streaming chat regression for a closed Qwen `<tool_call>` block
+whose JSON body is malformed. The server must suppress raw tool markup, emit no
+synthetic tool-call delta, and finish with `finish_details.reason` set to
+`invalid_tool_call`, matching the documented agentic server-contract matrix.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_malformed_tool_json -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
