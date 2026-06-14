@@ -90839,3 +90839,19 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py && python3 -m ruff check tests/test_server_api.py && git diff --check -- tests/test_server_api.py WORKLOG.md` -> `All checks passed!` / clean.
 - `python3 -m pytest tests/test_server_api.py -q` -> `259 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `77 passed`.
+
+## 2026-06-15 - AGENTIC c>N sampler telemetry coverage
+
+Tightened the PARO scheduler-owned sampled batch test so c>N rows exercise a
+real logit processor instead of only stochastic temperature. The fixture now
+asserts that per-choice decode-state telemetry preserves `active_processors`,
+fast-path blockers, native-requested fallback reasons, and host full-vocab
+readback metadata for both normal host sampling and native-requested unsupported
+c>N fallback. This pins the native/scheduler controlled-decoding parity contract
+without changing runtime behavior.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill -q` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_uses_host_sampler_for_non_greedy tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill tests/test_sampling.py::test_sampler_plan_uses_processed_argmax_for_active_processors tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy -q` -> `5 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `28 passed`.
+- `python3 -m py_compile tests/test_generation_qwen35_paro.py && python3 -m ruff check tests/test_generation_qwen35_paro.py && git diff --check -- tests/test_generation_qwen35_paro.py WORKLOG.md` -> `All checks passed!` / clean.
