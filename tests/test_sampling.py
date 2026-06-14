@@ -14,7 +14,9 @@ from hipengine.generation.sampling import (
     plan_sampler,
     row_seed_for_index,
     select_token,
+    speculative_mtp_sampling_blockers,
     supports_native_gpu_sampling,
+    supports_speculative_mtp_sampling,
 )
 
 
@@ -109,6 +111,28 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_p=0.9)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_logprobs=1)) is False
     assert plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).mode is SamplingMode.HOST_LOGITS_SAMPLE
+
+
+def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
+    greedy_inert = _params(temperature=0.0, top_p=0.1, top_k=4, min_p=0.5)
+    assert supports_speculative_mtp_sampling(greedy_inert) is True
+    assert speculative_mtp_sampling_blockers(greedy_inert) == ()
+
+    assert supports_speculative_mtp_sampling(_params(logit_bias={1: 10.0})) is False
+    assert speculative_mtp_sampling_blockers(_params(logit_bias={1: 10.0})) == (
+        "logit_bias",
+    )
+    assert speculative_mtp_sampling_blockers(_params(presence_penalty=0.1)) == (
+        "presence_penalty",
+    )
+    assert speculative_mtp_sampling_blockers(_params(stop_token_sequences=((10, 11),))) == (
+        "stop_token_sequences",
+    )
+    assert speculative_mtp_sampling_blockers(_params(temperature=0.7, logprobs=True, top_logprobs=2)) == (
+        "temperature",
+        "logprobs",
+        "top_logprobs",
+    )
 
 
 def test_greedy_tie_break_selects_lower_token_id() -> None:

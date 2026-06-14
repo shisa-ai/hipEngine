@@ -150,6 +150,13 @@ processors (`logit_bias`, penalties, bad-token constraints, etc.), `top_p` and
 Those requests should use the greedy fast path rather than failing merely because
 a client sent `top_p=0.95` with `temperature=0`.
 
+Speculative/MTP compatibility is stricter until target verification can run the
+same processed-logit policy as autoregressive generation.
+`supports_speculative_mtp_sampling()` returns true only for `GREEDY_FAST`
+requests; `speculative_mtp_sampling_blockers()` reports the fields that require
+AR fallback today, including `logit_bias`, penalties, token stops,
+`temperature > 0`, and requested logprobs.
+
 ### Server/API mapping
 
 | External request field | Library field | Notes |

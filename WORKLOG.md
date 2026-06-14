@@ -87372,3 +87372,25 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `54 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `git diff --check -- hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py docs/API.md docs/AGENTIC.md docs/ENVS.md`.
+
+## 2026-06-14 - AGENTIC sampler/MTP compatibility guard
+
+Encoded the current speculative/MTP sampling policy in
+`hipengine.generation.sampling`: `supports_speculative_mtp_sampling()` returns
+true only for requests that plan as `GREEDY_FAST`, and
+`speculative_mtp_sampling_blockers()` reports the fields that require AR
+fallback today. The concrete answer for agent requests is that OpenAI-style
+`logit_bias` is compatible with normal host/native c=1 sampling, but not with
+today's raw-argmax MTP verifier path.
+
+The capabilities manifest now advertises the named guard plus the incompatible
+fields (`temperature`, logit processors, token stops, and logprob requests).
+`docs/AGENTIC.md`, `docs/SAMPLING.md`, and `docs/API.md` were updated to match
+the code-level policy.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `19 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `54 passed`.
+- `git diff --check -- hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py docs/AGENTIC.md docs/SAMPLING.md docs/API.md`.

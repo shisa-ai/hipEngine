@@ -49,13 +49,16 @@ from hipengine.generation.sampling import (
     SampleResult,
     SamplerPlan,
     SamplingMode,
+    SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     active_processor_names,
     derive_row_seed,
     normalize_logit_bias_pairs,
     plan_sampler,
     row_seed_for_index,
     select_token,
+    speculative_mtp_sampling_blockers,
     supports_native_gpu_sampling,
+    supports_speculative_mtp_sampling,
     validate_sampling_params,
 )
 
@@ -105,6 +108,7 @@ __all__ = [
     "SamplerParamsBlock",
     "SamplerPlan",
     "SamplingMode",
+    "SPECULATIVE_MTP_INCOMPATIBLE_FIELDS",
     "ResidentEngineLoop",
     "SubmitPollTextGenerator",
     "SpeculativeCommitPlan",
@@ -128,6 +132,8 @@ __all__ = [
     "resolve_text_generator",
     "row_seed_for_index",
     "select_token",
+    "speculative_mtp_sampling_blockers",
     "supports_native_gpu_sampling",
+    "supports_speculative_mtp_sampling",
     "validate_sampling_params",
 ]

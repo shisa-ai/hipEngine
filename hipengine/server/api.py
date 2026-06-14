@@ -37,7 +37,14 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
-from hipengine.generation import FinishDetails, GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GenerationOutput, TokenLogprob, derive_row_seed
+from hipengine.generation import (
+    FinishDetails,
+    GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    GenerationOutput,
+    SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
+    TokenLogprob,
+    derive_row_seed,
+)
 from hipengine.kvcache import resolve_prefix_cache_mode
 
 
@@ -1691,7 +1698,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "speculative_mtp": {
                     "serving_route": False,
                     "sampling_compatible": False,
+                    "compatibility_guard": "supports_speculative_mtp_sampling",
                     "allowed_execution_modes": ["greedy_fast"],
+                    "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
                     "processed_target_verification": False,
                 },
             },

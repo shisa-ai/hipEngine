@@ -274,7 +274,19 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert body["sampling"]["speculative_mtp"] == {
         "serving_route": False,
         "sampling_compatible": False,
+        "compatibility_guard": "supports_speculative_mtp_sampling",
         "allowed_execution_modes": ["greedy_fast"],
+        "incompatible_fields": [
+            "temperature",
+            "logit_bias",
+            "repetition_penalty",
+            "presence_penalty",
+            "frequency_penalty",
+            "stop_token_ids",
+            "stop_token_sequences",
+            "logprobs",
+            "top_logprobs",
+        ],
         "processed_target_verification": False,
     }
     assert body["sessions"] == {

@@ -20,6 +20,17 @@ _LOGIT_BIAS_EMPTY: tuple[tuple[int, float], ...] = ()
 _UINT64_MASK = (1 << 64) - 1
 _SEED_MASK = (1 << 63) - 1
 _MAX_NATIVE_GPU_TOP_K = 64
+SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
+    "temperature",
+    "logit_bias",
+    "repetition_penalty",
+    "presence_penalty",
+    "frequency_penalty",
+    "stop_token_ids",
+    "stop_token_sequences",
+    "logprobs",
+    "top_logprobs",
+)
 
 
 class SamplingMode(str, Enum):
@@ -257,6 +268,34 @@ def plan_sampler(
     if native_only:
         raise NotImplementedError("native GPU sampling is not available for this request")
     return SamplerPlan(SamplingMode.HOST_LOGITS_SAMPLE, processors, native_gpu_available)
+
+
+def speculative_mtp_sampling_blockers(params: Any) -> tuple[str, ...]:
+    """Return request fields that make raw-argmax MTP verification inexact.
+
+    Current MTP proposer/verifier paths produce raw target top-1 decisions.  They
+    are exact for normal serving only when the autoregressive request would use
+    the same greedy fast path, with no processed logits or sampler metadata.
+    """
+
+    plan = plan_sampler(params, native_gpu_available=False)
+    if plan.mode is SamplingMode.GREEDY_FAST:
+        return ()
+    blockers: list[str] = []
+    if float(getattr(params, "temperature", 0.0)) > 0.0:
+        blockers.append("temperature")
+    blockers.extend(plan.active_processors)
+    if bool(getattr(params, "logprobs", False)):
+        blockers.append("logprobs")
+    if int(getattr(params, "top_logprobs", 0)) > 0:
+        blockers.append("top_logprobs")
+    return tuple(dict.fromkeys(blockers))
+
+
+def supports_speculative_mtp_sampling(params: Any) -> bool:
+    """Return whether a request may use today's raw-argmax MTP route."""
+
+    return not speculative_mtp_sampling_blockers(params)
 
 
 def derive_row_seed(
@@ -502,6 +541,7 @@ __all__ = [
     "SampleResult",
     "SamplerPlan",
     "SamplingMode",
+    "SPECULATIVE_MTP_INCOMPATIBLE_FIELDS",
     "active_processor_names",
     "derive_row_seed",
     "normalize_logit_bias_pairs",
@@ -509,6 +549,8 @@ __all__ = [
     "plan_sampler",
     "row_seed_for_index",
     "select_token",
+    "speculative_mtp_sampling_blockers",
     "supports_native_gpu_sampling",
+    "supports_speculative_mtp_sampling",
     "validate_sampling_params",
 ]
