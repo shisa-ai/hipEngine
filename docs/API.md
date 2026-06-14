@@ -260,17 +260,21 @@ specific function, when any tool function declares `"strict": true`, or when
 `parallel_tool_calls` is explicitly supplied. Strict validation checks selected
 tool names, one-call-vs-parallel policy, malformed tool-call blocks, and the
 declared function `parameters` JSON schema subset. Strict failures return a
-normal chat response with no successful `tool_calls`, `finish_reason: "stop"`,
-and `finish_details.reason` set to `invalid_tool_call`,
-`tool_required_not_satisfied`, or `schema_violation`. When `tool_choice="none"`
-and tokenization is available, the sampler also suppresses the first token of
-the Qwen `<tool_call>` start marker; this is a no-tool guard, not full
-grammar-constrained tool decoding. When `tool_choice="required"` or a specific
-function is requested and tokenization is available, the sampler forces the
-tokenized `<tool_call>` start marker before ordinary token selection. If a
-tokenized thinking budget is active, the same marker is queued until the
-`</think>` close sequence has moved the row into answer phase. This prevents
-ordinary prose from being selected as the first visible answer/tool token.
+normal chat response with no successful `tool_calls`, and
+`finish_details.reason` set to `invalid_tool_call`,
+`tool_required_not_satisfied`, or `schema_violation`. The coarse
+`finish_reason` is usually `"stop"`, but remains `"length"` when the backend
+ended because the generation budget was exhausted; in that case
+`finish_details` also includes length-limit phase metadata. When
+`tool_choice="none"` and tokenization is available, the sampler also suppresses
+the first token of the Qwen `<tool_call>` start marker; this is a no-tool
+guard, not full grammar-constrained tool decoding. When
+`tool_choice="required"` or a specific function is requested and tokenization is
+available, the sampler forces the tokenized `<tool_call>` start marker before
+ordinary token selection. If a tokenized thinking budget is active, the same
+marker is queued until the `</think>` close sequence has moved the row into
+answer phase. This prevents ordinary prose from being selected as the first
+visible answer/tool token.
 Specific function choices, plus `required` mode with exactly one function tool,
 also force the selected `<tool_call>{"name":"...","arguments":` prefix when
 tokenizer composition shows that prefix starts with the same tokenized

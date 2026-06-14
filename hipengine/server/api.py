@@ -2630,7 +2630,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             parsed = tool_validation.parsed
             message, parsed_finish_reason = _chat_message_from_parsed(parsed)
             if tool_validation.failed:
-                finish_reason = "stop"
+                finish_reason = _strict_tool_failure_finish_reason(
+                    detail,
+                    finish_reason,
+                    server_stop=server_stop,
+                )
             else:
                 finish_reason = _finish_reason_for_output(
                     detail,
@@ -2705,7 +2709,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 parsed = tool_validation.parsed
                 detail = batch.details[index]
                 if tool_validation.failed:
-                    finish_reason = "stop"
+                    finish_reason = _strict_tool_failure_finish_reason(
+                        detail,
+                        finish_reason,
+                        server_stop=server_stop,
+                    )
                 else:
                     finish_reason = _finish_reason_for_output(
                         detail,
@@ -5110,6 +5118,16 @@ def _finish_reason_for_output(
     return str(fallback)
 
 
+def _strict_tool_failure_finish_reason(
+    detail: GenerationOutput | None,
+    fallback: str,
+    *,
+    server_stop: bool = False,
+) -> str:
+    finish_reason = _finish_reason_for_output(detail, fallback, server_stop=server_stop)
+    return "length" if finish_reason == "length" else "stop"
+
+
 def _finish_details_payload(
     detail: GenerationOutput | None,
     finish_reason: str,
@@ -5143,7 +5161,7 @@ def _chat_finish_details_payload(
         cache_action=cache_action,
     )
     _enrich_chat_tool_finish_details(payload, parsed=parsed, token_counter=token_counter)
-    if _is_length_finish_payload(payload):
+    if _is_length_finish(finish_reason, payload):
         payload.setdefault("phase", _classify_chat_length_phase(text))
         payload.setdefault("continuation_eligible", False)
     return payload
@@ -5227,6 +5245,10 @@ def _is_length_finish_payload(payload: Mapping[str, Any]) -> bool:
         "token_budget_exhausted",
         "budget_exhausted",
     }
+
+
+def _is_length_finish(finish_reason: str, payload: Mapping[str, Any]) -> bool:
+    return str(finish_reason).strip().lower() == "length" or _is_length_finish_payload(payload)
 
 
 def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
@@ -5666,6 +5688,9 @@ def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
     for match in _TOOL_CALL_BLOCK_RE.finditer(text):
         if _parsed_tool_call_from_json(match.group(1).strip()) is None:
             malformed.append(match.group(0))
+    if _has_unclosed_tool_call(text):
+        open_index = text.lower().rfind("<tool_call>")
+        malformed.append(text[open_index:] if open_index >= 0 else str(text))
     return tuple(malformed)
 
 

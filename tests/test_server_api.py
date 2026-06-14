@@ -2652,6 +2652,78 @@ def test_chat_completion_required_tool_reports_missing_call() -> None:
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
+def test_chat_completion_required_tool_missing_call_preserves_length_context() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="ordinary answer",
+                finish_details=FinishDetails(reason="length", length_limit=7),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": "required",
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == {
+        "reason": "tool_required_not_satisfied",
+        "length_limit": 7,
+        "phase": "answer",
+        "continuation_eligible": False,
+    }
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_required_tool_partial_call_preserves_length_context() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text='<tool_call>{"name":"read"',
+                finish_details=FinishDetails(reason="length", length_limit=6),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": "required",
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == {
+        "reason": "invalid_tool_call",
+        "length_limit": 6,
+        "phase": "tool_call",
+        "continuation_eligible": False,
+    }
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
 def test_chat_completion_specific_tool_rejects_wrong_function() -> None:
     fake = FakeLLM(outputs=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>'])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)

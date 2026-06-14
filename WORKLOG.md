@@ -88536,3 +88536,24 @@ Expanded `docs/OOM.md` with a full narrative of the startup-memory tightening an
 
 Validation:
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC strict tool length metadata
+
+Preserved honest length-exhaustion metadata for strict tool validation failures.
+When a required/specific/strict tool request fails validation after the backend
+ended by generation length, chat responses now keep coarse
+`finish_reason="length"` while `finish_details.reason` still names the strict
+failure (`tool_required_not_satisfied` or `invalid_tool_call`). Length-limit
+metadata now still receives chat phase classification and
+`continuation_eligible=false` even when the strict failure overrides the detail
+reason. Strict validation also treats unclosed `<tool_call>` markup as malformed
+so a truncated tool-call start is reported as `invalid_tool_call`, not merely a
+missing required tool. Non-length strict failures keep the previous
+`finish_reason="stop"` behavior.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_missing_call_preserves_length_context tests/test_server_api.py::test_chat_completion_required_tool_partial_call_preserves_length_context tests/test_server_api.py::test_chat_completion_required_tool_reports_missing_call tests/test_server_api.py::test_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_chat_completion_length_finish_details_include_phase -q` -> `10 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

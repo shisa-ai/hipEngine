@@ -1213,8 +1213,12 @@ Current state:
   `items` / `minItems` / `maxItems`, string `minLength` / `maxLength`, and
   numeric min/max bounds.
 - Strict failures return normal chat responses with no successful `tool_calls`,
-  coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
-  `invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
+  stable `finish_details.reason` values (`invalid_tool_call`,
+  `tool_required_not_satisfied`, or `schema_violation`), and coarse
+  `finish_reason="stop"` except when the backend ended by generation length. In
+  length-exhausted strict tool failures, `finish_reason` remains `"length"` and
+  `finish_details` keeps the length limit, classified phase, and
+  `continuation_eligible=false`.
 - For `tool_choice="none"`, chat sampling suppresses the first token of the
   Qwen `<tool_call>` start marker when tokenization is available. This keeps
   no-tool requests on the existing processor path while preserving result
