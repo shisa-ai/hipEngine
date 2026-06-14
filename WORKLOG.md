@@ -90882,3 +90882,22 @@ while c>N/native/MTP lower-loop parity remains future work.
 Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_reports_thinking_budget_pressure -q && python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `2 passed`, `29 passed`.
 - `python3 -m py_compile tests/test_generation_qwen35_paro.py && python3 -m ruff check tests/test_generation_qwen35_paro.py && git diff --check -- tests/test_generation_qwen35_paro.py docs/AGENTIC.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC forced-token decode metadata
+
+Extended canonical decode telemetry with selected forced-token metadata:
+`DecodeState` now carries `forced_token_id`, `forced_token_reason`, and
+`forced_tokens_remaining` in addition to the pending forced-token queue. PARO
+host sampling now preserves `SampleResult` forced metadata on
+`Qwen35ParoAutoregressiveStepResult`; PARO/GGUF final and live host-sampled
+telemetry pass the selected forced token through for tool-choice forced starts
+and thinking hard closes. Updated AGENTIC to distinguish selected forced-token
+metadata from pending queue state.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_request_forced_token_overrides_logits tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_generation_qwen35_gguf_sampling.py::test_gguf_sampled_request_forced_token_overrides_logits tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_reports_thinking_budget_pressure tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close -q` -> `6 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `47 passed`.
+- `python3 -m pytest tests/test_generation_registry.py -q` -> `6 passed`.
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> passed.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py && git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md` -> `All checks passed!` / clean.
+- `python3 -m ruff check hipengine/runtime/qwen35_paro_runner.py` remains blocked by pre-existing unrelated `F401` unused embedding imports and `F841` unused `row_chunk_auto_batch_gemv_full_attention_output`.

@@ -193,6 +193,9 @@ class DecodeState:
     structured_tokens: int = 0
     stop_suffix_state: Any | None = None
     forced_tokens_pending: tuple[int, ...] = ()
+    forced_token_id: int | None = None
+    forced_token_reason: str | None = None
+    forced_tokens_remaining: int | None = None
     active_processors: tuple[str, ...] = ()
     sampler_fast_path_blockers: tuple[str, ...] = ()
     sampler_fallback_reason: str | None = None
@@ -214,6 +217,13 @@ class DecodeState:
         object.__setattr__(self, "tool_call_tokens", _nonnegative_int(self.tool_call_tokens))
         object.__setattr__(self, "structured_tokens", _nonnegative_int(self.structured_tokens))
         object.__setattr__(self, "forced_tokens_pending", _pending_token_tuple(self.forced_tokens_pending))
+        object.__setattr__(self, "forced_token_id", _optional_nonnegative_int(self.forced_token_id))
+        object.__setattr__(
+            self,
+            "forced_token_reason",
+            None if self.forced_token_reason is None else str(self.forced_token_reason),
+        )
+        object.__setattr__(self, "forced_tokens_remaining", _optional_nonnegative_int(self.forced_tokens_remaining))
         object.__setattr__(self, "active_processors", _string_tuple(self.active_processors))
         object.__setattr__(self, "sampler_fast_path_blockers", _string_tuple(self.sampler_fast_path_blockers))
         object.__setattr__(
@@ -249,6 +259,9 @@ class DecodeState:
                 structured_tokens=value.get("structured_tokens", 0),
                 stop_suffix_state=value.get("stop_suffix_state"),
                 forced_tokens_pending=value.get("forced_tokens_pending", ()),
+                forced_token_id=value.get("forced_token_id"),
+                forced_token_reason=value.get("forced_token_reason"),
+                forced_tokens_remaining=value.get("forced_tokens_remaining"),
                 active_processors=value.get("active_processors", ()),
                 sampler_fast_path_blockers=value.get("sampler_fast_path_blockers", ()),
                 sampler_fallback_reason=value.get("sampler_fallback_reason"),
@@ -271,6 +284,9 @@ class DecodeState:
             structured_tokens=getattr(value, "structured_tokens", 0),
             stop_suffix_state=getattr(value, "stop_suffix_state", None),
             forced_tokens_pending=getattr(value, "forced_tokens_pending", ()),
+            forced_token_id=getattr(value, "forced_token_id", None),
+            forced_token_reason=getattr(value, "forced_token_reason", None),
+            forced_tokens_remaining=getattr(value, "forced_tokens_remaining", None),
             active_processors=getattr(value, "active_processors", ()),
             sampler_fast_path_blockers=getattr(value, "sampler_fast_path_blockers", ()),
             sampler_fallback_reason=getattr(value, "sampler_fallback_reason", None),
@@ -327,6 +343,12 @@ class DecodeState:
             payload["stop_suffix_state"] = self.stop_suffix_state
         if self.forced_tokens_pending:
             payload["forced_tokens_pending"] = list(self.forced_tokens_pending)
+        if self.forced_token_id is not None:
+            payload["forced_token_id"] = self.forced_token_id
+        if self.forced_token_reason is not None:
+            payload["forced_token_reason"] = self.forced_token_reason
+        if self.forced_tokens_remaining is not None:
+            payload["forced_tokens_remaining"] = self.forced_tokens_remaining
         if self.active_processors:
             payload["active_processors"] = list(self.active_processors)
         if self.sampler_fast_path_blockers:
@@ -395,6 +417,9 @@ class GenerationTelemetry:
         structured_tokens: int = 0,
         stop_suffix_state: Any | None = None,
         forced_tokens_pending: tuple[int, ...] = (),
+        forced_token_id: int | None = None,
+        forced_token_reason: str | None = None,
+        forced_tokens_remaining: int | None = None,
         active_processors: tuple[str, ...] = (),
         sampler_fast_path_blockers: tuple[str, ...] = (),
         sampler_fallback_reason: str | None = None,
@@ -420,6 +445,9 @@ class GenerationTelemetry:
                 structured_tokens=structured_tokens,
                 stop_suffix_state=stop_suffix_state,
                 forced_tokens_pending=forced_tokens_pending,
+                forced_token_id=forced_token_id,
+                forced_token_reason=forced_token_reason,
+                forced_tokens_remaining=forced_tokens_remaining,
                 active_processors=active_processors,
                 sampler_fast_path_blockers=sampler_fast_path_blockers,
                 sampler_fallback_reason=sampler_fallback_reason,

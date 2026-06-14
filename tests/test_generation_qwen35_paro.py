@@ -33,8 +33,26 @@ def _request(prompts=("hello",), max_tokens=1, *, ignore_eos=False, **overrides)
     return GenerationRequest(**values)
 
 
-def _result(token_id: int, text: str) -> Qwen35ParoAutoregressiveStepResult:
-    return Qwen35ParoAutoregressiveStepResult(token_id=token_id, token_text=text, logit=float(token_id))
+def _result(
+    token_id: int,
+    text: str,
+    *,
+    logprob: float | None = None,
+    top_logprobs: tuple[tuple[int, float], ...] = (),
+    forced: bool = False,
+    forced_reason: str | None = None,
+    forced_tokens_remaining: int = 0,
+) -> Qwen35ParoAutoregressiveStepResult:
+    return Qwen35ParoAutoregressiveStepResult(
+        token_id=token_id,
+        token_text=text,
+        logit=float(token_id),
+        logprob=logprob,
+        top_logprobs=top_logprobs,
+        forced=forced,
+        forced_reason=forced_reason,
+        forced_tokens_remaining=forced_tokens_remaining,
+    )
 
 
 def _decode_state(output):
@@ -139,6 +157,65 @@ def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(mon
 
     assert out == ["C"]
     assert calls == [("configure_host_sampler", 99), ("configure_host_sampler", None)]
+
+
+def test_qwen35_paro_sampled_request_forced_token_overrides_logits(monkeypatch) -> None:
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        vocab_size = 3
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            self.params = None
+            self.state = None
+
+        def configure_host_sampler(self, params, state):
+            self.params = params
+            self.state = state
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            assert self.params is not None
+            assert self.state is not None
+            sample_result = select_token(
+                np.array([0.0, 10.0, 1.0], dtype=np.float32),
+                self.params,
+                self.state,
+            )
+            return _result(
+                sample_result.token_id,
+                "C",
+                forced=sample_result.forced,
+                forced_reason=sample_result.forced_reason,
+                forced_tokens_remaining=sample_result.forced_tokens_remaining,
+            )
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover - max_tokens=1
+            raise AssertionError("forced-token fixture should finish after prefill")
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(
+        _request(
+            max_tokens=1,
+            forced_tokens_pending=(2,),
+            forced_token_reason="tool_choice_required",
+        )
+    )
+
+    assert out == ["C"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict()["sampler_mode"] == "processed_argmax"
+    decode_state = _decode_state(generator.last_generation_outputs[0])
+    assert decode_state["active_processors"] == ["forced_tokens_pending"]
+    assert decode_state["forced_token_id"] == 2
+    assert decode_state["forced_token_reason"] == "tool_choice_required"
+    assert decode_state["forced_tokens_remaining"] == 0
 
 
 def test_qwen35_paro_kv_capacity_estimate_reports_int8_max_below_model_context() -> None:
@@ -587,7 +664,13 @@ def test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure(monkeypatc
                 self.params,
                 self.state,
             )
-            return _result(sample_result.token_id, "C")
+            return _result(
+                sample_result.token_id,
+                "C",
+                forced=sample_result.forced,
+                forced_reason=sample_result.forced_reason,
+                forced_tokens_remaining=sample_result.forced_tokens_remaining,
+            )
 
         def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover - max_tokens=1
             raise AssertionError("hard-close stream fixture should finish after prefill")
@@ -623,6 +706,9 @@ def test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure(monkeypatc
         "active_processors": ["thinking_budget"],
         "sampler_fast_path_blockers": ["thinking_budget"],
         "sampler_fallback_reason": "processed_logits_required",
+        "forced_token_id": 2,
+        "forced_token_reason": "thinking_hard_close",
+        "forced_tokens_remaining": 0,
         "budget_pressure": "hard_close",
         "sampler_mode": "processed_argmax",
         "full_vocab_logits_d2h": True,
@@ -725,7 +811,13 @@ def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) ->
                 self.params,
                 self.state,
             )
-            return _result(sample_result.token_id, "C")
+            return _result(
+                sample_result.token_id,
+                "C",
+                forced=sample_result.forced,
+                forced_reason=sample_result.forced_reason,
+                forced_tokens_remaining=sample_result.forced_tokens_remaining,
+            )
 
         def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover - max_tokens=1
             raise AssertionError("hard-close fixture should finish after prefill")
@@ -761,6 +853,9 @@ def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) ->
     decode_state = _decode_state(generator.last_generation_outputs[0])
     assert decode_state["phase"] == "answer"
     assert decode_state["reasoning_tokens"] == 1
+    assert decode_state["forced_token_id"] == 2
+    assert decode_state["forced_token_reason"] == "thinking_hard_close"
+    assert decode_state["forced_tokens_remaining"] == 0
     assert decode_state["budget_pressure"] == "hard_close"
 
 

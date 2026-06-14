@@ -433,6 +433,7 @@ class Qwen35ParoOneTokenGenerator:
                         sampler_fast_path_blockers=plan.fast_path_blockers,
                         sampler_fallback_reason=plan.fallback_reason,
                         sampling_state=state,
+                        forced_sample=next_result,
                         full_vocab_logits_d2h=full_vocab_logits_d2h,
                         logits_d2h_bytes=logits_d2h_bytes,
                     ),
@@ -480,6 +481,7 @@ class Qwen35ParoOneTokenGenerator:
                     sampler_fast_path_blockers=plan.fast_path_blockers,
                     sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=state,
+                    forced_sample=generated_steps[-1] if generated_steps else None,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
@@ -906,6 +908,7 @@ class Qwen35ParoOneTokenGenerator:
                     sampler_fast_path_blockers=plan.fast_path_blockers,
                     sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=sampling_state_snapshots.get(request_id),
+                    forced_sample=output_steps[request_id][-1] if output_steps[request_id] else None,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
@@ -1032,6 +1035,7 @@ class Qwen35ParoOneTokenGenerator:
                     sampler_fast_path_blockers=plan.fast_path_blockers,
                     sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=state,
+                    forced_sample=next_result,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
@@ -1066,6 +1070,7 @@ class Qwen35ParoOneTokenGenerator:
                         sampler_fast_path_blockers=plan.fast_path_blockers,
                         sampler_fallback_reason=plan.fallback_reason,
                         sampling_state=state,
+                        forced_sample=result,
                         full_vocab_logits_d2h=full_vocab_logits_d2h,
                         logits_d2h_bytes=logits_d2h_bytes,
                     ),
@@ -1256,10 +1261,12 @@ def _telemetry_for_tokens(
     sampler_fast_path_blockers: tuple[str, ...] = (),
     sampler_fallback_reason: str | None = None,
     sampling_state: RowSamplingState | None = None,
+    forced_sample: Qwen35ParoAutoregressiveStepResult | None = None,
     full_vocab_logits_d2h: bool | None = None,
     logits_d2h_bytes: int | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
+    forced_token_id, forced_token_reason, forced_tokens_remaining = _forced_token_metadata(forced_sample)
     return GenerationTelemetry.from_decode_counts(
         request_id=request_id,
         row_index=row_index,
@@ -1269,6 +1276,9 @@ def _telemetry_for_tokens(
         reasoning_tokens=int(state_payload.get("reasoning_tokens", 0)),
         answer_tokens=int(state_payload.get("answer_tokens", 0)),
         forced_tokens_pending=tuple(state_payload.get("forced_tokens_pending", ())),
+        forced_token_id=forced_token_id,
+        forced_token_reason=forced_token_reason,
+        forced_tokens_remaining=forced_tokens_remaining,
         budget_pressure=state_payload.get("budget_pressure"),
         sampler_mode=sampler_mode,
         stop_suffix_state=_stop_suffix_state(generated_token_ids, stop_token_sequences),
@@ -1277,6 +1287,18 @@ def _telemetry_for_tokens(
         sampler_fallback_reason=sampler_fallback_reason,
         full_vocab_logits_d2h=full_vocab_logits_d2h,
         logits_d2h_bytes=logits_d2h_bytes,
+    )
+
+
+def _forced_token_metadata(
+    sample: Qwen35ParoAutoregressiveStepResult | None,
+) -> tuple[int | None, str | None, int | None]:
+    if sample is None or not bool(getattr(sample, "forced", False)):
+        return None, None, None
+    return (
+        int(sample.token_id),
+        None if sample.forced_reason is None else str(sample.forced_reason),
+        max(0, int(sample.forced_tokens_remaining)),
     )
 
 

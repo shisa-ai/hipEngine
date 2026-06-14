@@ -1076,6 +1076,9 @@ class Qwen35ParoAutoregressiveStepResult:
     logit: float
     logprob: float | None = None
     top_logprobs: tuple[tuple[int, float], ...] = ()
+    forced: bool = False
+    forced_reason: str | None = None
+    forced_tokens_remaining: int = 0
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -1084,6 +1087,9 @@ class Qwen35ParoAutoregressiveStepResult:
             "logit": self.logit,
             "logprob": self.logprob,
             "top_logprobs": [list(item) for item in self.top_logprobs],
+            "forced": self.forced,
+            "forced_reason": self.forced_reason,
+            "forced_tokens_remaining": self.forced_tokens_remaining,
         }
 
 
@@ -8809,6 +8815,9 @@ class Qwen35ParoResidentSession:
             logit=float(sample.logit),
             logprob=sample.logprob,
             top_logprobs=sample.top_logprobs,
+            forced=sample.forced,
+            forced_reason=sample.forced_reason,
+            forced_tokens_remaining=sample.forced_tokens_remaining,
         )
 
     def _read_sample(self) -> Qwen35ParoAutoregressiveStepResult:

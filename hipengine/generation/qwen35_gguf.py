@@ -212,6 +212,7 @@ class Qwen35GGUFBringupGenerator:
                     request,
                     row_index=row_index,
                     sampling_state=state,
+                    forced_sample=sample,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
@@ -239,6 +240,7 @@ class Qwen35GGUFBringupGenerator:
                 request,
                 row_index=row_index,
                 sampling_state=state,
+                forced_sample=samples[-1] if samples else None,
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
             ),
@@ -312,6 +314,7 @@ class Qwen35GGUFBringupGenerator:
                 row_index=row_index,
                 sampling_state=state,
                 phase=live_phase,
+                forced_sample=sample,
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
             ),
@@ -334,6 +337,7 @@ class Qwen35GGUFBringupGenerator:
                     row_index=row_index,
                     sampling_state=state,
                     phase=live_phase,
+                    forced_sample=sample,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
@@ -442,11 +446,13 @@ def _gguf_telemetry(
     row_index: int,
     sampling_state: RowSamplingState | None = None,
     phase: str | None = None,
+    forced_sample: Any | None = None,
     full_vocab_logits_d2h: bool | None = None,
     logits_d2h_bytes: int | None = None,
 ) -> GenerationTelemetry:
     plan = _gguf_sampler_plan(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
+    forced_token_id, forced_token_reason, forced_tokens_remaining = _gguf_forced_token_metadata(forced_sample)
     return GenerationTelemetry.from_decode_counts(
         row_index=row_index,
         prompt_tokens=len(prompt_ids),
@@ -455,6 +461,9 @@ def _gguf_telemetry(
         reasoning_tokens=int(state_payload.get("reasoning_tokens", 0)),
         answer_tokens=int(state_payload.get("answer_tokens", 0)),
         forced_tokens_pending=tuple(state_payload.get("forced_tokens_pending", ())),
+        forced_token_id=forced_token_id,
+        forced_token_reason=forced_token_reason,
+        forced_tokens_remaining=forced_tokens_remaining,
         budget_pressure=state_payload.get("budget_pressure"),
         sampler_mode=plan.mode.value,
         stop_suffix_state=_gguf_stop_suffix_state(generated_ids, request.stop_token_sequences),
@@ -463,6 +472,16 @@ def _gguf_telemetry(
         sampler_fallback_reason=plan.fallback_reason,
         full_vocab_logits_d2h=full_vocab_logits_d2h,
         logits_d2h_bytes=logits_d2h_bytes,
+    )
+
+
+def _gguf_forced_token_metadata(sample: Any | None) -> tuple[int | None, str | None, int | None]:
+    if sample is None or not bool(getattr(sample, "forced", False)):
+        return None, None, None
+    return (
+        int(getattr(sample, "token_id")),
+        None if getattr(sample, "forced_reason", None) is None else str(getattr(sample, "forced_reason")),
+        max(0, int(getattr(sample, "forced_tokens_remaining", 0))),
     )
 
 

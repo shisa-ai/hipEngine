@@ -249,6 +249,9 @@ class DecodeState:
     structured_tokens: int = 0
     stop_suffix_state: object | None = None
     forced_tokens_pending: tuple[int, ...] = ()
+    forced_token_id: int | None = None
+    forced_token_reason: str | None = None
+    forced_tokens_remaining: int | None = None
     active_processors: tuple[str, ...] = ()
     sampler_fast_path_blockers: tuple[str, ...] = ()
     sampler_fallback_reason: str | None = None
@@ -878,6 +881,9 @@ Current code reality:
   byte counts when the vocabulary/logits width is known. PARO c=1 native
   sampled paths mark `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in
   the decode-state snapshot when the native GPU sampler route actually runs.
+  PARO/GGUF host-sampled forced-token selections also expose the selected
+  `forced_token_id`, `forced_token_reason`, and post-selection
+  `forced_tokens_remaining` alongside any still-pending queue state.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present,
   mirroring the final `finish_details` alongside the backend-authored
@@ -1165,6 +1171,10 @@ Current code reality:
 - Host `select_token()` consumes one pending forced token before argmax or
   sampling, records forced metadata on `SampleResult`, and updates row history
   so the token still goes through the normal decode/KV path.
+- PARO/GGUF host-sampled telemetry carries selected forced-token metadata in
+  `DecodeState` as `forced_token_id`, `forced_token_reason`, and
+  `forced_tokens_remaining`; `forced_tokens_pending` remains the pending queue
+  snapshot.
 - `RowSamplingState` can now bind a `ThinkingBudgetState`; before each host
   token selection, hard budget pressure queues the tokenizer-lowered close
   sequence as forced tokens, and every selected token updates the
@@ -1261,10 +1271,12 @@ Current code reality:
   and phase;
 - final PARO/GGUF `GenerationTelemetry.decode_state` snapshots now inherit
   sampled thinking-budget phase, reasoning/answer token counts, budget pressure,
-  and pending forced-token state from `RowSamplingState` where available;
+  pending forced-token state from `RowSamplingState` where available, and
+  selected forced-token metadata when a host sampler result consumed one;
 - PARO/GGUF c=1 host-sampled `stream_detailed()` chunks also expose live
   thinking-budget phase, reasoning-token, budget-pressure, processor, fallback,
-  and logits-readback metadata on the chunk `GenerationTelemetry`;
+  selected forced-token, and logits-readback metadata on the chunk
+  `GenerationTelemetry`;
 - `SamplingParams`, `GenerationRequest`, and `PerRowSamplingParams` carry the
   lowered `thinking_close_token_ids`, `thinking_hard_token_cap`, and
   `thinking_soft_close_window` fields; PARO/GGUF host-sampled rows and

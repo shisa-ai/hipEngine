@@ -119,7 +119,11 @@ def test_gguf_sampled_request_forced_token_overrides_logits(monkeypatch) -> None
     assert outputs[0].text == "C"
     assert outputs[0].finish_details is not None
     assert outputs[0].finish_details.to_json_dict()["sampler_mode"] == "processed_argmax"
-    assert _decode_state(outputs[0])["active_processors"] == ["forced_tokens_pending"]
+    decode_state = _decode_state(outputs[0])
+    assert decode_state["active_processors"] == ["forced_tokens_pending"]
+    assert decode_state["forced_token_id"] == 2
+    assert decode_state["forced_token_reason"] == "tool_choice_required"
+    assert decode_state["forced_tokens_remaining"] == 0
 
 
 def test_gguf_sampled_post_thinking_forced_tokens_queue_after_close(monkeypatch) -> None:
@@ -556,6 +560,9 @@ def test_gguf_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> N
         "active_processors": ["thinking_budget"],
         "sampler_fast_path_blockers": ["thinking_budget"],
         "sampler_fallback_reason": "processed_logits_required",
+        "forced_token_id": 2,
+        "forced_token_reason": "thinking_hard_close",
+        "forced_tokens_remaining": 0,
         "budget_pressure": "hard_close",
         "sampler_mode": "processed_argmax",
         "full_vocab_logits_d2h": True,
@@ -691,6 +698,9 @@ def test_gguf_finish_details_report_forced_thinking_close(monkeypatch) -> None:
     decode_state = _decode_state(generator.last_generation_outputs[0])
     assert decode_state["phase"] == "answer"
     assert decode_state["reasoning_tokens"] == 1
+    assert decode_state["forced_token_id"] == 2
+    assert decode_state["forced_token_reason"] == "thinking_hard_close"
+    assert decode_state["forced_tokens_remaining"] == 0
     assert decode_state["budget_pressure"] == "hard_close"
 
 
