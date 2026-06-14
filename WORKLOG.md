@@ -90698,3 +90698,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_streaming_completion_guided_diff_buffers_validation_failure tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata -q` -> `7 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `46 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC backend telemetry timing passthrough
+
+`GenerationTelemetry.from_decode_counts()` now accepts optional backend-authored
+`timing` and `usage` mappings, matching the lower-level `GenerationTelemetry`
+dataclass surface. The OpenAI server already preserves those payloads in
+`choices[].hipengine`; tests now pin non-streaming and opt-in streaming
+passthrough, and `/v1/hipengine/capabilities` advertises timing/usage as
+backend-generation-telemetry fields when available. This does not claim all
+runtime paths emit prefill/decode timing yet; it makes the passthrough contract
+explicit for backends that do.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_generation_registry.py::test_generation_telemetry_decode_counts_accept_phase_metadata tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `4 passed`.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py && git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

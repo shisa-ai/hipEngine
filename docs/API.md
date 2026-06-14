@@ -224,12 +224,12 @@ runtime exposes those signals.
 
 Non-streaming completion and chat choices include `choices[].hipengine` when the
 backend returns `GenerationTelemetry`. This extension currently mirrors the
-backend-authored `decode_state` snapshot and the final `finish_details`, giving
-agent harnesses access to row index, prompt/generated token counts, sampler
-mode, active processors, fast-path blockers, stop suffix state, forced-token
-queue state, and budget pressure when those fields were authored by the
-generation loop. The field is omitted when the backend or fake engine does not
-provide telemetry.
+backend-authored `decode_state` snapshot, optional backend-authored `timing` and
+`usage` payloads, and the final `finish_details`, giving agent harnesses access
+to row index, prompt/generated token counts, sampler mode, active processors,
+fast-path blockers, stop suffix state, forced-token queue state, and budget
+pressure when those fields were authored by the generation loop. The field is
+omitted when the backend or fake engine does not provide telemetry.
 
 ### Finish details
 

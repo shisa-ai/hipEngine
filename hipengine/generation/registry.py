@@ -403,6 +403,8 @@ class GenerationTelemetry:
         logits_d2h_bytes: int | None = None,
         continuation_eligible: bool = False,
         event: str | None = None,
+        timing: Mapping[str, float] | None = None,
+        usage: Mapping[str, int] | None = None,
     ) -> "GenerationTelemetry":
         return cls(
             decode_state=DecodeState(
@@ -428,6 +430,8 @@ class GenerationTelemetry:
                 continuation_eligible=continuation_eligible,
             ),
             event=event,
+            timing=timing,
+            usage=usage,
         )
 
     def to_json_dict(self) -> dict[str, Any]:

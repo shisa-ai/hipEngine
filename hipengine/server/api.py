@@ -1195,6 +1195,8 @@ def _choice_telemetry_capability() -> dict[str, Any]:
         "non_streaming": True,
         "streaming": "stream_options.include_hipengine",
         "decode_state": True,
+        "timing": "backend_generation_telemetry_when_available",
+        "usage": "backend_generation_telemetry_when_available",
         "source": "backend_generation_telemetry_when_available",
     }
 

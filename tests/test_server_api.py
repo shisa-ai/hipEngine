@@ -674,6 +674,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "non_streaming": True,
         "streaming": "stream_options.include_hipengine",
         "decode_state": True,
+        "timing": "backend_generation_telemetry_when_available",
+        "usage": "backend_generation_telemetry_when_available",
         "source": "backend_generation_telemetry_when_available",
     }
     assert body["features"]["structured_outputs"] == {
@@ -2724,6 +2726,8 @@ def test_completions_expose_backend_generation_telemetry() -> None:
                     sampler_mode="greedy_fast",
                     active_processors=("logit_bias",),
                     sampler_fast_path_blockers=("logit_bias",),
+                    timing={"prefill_ms": 2.5, "decode_ms": 1.25},
+                    usage={"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
                 ),
             )
         ]
@@ -2751,6 +2755,8 @@ def test_completions_expose_backend_generation_telemetry() -> None:
             "sampler_fast_path_blockers": ["logit_bias"],
             "sampler_mode": "greedy_fast",
         },
+        "timing": {"prefill_ms": 2.5, "decode_ms": 1.25},
+        "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
         "finish_details": _stateless_finish_details(
             "eos",
             eos_token_id=151645,
@@ -7610,6 +7616,8 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
                     sampler_mode="host_logits_sample",
                     sampler_fallback_reason="host_sampling_required",
                     sampler_fast_path_blockers=("temperature",),
+                    timing={"prefill_ms": 4.0, "decode_ms": 2.0},
+                    usage={"prompt_tokens": 5, "completion_tokens": 4, "total_tokens": 9},
                 ),
             )
         ],
@@ -7644,6 +7652,8 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
             "sampler_fallback_reason": "host_sampling_required",
             "sampler_mode": "host_logits_sample",
         },
+        "timing": {"prefill_ms": 4.0, "decode_ms": 2.0},
+        "usage": {"prompt_tokens": 5, "completion_tokens": 4, "total_tokens": 9},
         "tokens": {
             "streamed_tokens": 1,
             "delta_tokens": 1,

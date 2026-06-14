@@ -84,9 +84,12 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         sampler_fallback_reason="processed_logits_required",
         full_vocab_logits_d2h=True,
         logits_d2h_bytes=1024,
+        timing={"prefill_ms": 12.5, "decode_ms": 3},
+        usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
     )
 
-    assert telemetry.to_json_dict()["decode_state"] == {
+    payload = telemetry.to_json_dict()
+    assert payload["decode_state"] == {
         "row_index": 0,
         "step_index": 3,
         "prompt_tokens": 5,
@@ -102,6 +105,8 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "full_vocab_logits_d2h": True,
         "logits_d2h_bytes": 1024,
     }
+    assert payload["timing"] == {"prefill_ms": 12.5, "decode_ms": 3.0}
+    assert payload["usage"] == {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
 
 
 def test_generation_output_accepts_finish_details_mapping() -> None:

@@ -877,9 +877,10 @@ Current code reality:
   sampled paths mark `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in
   the decode-state snapshot when the native GPU sampler route actually runs.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
-  `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
-  the final `finish_details` alongside the backend-authored `decode_state`. If
-  the server creates a deterministic buffered continuation handle, the final
+  `GenerationTelemetry` under `choices[].hipengine` when it is present,
+  mirroring the final `finish_details` alongside the backend-authored
+  `decode_state` plus optional backend-authored `timing` and `usage` payloads.
+  If the server creates a deterministic buffered continuation handle, the final
   choice telemetry mirrors `finish_details.continuation_eligible=true` into the
   exposed `decode_state` so clients do not see contradictory eligibility
   metadata.
@@ -1990,6 +1991,9 @@ Current code reality:
   Unknown, consumed, wrong-endpoint, or wrong-model
   `continuation_id` values return `invalid_continuation`; expired handles return
   `continuation_expired`.
+  Backend-authored choice telemetry capabilities also advertise passthrough of
+  optional backend `timing` and `usage` payloads when generation code supplies
+  them.
 
 Exit gates:
 
