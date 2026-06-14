@@ -89953,3 +89953,21 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py --collect-only -q` -> `tests/test_local_agent_config.py: 24`.
 - `python3 -m ruff check tests/test_local_agent_config.py scripts/validate_pi_agent_models.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC duplicated tool-call marker recovery
+
+Recovered a common Qwen/pi tool-call shape where the model emits a duplicated
+`<tool_call>` start marker before otherwise valid inner tool JSON. Compatibility
+parsing now converts that form to OpenAI `tool_calls` for non-streaming and
+buffered streaming auto-tool responses, while strict tool validation still
+rejects the original malformed block with `invalid_tool_call`. Truly malformed
+JSON remains assistant text when strict validation is inactive. Updated
+`docs/API.md` and `docs/AGENTIC.md` to document the narrow recovery policy.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_server_api.py::test_chat_completion_auto_tool_recovers_duplicated_start_marker tests/test_server_api.py::test_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_streaming_chat_completion_recovers_duplicated_tool_start_marker tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag -q` -> `9 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py -q` -> all `235` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py --collect-only -q` -> `tests/test_agentic_server_conformance.py: 5`, `tests/test_server_api.py: 230`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

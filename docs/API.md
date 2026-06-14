@@ -358,7 +358,11 @@ normal chat response with no successful `tool_calls`, and
 ended because the generation budget was exhausted; in that case
 `finish_details` also includes length-limit phase metadata.
 `/v1/hipengine/capabilities` reports these normal-response failure reasons under
-`features.tools.result_validation_failure_reasons`. When
+`features.tools.result_validation_failure_reasons`. Compatibility parsing
+recovers a common duplicated-start form,
+`<tool_call><tool_call>{...}</tool_call>`, when the inner JSON is otherwise a
+valid tool call; strict validation still rejects that original malformed block.
+When
 `tool_choice="none"` and tokenization is available, the sampler also suppresses
 the first token of the Qwen `<tool_call>` start marker; this is a no-tool
 guard, not full grammar-constrained tool decoding. When
@@ -611,7 +615,7 @@ strict tool result-validation emits it as a normal chat
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for strict tool result-validation failures; malformed tool JSON remains assistant text when strict validation is inactive. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for strict tool result-validation failures; malformed tool JSON remains assistant text when strict validation is inactive. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
@@ -731,7 +735,8 @@ in local, non-sensitive debugging sessions.
   termination. PARO c=1 native sampling checks the same metadata after token
   selection; native c>N and GGUF GPU paths still need parity.
 - Tool calling uses Qwen-style prompt markup and output parsing; malformed
-  `<tool_call>` JSON is treated as ordinary assistant text.
+  `<tool_call>` JSON is treated as ordinary assistant text except for the common
+  duplicated-start wrapper around otherwise valid inner tool JSON.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 - Token `usage` and diagnostics are exact only when the served engine exposes
   tokenizer/counting hooks; unsupported models return explicit diagnostics

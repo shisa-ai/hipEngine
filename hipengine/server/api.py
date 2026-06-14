@@ -7843,7 +7843,7 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     last_end = 0
     for match in _TOOL_CALL_BLOCK_RE.finditer(text):
         text_parts.append(text[last_end : match.start()])
-        parsed = _parsed_tool_call_from_json(match.group(1).strip(), raw_text=match.group(0))
+        parsed = _parsed_tool_call_from_block_body(match.group(1), raw_text=match.group(0))
         if parsed is None:
             text_parts.append(match.group(0))
         else:
@@ -7856,6 +7856,25 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
         if parsed is not None:
             return _ParsedChatOutput(text="", tool_calls=(parsed,))
     return _ParsedChatOutput(text="".join(text_parts).strip(), tool_calls=tuple(calls))
+
+
+def _parsed_tool_call_from_block_body(raw: str, *, raw_text: str = "") -> _ParsedToolCall | None:
+    stripped = raw.strip()
+    parsed = _parsed_tool_call_from_json(stripped, raw_text=raw_text)
+    if parsed is not None:
+        return parsed
+    repaired = _strip_duplicate_tool_call_start(stripped)
+    if repaired == stripped:
+        return None
+    return _parsed_tool_call_from_json(repaired, raw_text=raw_text)
+
+
+def _strip_duplicate_tool_call_start(text: str) -> str:
+    stripped = text.lstrip()
+    marker_len = len(_TOOL_CALL_START_MARKER)
+    if not stripped[:marker_len].lower() == _TOOL_CALL_START_MARKER:
+        return text
+    return stripped[marker_len:].lstrip()
 
 
 def _parsed_tool_call_from_json(raw: str, *, raw_text: str = "") -> _ParsedToolCall | None:

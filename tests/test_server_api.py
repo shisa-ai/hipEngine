@@ -5044,6 +5044,47 @@ def test_chat_completion_preserves_reasoning_with_openai_tool_call() -> None:
     assert "<tool_call>" not in json.dumps(message)
 
 
+def test_chat_completion_auto_tool_recovers_duplicated_start_marker() -> None:
+    fake = FakeLLM(
+        outputs=['<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=2,
+        phase="tool_call",
+    )
+    message = choice["message"]
+    assert message["content"] == ""
+    assert "<tool_call>" not in json.dumps(message)
+    tool_call = message["tool_calls"][0]
+    assert tool_call["function"]["name"] == "read"
+    assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
+
+
 def test_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:
     fake = FakeLLM(
         outputs=['<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
@@ -5865,6 +5906,50 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details(
         "tool_calls",
         tool_call_tokens=1,
+        phase="tool_call",
+    )
+
+
+def test_streaming_chat_completion_recovers_duplicated_tool_start_marker() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=['<tool_call>\n<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    tool_delta = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
+    tool_call = tool_delta["choices"][0]["delta"]["tool_calls"][0]
+    assert tool_call["index"] == 0
+    assert tool_call["function"]["name"] == "bash"
+    assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "tool_calls"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=2,
         phase="tool_call",
     )
 

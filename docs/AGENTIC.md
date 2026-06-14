@@ -95,9 +95,11 @@ Already available or recently added:
 Known baseline limitations:
 
 - Tool calling is prompt-and-parse plus limited marker repair, not full
-  constrained decoding. Malformed `<tool_call>` JSON is treated as assistant
-  text in compatibility mode and as `finish_details.reason="invalid_tool_call"`
-  when strict result validation is active.
+  constrained decoding. A duplicated `<tool_call>` start marker wrapping valid
+  inner tool JSON is recovered in compatibility parsing, but malformed
+  `<tool_call>` JSON is otherwise treated as assistant text in compatibility mode
+  and as `finish_details.reason="invalid_tool_call"` when strict result
+  validation is active.
 - Thinking control is still not constrained decoding. Tokenized thinking caps
   are enforced only on host-sampled PARO/GGUF rows: the soft window applies a
   sparse close-token bias ramp, EOS is suppressed until answer phase when an
@@ -1293,6 +1295,10 @@ Current state:
   `parallel_tool_calls`.
 - Tool output remains prompt-and-parse: Qwen-style `<tool_call>{...}</tool_call>`
   blocks are parsed after generation and converted to OpenAI `tool_calls`.
+  Compatibility parsing recovers the common
+  `<tool_call><tool_call>{...}</tool_call>` duplicated-start wrapper when the
+  inner JSON is valid; strict validation still rejects that original malformed
+  block.
 - Strict result validation now runs when `tool_choice` is `none`, `required`, or
   a specific function, when any tool function declares `"strict": true`, or when
   `parallel_tool_calls` is explicitly supplied. It validates selected tool
@@ -1517,9 +1523,10 @@ Current code reality:
   strict-result failure details as non-streaming when validation rejects the
   parsed call;
 - covered fixtures include single-call streaming, malformed JSON strict failure,
-  strict schema failure, multi-call streaming with preserved indexes, and long
-  argument chunk concatenation. True token-live argument chunking before full
-  parse/validation remains future decode/streaming work.
+  strict schema failure, duplicated-start compatibility recovery, multi-call
+  streaming with preserved indexes, and long argument chunk concatenation. True
+  token-live argument chunking before full parse/validation remains future
+  decode/streaming work.
 
 Exit gates:
 

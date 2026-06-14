@@ -170,11 +170,44 @@ def test_agentic_conformance_tool_result_replay_renders_once() -> None:
     assert prompt.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
 
 
-def test_agentic_conformance_permissive_malformed_tool_call_remains_text() -> None:
+def test_agentic_conformance_permissive_duplicated_tool_start_recovers_call() -> None:
     raw_tool_markup = (
         "<tool_call>\n"
         '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
     )
+    llm = AgenticFakeLLM(outputs=[raw_tool_markup])
+    response = _client(llm).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read README.md."}],
+            "tools": [_read_tool(strict=False)],
+            "max_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"] == {
+        "reason": "tool_calls",
+        "cache_action": "append_none",
+        "tool_call_tokens": 2,
+        "phase": "tool_call",
+    }
+    message = choice["message"]
+    assert message["content"] == ""
+    assert "<tool_call>" not in json.dumps(message)
+    tool_call = message["tool_calls"][0]
+    assert tool_call["function"]["name"] == "read"
+    assert json.loads(tool_call["function"]["arguments"]) == {
+        "path": "README.md",
+        "mode": "raw",
+    }
+
+
+def test_agentic_conformance_permissive_malformed_tool_json_remains_text() -> None:
+    raw_tool_markup = '<tool_call>{"name":"read","arguments":</tool_call>'
     llm = AgenticFakeLLM(outputs=[raw_tool_markup])
     response = _client(llm).post(
         "/v1/chat/completions",
