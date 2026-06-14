@@ -90162,3 +90162,12 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check hipengine/generation/finish.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/finish.py hipengine/server/api.py docs/API.md tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> clean.
+
+## 2026-06-15 - AGENTIC thinking-budget doc alignment
+
+Updated `docs/AGENTIC.md` current-reality text to name the implemented
+`thinking_budget_exhausted` hard-close length finish and the intentional
+continuation-handle ineligibility for active thinking-budget controls.
+
+Validation:
+- Re-read the changed `docs/AGENTIC.md` P1.4 current-reality section.

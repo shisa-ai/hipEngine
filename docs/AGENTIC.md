@@ -1193,6 +1193,12 @@ Current code reality:
   the reasoning or close-delimiter phase. Qwen PARO/GGUF host-sampled paths
   resolve tokenizer EOS into the sampler when the request did not provide
   `eos_token_id`;
+- if host-sampled hard-close enforcement consumes the entire generation budget
+  before any visible answer token is emitted, PARO/GGUF finish metadata reports
+  `finish_details.reason="thinking_budget_exhausted"` with
+  `forced_close=true`; the OpenAI-compatible server still reports coarse
+  `finish_reason="length"` and keeps active thinking-budget continuations
+  ineligible;
 - chat token diagnostics can lower the configured hard close sequence (or the
   default `</think>` marker) into token ids and return an initialized
   `ThinkingBudgetState` payload for harness/debug verification;
