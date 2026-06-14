@@ -45,6 +45,7 @@ from hipengine.generation import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationOutput,
+    GenerationStreamChunk,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     ThinkingBudgetState,
@@ -1606,7 +1607,7 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         error_extra: Mapping[str, Any] | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[Any]:
         """Yield generated text through a per-request queue owned by the batcher."""
 
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
@@ -1628,7 +1629,7 @@ class _GenerationBatcher:
                     break
                 if isinstance(event, BaseException):
                     raise event
-                yield str(event)
+                yield event
         finally:
             item.cancelled = True
 
@@ -1703,7 +1704,7 @@ class _GenerationBatcher:
             async for chunk in _stream_engine_text(self._engine_factory(), item.prompts[0], item.sampling):
                 if _queued_generation_cancelled(item):
                     break
-                item.stream_queue.put_nowait(str(chunk))
+                item.stream_queue.put_nowait(chunk)
         except Exception as exc:
             _finish_queued_generation(item, exception=exc)
             return
@@ -1735,7 +1736,24 @@ def _finish_queued_generation(
     item.stream_queue.put_nowait(_STREAM_DONE)
 
 
-async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams) -> AsyncIterator[str]:
+async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams) -> AsyncIterator[Any]:
+    detailed_streamer = getattr(engine, "stream_detailed", None)
+    if callable(detailed_streamer):
+        iterator = iter(detailed_streamer(prompt, sampling))
+        done = False
+        try:
+            while True:
+                item = await run_in_threadpool(_next_stream_item, iterator)
+                if item is _STREAM_DONE:
+                    done = True
+                    break
+                yield _coerce_generation_stream_chunk(item)
+        finally:
+            if not done:
+                closer = getattr(iterator, "close", None)
+                if callable(closer):
+                    await run_in_threadpool(closer)
+        return
     streamer = getattr(engine, "stream", None)
     if not callable(streamer):
         for output in await run_in_threadpool(engine.generate, (prompt,), sampling):
@@ -1749,7 +1767,7 @@ async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams
             if item is _STREAM_DONE:
                 done = True
                 break
-            yield str(item)
+            yield _coerce_generation_stream_chunk(item)
     finally:
         if not done:
             closer = getattr(iterator, "close", None)
@@ -3067,7 +3085,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
                 control,
             ):
-                text = str(token)
+                stream_chunk = _coerce_generation_stream_chunk(token)
+                text = stream_chunk.text
                 if not text:
                     continue
                 full_text.append(text)
@@ -3078,6 +3097,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     config.model_id,
                     text,
                     tokens=token_payload,
+                    stream_chunk=stream_chunk,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
@@ -4368,7 +4388,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
                 control,
             ):
-                text = str(token)
+                stream_chunk = _coerce_generation_stream_chunk(token)
+                text = stream_chunk.text
                 if not text:
                     continue
                 full_text.append(text)
@@ -4386,6 +4407,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         field,
                         chunk,
                         tokens=token_payload,
+                        stream_chunk=stream_chunk,
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
@@ -5923,6 +5945,20 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
             telemetry=telemetry,
         )
     return GenerationOutput(text=str(value))
+
+
+def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
+    if isinstance(value, GenerationStreamChunk):
+        return value
+    telemetry = getattr(value, "telemetry", None)
+    if telemetry is not None:
+        return GenerationStreamChunk(
+            text=str(getattr(value, "text", value)),
+            telemetry=telemetry,
+        )
+    if isinstance(value, Mapping) and ("text" in value or "telemetry" in value):
+        return GenerationStreamChunk.from_value(value)
+    return GenerationStreamChunk(text=str(value))
 
 
 def _validate_logprob_details(details: Sequence[GenerationOutput], outputs: Sequence[str]) -> None:
@@ -8633,17 +8669,23 @@ def _choice_hipengine_payload(
     *,
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
 ) -> dict[str, Any]:
+    telemetry = None if stream_chunk is None else stream_chunk.telemetry
     payload: dict[str, Any] = {"phase": str(phase)}
+    if telemetry is not None:
+        payload.update(telemetry.to_json_dict())
+        payload["phase"] = payload.get("decode_state", {}).get("phase", str(phase))
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
     if tokens is not None:
         token_payload = {str(key): max(0, int(value)) for key, value in tokens.items()}
         payload["tokens"] = token_payload
-        payload["decode_state"] = DecodeState.from_stream_tokens(
-            phase=phase,
-            tokens=token_payload,
-        ).to_json_dict()
+        if "decode_state" not in payload:
+            payload["decode_state"] = DecodeState.from_stream_tokens(
+                phase=phase,
+                tokens=token_payload,
+            ).to_json_dict()
     return payload
 
 
@@ -8696,6 +8738,7 @@ def _completion_stream_delta(
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -8707,7 +8750,7 @@ def _completion_stream_delta(
         "finish_reason": None,
     }
     if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload("answer", tokens=tokens)
+        choice["hipengine"] = _choice_hipengine_payload("answer", tokens=tokens, stream_chunk=stream_chunk)
     return _sse(
         _attach_stream_hipengine(
             {
@@ -8975,6 +9018,7 @@ def _chat_stream_delta(
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -8984,7 +9028,7 @@ def _chat_stream_delta(
         choice["logprobs"] = dict(logprobs)
     if include_hipengine:
         phase = "think" if field == "reasoning_content" else "answer"
-        choice["hipengine"] = _choice_hipengine_payload(phase, tokens=tokens)
+        choice["hipengine"] = _choice_hipengine_payload(phase, tokens=tokens, stream_chunk=stream_chunk)
     return _sse(
         _attach_stream_hipengine(
             {
@@ -9015,6 +9059,7 @@ def _chat_stream_tool_call(
     argument_chunk: str | None = None,
     include_name: bool = True,
     tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -9037,7 +9082,7 @@ def _chat_stream_tool_call(
         "finish_reason": None,
     }
     if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload("tool_call", tokens=tokens)
+        choice["hipengine"] = _choice_hipengine_payload("tool_call", tokens=tokens, stream_chunk=stream_chunk)
     return _sse(
         _attach_stream_hipengine(
             {

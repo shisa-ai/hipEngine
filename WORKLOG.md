@@ -90487,3 +90487,23 @@ Validation:
 - `python3 -m ruff check hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_chat_completion_exposes_backend_generation_telemetry -q` -> `2 passed`.
 - `git diff --check -- hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md docs/API.md` -> clean.
+
+## 2026-06-15 - AGENTIC live stream telemetry contract
+
+Added `GenerationStreamChunk` and `LLM.stream_detailed()` so backends can emit
+incremental text with live `GenerationTelemetry` without changing plain
+`LLM.stream()` text behavior. The OpenAI server batcher now preserves structured
+stream chunks instead of stringifying them, and SSE choice-level
+`choices[].hipengine.decode_state` uses backend-authored chunk telemetry when it
+is present while retaining server-derived stream token counters beside it.
+Updated `docs/API.md` and `docs/AGENTIC.md` to describe the implemented transport
+contract and keep the remaining PARO/GGUF lower-loop live emission work explicit.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_llm_generate.py::test_llm_stream_detailed_preserves_backend_stream_telemetry tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `5 passed`.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_llm_generate.py -q` -> `15 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion or streaming_completion or generation_batcher_stream'` -> `29 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py docs/AGENTIC.md docs/API.md` -> clean.

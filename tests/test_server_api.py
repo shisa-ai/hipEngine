@@ -21,6 +21,7 @@ from hipengine.generation import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationOutput,
+    GenerationStreamChunk,
     GenerationTelemetry,
     TokenLogprob,
 )
@@ -7064,6 +7065,63 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
 
 
+def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                "backend reply",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=7,
+                    generated_tokens=3,
+                    phase="answer",
+                    sampler_mode="processed_argmax",
+                    sampler_fallback_reason="processed_logits_required",
+                    active_processors=("logit_bias",),
+                    sampler_fast_path_blockers=("logit_bias",),
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content"))
+    assert content["choices"][0]["delta"] == {"content": "backend reply"}
+    assert content["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 3,
+            "prompt_tokens": 7,
+            "generated_tokens": 3,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "active_processors": ["logit_bias"],
+            "sampler_fast_path_blockers": ["logit_bias"],
+            "sampler_fallback_reason": "processed_logits_required",
+            "sampler_mode": "processed_argmax",
+        },
+        "tokens": {
+            "streamed_tokens": 2,
+            "delta_tokens": 2,
+            "answer_tokens": 2,
+        },
+    }
+
+
 def test_streaming_completion_uses_engine_stream_and_usage() -> None:
     fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["alpha", " beta"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -7158,6 +7216,61 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
     assert isinstance(payloads[-1]["hipengine"]["timing"]["ttft_ms"], float)
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_elapsed_ms"], float)
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
+
+
+def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                "alpha",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=5,
+                    generated_tokens=4,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    sampler_fallback_reason="host_sampling_required",
+                    sampler_fast_path_blockers=("temperature",),
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 1,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert payloads[0]["choices"][0]["text"] == "alpha"
+    assert payloads[0]["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 4,
+            "prompt_tokens": 5,
+            "generated_tokens": 4,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_mode": "host_logits_sample",
+        },
+        "tokens": {
+            "streamed_tokens": 1,
+            "delta_tokens": 1,
+            "answer_tokens": 1,
+        },
+    }
 
 
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:

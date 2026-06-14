@@ -843,11 +843,15 @@ Likely touchpoints:
 Current code reality:
 
 - `hipengine.generation.registry` now defines torch-free `DecodePhase`,
-  `DecodeState`, and `GenerationTelemetry` primitives, and `GenerationOutput`
-  can carry an optional telemetry snapshot.
+  `DecodeState`, `GenerationTelemetry`, and `GenerationStreamChunk` primitives;
+  `GenerationOutput` and detailed stream chunks can carry optional telemetry
+  snapshots.
 - Opt-in server stream metadata uses `DecodeState` for token-bearing
   `choices[].hipengine.decode_state` payloads derived from the current
-  `_ReasoningSplitter` / token-counting compatibility layer.
+  `_ReasoningSplitter` / token-counting compatibility layer. When a backend
+  stream yields `GenerationStreamChunk.telemetry`, the SSE choice-level
+  `hipengine.decode_state` preserves that backend-authored snapshot and only
+  layers server-derived stream token counters beside it.
 - Token-emitting PARO/GGUF generation loops now author final
   `GenerationTelemetry` snapshots with prompt/generated token counts, row index,
   sampler mode, stop suffix match/partial-suffix state where applicable, and
@@ -857,8 +861,9 @@ Current code reality:
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
   the final `finish_details` alongside the backend-authored `decode_state`.
-- Live backend-authored per-token phase transitions and real continuation
-  eligibility remain future lower-loop work.
+- PARO/GGUF still need to emit live per-token `GenerationStreamChunk` telemetry
+  from their lower loops, and real continuation eligibility remains future
+  lower-loop work.
 
 Exit gates:
 
@@ -1082,9 +1087,9 @@ Current code reality:
   forced-token override. They are exposed through public/server request fields,
   scheduler per-row blocks, planner metadata, fast-path blockers, capabilities,
   and MTP blocker lists. The native GPU sampler route falls back to host when
-  either processor is active. Dynamic thinking-budget processors, grammar masks,
-  and live per-token backend telemetry still need to emit these fields before
-  server stream metadata can become authoritative.
+  either processor is active. Dynamic thinking-budget processors and grammar
+  masks still need to emit these fields on native/live stream paths before
+  server stream metadata can become fully backend-authoritative.
 
 Implement:
 
@@ -2363,9 +2368,10 @@ session transcript commit policy, deterministic continuations, host processor
 stack, thinking-budget hard/soft close, strict tool result validation, and
 golden harness traces are now implemented. Good next logical units, in order:
 
-1. **Live backend DecodeState telemetry:** move remaining per-token phase,
-   forced-token, sampler-fallback, and continuation-eligibility metadata out of
-   server post-parse inference and into generation-owned live state.
+1. **Live backend DecodeState telemetry:** make PARO/GGUF streaming loops emit
+   per-token `GenerationStreamChunk` snapshots for phase, forced-token state,
+   budget pressure, and continuation eligibility instead of relying on server
+   post-parse inference.
 2. **Native/scheduler controlled-decoding parity:** extend c>N/GGUF/native GPU
    sampler paths to emit the same processor metadata, fallback reasons, and
    logprob semantics as host AR sampling, or reject clearly.

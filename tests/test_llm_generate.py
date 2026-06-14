@@ -4,7 +4,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from hipengine import LLM, SamplingParams
-from hipengine.generation import GenerationCancellationToken, GenerationRequest, register_text_generator
+from hipengine.generation import (
+    GenerationCancellationToken,
+    GenerationRequest,
+    GenerationStreamChunk,
+    GenerationTelemetry,
+    register_text_generator,
+)
 
 
 def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> None:
@@ -83,6 +89,47 @@ def test_llm_tokenize_delegates_to_generator(monkeypatch) -> None:
     llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
 
     assert llm.tokenize("Az") == (65, 122)
+
+
+def test_llm_stream_detailed_preserves_backend_stream_telemetry(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def stream_detailed(self, request: GenerationRequest):
+            yield GenerationStreamChunk(
+                "alpha",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=3,
+                    generated_tokens=1,
+                    phase="answer",
+                    sampler_mode="processed_argmax",
+                ),
+            )
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["unused"]
+
+    fake_index = SimpleNamespace(config={"architectures": ["FakeStreamForCausalLM"]}, model_path="/tmp/fake-model")
+    fake_plugin = SimpleNamespace(name="fake_stream_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_stream_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+
+    detailed_chunks = list(llm.stream_detailed("hello", SamplingParams(max_tokens=1)))
+    assert detailed_chunks[0].text == "alpha"
+    assert detailed_chunks[0].telemetry.to_json_dict()["decode_state"]["sampler_mode"] == "processed_argmax"
+    assert list(llm.stream("hello", SamplingParams(max_tokens=1))) == ["alpha"]
 
 
 def test_llm_detokenize_delegates_to_generator(monkeypatch) -> None:

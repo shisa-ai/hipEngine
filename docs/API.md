@@ -186,6 +186,9 @@ Those token-bearing chunks also include a canonical
 prompt/generated token counts, continuation eligibility, and sampler/processor
 metadata when the backend provides it (`active_processors`,
 `sampler_fast_path_blockers`, `sampler_fallback_reason`, and `sampler_mode`).
+For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
+the choice-level `decode_state` is the backend-authored snapshot; server-derived
+stream token counters remain available beside it under `choices[].hipengine.tokens`.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. Streaming error chunks use top-level

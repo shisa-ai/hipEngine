@@ -570,6 +570,33 @@ class GenerationOutput:
         return self.text
 
 
+@dataclass(frozen=True)
+class GenerationStreamChunk:
+    """Incremental generated text plus optional live backend telemetry."""
+
+    text: str
+    telemetry: GenerationTelemetry | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", str(self.text))
+        if self.telemetry is not None:
+            object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
+
+    @classmethod
+    def from_value(cls, value: Any) -> "GenerationStreamChunk":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(
+                text=str(value.get("text", "")),
+                telemetry=value.get("telemetry"),
+            )
+        return cls(text=str(value))
+
+    def __str__(self) -> str:
+        return self.text
+
+
 class TextGenerator(Protocol):
     """Protocol implemented by backend/model-specific text generators."""
 

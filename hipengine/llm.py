@@ -171,14 +171,33 @@ class LLM:
     ) -> Iterator[str]:
         """Yield generated text chunks for a single prompt when supported."""
 
+        for chunk in self.stream_detailed(prompt, sampling_params):
+            yield str(chunk)
+
+    def stream_detailed(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Yield generated text chunks plus optional backend telemetry."""
+
         generator = self._get_text_generator()
         request = _generation_request((str(prompt),), sampling_params or SamplingParams())
+        from hipengine.generation import GenerationStreamChunk
+
+        detailed_streamer = getattr(generator, "stream_detailed", None)
+        if callable(detailed_streamer):
+            for chunk in detailed_streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
+            return
         streamer = getattr(generator, "stream", None)
         if callable(streamer):
-            yield from streamer(request)
+            for chunk in streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
             return
+
         for text in generator.generate(request):
-            yield text
+            yield GenerationStreamChunk(text=str(text))
 
     def prepare(
         self,
