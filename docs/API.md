@@ -176,8 +176,10 @@ done/usage payloads include `decode_elapsed_ms` and `decode_tokens_per_second`
 when generated-token counts are available. The top-level `hipengine` object also
 includes `routing` metadata for the current single-model exact route. Choice
 chunks also get
-`choices[].hipengine.phase` (`think`, `answer`, `tool_call`, or `done`) when a
-phase is known. When the served engine exposes `count_tokens`, live stream
+`choices[].hipengine.phase` (`think`, `answer`, `tool_call`, `structured`, or
+`done`) when a phase is known. Structured phases are server-authored final
+metadata for buffered result-validation streams; they are not decode-time
+grammar enforcement. When the served engine exposes `count_tokens`, live stream
 deltas also include `choices[].hipengine.tokens` with
 `delta_tokens`, cumulative `streamed_tokens`, and phase counters such as
 `reasoning_tokens` / `answer_tokens`; final choice chunks include usage-derived

@@ -90681,3 +90681,20 @@ deltas, budget pressure, and backend-authored phase counters as runtime gaps.
 Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_can_include_kv_pool_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_kv_pool_metadata tests/test_server_api.py::test_metrics_endpoint_filters_malformed_kv_pool_scalars -q` -> `6 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC structured stream phase metadata
+
+Buffered completion/chat streams that run structured-output result validation
+now preserve that phase in opt-in final choice metadata:
+`choices[].hipengine.phase="structured"` on the final `done` choice for
+`response_format`, `guided_patch`, and `guided_diff` streams. This does not
+change public `finish_reason`, `finish_details`, or default OpenAI-compatible
+streams; it only fills the server-authored phase surface promised by
+`stream_options.include_hipengine=true`. Lower-loop decode-time grammar phase
+accounting remains future work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_guided_diff_buffers_validation_failure tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata -q` -> `7 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `46 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

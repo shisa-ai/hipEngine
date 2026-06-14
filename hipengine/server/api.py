@@ -4100,6 +4100,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         if include_hipengine
                         else None
                     ),
+                    done_phase="structured" if _structured_result_validation(request) else "done",
                 ),
                 media_type="text/event-stream",
             )
@@ -4403,6 +4404,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
                         if include_hipengine
                         else None
+                    ),
+                    done_phase=(
+                        "structured"
+                        if _structured_result_validation(request) and not parsed.tool_calls
+                        else "done"
                     ),
                 ):
                     yield event
@@ -9090,6 +9096,7 @@ def _completion_stream_done(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
+    phase: str = "done",
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -9101,7 +9108,7 @@ def _completion_stream_done(
     }
     if include_hipengine:
         choice["hipengine"] = _choice_hipengine_payload(
-            "done",
+            phase,
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
@@ -9226,6 +9233,7 @@ def _completion_stream(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
+    done_phase: str = "done",
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
@@ -9265,6 +9273,7 @@ def _completion_stream(
             stream_started_at=stream_started_at,
             routing=routing,
             kv_pool=kv_pool,
+            phase=done_phase,
         )
     if usage is not None:
         yield _completion_stream_usage(
@@ -9450,6 +9459,7 @@ def _chat_stream_parsed(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
+    done_phase: str = "done",
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
@@ -9506,6 +9516,7 @@ def _chat_stream_parsed(
         stream_started_at=stream_started_at,
         routing=routing,
         kv_pool=kv_pool,
+        phase=done_phase,
     )
 
 
@@ -9523,6 +9534,7 @@ def _chat_stream_done(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
+    phase: str = "done",
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -9533,7 +9545,7 @@ def _chat_stream_done(
     }
     if include_hipengine:
         choice["hipengine"] = _choice_hipengine_payload(
-            "done",
+            phase,
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,

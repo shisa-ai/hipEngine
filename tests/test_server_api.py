@@ -4102,7 +4102,7 @@ def test_streaming_completion_guided_diff_buffers_validation_failure() -> None:
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
-        "phase": "done",
+        "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []
@@ -4657,7 +4657,7 @@ def test_streaming_completion_response_format_buffers_validation() -> None:
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
-        "phase": "done",
+        "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []
@@ -4687,7 +4687,7 @@ def test_streaming_completion_response_format_json_schema_buffers_validation() -
     )
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
-        "phase": "done",
+        "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []
@@ -5816,7 +5816,7 @@ def test_streaming_chat_completion_response_format_buffers_validation() -> None:
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
-        "phase": "done",
+        "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
 
@@ -5851,7 +5851,7 @@ def test_streaming_chat_completion_response_format_json_schema_buffers_validatio
     )
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
-        "phase": "done",
+        "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []

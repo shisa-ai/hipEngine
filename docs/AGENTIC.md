@@ -957,8 +957,9 @@ Current code reality:
   done/usage chunks also include server-measured `decode_elapsed_ms` and
   `decode_tokens_per_second` when generated-token counts are available. Choice
   chunks include `choices[].hipengine.phase` for answer/reasoning/tool/done
-  chunks. Top-level opt-in SSE metadata also includes `hipengine.routing` for
-  the current single-model exact route.
+  chunks, and buffered structured-output result-validation streams report a
+  final `structured` choice phase. Top-level opt-in SSE metadata also includes
+  `hipengine.routing` for the current single-model exact route.
 - When tokenizer/counting hooks are available, live completion/chat deltas also
   include `choices[].hipengine.tokens` with per-chunk `delta_tokens`,
   cumulative `streamed_tokens`, and best-effort server-side phase counters;
