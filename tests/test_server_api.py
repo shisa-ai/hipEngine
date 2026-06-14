@@ -5825,7 +5825,8 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["sampling"]["top_k"] == 8
     assert artifact["sampling"]["logit_bias"] == {"12": -2.0}
     assert artifact["sampling"]["top_logprobs"] == 2
-    assert artifact["sampling"]["response_format"] == {"type": "json_object"}
+    assert artifact["sampling"]["response_format"]["type"]["redacted"] == "sha256"
+    assert artifact["sampling"]["response_format"]["type"]["length"] == len("json_object")
     assert artifact["seeds"] == {"seed": 123, "row_seeds": []}
     assert artifact["token_counts"] == {
         "prompt_tokens": 2,
@@ -5964,19 +5965,22 @@ def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None
     assert artifact["token_counts"]["entries"][0]["path"] == "$.messages"
     assert artifact["token_counts"]["entries"][0]["token_count"] == artifact["token_counts"]["prompt_tokens"]
     assert artifact["token_counts"]["prompt_tokens"] > 0
-    assert artifact["sampling"]["chat_template_kwargs"] == {"thinking_budget": "low"}
+    assert artifact["sampling"]["chat_template_kwargs"]["thinking_budget"]["redacted"] == "sha256"
+    assert artifact["sampling"]["chat_template_kwargs"]["thinking_budget"]["length"] == len("low")
     assert artifact["sampling"]["thinking"] == {"budget_tokens": 32}
-    assert artifact["sampling"]["reasoning"] == {
-        "allow_unbounded": True,
-        "max_tokens": 12,
-        "min_answer_tokens": 4,
-        "hard_close_sequence": "closing</think>\n",
-    }
-    assert artifact["sampling"]["hard_close_message"] == "closing"
-    assert artifact["sampling"]["tool_choice"] == "auto"
+    assert artifact["sampling"]["reasoning"]["allow_unbounded"] is True
+    assert artifact["sampling"]["reasoning"]["max_tokens"] == 12
+    assert artifact["sampling"]["reasoning"]["min_answer_tokens"] == 4
+    assert artifact["sampling"]["reasoning"]["hard_close_sequence"]["redacted"] == "sha256"
+    assert artifact["sampling"]["reasoning"]["hard_close_sequence"]["length"] == len("closing</think>\n")
+    assert artifact["sampling"]["hard_close_message"]["redacted"] == "sha256"
+    assert artifact["sampling"]["hard_close_message"]["length"] == len("closing")
+    assert artifact["sampling"]["tool_choice"]["redacted"] == "sha256"
+    assert artifact["sampling"]["tool_choice"]["length"] == len("auto")
     assert artifact["sampling"]["parallel_tool_calls"] is False
     assert artifact["error"]["param"] == "top_logprobs"
     assert "secret chat prompt" not in serialized
+    assert "closing</think>" not in serialized
 
 
 def test_replay_artifact_captures_completion_structured_result_validation_failure(tmp_path) -> None:
@@ -6023,7 +6027,8 @@ def test_replay_artifact_captures_completion_structured_result_validation_failur
             "length": len("secret structured prompt"),
         }
     ]
-    assert artifact["sampling"]["response_format"] == {"type": "json_object"}
+    assert artifact["sampling"]["response_format"]["type"]["redacted"] == "sha256"
+    assert artifact["sampling"]["response_format"]["type"]["length"] == len("json_object")
     assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
     assert artifact["error"] is None
     assert artifact["result"] == {
@@ -6151,7 +6156,8 @@ def test_replay_artifact_captures_streaming_structured_result_validation_failure
     artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
     serialized = json.dumps(artifact, sort_keys=True)
     assert artifact["request"]["path"] == "/v1/chat/completions"
-    assert artifact["sampling"]["response_format"] == {"type": "json_object"}
+    assert artifact["sampling"]["response_format"]["type"]["redacted"] == "sha256"
+    assert artifact["sampling"]["response_format"]["type"]["length"] == len("json_object")
     assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
     assert artifact["error"] is None
     assert artifact["result"]["choices"] == [

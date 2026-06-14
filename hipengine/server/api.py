@@ -509,7 +509,7 @@ def _build_replay_artifact(
             "backend": config.backend,
             "quant": config.quant,
         },
-        "sampling": _replay_sampling_payload(body_json),
+        "sampling": _replay_sampling_payload(body_json, redaction=redaction),
         "seeds": _replay_seed_payload(body_json),
         "token_counts": _replay_token_counts(body_json, engine, config),
         "finish_details": finish_details,
@@ -663,7 +663,7 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _replay_sampling_payload(body_json: Any) -> dict[str, Any]:
+def _replay_sampling_payload(body_json: Any, *, redaction: str) -> dict[str, Any]:
     if not isinstance(body_json, dict):
         return {}
     keys = (
@@ -702,7 +702,8 @@ def _replay_sampling_payload(body_json: Any) -> dict[str, Any]:
         "response_format",
         "thinking_token_budget",
     )
-    return {key: body_json[key] for key in keys if key in body_json}
+    payload = {key: body_json[key] for key in keys if key in body_json}
+    return _redact_replay_value(payload, redaction=redaction)
 
 
 def _replay_seed_payload(body_json: Any) -> dict[str, Any]:

@@ -89470,3 +89470,20 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `25 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC replay sampling redaction
+
+Aligned replay artifacts' compact `sampling` payload with the artifact
+redaction mode. Under the default `hash` mode, string-valued sampler and
+agentic-control fields such as `response_format.type`, `tool_choice`,
+`chat_template_kwargs.thinking_budget`, `hard_close_message`, and nested
+`reasoning.hard_close_sequence` are now stored as SHA-256/length metadata,
+matching the full request JSON. Numeric and boolean controls remain readable.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_server_api.py -k replay -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.

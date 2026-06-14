@@ -2066,8 +2066,9 @@ Current code reality:
   the artifact stores the failure `finish_details` and affected choice indexes,
   not generated assistant text.
 - `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
-  and replaces request strings with SHA-256/length metadata. The explicit
-  `none` mode stores raw strings for local debugging only.
+  and replaces request strings plus compact sampler/agentic-control strings
+  with SHA-256/length metadata. The explicit `none` mode stores raw strings for
+  local debugging only.
 - Tests cover default-off behavior, failed HTTP request redaction, strict tool
   validation failures, streaming strict tool failures, completion structured
   failures, and streaming chat structured failures.

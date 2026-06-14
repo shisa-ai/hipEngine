@@ -623,8 +623,9 @@ controls, and cache/session support. Normal result-validation artifacts record
 affected choice indexes and finish metadata, not generated assistant text.
 
 The default `--replay-redaction hash` replaces every string value in the request
-JSON with SHA-256 and length metadata. `--replay-redaction none` stores raw
-strings and should only be used in local, non-sensitive debugging sessions.
+JSON and compact sampler/agentic-control payload with SHA-256 and length
+metadata. `--replay-redaction none` stores raw strings and should only be used
+in local, non-sensitive debugging sessions.
 
 ## Current limitations
 
