@@ -88575,3 +88575,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC server contract replay coverage
+
+Documented the agentic server test matrix: deterministic fake-LLM contract
+tests for rendering, reasoning/tool response shapes, strict failures,
+local-agent/pi config compatibility, replay artifacts, and sampler/MTP
+compatibility guards. Extended replay artifacts beyond HTTP error responses to
+normal strict result-validation failures (`invalid_tool_call`,
+`tool_required_not_satisfied`, `schema_violation`) for non-streaming and chat
+streaming paths. Replay remains opt-in; artifacts record request hashes,
+capability/sampling snapshots, finish details, and affected choice indexes, but
+not generated assistant text.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifacts_are_default_off tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifact_counts_chat_prompt_when_engine_loaded tests/test_server_api.py::test_replay_artifact_captures_agentic_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_agentic_result_validation_failure tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.

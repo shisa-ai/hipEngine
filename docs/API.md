@@ -470,15 +470,18 @@ HIPENGINE_DEBUG=1 hipengine serve --model /path/to/model
 Debug payload logs include prompts and generated text; do not enable them for
 shared or sensitive deployments.
 
-Failed-request replay artifacts are separately opt-in. Pass `--replay-dir
-/path/to/replays` or set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts
-for failed HTTP requests. Artifacts use `schema: "hipengine.replay.v1"` and
-include the request method/path, redacted request JSON, prompt/tool-result
-hashes, served model id, requested sampler fields, seed fields, error metadata,
+Replay artifacts are separately opt-in. Pass `--replay-dir /path/to/replays` or
+set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts for failed HTTP
+requests and normal strict result-validation failures such as
+`invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
+Artifacts use `schema: "hipengine.replay.v1"` and include the request
+method/path, redacted request JSON, prompt/tool-result hashes, served model id,
+requested sampler fields, seed fields, error or result-validation metadata,
 finish details when available, completion/chat prompt token counts when the
 engine is already loaded and supports counting, explicit unavailable reasons
 otherwise, and a compact capability snapshot including sampler/MTP compatibility
-plus cache/session support.
+plus cache/session support. Normal result-validation artifacts record affected
+choice indexes and finish metadata, not generated assistant text.
 
 The default `--replay-redaction hash` replaces every string value in the request
 JSON with SHA-256 and length metadata. `--replay-redaction none` stores raw

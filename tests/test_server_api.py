@@ -3985,6 +3985,140 @@ def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None
     assert "secret chat prompt" not in serialized
 
 
+def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(outputs=["ordinary answer"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret tool task"}],
+            "tool_choice": "required",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+            "max_tokens": 16,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["request"]["path"] == "/v1/chat/completions"
+    assert artifact["request"]["json"]["messages"][0]["content"]["redacted"] == "sha256"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.messages[0].content",
+            "sha256": artifact["request"]["json"]["messages"][0]["content"]["sha256"],
+            "length": len("secret tool task"),
+        }
+    ]
+    assert artifact["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
+    assert artifact["error"] is None
+    assert artifact["result"] == {
+        "type": "agentic_result_validation",
+        "finish_details": _stateless_finish_details("tool_required_not_satisfied"),
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "finish_details": _stateless_finish_details("tool_required_not_satisfied"),
+            }
+        ],
+    }
+    assert artifact["token_counts"]["available"] is True
+    assert artifact["token_counts"]["source"] == "chat_prompt"
+    assert "secret tool task" not in serialized
+    assert "ordinary answer" not in serialized
+
+
+def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(stream_chunks=["ordinary stream answer"]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret streaming tool task"}],
+            "tool_choice": "required",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "max_tokens": 16,
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
+    assert done["choices"][0]["hipengine"]["finish_details"] == _stateless_finish_details(
+        "tool_required_not_satisfied"
+    )
+
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["request"]["path"] == "/v1/chat/completions"
+    assert artifact["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
+    assert artifact["error"] is None
+    assert artifact["result"]["choices"] == [
+        {
+            "index": 0,
+            "finish_reason": "stop",
+            "finish_details": _stateless_finish_details("tool_required_not_satisfied"),
+        }
+    ]
+    assert "secret streaming tool task" not in serialized
+    assert "ordinary stream answer" not in serialized
+
+
 def test_debug_mode_logs_full_request_and_response_payloads(caplog) -> None:
     caplog.set_level(logging.INFO, logger="uvicorn.error")
     fake = FakeLLM(outputs=["debug reply"])

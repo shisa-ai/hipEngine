@@ -148,6 +148,38 @@ Known baseline limitations:
    and `<tool_call>` markup is a current served-template behavior, not a reason
    to hardcode Qwen checks in engine/dispatch internals.
 
+## Server contract tests
+
+Agentic behavior needs explicit server-level tests. Prefer deterministic fake-LLM
+tests over live-agent loops for the default suite; they pin the contract without
+depending on model sampling luck.
+
+Minimum matrix:
+
+- chat rendering for developer/user/assistant/tool messages, tool schemas,
+  `tool_choice`, and thinking/no-think controls;
+- non-streaming and streaming response shapes for reasoning spans, parsed tool
+  calls, parallel tool-call indexes, structured-output validation, and final
+  `finish_details`;
+- strict failure cases for missing required tools, wrong tool names, malformed
+  tool-call blocks, schema violations, `tool_choice="none"`, response-format
+  violations, length truncation, deadline/cancel errors, and unsupported fields;
+- local-agent and pi config validation against `/v1/hipengine/capabilities`, so
+  clients do not advertise thinking/tool features the server cannot honor;
+- opt-in replay artifacts for failed HTTP requests and normal strict
+  result-validation failures, with prompt/tool-result redaction verified;
+- sampler/MTP compatibility guards for every processor field that changes token
+  selection or post-accept behavior.
+
+Current code reality:
+
+- `tests/test_server_api.py`, `tests/test_agentic_server_conformance.py`,
+  `tests/test_agentic_harness_traces.py`, and `tests/test_local_agent_config.py`
+  cover the current matrix with fake engines and checked-in golden traces.
+- These tests prove the server contract and diagnostics; they do not prove a
+  particular live model will reliably choose the right tool without future
+  decode-time grammar/schema constraints.
+
 ## Core primitives to add
 
 These primitives are referenced throughout the punchlist. Build them once and
@@ -1831,10 +1863,15 @@ Current code reality:
   `HIPENGINE_REPLAY_DIR`; no artifact is emitted by default.
 - Artifacts use `schema="hipengine.replay.v1"` and include method/path,
   redacted request JSON, prompt/tool-result hashes, served model id, requested
-  sampler fields, seed fields, error metadata, finish details when present,
-  completion/chat prompt token counts when an already-loaded engine can count
-  them safely, explicit unavailable reasons otherwise, and a compact capability
-  snapshot with current sampler/MTP compatibility plus cache/session support.
+  sampler fields, seed fields, error or agentic result-validation metadata,
+  finish details when present, completion/chat prompt token counts when an
+  already-loaded engine can count them safely, explicit unavailable reasons
+  otherwise, and a compact capability snapshot with current sampler/MTP
+  compatibility plus cache/session support.
+- Strict tool and structured-output result-validation failures that return
+  normal HTTP 200 responses also write replay artifacts when replay is enabled;
+  the artifact stores the failure `finish_details` and affected choice indexes,
+  not generated assistant text.
 - `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
   and replaces request strings with SHA-256/length metadata. The explicit
   `none` mode stores raw strings for local debugging only.

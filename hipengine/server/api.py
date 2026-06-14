@@ -59,6 +59,13 @@ _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
+_AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
+    {
+        "invalid_tool_call",
+        "schema_violation",
+        "tool_required_not_satisfied",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -263,31 +270,100 @@ def _error_payload(
 async def _maybe_write_replay_artifact(
     config: ServerConfig,
     request: Request,
-    error_payload: Mapping[str, Any],
+    error_payload: Mapping[str, Any] | None,
     *,
     engine: Any | None = None,
+    result_payload: Mapping[str, Any] | None = None,
 ) -> None:
     if not config.replay_dir:
         return
     try:
         body_bytes = await request.body()
-        artifact = _build_replay_artifact(config, request, error_payload, body_bytes, engine=engine)
+        artifact = _build_replay_artifact(
+            config,
+            request,
+            error_payload,
+            body_bytes,
+            engine=engine,
+            result_payload=result_payload,
+        )
         _write_replay_artifact(Path(config.replay_dir), artifact)
     except Exception as exc:  # pragma: no cover - best-effort diagnostic path
         _LOGGER.warning("failed to write replay artifact: %s", exc)
 
 
+async def _maybe_write_agentic_result_replay_artifact(
+    config: ServerConfig,
+    request: Request,
+    response_payload: Mapping[str, Any],
+    *,
+    engine: Any | None = None,
+) -> None:
+    if not config.replay_dir:
+        return
+    result_payload = _agentic_result_replay_payload(response_payload)
+    if result_payload is None:
+        return
+    await _maybe_write_replay_artifact(
+        config,
+        request,
+        None,
+        engine=engine,
+        result_payload=result_payload,
+    )
+
+
+def _agentic_result_replay_payload(response_payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    choices = response_payload.get("choices")
+    if not isinstance(choices, Sequence) or isinstance(choices, (str, bytes, bytearray)):
+        return None
+    failed_choices: list[dict[str, Any]] = []
+    first_details: dict[str, Any] | None = None
+    for choice in choices:
+        if not isinstance(choice, Mapping):
+            continue
+        finish_details = choice.get("finish_details")
+        if not isinstance(finish_details, Mapping):
+            continue
+        reason = finish_details.get("reason")
+        if reason not in _AGENTIC_REPLAY_FAILURE_REASONS:
+            continue
+        details = dict(finish_details)
+        if first_details is None:
+            first_details = details
+        failed_choices.append(
+            {
+                "index": choice.get("index"),
+                "finish_reason": choice.get("finish_reason"),
+                "finish_details": details,
+            }
+        )
+    if not failed_choices or first_details is None:
+        return None
+    return {
+        "type": "agentic_result_validation",
+        "finish_details": first_details,
+        "choices": failed_choices,
+    }
+
+
 def _build_replay_artifact(
     config: ServerConfig,
     request: Request,
-    error_payload: Mapping[str, Any],
+    error_payload: Mapping[str, Any] | None,
     body_bytes: bytes,
     *,
     engine: Any | None = None,
+    result_payload: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     body_json = _decode_replay_body(body_bytes)
     redaction = _replay_redaction_mode(config.replay_redaction)
-    return {
+    finish_details = None
+    if error_payload is not None:
+        finish_details = error_payload.get("finish_details")
+    if result_payload is not None and result_payload.get("finish_details") is not None:
+        finish_details = result_payload.get("finish_details")
+    artifact = {
         "schema": "hipengine.replay.v1",
         "created": int(time.time()),
         "redaction": {
@@ -309,15 +385,22 @@ def _build_replay_artifact(
         "sampling": _replay_sampling_payload(body_json),
         "seeds": _replay_seed_payload(body_json),
         "token_counts": _replay_token_counts(body_json, engine, config),
-        "finish_details": error_payload.get("finish_details"),
-        "error": {
-            "type": error_payload.get("type"),
-            "code": error_payload.get("code"),
-            "param": error_payload.get("param"),
-            "hipengine": error_payload.get("hipengine"),
-        },
+        "finish_details": finish_details,
+        "error": (
+            None
+            if error_payload is None
+            else {
+                "type": error_payload.get("type"),
+                "code": error_payload.get("code"),
+                "param": error_payload.get("param"),
+                "hipengine": error_payload.get("hipengine"),
+            }
+        ),
         "capabilities": _replay_capability_snapshot(config),
     }
+    if result_payload is not None:
+        artifact["result"] = dict(result_payload)
+    return artifact
 
 
 def _write_replay_artifact(directory: Path, artifact: Mapping[str, Any]) -> Path:
@@ -2569,6 +2652,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "choices": choices,
             "usage": batch.usage,
         }
+        await _maybe_write_agentic_result_replay_artifact(
+            config,
+            raw_request,
+            response,
+            engine=getattr(app.state, "hipengine_llm", None),
+        )
         if request.stream:
             stream_started_at = time.perf_counter()
             return StreamingResponse(
@@ -2612,7 +2701,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 else stream_chat_completion
             )
             return StreamingResponse(
-                streamer(prompt, request, control),
+                streamer(prompt, request, control, raw_request),
                 media_type="text/event-stream",
             )
         n = _request_n(request)
@@ -2687,12 +2776,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "choices": choices,
             "usage": batch.usage,
         }
+        await _maybe_write_agentic_result_replay_artifact(
+            config,
+            raw_request,
+            response,
+            engine=getattr(app.state, "hipengine_llm", None),
+        )
         return response
 
     async def stream_chat_completion_many(
         prompt: str,
         request: ChatCompletionRequest,
         control: _RequestControl,
+        raw_request: Request,
     ) -> AsyncIterator[str]:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
@@ -2739,6 +2835,29 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason_override = "stop"
                 else:
                     finish_reason_override = None
+                finish_details = _chat_finish_details_payload(
+                    detail,
+                    finish_reason,
+                    text,
+                    reason_override=finish_reason_override,
+                    cache_action=_session_cache_action(request),
+                    parsed=parsed,
+                    token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
+                )
+                await _maybe_write_agentic_result_replay_artifact(
+                    config,
+                    raw_request,
+                    {
+                        "choices": [
+                            {
+                                "index": index,
+                                "finish_reason": finish_reason,
+                                "finish_details": finish_details,
+                            }
+                        ]
+                    },
+                    engine=getattr(app.state, "hipengine_llm", None),
+                )
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
                 yield _chat_stream_role(
                     response_id,
@@ -2756,15 +2875,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_reason,
                     index=index,
                     logprobs=logprobs,
-                    finish_details=_chat_finish_details_payload(
-                        detail,
-                        finish_reason,
-                        text,
-                        reason_override=finish_reason_override,
-                        cache_action=_session_cache_action(request),
-                        parsed=parsed,
-                        token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
-                    ),
+                    finish_details=finish_details,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                 ):
@@ -2825,6 +2936,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompt: str,
         request: ChatCompletionRequest,
         control: _RequestControl,
+        raw_request: Request,
     ) -> AsyncIterator[str]:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
@@ -3084,21 +3196,36 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             tool_validation = _validate_chat_tool_result(request, parsed, text)
             parsed = tool_validation.parsed
             stream_finish_reason = "stop" if tool_validation.failed else "tool_calls" if parsed.tool_calls else finish_reason
+            finish_details = _chat_finish_details_payload(
+                None,
+                stream_finish_reason,
+                text,
+                reason_override=tool_validation.failure_reason if tool_validation.failed else None,
+                cache_action=cache_action,
+                parsed=parsed,
+                token_counter=getattr(engine, "count_tokens", None),
+            )
+            await _maybe_write_agentic_result_replay_artifact(
+                config,
+                raw_request,
+                {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "finish_reason": stream_finish_reason,
+                            "finish_details": finish_details,
+                        }
+                    ]
+                },
+                engine=engine,
+            )
             for event in _chat_stream_parsed(
                 response_id,
                 created,
                 config.model_id,
                 parsed,
                 stream_finish_reason,
-                finish_details=_chat_finish_details_payload(
-                    None,
-                    stream_finish_reason,
-                    text,
-                    reason_override=tool_validation.failure_reason if tool_validation.failed else None,
-                    cache_action=cache_action,
-                    parsed=parsed,
-                    token_counter=getattr(engine, "count_tokens", None),
-                ),
+                finish_details=finish_details,
                 done_tokens=final_tokens,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
