@@ -266,12 +266,16 @@ shared or sensitive deployments.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
-  requests stay on each engine's graph/argmax fast path.
+  requests stay on each engine's graph/argmax fast path. PARO c=1 also has a
+  default-off native GPU sampler route for supported sampled requests behind
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`, and
+  unsupported native filter combinations fall back to the host path.
 - Non-text chat content parts are rejected.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
   available, one-token stops lower to runtime `stop_token_ids` and multi-token
-  stops lower to suffix-matched `stop_token_sequences` for early host-path
-  termination. Native c>N/GPU paths still need to consume that metadata.
+  stops lower to suffix-matched `stop_token_sequences` for early runtime
+  termination. PARO c=1 native sampling checks the same metadata after token
+  selection; native c>N and GGUF GPU paths still need parity.
 - Tool calling uses Qwen-style prompt markup and output parsing; malformed
   `<tool_call>` JSON is treated as ordinary assistant text.
 - Unknown top-level request parameters are rejected instead of silently ignored.

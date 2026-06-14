@@ -38,6 +38,12 @@ Already available or recently added:
 - Eager model warmup before server readiness.
 - Host-backed functional sampling for PARO/GGUF c=1 and serialized multi-row
   requests; greedy-equivalent requests stay on the graph/argmax fast path.
+- A default-off PARO c=1 native GPU sampler route exists for supported sampled
+  requests via `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; it covers logit
+  bias/history-penalty processors, full-vocab temperature sampling, bounded
+  `top_k <= 64`, exact full-vocab `top_p`/`min_p`, selected-token logprobs, and
+  post-accept token stops. It is not performance-promoted and does not cover
+  c>N, GGUF, or `top_logprobs`.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, stop token ids,
   stop token sequences, `seed`, and per-row seeds.
@@ -48,8 +54,9 @@ Already available or recently added:
   a buffered detailed-generation path rather than live token streaming.
 - Tokenizable OpenAI `stop` strings lower to `stop_token_ids` or
   `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
-  while responses still use post-trimming for consistency. Native c>N/GPU paths
-  still need to consume the same stop metadata before claiming parity.
+  while responses still use post-trimming for consistency. PARO c=1 native
+  sampling checks the same stop metadata after token selection; native c>N and
+  GGUF GPU paths still need parity.
 - Request deadlines are exposed as per-request `timeout_ms` and server default
   `--request-timeout-ms` / `HIPENGINE_REQUEST_TIMEOUT_MS`. Buffered requests
   return HTTP 408 with structured deadline finish details; live streams emit an
@@ -222,8 +229,11 @@ Current code reality:
 - `PerRowSamplingParams` / `SamplerParamsBlock` already carry per-row
   `logit_bias`, penalties, stops, seeds, and temperature fields for scheduler
   integration.
-- Standalone GPU sampler-family processor kernels exist for logit bias and
-  penalties, but they are not routed into normal PARO/GGUF generation yet.
+- Standalone GPU sampler-family kernels exist for logit bias, penalties,
+  full-vocab temperature sampling, bounded `top_k <= 64`, and exact full-vocab
+  `top_p`/`min_p`. Supported PARO c=1 sampled requests can opt into this route
+  with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`, and
+  performance promotion remain future work.
 
 Required pre-selection processors, in order:
 
@@ -248,7 +258,7 @@ Required post-accept state updates:
 Implementation notes:
 
 - Keep a pure, testable planner that decides whether processors require
-  `GREEDY_FAST`, `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or a future
+  `GREEDY_FAST`, `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or an opt-in
   `GPU_SAMPLE` path.
 - Greedy-equivalent requests with no active processors must still take the graph
   fast path.
@@ -1168,26 +1178,38 @@ Exit gates:
 
 #### P4.2 GPU sampler kernels
 
-Implement:
+Current state:
 
-- native row-wise kernels for processors, top-k/temperature softmax, RNG, and
-  sample selection;
-- counter-based RNG keyed by row seed and step index;
+- standalone GPU sampler kernels cover row-wise processor application,
+  full-vocab temperature sampling, bounded `top_k <= 64`, exact full-vocab
+  `top_p`/`min_p`, counter-based row/step RNG, selected-token logprob output,
+  and small-vocab GPU1 CPU-reference fixtures;
+- supported PARO c=1 sampled requests can route through those kernels with
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`;
+- c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
+  default-path promotion remain unimplemented.
+
+Remaining implementation:
+
 - metadata proving full-vocab D2H logits copies are avoided on promoted paths.
 
 Exit gates:
 
-- CPU-reference fixtures pass on small vocab;
-- GPU1 deterministic smoke passes;
+- CPU-reference fixtures pass on small vocab for any newly promoted shape;
+- GPU1 deterministic smoke passes for any newly promoted shape;
 - rocprof evidence is recorded before any performance claim.
 
 #### P4.3 Exact GPU top-p
 
-Implement or explicitly defer:
+Current state: a standalone correctness-first exact full-vocab GPU
+`top_p`/`min_p` sampler exists and the opt-in PARO c=1 native route can dispatch
+supported `top_k=0` top-p requests. It is not performance-promoted.
 
-- full-vocab nucleus retain-set computation without weakening retain-one and
-  tie-break semantics;
-- boundary fixtures for equal probabilities and cumulative-probability edges.
+Remaining implementation:
+
+- performance-oriented full-vocab nucleus selection without weakening
+  retain-one and tie-break semantics;
+- c>N/GGUF routing and fallback metadata for unsupported native shapes.
 
 Exit gates:
 

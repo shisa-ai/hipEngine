@@ -82,6 +82,27 @@ def test_sampler_plan_uses_gpu_sample_for_native_supported_request() -> None:
     assert plan.native_gpu_available is True
 
 
+def test_sampler_plan_allows_native_gpu_sample_with_supported_processors() -> None:
+    params = _params(
+        temperature=0.7,
+        top_k=4,
+        logit_bias=((1, 2.0),),
+        repetition_penalty=1.2,
+        presence_penalty=0.25,
+        frequency_penalty=0.1,
+    )
+    plan = plan_sampler(params, native_gpu_available=True)
+
+    assert supports_native_gpu_sampling(params) is True
+    assert plan.mode is SamplingMode.GPU_SAMPLE
+    assert plan.active_processors == (
+        "logit_bias",
+        "repetition_penalty",
+        "presence_penalty",
+        "frequency_penalty",
+    )
+
+
 def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.0)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=65)) is False

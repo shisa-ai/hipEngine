@@ -87207,3 +87207,24 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `50 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.
+
+## 2026-06-14 - AGENTIC sampler route reality check
+
+Audited `docs/AGENTIC.md` and `docs/API.md` against the current sampler files,
+including `hipengine/generation/sampling.py`, the PARO resident native sampler
+path, and `tests/test_gpu_sampler_kernel.py`. The older wording treated native
+GPU sampling as standalone-only, but the current code has a default-off PARO c=1
+route behind `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` for supported sampled requests.
+It applies logit-bias/history-penalty processors, supports full-vocab
+temperature, bounded `top_k <= 64`, exact full-vocab `top_p`/`min_p`,
+selected-token logprobs, and post-accept token stops; c>N, GGUF,
+`top_logprobs`, performance promotion, and unsupported native filter
+combinations still remain outside that route.
+
+Updated the docs to match the implementation and added a pure sampler planner
+test pinning the native-GPU-with-processors contract.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py tests/test_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `18 passed`.
+- `git diff --check -- docs/AGENTIC.md docs/API.md tests/test_sampling.py`.
