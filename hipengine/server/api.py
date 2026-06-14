@@ -2680,6 +2680,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
         stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        routing_metadata = (
+            _routing_response_metadata(
+                config,
+                requested_model=request.model,
+                engine=getattr(app.state, "hipengine_llm", None),
+            )
+            if include_hipengine
+            else None
+        )
         full_text: list[str] = []
         try:
             _validate_generation_request(config, request)
@@ -2699,6 +2708,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     return engine, sampling
 
             engine, sampling = await _await_with_request_control(prepare_stream(), control)
+            if include_hipengine:
+                routing_metadata = _routing_response_metadata(
+                    config,
+                    requested_model=request.model,
+                    engine=engine,
+                )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
             async for token in _iterate_with_request_control(generation_batcher.stream((prompt,), sampling), control):
                 text = str(token)
@@ -2714,6 +2729,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     tokens=token_payload,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
+                    routing=routing_metadata,
                 )
         except GenerationDeadlineExceeded as exc:
             openai_exc = _deadline_exceeded_error(exc.finish_details)
@@ -2737,6 +2753,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=openai_exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2762,6 +2779,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=openai_exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2786,6 +2804,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2809,6 +2828,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type="invalid_request_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2832,6 +2852,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type="invalid_request_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2854,6 +2875,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="generation_failed",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -2881,6 +2903,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             tokens=final_tokens,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
+            routing=routing_metadata,
         )
         if _stream_include_usage(request):
             yield _completion_stream_usage(
@@ -2890,6 +2913,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 usage,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
         yield "data: [DONE]\n\n"
 
@@ -3169,6 +3193,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "choice_finish_details": True,
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
                     "choice_decode_state": tokenizer_caps["count_tokens"],
+                    "routing": "stream_options.include_hipengine",
                 },
                 "choice_telemetry": _choice_telemetry_capability(),
                 "structured_outputs": _structured_outputs_capability(),
@@ -3498,6 +3523,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     usage=batch.usage if _stream_include_usage(request) else None,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
+                    routing=_routing_response_metadata(
+                        config,
+                        requested_model=request.model,
+                        engine=getattr(app.state, "hipengine_llm", None),
+                    )
+                    if include_hipengine
+                    else None,
                 ),
                 media_type="text/event-stream",
             )
@@ -3678,9 +3710,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
         stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        routing_metadata = (
+            _routing_response_metadata(
+                config,
+                requested_model=request.model,
+                engine=getattr(app.state, "hipengine_llm", None),
+            )
+            if include_hipengine
+            else None
+        )
         try:
             n = _request_n(request)
             batch = await generate_with_request_control(tuple(prompt for _ in range(n)), request, control)
+            if include_hipengine:
+                routing_metadata = _routing_response_metadata(
+                    config,
+                    requested_model=request.model,
+                    engine=getattr(app.state, "hipengine_llm", None),
+                )
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
@@ -3750,6 +3797,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     index=index,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
+                    routing=routing_metadata,
                 )
                 for event in _chat_stream_parsed(
                     response_id,
@@ -3762,6 +3810,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_details=finish_details,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
+                    routing=routing_metadata,
                 ):
                     yield event
             if _stream_include_usage(request):
@@ -3772,6 +3821,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     batch.usage,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
+                    routing=routing_metadata,
                 )
         except OpenAIHTTPError as exc:
             _log_stream_failure(
@@ -3793,6 +3843,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
@@ -3813,6 +3864,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="generation_failed",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
         yield "data: [DONE]\n\n"
 
@@ -3826,6 +3878,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
         stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        routing_metadata = (
+            _routing_response_metadata(
+                config,
+                requested_model=request.model,
+                engine=getattr(app.state, "hipengine_llm", None),
+            )
+            if include_hipengine
+            else None
+        )
         try:
             _validate_generation_request(config, request)
         except OpenAIHTTPError as exc:
@@ -3849,6 +3910,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -3872,6 +3934,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     return engine, sampling
 
             engine, sampling = await _await_with_request_control(prepare_stream(), control)
+            if include_hipengine:
+                routing_metadata = _routing_response_metadata(
+                    config,
+                    requested_model=request.model,
+                    engine=engine,
+                )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
             yield _chat_stream_role(
                 response_id,
@@ -3879,6 +3947,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.model_id,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             async for token in _iterate_with_request_control(generation_batcher.stream((prompt,), sampling), control):
                 text = str(token)
@@ -3901,6 +3970,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         tokens=token_payload,
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
+                        routing=routing_metadata,
                     )
             if not buffer_tool_output:
                 for field, chunk in splitter.finish():
@@ -3917,6 +3987,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         tokens=token_payload,
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
+                        routing=routing_metadata,
                     )
         except GenerationDeadlineExceeded as exc:
             openai_exc = _deadline_exceeded_error(exc.finish_details)
@@ -3940,6 +4011,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=openai_exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -3965,6 +4037,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=openai_exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -3989,6 +4062,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=exc.finish_details,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -4012,6 +4086,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type="invalid_request_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -4035,6 +4110,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type="invalid_request_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -4057,6 +4133,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="generation_failed",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
             yield "data: [DONE]\n\n"
             return
@@ -4113,6 +4190,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 done_tokens=final_tokens,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             ):
                 yield event
         else:
@@ -4129,6 +4207,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 tokens=final_tokens,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
         if _stream_include_usage(request):
             yield _chat_stream_usage(
@@ -4138,6 +4217,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 usage,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing_metadata,
             )
         yield "data: [DONE]\n\n"
 
@@ -7736,6 +7816,7 @@ def _stream_hipengine_payload(
     usage: Mapping[str, int] | None = None,
     tokens: Mapping[str, int] | None = None,
     token_event: bool = False,
+    routing: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"metadata_version": 1, "event": str(event)}
     if stream_started_at is not None:
@@ -7752,6 +7833,8 @@ def _stream_hipengine_payload(
             }
     if usage is not None:
         payload["usage"] = dict(usage)
+    if routing is not None:
+        payload["routing"] = dict(routing)
     return payload
 
 
@@ -7800,6 +7883,7 @@ def _attach_stream_hipengine(
     usage: Mapping[str, int] | None = None,
     tokens: Mapping[str, int] | None = None,
     token_event: bool = False,
+    routing: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if include_hipengine:
         payload["hipengine"] = _stream_hipengine_payload(
@@ -7808,6 +7892,7 @@ def _attach_stream_hipengine(
             usage=usage,
             tokens=tokens,
             token_event=token_event,
+            routing=routing,
         )
     return payload
 
@@ -7823,6 +7908,7 @@ def _completion_stream_delta(
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     choice = {
         "text": text,
@@ -7846,6 +7932,7 @@ def _completion_stream_delta(
             stream_started_at=stream_started_at,
             tokens=tokens,
             token_event=bool(text),
+            routing=routing,
         )
     )
 
@@ -7861,6 +7948,7 @@ def _completion_stream_done(
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -7889,6 +7977,7 @@ def _completion_stream_done(
             event="done",
             stream_started_at=stream_started_at,
             tokens=tokens,
+            routing=routing,
         )
     )
 
@@ -7901,6 +7990,7 @@ def _completion_stream_usage(
     *,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -7916,6 +8006,7 @@ def _completion_stream_usage(
             event="usage",
             stream_started_at=stream_started_at,
             usage=usage,
+            routing=routing,
         )
     )
 
@@ -7933,6 +8024,7 @@ def _completion_stream_error(
     finish_details: Mapping[str, Any] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     choice: dict[str, Any] = {
         "text": "",
@@ -7969,6 +8061,7 @@ def _completion_stream_error(
             include_hipengine=include_hipengine,
             event="error",
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     )
 
@@ -7983,6 +8076,7 @@ def _completion_stream(
     usage: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     for index, text in enumerate(texts):
@@ -7996,6 +8090,7 @@ def _completion_stream(
             logprobs=choice.get("logprobs"),
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     final_tokens = (
         _stream_usage_token_payload(usage, None)
@@ -8013,6 +8108,7 @@ def _completion_stream(
             tokens=final_tokens,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     if usage is not None:
         yield _completion_stream_usage(
@@ -8022,6 +8118,7 @@ def _completion_stream(
             usage,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     yield "data: [DONE]\n\n"
 
@@ -8057,6 +8154,7 @@ def _chat_stream_role(
     index: int = 0,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -8070,6 +8168,7 @@ def _chat_stream_role(
             include_hipengine=include_hipengine,
             event="role",
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     )
 
@@ -8086,6 +8185,7 @@ def _chat_stream_delta(
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
@@ -8107,6 +8207,7 @@ def _chat_stream_delta(
             stream_started_at=stream_started_at,
             tokens=tokens,
             token_event=bool(text),
+            routing=routing,
         )
     )
 
@@ -8124,6 +8225,7 @@ def _chat_stream_tool_call(
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     function: dict[str, Any] = {"arguments": call.arguments if argument_chunk is None else str(argument_chunk)}
     if include_name:
@@ -8158,6 +8260,7 @@ def _chat_stream_tool_call(
             stream_started_at=stream_started_at,
             tokens=tokens,
             token_event=True,
+            routing=routing,
         )
     )
 
@@ -8185,6 +8288,7 @@ def _chat_stream_parsed(
     done_tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
@@ -8197,6 +8301,7 @@ def _chat_stream_parsed(
             index=index,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     if split.content:
         yield _chat_stream_delta(
@@ -8209,6 +8314,7 @@ def _chat_stream_parsed(
             logprobs=logprobs,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     for tool_index, call in enumerate(parsed.tool_calls):
         for chunk_index, argument_chunk in enumerate(_tool_call_argument_stream_chunks(call.arguments)):
@@ -8223,6 +8329,7 @@ def _chat_stream_parsed(
                 include_name=chunk_index == 0,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
+                routing=routing,
             )
     done_reason = "tool_calls" if parsed.tool_calls else finish_reason
     yield _chat_stream_done(
@@ -8235,6 +8342,7 @@ def _chat_stream_parsed(
         tokens=done_tokens,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
+        routing=routing,
     )
 
 
@@ -8249,6 +8357,7 @@ def _chat_stream_done(
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -8276,6 +8385,7 @@ def _chat_stream_done(
             event="done",
             stream_started_at=stream_started_at,
             tokens=tokens,
+            routing=routing,
         )
     )
 
@@ -8288,6 +8398,7 @@ def _chat_stream_usage(
     *,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -8303,6 +8414,7 @@ def _chat_stream_usage(
             event="usage",
             stream_started_at=stream_started_at,
             usage=usage,
+            routing=routing,
         )
     )
 
@@ -8320,6 +8432,7 @@ def _chat_stream_error(
     finish_details: Mapping[str, Any] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> str:
     choice: dict[str, Any] = {
         "index": 0,
@@ -8355,6 +8468,7 @@ def _chat_stream_error(
             include_hipengine=include_hipengine,
             event="error",
             stream_started_at=stream_started_at,
+            routing=routing,
         )
     )
 

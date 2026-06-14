@@ -557,6 +557,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "choice_finish_details": True,
         "choice_token_accounting": True,
         "choice_decode_state": True,
+        "routing": "stream_options.include_hipengine",
     }
     assert body["features"]["choice_telemetry"] == {
         "non_streaming": True,
@@ -5911,6 +5912,7 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     assert payloads[0]["hipengine"]["event"] == "role"
     assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
     assert "ttft_ms" not in payloads[0]["hipengine"]["timing"]
+    assert all(payload["hipengine"]["routing"] == _routing_metadata() for payload in payloads)
 
     reasoning = next(payload for payload in payloads if payload.get("choices") and "reasoning_content" in payload["choices"][0]["delta"])
     assert reasoning["hipengine"]["event"] == "delta"
@@ -6035,6 +6037,7 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
     assert [payload["hipengine"]["event"] for payload in payloads] == ["delta", "delta", "done", "usage"]
+    assert all(payload["hipengine"]["routing"] == _routing_metadata() for payload in payloads)
     assert isinstance(payloads[0]["hipengine"]["timing"]["ttft_ms"], float)
     assert payloads[0]["choices"][0]["hipengine"] == {
         "phase": "answer",

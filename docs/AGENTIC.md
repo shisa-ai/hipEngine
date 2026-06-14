@@ -895,7 +895,8 @@ Current code reality:
   done/usage chunks also include server-measured `decode_elapsed_ms` and
   `decode_tokens_per_second` when generated-token counts are available. Choice
   chunks include `choices[].hipengine.phase` for answer/reasoning/tool/done
-  chunks.
+  chunks. Top-level opt-in SSE metadata also includes `hipengine.routing` for
+  the current single-model exact route.
 - When tokenizer/counting hooks are available, live completion/chat deltas also
   include `choices[].hipengine.tokens` with per-chunk `delta_tokens`,
   cumulative `streamed_tokens`, and best-effort server-side phase counters;
@@ -2124,6 +2125,8 @@ Current code reality:
   responses include `hipengine.routing` metadata with the requested model,
   served model, single-model exact policy, loaded model count,
   `multiple_models=false`, and `fallback_used=false`.
+- Streaming responses include the same routing metadata in top-level
+  `hipengine.routing` when `stream_options.include_hipengine=true`.
 - Multiple resident models, per-model VRAM admission, unload/eviction, and
   cross-model request targeting remain future routing work.
 

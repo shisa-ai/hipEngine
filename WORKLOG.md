@@ -89730,3 +89730,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_completions_endpoint_calls_llm_and_applies_stop tests/test_server_api.py::test_chat_completion_renders_messages_to_prompt -q` -> `2 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC streaming routing metadata
+
+Extended opt-in SSE `stream_options.include_hipengine=true` metadata with the
+same single-model exact `hipengine.routing` payload used by non-streaming
+responses. Completion streams, chat streams, buffered `n>1` streams, usage,
+done, and error events now carry consistent route metadata without changing
+default OpenAI-compatible streaming payloads.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

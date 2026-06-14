@@ -157,7 +157,9 @@ extension metadata on SSE payloads. Each payload gets a top-level `hipengine`
 object with `metadata_version`, `event`, and `timing.elapsed_ms`. After the
 first generated chunk, timing also includes server-measured `ttft_ms`; final
 done/usage payloads include `decode_elapsed_ms` and `decode_tokens_per_second`
-when generated-token counts are available. Choice chunks also get
+when generated-token counts are available. The top-level `hipengine` object also
+includes `routing` metadata for the current single-model exact route. Choice
+chunks also get
 `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, or `done`) when a
 phase is known. When the served engine exposes `count_tokens`, live stream
 deltas also include `choices[].hipengine.tokens` with
