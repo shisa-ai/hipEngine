@@ -88025,3 +88025,19 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `6 passed`.
 - `python3 -m ruff check tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC tool/reasoning regression coverage
+
+Added focused server regressions for pi-shaped agentic tool output: reasoning
+content adjacent to Qwen `<tool_call>` blocks is preserved while tool calls are
+returned as OpenAI `tool_calls`, and doubled `<tool_call>` openers are rejected
+under strict tool validation without leaking raw tags in non-streaming or
+streaming responses. These tests clarify that valid chat tool parsing works and
+that raw tag leakage is expected only when clients use compatibility/non-strict
+paths that treat malformed tool markup as assistant text.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_chat_completion_preserves_reasoning_with_openai_tool_call tests/test_server_api.py::test_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_chat_completion_required_tool_reports_missing_call tests/test_server_api.py::test_chat_completion_tool_choice_none_rejects_tool_call tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_reasoning_with_tool_call tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure -q` -> `9 passed`.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check` -> clean.
