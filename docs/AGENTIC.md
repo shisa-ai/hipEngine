@@ -564,7 +564,8 @@ than a plain tone hint: it accepts these control surfaces only to render
 prompt/template hints or pre-close Qwen thinking. `reasoning_effort`
 `minimal`/`low`/`medium`/`high`/`xhigh`/`max` maps to the default hard-cap,
 answer-reserve, and soft-close-window table above, clamped to request
-`max_tokens` or the configured chat default when bounded. Numeric
+`max_tokens`, the configured chat default when bounded, and remaining admitted
+context when tokenizer/context metadata is available. Numeric
 `thinking_token_budget`, `chat_template_kwargs.thinking_budget`,
 `thinking.budget_tokens`, and `thinking.max_tokens` aliases normalize to the
 effective hard-cap hint; string `thinking_budget`/`budget_tokens` values still
@@ -955,11 +956,11 @@ Current code reality:
 
 - accepted and tested: explicit budget fields, compatibility aliases, numeric
   alias normalization, effort-to-default budget hints clamped to request
-  `max_tokens` or the bounded chat default, prompt-hint rendering, and
-  parser-marker validation for `hard_close_sequence`;
-- not implemented: remaining-context clamp, tokenizer lowering, dynamic
-  soft-close bias, hard forced close, manual force hooks, EOS suppression, and
-  per-phase finish metadata.
+  `max_tokens`, the bounded chat default, and remaining admitted context,
+  prompt-hint rendering, and parser-marker validation for
+  `hard_close_sequence`;
+- not implemented: tokenizer lowering, dynamic soft-close bias, hard forced
+  close, manual force hooks, EOS suppression, and per-phase finish metadata.
 
 Exit gates:
 

@@ -435,6 +435,7 @@ _THINKING_EFFORT_DEFAULTS: dict[str, dict[str, int]] = {
     "xhigh": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
     "max": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
 }
+_THINKING_BUDGET_UNSET = object()
 
 
 def _thinking_effort_defaults_capability() -> dict[str, dict[str, int]]:
@@ -502,7 +503,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "token_budget": False,
                 "token_budget_enforced": False,
                 "effort_defaults": _thinking_effort_defaults_capability(),
-                "effort_default_clamp": "request_max_tokens_or_chat_default",
+                "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                 "hard_close_validation": True,
             },
             "request_timeouts": {"timeout_ms": True},
@@ -1443,6 +1444,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             seed=request.seed,
         )
 
+    def chat_prompt_for_request(request: ChatCompletionRequest, engine: Any) -> str:
+        max_context = effective_max_context_tokens(engine)
+        prompt, _thinking = _render_chat_prompt_for_request(
+            request,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+            engine=engine,
+            max_context_tokens=max_context,
+        )
+        return prompt
+
     async def generate(
         prompts: Sequence[str],
         request: CompletionRequest | ChatCompletionRequest,
@@ -1818,7 +1829,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "token_budget": False,
                     "token_budget_enforced": False,
                     "effort_defaults": _thinking_effort_defaults_capability(),
-                    "effort_default_clamp": "request_max_tokens_or_chat_default",
+                    "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                     "hard_close_validation": True,
                     "hard_close_marker": _THINKING_CLOSE_MARKER,
                 },
@@ -1935,7 +1946,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.post("/v1/hipengine/count_tokens")
     async def count_tokens(request: TokenDiagnosticRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = get_llm()
-        text, input_type = _diagnostic_text_from_request(config, request)
+        max_context = effective_max_context_tokens(engine)
+        text, input_type = _diagnostic_text_from_request(
+            config,
+            request,
+            engine=engine,
+            max_context_tokens=max_context,
+        )
         token_count = await run_in_threadpool(_count_tokens_strict, engine, text)
         return {
             "object": "hipengine.count_tokens",
@@ -1947,9 +1964,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.post("/v1/hipengine/fit_context")
     async def fit_context(request: FitContextRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = get_llm()
-        text, input_type = _diagnostic_text_from_request(config, request)
-        prompt_tokens = await run_in_threadpool(_count_tokens_strict, engine, text)
         max_context = effective_max_context_tokens(engine)
+        text, input_type = _diagnostic_text_from_request(
+            config,
+            request,
+            engine=engine,
+            max_context_tokens=max_context,
+        )
+        prompt_tokens = await run_in_threadpool(_count_tokens_strict, engine, text)
         if request.max_tokens is not None:
             effective_max_tokens = max(0, int(request.max_tokens))
         elif input_type == "chat":
@@ -2071,18 +2093,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
         _validate_generation_request(config, request)
-        thinking = _thinking_control_from_request(
-            request,
-            chat_default_max_tokens=config.chat_default_max_tokens,
-        )
-        prompt = render_chat_prompt(
-            request.messages,
-            tools=request.tools,
-            tool_choice=request.tool_choice,
-            thinking=thinking,
-            response_format=request.response_format,
-        )
         control = _request_control(config, request, raw_request)
+
+        async def prepare_prompt() -> str:
+            async with session_lock:
+                engine = get_llm()
+                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                return chat_prompt_for_request(request, engine)
+
+        prompt = await _await_with_request_control(prepare_prompt(), control)
         if request.stream:
             streamer = (
                 stream_chat_completion_many
@@ -2713,6 +2732,7 @@ def _thinking_control_from_request(
     request: ChatCompletionRequest,
     *,
     chat_default_max_tokens: int | None = None,
+    generation_budget: Any = _THINKING_BUDGET_UNSET,
 ) -> _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
@@ -2835,13 +2855,14 @@ def _thinking_control_from_request(
     if _effort_disables_thinking(effort):
         enabled = False
     if enabled is not False and not _effort_disables_thinking(effort):
-        generation_budget = _thinking_generation_budget(
-            request,
-            chat_default_max_tokens=chat_default_max_tokens,
-        )
+        if generation_budget is _THINKING_BUDGET_UNSET:
+            generation_budget = _thinking_generation_budget(
+                request,
+                chat_default_max_tokens=chat_default_max_tokens,
+            )
         hard_think_cap, min_answer_tokens, soft_close_window = _apply_thinking_effort_defaults(
             effort,
-            generation_budget=generation_budget,
+            generation_budget=None if generation_budget is None else int(generation_budget),
             hard_think_cap=hard_think_cap,
             min_answer_tokens=min_answer_tokens,
             soft_close_window=soft_close_window,
@@ -2858,6 +2879,75 @@ def _thinking_control_from_request(
     )
     _validate_thinking_control(control)
     return control
+
+
+def _render_chat_prompt_for_request(
+    request: ChatCompletionRequest,
+    *,
+    chat_default_max_tokens: int | None,
+    engine: Any | None = None,
+    max_context_tokens: int | None = None,
+) -> tuple[str, _ThinkingControl]:
+    thinking = _thinking_control_from_request(
+        request,
+        chat_default_max_tokens=chat_default_max_tokens,
+    )
+    prompt = render_chat_prompt(
+        request.messages,
+        tools=request.tools,
+        tool_choice=request.tool_choice,
+        thinking=thinking,
+        response_format=request.response_format,
+    )
+    if engine is None:
+        return prompt, thinking
+
+    for _ in range(4):
+        generation_budget = _thinking_generation_budget_for_prompt(
+            request,
+            prompt,
+            engine,
+            max_context_tokens,
+            chat_default_max_tokens=chat_default_max_tokens,
+        )
+        adjusted = _thinking_control_from_request(
+            request,
+            chat_default_max_tokens=chat_default_max_tokens,
+            generation_budget=generation_budget,
+        )
+        adjusted_prompt = render_chat_prompt(
+            request.messages,
+            tools=request.tools,
+            tool_choice=request.tool_choice,
+            thinking=adjusted,
+            response_format=request.response_format,
+        )
+        if adjusted == thinking and adjusted_prompt == prompt:
+            return prompt, thinking
+        thinking = adjusted
+        prompt = adjusted_prompt
+    return prompt, thinking
+
+
+def _thinking_generation_budget_for_prompt(
+    request: ChatCompletionRequest,
+    prompt: str,
+    engine: Any,
+    max_context_tokens: int | None,
+    *,
+    chat_default_max_tokens: int | None,
+) -> int | None:
+    budget = _thinking_generation_budget(
+        request,
+        chat_default_max_tokens=chat_default_max_tokens,
+    )
+    remaining = _remaining_context_tokens((prompt,), engine, max_context_tokens)
+    if remaining is None:
+        return budget
+    remaining_budget = max(0, int(remaining))
+    if budget is None:
+        return remaining_budget
+    return min(max(0, int(budget)), remaining_budget)
 
 
 def _thinking_generation_budget(
@@ -3744,7 +3834,13 @@ def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnostic
     )
 
 
-def _diagnostic_text_from_request(config: ServerConfig, request: TokenDiagnosticRequest) -> tuple[str, str]:
+def _diagnostic_text_from_request(
+    config: ServerConfig,
+    request: TokenDiagnosticRequest,
+    *,
+    engine: Any | None = None,
+    max_context_tokens: int | None = None,
+) -> tuple[str, str]:
     has_text = request.text is not None
     has_messages = request.messages is not None
     if has_text == has_messages:
@@ -3757,19 +3853,13 @@ def _diagnostic_text_from_request(config: ServerConfig, request: TokenDiagnostic
     if has_text:
         return str(request.text), "text"
     chat_request = _chat_request_from_diagnostic(config, request)
-    thinking = _thinking_control_from_request(
+    prompt, _thinking = _render_chat_prompt_for_request(
         chat_request,
         chat_default_max_tokens=config.chat_default_max_tokens,
+        engine=engine,
+        max_context_tokens=max_context_tokens,
     )
-    return (
-        render_chat_prompt(
-            chat_request.messages,
-            tools=chat_request.tools,
-            tool_choice=chat_request.tool_choice,
-            thinking=thinking,
-        ),
-        "chat",
-    )
+    return prompt, "chat"
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

@@ -87661,3 +87661,21 @@ Validation:
 - `python3 -m py_compile tests/test_local_agent_config.py`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- tests/test_local_agent_config.py docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC thinking-effort remaining-context clamp
+
+Closed the P1.4 prompt-level clamp gap for Qwen thinking hints. Chat prompt
+rendering now prepares enough context metadata to compute remaining admitted
+context, stabilizes the rendered prompt/hint budget against that remaining
+budget, and uses the same clamped prompt for generation, `/count_tokens`, and
+`/fit_context` when tokenizer/context metadata is available. Capabilities now
+advertise the clamp as
+`request_max_tokens_chat_default_or_remaining_context`, and `docs/API.md` /
+`docs/AGENTIC.md` no longer list remaining-context clamping as missing.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_chat_completion_uses_bounded_default_max_tokens tests/test_server_api.py::test_chat_completion_auto_default_max_tokens_uses_remaining_context tests/test_server_api.py::test_chat_completion_clamps_reasoning_effort_defaults_to_generation_budget tests/test_server_api.py::test_chat_completion_clamps_reasoning_effort_defaults_to_remaining_context tests/test_server_api.py::test_chat_completion_clamps_explicit_thinking_budget_hints tests/test_local_agent_config.py -q` -> `12 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `92 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `13 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md`.

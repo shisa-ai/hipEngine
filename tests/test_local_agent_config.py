@@ -79,7 +79,7 @@ def _capabilities(**overrides):
                     "xhigh": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
                     "max": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
                 },
-                "effort_default_clamp": "request_max_tokens_or_chat_default",
+                "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
             },
             "request_timeouts": {"timeout_ms": True},
             "token_diagnostics": {

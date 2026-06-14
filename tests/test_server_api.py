@@ -277,7 +277,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "xhigh": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
             "max": {"hard_think_cap": 32768, "soft_close_window": 2048, "min_answer_tokens": 4096},
         },
-        "effort_default_clamp": "request_max_tokens_or_chat_default",
+        "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
         "hard_close_validation": True,
         "hard_close_marker": "</think>",
     }
@@ -1450,6 +1450,41 @@ def test_chat_completion_clamps_reasoning_effort_defaults_to_generation_budget()
     assert "close </think> before exceeding 50 hidden reasoning tokens" in prompt
     assert "reserve at least 50 tokens for the final answer or tool call" in prompt
     assert "begin closing during the final 50 hidden reasoning tokens" in prompt
+
+
+def test_chat_completion_clamps_reasoning_effort_defaults_to_remaining_context() -> None:
+    fake = FakeLLM(outputs=["reasoned answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            max_context_tokens=120,
+            chat_default_max_tokens=4096,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "debug"}],
+            "reasoning_effort": "medium",
+        },
+    )
+
+    assert response.status_code == 200
+    prompt, sampling = fake.calls[-1]
+    admitted_budget = int(sampling.max_tokens)
+    expected_reserved = admitted_budget // 2
+    expected_think_cap = admitted_budget - expected_reserved
+    assert admitted_budget < 4096
+    assert f"close </think> before exceeding {expected_think_cap} hidden reasoning tokens" in prompt[0]
+    assert f"reserve at least {expected_reserved} tokens for the final answer or tool call" in prompt[0]
+    assert f"begin closing during the final {expected_think_cap} hidden reasoning tokens" in prompt[0]
+    assert "4096 hidden reasoning tokens" not in prompt[0]
+    assert "1024 tokens for the final answer" not in prompt[0]
 
 
 def test_chat_completion_clamps_explicit_thinking_budget_hints() -> None:
