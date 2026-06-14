@@ -16817,66 +16817,57 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert scheduler.active_batch.slot_to_request == (None, None)
 
 
-def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling() -> None:
-    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4)
-    biased = scheduler.submit(
-        [10],
-        max_new_tokens=2,
-        sampling=PerRowSamplingParams(logit_bias={101: 5.0}),
-    )
-    stopped = scheduler.submit(
-        [20],
-        max_new_tokens=2,
-        sampling=PerRowSamplingParams(stop_tokens=(99,)),
-    )
-    suppressed = scheduler.submit(
-        [30],
-        max_new_tokens=2,
-        sampling=PerRowSamplingParams(suppress_tokens=(102,)),
-    )
+@pytest.mark.parametrize(
+    ("sampling", "expected_blocker"),
+    [
+        (PerRowSamplingParams(temperature=0.7), "temperature"),
+        (PerRowSamplingParams(logit_bias={101: 5.0}), "logit_bias"),
+        (PerRowSamplingParams(repetition_penalty=1.1), "repetition_penalty"),
+        (PerRowSamplingParams(presence_penalty=0.1), "presence_penalty"),
+        (PerRowSamplingParams(frequency_penalty=0.1), "frequency_penalty"),
+        (PerRowSamplingParams(suppress_tokens=(102,)), "suppress_token_ids"),
+        (PerRowSamplingParams(min_tokens=2, eos_token_id=99), "min_tokens"),
+        (PerRowSamplingParams(stop_tokens=(99,)), "stop_token_ids"),
+        (PerRowSamplingParams(stop_token_sequences=((99, 100),)), "stop_token_sequences"),
+        (PerRowSamplingParams(forced_tokens_pending=(101,)), "forced_tokens_pending"),
+        (
+            PerRowSamplingParams(
+                thinking_close_token_ids=(201, 202),
+                thinking_hard_token_cap=4,
+                post_thinking_forced_tokens_pending=(301,),
+            ),
+            "post_thinking_forced_tokens_pending",
+        ),
+        (
+            PerRowSamplingParams(force_sequence_completion_token_sequences=((101, 102),)),
+            "force_sequence_completion_token_sequences",
+        ),
+        (
+            PerRowSamplingParams(thinking_close_token_ids=(201, 202), thinking_hard_token_cap=4),
+            "thinking_budget",
+        ),
+    ],
+)
+def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling(
+    sampling: PerRowSamplingParams,
+    expected_blocker: str,
+) -> None:
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    request_id = scheduler.submit([10], max_new_tokens=2, sampling=sampling)
     scheduler.admit_pending()
     scheduler.next_prefill_work(chunk_size=8)
-    scheduler.next_prefill_work(chunk_size=8)
-    scheduler.next_prefill_work(chunk_size=8)
-
-    biased_draft = DraftBatch(
-        request_ids=(biased,),
+    draft = DraftBatch(
+        request_ids=(request_id,),
         candidate_tokens=(101,),
         parent_positions=(0,),
         draft_depths=(1,),
-        row_to_request=(biased,),
-    )
-    stopped_draft = DraftBatch(
-        request_ids=(stopped,),
-        candidate_tokens=(201,),
-        parent_positions=(0,),
-        draft_depths=(1,),
-        row_to_request=(stopped,),
-    )
-    suppressed_draft = DraftBatch(
-        request_ids=(suppressed,),
-        candidate_tokens=(102,),
-        parent_positions=(0,),
-        draft_depths=(1,),
-        row_to_request=(suppressed,),
+        row_to_request=(request_id,),
     )
 
-    with pytest.raises(ValueError, match="incompatible fields: logit_bias"):
+    with pytest.raises(ValueError, match=f"incompatible fields: .*{expected_blocker}"):
         scheduler.next_speculative_verify_work(
-            biased_draft,
+            draft,
             root_tokens=(10,),
-            root_positions=(0,),
-        )
-    with pytest.raises(ValueError, match="incompatible fields: stop_token_ids"):
-        scheduler.next_speculative_verify_work(
-            stopped_draft,
-            root_tokens=(20,),
-            root_positions=(0,),
-        )
-    with pytest.raises(ValueError, match="incompatible fields: suppress_token_ids"):
-        scheduler.next_speculative_verify_work(
-            suppressed_draft,
-            root_tokens=(30,),
             root_positions=(0,),
         )
 

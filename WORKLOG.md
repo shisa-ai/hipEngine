@@ -90789,3 +90789,24 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `53 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `257 passed`.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC scheduler MTP blocker coverage
+
+Expanded the resident batch scheduler speculative-verification rejection test
+from a few representative processed-sampling fields to every incompatible
+field expressible through `PerRowSamplingParams`: stochastic temperature,
+logit bias, repetition/presence/frequency penalties, suppressions, min-token
+EOS policy, token stops, stop sequences, forced tokens, post-thinking forced
+tokens, sequence-completion repair, and thinking-budget control. The scheduler
+already delegates to the shared `speculative_mtp_sampling_blockers()` policy;
+this pins that all scheduler rows reject raw-argmax MTP verification whenever
+the target token-selection policy would differ.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling -q` -> `13 passed`.
+- `python3 -m pytest tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling -q` -> `15 passed`.
+- `python3 -m py_compile tests/test_generation_batch_scheduler.py` -> passed.
+- `git diff --check -- tests/test_generation_batch_scheduler.py WORKLOG.md` -> clean.
+- `python3 -m ruff check tests/test_generation_batch_scheduler.py` is not clean
+  before this slice: existing unrelated `F811` duplicate test name and `F841`
+  unused `gguf_c8_index` remain outside the MTP blocker test.
