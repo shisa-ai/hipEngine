@@ -88839,3 +88839,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC pi tool-call smoke validation
+
+Strengthened `scripts/validate_pi_agent_models.py --chat-smoke` so the live
+smoke now requires a parsed `record_result` tool call with JSON arguments
+instead of only recording the response object and finish reason. This makes the
+smoke useful for detecting broken tool-call parsing or client/server config
+drift.
+
+Validation:
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py::test_pi_agent_chat_smoke_payload_uses_qwen_tool_shape tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_requires_tool_call tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_rejects_missing_tool_call tests/test_local_agent_config.py::test_pi_agent_models_config_matches_server_capabilities_manifest -q` -> `4 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `14 passed`.
+- `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> success.
+- `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

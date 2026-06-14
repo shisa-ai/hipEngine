@@ -1830,7 +1830,8 @@ Current code reality:
   thinking UI for a Qwen endpoint. With `--base-url`, it also checks the config
   model id, context window, streaming usage, Qwen thinking control, and tool
   support against `/v1/hipengine/capabilities`; `--chat-smoke` additionally
-  POSTs a small Qwen tool-call request.
+  POSTs a small Qwen tool-call request and requires a parsed `record_result`
+  tool call with valid JSON arguments.
 - Existing server fake-session tests cover parsed Qwen tool calls in
   non-streaming and streaming responses; deterministic multi-turn golden traces
   remain P5.3.

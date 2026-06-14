@@ -278,6 +278,53 @@ def test_pi_agent_chat_smoke_payload_uses_qwen_tool_shape() -> None:
     assert payload["tools"][0]["function"]["name"] == "record_result"
 
 
+def test_pi_agent_chat_smoke_response_requires_tool_call() -> None:
+    summary = validate_pi_agent_models.validate_pi_chat_smoke_response(
+        {
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "record_result",
+                                    "arguments": json.dumps({"result": "ok"}),
+                                },
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+
+    assert summary == {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": ["result"],
+    }
+
+
+def test_pi_agent_chat_smoke_response_rejects_missing_tool_call() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="tool_calls"):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "ok"},
+                    }
+                ],
+            }
+        )
+
+
 def test_pi_agent_models_validator_rejects_reasoning_disabled() -> None:
     config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
     config["providers"]["hipengine-local"]["models"][0]["reasoning"] = False

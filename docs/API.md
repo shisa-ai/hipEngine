@@ -445,6 +445,10 @@ python3 scripts/validate_pi_agent_models.py \
   --chat-smoke
 ```
 
+The `--chat-smoke` check requires the response to finish with a parsed
+`record_result` tool call and valid JSON arguments; ordinary assistant text or a
+missing `tool_calls` payload fails validation.
+
 ### Local-agent config validation
 
 A minimal OpenAI-compatible local-agent config is checked in at

@@ -177,13 +177,54 @@ def run_pi_chat_smoke(
     api_key: str | None = None,
     timeout: float = 30.0,
 ) -> dict[str, Any]:
-    return _request_json(
+    response = _request_json(
         "POST",
         _join_url(base_url, "/chat/completions"),
         api_key=api_key,
         payload=build_pi_chat_smoke_payload(config, capabilities),
         timeout=timeout,
     )
+    validate_pi_chat_smoke_response(response)
+    return response
+
+
+def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
+    choices = _list(response.get("choices"), "chat smoke response.choices")
+    if not choices:
+        raise PiConfigValidationError("chat smoke response.choices must contain at least one choice")
+    choice = _object_value(choices[0], "chat smoke response.choices[0]")
+    if choice.get("finish_reason") != "tool_calls":
+        raise PiConfigValidationError(
+            "chat smoke did not finish with tool_calls; "
+            f"finish_reason={choice.get('finish_reason')!r}"
+        )
+    message = _object(choice, "message", label="chat smoke response.choices[0].message")
+    tool_calls = _list(message.get("tool_calls"), "chat smoke response message.tool_calls")
+    if len(tool_calls) != 1:
+        raise PiConfigValidationError(
+            f"chat smoke expected exactly one tool call, got {len(tool_calls)}"
+        )
+    call = _object_value(tool_calls[0], "chat smoke response message.tool_calls[0]")
+    function = _object(call, "function", label="chat smoke response tool call function")
+    name = function.get("name")
+    if name != "record_result":
+        raise PiConfigValidationError(f"chat smoke selected unexpected tool {name!r}")
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        raise PiConfigValidationError("chat smoke tool arguments must be a JSON string")
+    try:
+        decoded_args = json.loads(arguments)
+    except json.JSONDecodeError as exc:
+        raise PiConfigValidationError(f"chat smoke tool arguments are not valid JSON: {exc}") from exc
+    if not isinstance(decoded_args, dict):
+        raise PiConfigValidationError("chat smoke tool arguments must decode to a JSON object")
+    if "result" not in decoded_args or not isinstance(decoded_args["result"], str):
+        raise PiConfigValidationError("chat smoke tool arguments must include string field 'result'")
+    return {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": sorted(str(key) for key in decoded_args),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -224,9 +265,7 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=max(args.timeout, 30.0),
                 )
                 summary["chat_smoke_object"] = response.get("object")
-                summary["chat_smoke_finish_reason"] = response.get("choices", [{}])[0].get(
-                    "finish_reason"
-                )
+                summary["chat_smoke"] = validate_pi_chat_smoke_response(response)
         else:
             summary = validate_pi_models_config(config, provider_name=args.provider)
     except PiConfigValidationError as exc:
