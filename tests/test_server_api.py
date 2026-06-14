@@ -7545,6 +7545,115 @@ def _load_single_replay_artifact(replay_dir: Path) -> tuple[dict[str, Any], str]
     return artifact, serialized
 
 
+def test_replay_artifact_captures_streaming_completion_deadline_error(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=BackendDeadlineFakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "secret streaming deadline prompt",
+            "max_tokens": 4,
+            "stream": True,
+            "timeout_ms": 5000,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = next(item for item in _sse_payloads(response.text) if item.get("error"))
+    assert payload["error"]["code"] == "deadline_exceeded"
+    assert payload["choices"][0]["finish_details"] == {
+        "reason": "deadline_exceeded",
+        "deadline_exceeded": True,
+    }
+
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["request"]["path"] == "/v1/completions"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.prompt",
+            "sha256": artifact["request"]["json"]["prompt"]["sha256"],
+            "length": len("secret streaming deadline prompt"),
+        }
+    ]
+    assert artifact["error"]["type"] == "timeout_error"
+    assert artifact["error"]["code"] == "deadline_exceeded"
+    assert artifact["error"]["param"] == "timeout_ms"
+    assert artifact["error"]["hipengine"] == {
+        "code": "deadline_exceeded",
+        "status_code": 408,
+        "retryable": True,
+    }
+    assert artifact["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+    assert "secret streaming deadline prompt" not in serialized
+
+
+def test_replay_artifact_captures_streaming_chat_cancelled_error(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=BackendCancelledFakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret streaming cancel task"}],
+            "max_tokens": 4,
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = next(item for item in _sse_payloads(response.text) if item.get("error"))
+    assert payload["error"]["code"] == "cancelled"
+    assert payload["choices"][0]["finish_details"] == {
+        "reason": "cancelled",
+        "cancelled": True,
+    }
+
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["request"]["path"] == "/v1/chat/completions"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.messages[0].content",
+            "sha256": artifact["request"]["json"]["messages"][0]["content"]["sha256"],
+            "length": len("secret streaming cancel task"),
+        }
+    ]
+    assert artifact["error"]["type"] == "cancelled_error"
+    assert artifact["error"]["code"] == "cancelled"
+    assert artifact["error"]["param"] is None
+    assert artifact["error"]["hipengine"] == {
+        "code": "cancelled",
+        "status_code": 499,
+        "retryable": True,
+    }
+    assert artifact["finish_details"] == {"reason": "cancelled", "cancelled": True}
+    assert "secret streaming cancel task" not in serialized
+
+
 def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     replay_dir = tmp_path / "replay"
     app = create_app(

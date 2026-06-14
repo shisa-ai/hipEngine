@@ -2197,7 +2197,9 @@ Implement:
 Current code reality:
 
 - Failed-request replay artifacts are opt-in through `--replay-dir` or
-  `HIPENGINE_REPLAY_DIR`; no artifact is emitted by default.
+  `HIPENGINE_REPLAY_DIR`; no artifact is emitted by default. This includes
+  normal HTTP error responses and streaming SSE error events such as backend
+  deadline/cancellation errors.
 - Artifacts use `schema="hipengine.replay.v1"` and include method/path,
   redacted request JSON, prompt/tool-result hashes, served model id, requested
   sampler and agentic control fields, seed fields, error or agentic
@@ -2214,11 +2216,12 @@ Current code reality:
   and replaces request strings plus compact sampler/agentic-control strings
   with SHA-256/length metadata. The explicit `none` mode stores raw strings for
   local debugging only.
-- Tests cover default-off behavior, failed HTTP request redaction, strict tool
-  validation failures, streaming strict tool failures, completion structured
-  failures, and streaming chat structured failures. Replay artifact tests load
-  each emitted artifact and re-serialize it with `allow_nan=false`, so
-  non-standard JSON values fail the suite.
+- Tests cover default-off behavior, failed HTTP request redaction, streaming
+  backend deadline/cancel errors, strict tool validation failures, streaming
+  strict tool failures, completion structured failures, and streaming chat
+  structured failures. Replay artifact tests load each emitted artifact and
+  re-serialize it with `allow_nan=false`, so non-standard JSON values fail the
+  suite.
 
 Exit gates:
 

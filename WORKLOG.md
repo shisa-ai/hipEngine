@@ -90570,3 +90570,18 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py -q -k 'native_gpu_sampler_support or sampler_plan_uses_gpu_sample or sampler_plan_allows_native_gpu_sample'` -> `3 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `27 passed`.
 - `python3 -m ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py && git diff --check -- hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> clean.
+
+## 2026-06-15 - AGENTIC streaming error replay artifacts
+
+Streaming completion/chat SSE error paths now write the same opt-in redacted
+replay artifacts as normal HTTP errors when `--replay-dir` /
+`HIPENGINE_REPLAY_DIR` is configured. This covers backend deadline and
+cancellation errors after the HTTP stream has already started, preserving
+structured `finish_details` and redacted prompt/tool-result hashes without
+changing the emitted SSE error shape. Updated `docs/API.md` and
+`docs/AGENTIC.md` to document SSE error-event replay coverage.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'replay_artifact or streaming_completion_backend_cancelled_exception or streaming_chat_backend_deadline_exception or streaming_completion_timeout'` -> `15 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

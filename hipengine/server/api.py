@@ -485,6 +485,37 @@ async def _maybe_write_agentic_result_replay_artifact(
     )
 
 
+async def _maybe_write_stream_error_replay_artifact(
+    config: ServerConfig,
+    request: Request,
+    *,
+    message: str,
+    status_code: int,
+    code: str | None,
+    param: str | None = None,
+    error_type: str = "server_error",
+    finish_details: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
+    engine: Any | None = None,
+) -> None:
+    if not config.replay_dir:
+        return
+    await _maybe_write_replay_artifact(
+        config,
+        request,
+        _error_payload(
+            message=message,
+            error_type=error_type,
+            code=code,
+            param=param,
+            status_code=status_code,
+            finish_details=finish_details,
+            extra=extra,
+        ),
+        engine=engine,
+    )
+
+
 def _agentic_result_replay_payload(response_payload: Mapping[str, Any]) -> dict[str, Any] | None:
     choices = response_payload.get("choices")
     if not isinstance(choices, Sequence) or isinstance(choices, (str, bytes, bytearray)):
@@ -3014,6 +3045,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompt: str,
         request: CompletionRequest,
         control: _RequestControl,
+        raw_request: Request,
     ) -> AsyncIterator[str]:
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
@@ -3028,6 +3060,29 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if include_hipengine
             else None
         )
+        async def write_error_artifact(
+            message: str,
+            *,
+            status_code: int,
+            code: str | None,
+            param: str | None = None,
+            error_type: str = "server_error",
+            finish_details: Mapping[str, Any] | None = None,
+            extra: Mapping[str, Any] | None = None,
+        ) -> None:
+            await _maybe_write_stream_error_replay_artifact(
+                config,
+                raw_request,
+                message=message,
+                status_code=status_code,
+                code=code,
+                param=param,
+                error_type=error_type,
+                finish_details=finish_details,
+                extra=extra,
+                engine=getattr(app.state, "hipengine_llm", None),
+            )
+
         full_text: list[str] = []
         try:
             _validate_generation_request(config, request)
@@ -3112,6 +3167,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=openai_exc.param,
                 message=openai_exc.message,
             )
+            await write_error_artifact(
+                openai_exc.message,
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                error_type=openai_exc.error_type,
+                finish_details=openai_exc.finish_details,
+            )
             yield _completion_stream_error(
                 response_id,
                 created,
@@ -3138,6 +3201,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=openai_exc.param,
                 message=openai_exc.message,
             )
+            await write_error_artifact(
+                openai_exc.message,
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                error_type=openai_exc.error_type,
+                finish_details=openai_exc.finish_details,
+            )
             yield _completion_stream_error(
                 response_id,
                 created,
@@ -3162,6 +3233,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code=exc.code,
                 param=exc.param,
                 message=exc.message,
+            )
+            await write_error_artifact(
+                exc.message,
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+                extra=exc.extra,
             )
             yield _completion_stream_error(
                 response_id,
@@ -3190,6 +3270,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
+            await write_error_artifact(
+                message,
+                status_code=400,
+                code="unsupported_parameter",
+                error_type="invalid_request_error",
+            )
             yield _completion_stream_error(
                 response_id,
                 created,
@@ -3214,6 +3300,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
+            await write_error_artifact(
+                message,
+                status_code=400,
+                code="invalid_request",
+                error_type="invalid_request_error",
+            )
             yield _completion_stream_error(
                 response_id,
                 created,
@@ -3237,6 +3329,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="generation_failed",
                 param=None,
                 message=message,
+            )
+            await write_error_artifact(
+                message,
+                status_code=500,
+                code="generation_failed",
             )
             yield _completion_stream_error(
                 response_id,
@@ -3824,7 +3921,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             and not _structured_result_validation(request)
         ):
             return StreamingResponse(
-                stream_completion_one(expanded_prompts[0], request, control),
+                stream_completion_one(expanded_prompts[0], request, control, raw_request),
                 media_type="text/event-stream",
             )
         batch = await generate_with_request_control(expanded_prompts, request, control)
@@ -4296,6 +4393,29 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if include_hipengine
             else None
         )
+        async def write_error_artifact(
+            message: str,
+            *,
+            status_code: int,
+            code: str | None,
+            param: str | None = None,
+            error_type: str = "server_error",
+            finish_details: Mapping[str, Any] | None = None,
+            extra: Mapping[str, Any] | None = None,
+        ) -> None:
+            await _maybe_write_stream_error_replay_artifact(
+                config,
+                raw_request,
+                message=message,
+                status_code=status_code,
+                code=code,
+                param=param,
+                error_type=error_type,
+                finish_details=finish_details,
+                extra=extra,
+                engine=getattr(app.state, "hipengine_llm", None),
+            )
+
         try:
             _validate_generation_request(config, request)
         except OpenAIHTTPError as exc:
@@ -4306,6 +4426,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code=exc.code,
                 param=exc.param,
                 message=exc.message,
+            )
+            await write_error_artifact(
+                exc.message,
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+                extra=exc.extra,
             )
             yield _chat_stream_error(
                 response_id,
@@ -4441,6 +4570,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=openai_exc.param,
                 message=openai_exc.message,
             )
+            await write_error_artifact(
+                openai_exc.message,
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                error_type=openai_exc.error_type,
+                finish_details=openai_exc.finish_details,
+            )
             yield _chat_stream_error(
                 response_id,
                 created,
@@ -4467,6 +4604,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=openai_exc.param,
                 message=openai_exc.message,
             )
+            await write_error_artifact(
+                openai_exc.message,
+                status_code=openai_exc.status_code,
+                code=openai_exc.code,
+                param=openai_exc.param,
+                error_type=openai_exc.error_type,
+                finish_details=openai_exc.finish_details,
+            )
             yield _chat_stream_error(
                 response_id,
                 created,
@@ -4491,6 +4636,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code=exc.code,
                 param=exc.param,
                 message=exc.message,
+            )
+            await write_error_artifact(
+                exc.message,
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+                extra=exc.extra,
             )
             yield _chat_stream_error(
                 response_id,
@@ -4519,6 +4673,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
+            await write_error_artifact(
+                message,
+                status_code=400,
+                code="unsupported_parameter",
+                error_type="invalid_request_error",
+            )
             yield _chat_stream_error(
                 response_id,
                 created,
@@ -4543,6 +4703,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
+            await write_error_artifact(
+                message,
+                status_code=400,
+                code="invalid_request",
+                error_type="invalid_request_error",
+            )
             yield _chat_stream_error(
                 response_id,
                 created,
@@ -4566,6 +4732,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="generation_failed",
                 param=None,
                 message=message,
+            )
+            await write_error_artifact(
+                message,
+                status_code=500,
+                code="generation_failed",
             )
             yield _chat_stream_error(
                 response_id,

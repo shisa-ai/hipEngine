@@ -695,8 +695,8 @@ shared or sensitive deployments.
 
 Replay artifacts are separately opt-in. Pass `--replay-dir /path/to/replays` or
 set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts for failed HTTP
-requests and normal strict, structured-output, or guided patch/diff
-result-validation failures such as `invalid_tool_call`,
+requests, streaming SSE error events, and normal strict, structured-output, or
+guided patch/diff result-validation failures such as `invalid_tool_call`,
 `tool_required_not_satisfied`, or `schema_violation`. Artifacts use
 `schema: "hipengine.replay.v1"` and include the request
 method/path, redacted request JSON, prompt/tool-result hashes, served model id,
