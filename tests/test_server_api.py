@@ -375,6 +375,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "no_tool_start_suppression": True,
         "required_tool_start_forcing": True,
         "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
+        "specific_tool_name_prefix_forcing": True,
         "tool_call_close_repair": True,
     }
     assert body["features"]["reasoning_controls"] == {
@@ -2732,7 +2733,14 @@ def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> 
     ],
 )
 def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool_choice) -> None:
-    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78], "</tool_call>": [88, 89]})
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={
+            "<tool_call>": [77, 78],
+            '<tool_call>{"name":"read","arguments":': [77, 78, 90, 91, 92],
+            "</tool_call>": [88, 89],
+        },
+    )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -2749,12 +2757,12 @@ def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["<tool_call>", "</tool_call>"]
+    assert fake.tokenize_calls == ["<tool_call>", '<tool_call>{"name":"read","arguments":', "</tool_call>"]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == (77, 78)
     assert params.forced_token_reason == "tool_choice_required"
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_close_repair"
+    assert params.force_sequence_completion_token_sequences == ((77, 78, 90, 91, 92), (88, 89))
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
@@ -2764,7 +2772,12 @@ def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool
 def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget() -> None:
     fake = FakeLLM(
         outputs=["ordinary answer"],
-        token_map={"</think>": [91, 92], "<tool_call>": [77, 78], "</tool_call>": [88, 89]},
+        token_map={
+            "</think>": [91, 92],
+            "<tool_call>": [77, 78],
+            '<tool_call>{"name":"read","arguments":': [77, 78, 90, 91, 92],
+            "</tool_call>": [88, 89],
+        },
     )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
@@ -2784,17 +2797,80 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["</think>", "<tool_call>", "</tool_call>"]
+    assert fake.tokenize_calls == [
+        "</think>",
+        "<tool_call>",
+        '<tool_call>{"name":"read","arguments":',
+        "</tool_call>",
+    ]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == ()
     assert params.post_thinking_forced_tokens_pending == (77, 78)
     assert params.post_thinking_forced_token_reason == "tool_choice_required"
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_close_repair"
+    assert params.force_sequence_completion_token_sequences == ((77, 78, 90, 91, 92), (88, 89))
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
     assert params.thinking_close_token_ids == (91, 92)
     assert params.thinking_hard_token_cap == 512
     choice = response.json()["choices"][0]
     assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
+
+
+def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools() -> None:
+    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78], "</tool_call>": [88, 89]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read or write"}],
+            "tool_choice": "required",
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+                {"type": "function", "function": {"name": "write", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["<tool_call>", "</tool_call>"]
+    params = fake.calls[-1][1]
+    assert params.forced_tokens_pending == (77, 78)
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+
+
+def test_chat_completion_specific_tool_choice_skips_noncomposable_name_prefix() -> None:
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={
+            "<tool_call>": [77, 78],
+            '<tool_call>{"name":"read","arguments":': [90, 91, 92],
+            "</tool_call>": [88, 89],
+        },
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["<tool_call>", '<tool_call>{"name":"read","arguments":', "</tool_call>"]
+    params = fake.calls[-1][1]
+    assert params.forced_tokens_pending == (77, 78)
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
 
 
 def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:

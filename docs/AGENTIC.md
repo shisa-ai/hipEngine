@@ -74,9 +74,12 @@ Already available or recently added:
 - Tokenizer-backed tool-call start controls: no-tool mode suppresses the first
   `<tool_call>` token; required/specific tool modes force the tokenized
   `<tool_call>` marker immediately, or after tokenized `</think>` close when a
-  thinking budget is active. Required/specific tool modes also repair tokenized
-  `</tool_call>` close markers by forcing the remaining suffix once the marker
-  starts.
+  thinking budget is active. Specific function choices, plus `required` mode
+  with exactly one function tool, also force the tokenized
+  `<tool_call>{"name":"...","arguments":` prefix when tokenizer composition
+  proves it is aligned with the forced start marker. Required/specific tool
+  modes repair tokenized `</tool_call>` close markers by forcing the remaining
+  suffix once the marker starts.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
   `reasoning_effort`, `chat_template_kwargs`, and nested `thinking`/`reasoning`
   request objects. Numeric budget aliases and explicit budget fields are
@@ -1020,9 +1023,10 @@ Current code reality:
   row is configured for native sampling, and block raw-argmax MTP verification.
 - `RowSamplingState` can also bind tokenizer-aware sequence-completion repair
   rules. Once a configured delimiter prefix is selected, the remaining delimiter
-  suffix is queued as forced tokens. The server uses this today for
-  required/specific tool-call `</tool_call>` close repair. JSON close-brace
-  repair and grammar processors remain future server/controller work.
+  suffix is queued as forced tokens. The server uses this today for selected
+  tool-name prefix completion and required/specific tool-call `</tool_call>`
+  close repair. JSON close-brace repair and grammar processors remain future
+  server/controller work.
 
 Implement:
 
@@ -1224,23 +1228,29 @@ Current state:
 - Required and specific function modes also tokenize the Qwen `</tool_call>`
   close marker when possible. If generation begins that close marker, host row
   state forces the remaining suffix through model decoding so the closing tag is
-  not left half-emitted. This is delimiter repair, not full function-name or
-  argument grammar enforcement.
+  not left half-emitted.
+- Specific function choices, plus `required` mode with exactly one function
+  tool, best-effort tokenize the Qwen
+  `<tool_call>{"name":"...","arguments":` prefix. If that full prefix starts
+  with the separately-tokenized `<tool_call>` marker, host row state forces the
+  selected name and `arguments` field prefix through model decoding after the
+  start marker. If tokenization is unavailable or non-composable, the server
+  falls back to start-marker forcing plus result validation. Multi-tool
+  `required` mode intentionally does not force a name.
 - `response_format={"type":"json_object"}` and
   `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
   accepted for completion and chat requests as post-generation result
   validation. Valid visible JSON is returned normally; invalid stop-finished
   outputs return `finish_details.reason="schema_violation"`.
-- Auto-mode constraints, full required/specific function-name and argument
-  grammar forcing, and grammar-constrained JSON/tool generation remain future
-  work.
+- Auto-mode constraints, full argument/schema grammar forcing, and
+  grammar-constrained JSON/tool generation remain future work.
 
 #### P2.1 Strict tool-call mode
 
 Implement:
 
 - decode-time enforcement for `tool_choice="auto"` and stronger
-  required/specific function-name and argument constraints;
+  required/specific argument constraints;
 - structured refusal/error when a required call cannot be produced under budget.
 
 Exit gates:
@@ -1250,6 +1260,8 @@ Exit gates:
 - no-tool mode suppresses `<tool_call>` starts;
 - required/specific-tool modes force `<tool_call>` starts when tokenization is
   available, including after tokenized thinking close;
+- specific-tool and single-tool required modes force the selected function-name
+  prefix when tokenizer composition is safe;
 - required/specific-tool modes repair partial `</tool_call>` close markers when
   tokenization is available, and still do not return ordinary prose as success.
 

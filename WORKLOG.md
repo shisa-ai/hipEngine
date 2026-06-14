@@ -88505,3 +88505,27 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC specific tool-name prefix forcing
+
+Tightened the required/specific tool-choice server contract with a
+tokenizer-gated name-prefix completion rule. Chat requests with a specific
+function choice, or `tool_choice="required"` and exactly one function tool, now
+best-effort tokenize the full Qwen
+`<tool_call>{"name":"...","arguments":` prefix. When that tokenization starts
+with the separately-forced `<tool_call>` marker, host row state forces the
+selected function name and `arguments` prefix through the existing
+sequence-completion path. Multi-tool required mode intentionally stays
+marker-only so the model still chooses the tool. Non-composable tokenizer output
+falls back to start-marker forcing plus result validation. Capabilities now
+advertise `specific_tool_name_prefix_forcing`, and API/AGENTIC docs distinguish
+this from future full argument/schema grammar constraints.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py tests/test_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py::test_force_sequence_completion_extends_overlapping_forced_prefix_once tests/test_sampling.py::test_force_sequence_completion_queues_remaining_suffix -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_tool_call_start_tokens tests/test_server_api.py::test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget tests/test_server_api.py::test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools tests/test_server_api.py::test_chat_completion_specific_tool_choice_skips_noncomposable_name_prefix tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_local_agent_config.py::test_local_agent_config_matches_capabilities tests/test_local_agent_config.py::test_local_agent_config_matches_server_capabilities_manifest -q` -> `8 passed`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `37 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `126 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py tests/test_sampling.py` -> `All checks passed!`.

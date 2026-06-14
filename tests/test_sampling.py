@@ -484,6 +484,37 @@ def test_force_sequence_completion_queues_remaining_suffix() -> None:
     assert state.generated_tokens == [5, 6, 7]
 
 
+def test_force_sequence_completion_extends_overlapping_forced_prefix_once() -> None:
+    params = _params(
+        forced_tokens_pending=(77, 78),
+        forced_token_reason="tool_choice_required",
+        force_sequence_completion_token_sequences=((77, 78, 90, 91, 92),),
+        force_sequence_completion_reason="tool_call_sequence_completion",
+    )
+    state = RowSamplingState(
+        forced_tokens_pending=params.forced_tokens_pending,
+        forced_token_reason=params.forced_token_reason,
+        force_sequence_completion_token_sequences=params.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=params.force_sequence_completion_reason,
+    )
+    logits = np.zeros(100, dtype=np.float32)
+
+    selected = [select_token(logits, params, state) for _ in range(5)]
+
+    assert [result.token_id for result in selected] == [77, 78, 90, 91, 92]
+    assert selected[0].forced_reason == "tool_choice_required"
+    assert selected[0].forced_tokens_remaining == 1
+    assert selected[1].forced_reason == "tool_choice_required"
+    assert selected[1].forced_tokens_remaining == 3
+    assert [result.forced_reason for result in selected[2:]] == [
+        "tool_call_sequence_completion",
+        "tool_call_sequence_completion",
+        "tool_call_sequence_completion",
+    ]
+    assert selected[-1].forced_tokens_remaining == 0
+    assert state.generated_tokens == [77, 78, 90, 91, 92]
+
+
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:
     state = RowSamplingState(
         seed=123,

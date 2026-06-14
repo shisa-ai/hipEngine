@@ -583,6 +583,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "no_tool_start_suppression": False,
                 "required_tool_start_forcing": False,
                 "required_tool_start_forcing_scope": "none",
+                "specific_tool_name_prefix_forcing": False,
                 "tool_call_close_repair": False,
             },
             "reasoning_controls": {
@@ -1722,7 +1723,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             else ()
         )
         force_sequence_completion_token_sequences = (
-            _tool_call_close_repair_token_sequences(request, engine)
+            _tool_call_sequence_completion_token_sequences(request, engine, forced_tool_token_ids)
             if isinstance(request, ChatCompletionRequest)
             else ()
         )
@@ -1764,7 +1765,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             post_thinking_forced_tokens_pending=post_thinking_forced_tool_token_ids,
             post_thinking_forced_token_reason="tool_choice_required" if post_thinking_forced_tool_token_ids else None,
             force_sequence_completion_token_sequences=force_sequence_completion_token_sequences,
-            force_sequence_completion_reason="tool_call_close_repair" if force_sequence_completion_token_sequences else None,
+            force_sequence_completion_reason=(
+                "tool_call_sequence_completion" if force_sequence_completion_token_sequences else None
+            ),
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -2288,6 +2291,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "no_tool_start_suppression": tokenizer_caps["tokenize"],
                     "required_tool_start_forcing": tokenizer_caps["tokenize"],
                     "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
+                    "specific_tool_name_prefix_forcing": tokenizer_caps["tokenize"],
                     "tool_call_close_repair": tokenizer_caps["tokenize"],
                 },
                 "reasoning_controls": {
@@ -4796,6 +4800,64 @@ def _required_tool_sampling_forced_token_ids(
     except OpenAIHTTPError:
         return ()
     return tuple(int(token_id) for token_id in token_ids)
+
+
+def _tool_call_sequence_completion_token_sequences(
+    request: ChatCompletionRequest,
+    engine: Any,
+    forced_tool_token_ids: Sequence[int],
+) -> tuple[tuple[int, ...], ...]:
+    sequences: list[tuple[int, ...]] = []
+    prefix_sequence = _specific_tool_name_prefix_token_sequence(request, engine, forced_tool_token_ids)
+    if prefix_sequence:
+        sequences.append(prefix_sequence)
+    sequences.extend(_tool_call_close_repair_token_sequences(request, engine))
+    return tuple(sequences)
+
+
+def _specific_tool_name_prefix_token_sequence(
+    request: ChatCompletionRequest,
+    engine: Any,
+    forced_tool_token_ids: Sequence[int],
+) -> tuple[int, ...]:
+    start_ids = tuple(int(token_id) for token_id in forced_tool_token_ids)
+    if not start_ids:
+        return ()
+    name = _specific_tool_name_prefix_target(request)
+    if name is None:
+        return ()
+    prefix_text = _tool_call_name_prefix_text(name)
+    try:
+        prefix_ids = _tokenize_text(engine, prefix_text)
+    except OpenAIHTTPError:
+        return ()
+    prefix = tuple(int(token_id) for token_id in prefix_ids)
+    if len(prefix) <= len(start_ids) or prefix[: len(start_ids)] != start_ids:
+        return ()
+    return prefix
+
+
+def _specific_tool_name_prefix_target(request: ChatCompletionRequest) -> str | None:
+    if not request.tools:
+        return None
+    mode, requested_name = _tool_choice_mode(request.tool_choice)
+    if mode == "function":
+        return requested_name
+    if mode != "required":
+        return None
+    names: list[str] = []
+    for tool in request.tools:
+        name = _tool_function(tool).get("name")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names[0] if len(names) == 1 else None
+
+
+def _tool_call_name_prefix_text(name: str) -> str:
+    return (
+        f"{_TOOL_CALL_START_MARKER}"
+        f'{{"name":{json.dumps(str(name), ensure_ascii=False, separators=(",", ":"))},"arguments":'
+    )
 
 
 def _tool_call_close_repair_token_sequences(
