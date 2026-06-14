@@ -292,6 +292,7 @@ def _continuation_capability() -> dict[str, Any]:
             "logit_bias",
             "suppress_token_ids",
             "min_tokens",
+            "ignore_eos",
             "stop",
             "repetition_penalty",
             "presence_penalty",
@@ -2697,6 +2698,39 @@ def test_completion_length_finish_with_stop_is_continuation_ineligible() -> None
     )
 
 
+def test_completion_length_finish_with_ignore_eos_is_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "Say: ",
+            "ignore_eos": True,
+            "max_tokens": 1,
+            "temperature": 0.0,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert "continuation_id" not in choice
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=1,
+        continuation_eligible=False,
+    )
+
+
 def test_completion_continuation_resume_rejects_explicit_stop_without_consuming_handle() -> None:
     fake = SequentialFakeLLM(
         [
@@ -2730,6 +2764,52 @@ def test_completion_continuation_resume_rejects_explicit_stop_without_consuming_
     assert with_stop.status_code == 400
     assert with_stop.json()["error"]["code"] == "unsupported_parameter"
     assert with_stop.json()["error"]["param"] == "stop"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    resumed = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert resumed.status_code == 200
+    assert resumed.json()["choices"][0]["text"] == "alpha beta"
+    assert len(fake.calls) == 2
+
+
+def test_completion_continuation_resume_rejects_ignore_eos_without_consuming_handle() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="alpha",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" beta", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "Say: ", "max_tokens": 1, "temperature": 0.0},
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    with_ignore_eos = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "ignore_eos": True,
+            "max_tokens": 4,
+        },
+    )
+
+    assert with_ignore_eos.status_code == 400
+    assert with_ignore_eos.json()["error"]["code"] == "unsupported_parameter"
+    assert with_ignore_eos.json()["error"]["param"] == "ignore_eos"
     assert continuation_id in app.state.hipengine_continuations
     assert len(fake.calls) == 1
 

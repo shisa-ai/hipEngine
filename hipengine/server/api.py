@@ -101,6 +101,7 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "logit_bias",
     "suppress_token_ids",
     "min_tokens",
+    "ignore_eos",
     "stop",
     "repetition_penalty",
     "presence_penalty",
@@ -6574,6 +6575,8 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
         return "suppress_token_ids"
     if int(request.min_tokens or 0) != 0:
         return "min_tokens"
+    if bool(request.ignore_eos):
+        return "ignore_eos"
     if request.stop is not None:
         return "stop"
     if float(request.repetition_penalty or 1.0) != 1.0:
@@ -6657,6 +6660,8 @@ def _continuation_sampling_is_deterministic(request: CompletionRequest | ChatCom
     if request.suppress_token_ids:
         return False
     if int(request.min_tokens or 0) != 0:
+        return False
+    if bool(request.ignore_eos):
         return False
     if request.stop is not None:
         return False

@@ -90080,3 +90080,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 235`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC continuation ignore_eos guard
+
+Closed a continuation safety gap where `ignore_eos=true` could be used on a
+deterministic buffered continuation even though handles do not preserve full
+sampler/decode state. The server now treats `ignore_eos` as an unsupported
+resume field and as a creation blocker for length-finished continuation
+handles, preserving the existing handle when a resume is rejected. Updated the
+capabilities manifest expectations plus `docs/API.md` and `docs/AGENTIC.md`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completion_length_finish_with_ignore_eos_is_continuation_ineligible tests/test_server_api.py::test_completion_continuation_resume_rejects_ignore_eos_without_consuming_handle tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_resume_rejects_explicit_stop_without_consuming_handle -q` -> `5 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `237` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 237`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
