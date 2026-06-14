@@ -109,6 +109,8 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "tool_choice",
     "parallel_tool_calls",
     "response_format",
+    "guided_patch",
+    "guided_diff",
     "reasoning_effort",
     "max_think_tokens",
     "min_answer_tokens",
@@ -182,9 +184,26 @@ _UNSUPPORTED_GRAMMAR_FIELDS = (
     "guided_choice",
     "guided_grammar",
     "guided_decoding_backend",
-    "guided_patch",
-    "guided_diff",
 )
+_GUIDED_PATCH_FIELDS = ("guided_patch", "guided_diff")
+_GUIDED_PATCH_FORMATS = ("unified_diff",)
+_PATCH_FENCE_RE = re.compile(r"\A\s*```(?P<label>[^\n`]*)\n(?P<body>.*?)\n```\s*\Z", re.DOTALL)
+_UNIFIED_DIFF_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$")
+_UNIFIED_DIFF_METADATA_PREFIXES = (
+    "diff --git ",
+    "index ",
+    "new file mode ",
+    "deleted file mode ",
+    "old mode ",
+    "new mode ",
+    "similarity index ",
+    "dissimilarity index ",
+    "rename from ",
+    "rename to ",
+    "copy from ",
+    "copy to ",
+)
+_UNIFIED_DIFF_BINARY_PREFIXES = ("Binary files ", "GIT binary patch")
 
 
 @dataclass(frozen=True)
@@ -284,7 +303,7 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "status_code": 422,
         "retryable": False,
         "emitted": True,
-        "description": "A request, response_format result, or strict tool result schema was violated.",
+        "description": "A request, structured-output result, or strict tool result schema was violated.",
     },
     "invalid_continuation": {
         "status_code": 400,
@@ -722,6 +741,8 @@ def _replay_sampling_payload(body_json: Any, *, redaction: str) -> dict[str, Any
         "logprobs",
         "top_logprobs",
         "response_format",
+        "guided_patch",
+        "guided_diff",
         "thinking_token_budget",
     )
     payload = {key: body_json[key] for key in keys if key in body_json}
@@ -817,6 +838,8 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "response_format": True,
         "json_object": True,
         "json_schema": True,
+        "guided_patch": True,
+        "guided_diff": True,
         "strict_decoding": False,
         "strict_result_validation": True,
         "result_validation_failure_reasons": list(
@@ -835,7 +858,7 @@ def _grammar_capability() -> dict[str, Any]:
         "strict_decoding": False,
         "supported": [],
         "unsupported_fields": list(_UNSUPPORTED_GRAMMAR_FIELDS),
-        "result_validation_only": ["json_object", "json_schema"],
+        "result_validation_only": ["json_object", "json_schema", *_GUIDED_PATCH_FIELDS],
     }
 
 
@@ -1163,6 +1186,8 @@ class CompletionRequest(_OpenAIBaseModel):
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
     response_format: Any | None = None
+    guided_patch: Any | None = None
+    guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
 
@@ -1218,6 +1243,8 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     kv_scale_dtype: str | None = None
     kv_scale_granularity: str | None = None
     response_format: Any | None = None
+    guided_patch: Any | None = None
+    guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
 
@@ -1248,6 +1275,8 @@ class TokenDiagnosticRequest(_OpenAIBaseModel):
     chat_template_kwargs: dict[str, Any] | None = None
     thinking: str | dict[str, Any] | None = None
     reasoning: dict[str, Any] | None = None
+    guided_patch: Any | None = None
+    guided_diff: Any | None = None
     session: Any | None = None
 
 
@@ -1775,6 +1804,8 @@ class _ContinuationRecord:
     created: float
     expires_at: float
     response_format: Any | None = None
+    guided_patch: Any | None = None
+    guided_diff: Any | None = None
 
     def resume_prompts(self) -> tuple[str, ...]:
         return tuple(
@@ -2083,6 +2114,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts: Sequence[str],
         generated_texts: Sequence[str],
         response_format: Any | None,
+        guided_patch: Any | None,
+        guided_diff: Any | None,
     ) -> _ContinuationRecord:
         now = time.time()
         record = _ContinuationRecord(
@@ -2094,6 +2127,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             created=now,
             expires_at=now + _CONTINUATION_TTL_SECONDS,
             response_format=response_format,
+            guided_patch=guided_patch,
+            guided_diff=guided_diff,
         )
         async with continuation_lock:
             cleanup_expired_continuations(now)
@@ -3584,7 +3619,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             and len(expanded_prompts) == 1
             and not request.echo
             and not _request_logprobs_enabled(request)
-            and not _response_format_result_validation(request)
+            and not _structured_result_validation(request)
         ):
             return StreamingResponse(
                 stream_completion_one(expanded_prompts[0], request, control),
@@ -3603,8 +3638,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             server_stop = generated_text != output
             finish_reason = _finish_reason_for_output(detail, finish_reason, server_stop=server_stop)
             text = prompt + generated_text if request.echo else generated_text
-            response_format_failure = _response_format_failure_reason(request, generated_text, finish_reason)
-            if response_format_failure is not None:
+            structured_failure = _structured_output_failure_reason(request, generated_text, finish_reason)
+            if structured_failure is not None:
                 finish_reason = "stop"
                 text = ""
             final_texts.append(text)
@@ -3620,7 +3655,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "finish_details": _finish_details_payload(
                     detail,
                     finish_reason,
-                    reason_override=response_format_failure or ("stop" if server_stop else None),
+                    reason_override=structured_failure or ("stop" if server_stop else None),
                     cache_action=cache_action,
                 ),
             }
@@ -3632,6 +3667,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     prompts=(base_prompt,),
                     generated_texts=(generated_text,),
                     response_format=request.response_format,
+                    guided_patch=request.guided_patch,
+                    guided_diff=request.guided_diff,
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
             _attach_choice_telemetry(choice, detail)
@@ -3727,7 +3764,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_chat_completion_many
                     if _request_n(request) > 1
                     or request.logprobs
-                    or _response_format_result_validation(request)
+                    or _structured_result_validation(request)
                     else stream_chat_completion
                 )
                 return StreamingResponse(
@@ -3763,18 +3800,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         server_stop=server_stop,
                         tool_calls=bool(parsed.tool_calls),
                     )
-                response_format_failure = _response_format_failure_reason(
+                structured_failure = _structured_output_failure_reason(
                     request,
                     _chat_response_format_text(message),
                     finish_reason,
                 )
-                if response_format_failure is not None:
+                if structured_failure is not None:
                     finish_reason = "stop"
                     message = {"role": "assistant", "content": ""}
                 if tool_validation.failed:
                     finish_reason_override = tool_validation.failure_reason
-                elif response_format_failure is not None:
-                    finish_reason_override = response_format_failure
+                elif structured_failure is not None:
+                    finish_reason_override = structured_failure
                 elif parsed.tool_calls:
                     finish_reason_override = "tool_calls"
                 elif server_stop:
@@ -3795,6 +3832,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                     ),
                 }
+                _mark_guided_patch_length_phase(request, choice["finish_details"])
                 effective_cache_action = _effective_session_cache_action(
                     requested_cache_action,
                     choice["finish_details"],
@@ -3811,6 +3849,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         prompts=(base_prompt,),
                         generated_texts=(text,),
                         response_format=request.response_format,
+                        guided_patch=request.guided_patch,
+                        guided_diff=request.guided_diff,
                     )
                     _attach_continuation_metadata(choice, continuation_id=record.id)
                 _attach_choice_telemetry(choice, detail)
@@ -3897,18 +3937,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         server_stop=server_stop,
                         tool_calls=bool(parsed.tool_calls),
                     )
-                response_format_failure = _response_format_failure_reason(
+                structured_failure = _structured_output_failure_reason(
                     request,
                     _chat_response_format_text_from_parsed(parsed),
                     finish_reason,
                 )
-                if response_format_failure is not None:
+                if structured_failure is not None:
                     finish_reason = "stop"
                     parsed = _ParsedChatOutput(text="", tool_calls=())
                 if tool_validation.failed:
                     finish_reason_override = tool_validation.failure_reason
-                elif response_format_failure is not None:
-                    finish_reason_override = response_format_failure
+                elif structured_failure is not None:
+                    finish_reason_override = structured_failure
                 elif parsed.tool_calls:
                     finish_reason_override = "tool_calls"
                 elif server_stop:
@@ -3924,6 +3964,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     parsed=parsed,
                     token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                 )
+                _mark_guided_patch_length_phase(request, finish_details)
                 await _maybe_write_agentic_result_replay_artifact(
                     config,
                     raw_request,
@@ -4348,6 +4389,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 parsed=parsed,
                 token_counter=getattr(engine, "count_tokens", None),
             )
+            _mark_guided_patch_length_phase(request, finish_details)
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -4924,6 +4966,8 @@ def _render_chat_prompt_for_request(
         tool_choice=request.tool_choice,
         thinking=thinking,
         response_format=request.response_format,
+        guided_patch=request.guided_patch,
+        guided_diff=request.guided_diff,
     )
     if engine is None:
         return prompt, thinking
@@ -4947,6 +4991,8 @@ def _render_chat_prompt_for_request(
             tool_choice=request.tool_choice,
             thinking=adjusted,
             response_format=request.response_format,
+            guided_patch=request.guided_patch,
+            guided_diff=request.guided_diff,
         )
         if adjusted == thinking and adjusted_prompt == prompt:
             return prompt, thinking
@@ -5212,6 +5258,16 @@ def _render_response_format_prompt(response_format: Any | None) -> str:
     return ""
 
 
+def _render_guided_patch_prompt(guided_patch: Any | None, guided_diff: Any | None) -> str:
+    mode = _guided_patch_field(guided_patch, guided_diff)
+    if mode is None:
+        return ""
+    return (
+        "Return only a valid unified diff patch. Do not include prose outside "
+        "the patch. A single fenced diff or patch code block is allowed."
+    )
+
+
 def _render_tools_prompt(
     tools: Sequence[Mapping[str, Any]] | None,
     tool_choice: str | Mapping[str, Any] | None,
@@ -5285,6 +5341,8 @@ def render_chat_prompt(
     tool_choice: str | Mapping[str, Any] | None = None,
     thinking: _ThinkingControl | None = None,
     response_format: Any | None = None,
+    guided_patch: Any | None = None,
+    guided_diff: Any | None = None,
 ) -> str:
     """Render OpenAI chat messages to a Qwen-style text prompt.
 
@@ -5301,6 +5359,7 @@ def render_chat_prompt(
         for item in (
             _render_thinking_prompt(thinking),
             _render_response_format_prompt(response_format),
+            _render_guided_patch_prompt(guided_patch, guided_diff),
             _render_tools_prompt(tools, tool_choice),
         )
         if item
@@ -5839,6 +5898,7 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             param=unsupported_param,
         )
     _validate_response_format_request(request)
+    _validate_guided_patch_request(request)
     _validate_tool_schema_requests(request)
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
@@ -6058,6 +6118,8 @@ def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnostic
         chat_template_kwargs=request.chat_template_kwargs,
         thinking=request.thinking,
         reasoning=request.reasoning,
+        guided_patch=request.guided_patch,
+        guided_diff=request.guided_diff,
         max_tokens=getattr(request, "max_tokens", None),
         session=request.session,
     )
@@ -6418,6 +6480,10 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
         return "frequency_penalty"
     if request.response_format is not None:
         return "response_format"
+    if getattr(request, "guided_patch", None) is not None:
+        return "guided_patch"
+    if getattr(request, "guided_diff", None) is not None:
+        return "guided_diff"
     if isinstance(request, ChatCompletionRequest):
         if request.tools:
             return "tools"
@@ -6504,6 +6570,18 @@ def _mark_continuation_unavailable(finish_details: dict[str, Any]) -> None:
         finish_details.setdefault("continuation_eligible", False)
 
 
+def _mark_guided_patch_length_phase(
+    request: CompletionRequest | ChatCompletionRequest,
+    finish_details: dict[str, Any],
+) -> None:
+    if not _guided_patch_result_validation(request):
+        return
+    if not _is_length_finish(str(finish_details.get("reason", "")), finish_details):
+        return
+    if finish_details.get("phase") in (None, "", "answer"):
+        finish_details["phase"] = "structured"
+
+
 def _attach_continuation_metadata(
     choice: dict[str, Any],
     *,
@@ -6524,6 +6602,10 @@ def _apply_continuation_defaults(
         return
     if getattr(request, "response_format", None) is None and record.response_format is not None:
         request.response_format = record.response_format
+    if getattr(request, "guided_patch", None) is None and record.guided_patch is not None:
+        request.guided_patch = record.guided_patch
+    if getattr(request, "guided_diff", None) is None and record.guided_diff is not None:
+        request.guided_diff = record.guided_diff
 
 
 def _validate_session_request(request: CompletionRequest | ChatCompletionRequest) -> None:
@@ -6881,6 +6963,105 @@ def _validate_response_format_request(request: CompletionRequest | ChatCompletio
                 raise OpenAIHTTPError(400, message, code="invalid_request", param=param)
 
 
+def _validate_guided_patch_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+    active_fields = [
+        field
+        for field in _GUIDED_PATCH_FIELDS
+        if _guided_patch_value_enabled(getattr(request, field, None))
+    ]
+    if len(active_fields) > 1:
+        raise OpenAIHTTPError(
+            400,
+            "guided_patch and guided_diff cannot both be set",
+            code="invalid_request",
+            param="guided_patch",
+        )
+    if not active_fields:
+        return
+    field = active_fields[0]
+    response_mode = _response_format_mode(request)
+    if response_mode not in {None, "text"}:
+        raise OpenAIHTTPError(
+            400,
+            f"{field} is incompatible with response_format {response_mode}",
+            code="invalid_request",
+            param=field,
+        )
+    value = getattr(request, field)
+    if isinstance(value, bool):
+        return
+    if isinstance(value, str):
+        if _normalize_guided_patch_format(value) in _GUIDED_PATCH_FORMATS:
+            return
+        raise OpenAIHTTPError(
+            400,
+            f"{field} format {value!r} is not supported",
+            code="unsupported_parameter",
+            param=field,
+        )
+    if not isinstance(value, Mapping):
+        raise OpenAIHTTPError(
+            400,
+            f"{field} must be true, a format string, or an object",
+            code="invalid_request",
+            param=field,
+        )
+    allowed = {"type", "format", "fenced"}
+    extra = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+    if extra:
+        raise OpenAIHTTPError(
+            400,
+            f"{field}.{extra[0]} is not supported",
+            code="unsupported_parameter",
+            param=f"{field}.{extra[0]}",
+        )
+    requested_format = value.get("type", value.get("format", "unified_diff"))
+    if _normalize_guided_patch_format(requested_format) not in _GUIDED_PATCH_FORMATS:
+        raise OpenAIHTTPError(
+            400,
+            f"{field} format {requested_format!r} is not supported",
+            code="unsupported_parameter",
+            param=f"{field}.type",
+        )
+    fenced = value.get("fenced", "optional")
+    if isinstance(fenced, bool):
+        return
+    if str(fenced).strip().lower() in {"optional", "allow", "allowed"}:
+        return
+    raise OpenAIHTTPError(
+        400,
+        f"{field}.fenced must be a boolean or 'optional'",
+        code="invalid_request",
+        param=f"{field}.fenced",
+    )
+
+
+def _normalize_guided_patch_format(value: Any) -> str:
+    text = str(value or "unified_diff").strip().lower().replace("-", "_")
+    if text in {"diff", "patch"}:
+        return "unified_diff"
+    return text
+
+
+def _guided_patch_value_enabled(value: Any) -> bool:
+    return value is not None and value is not False
+
+
+def _guided_patch_field(guided_patch: Any | None, guided_diff: Any | None) -> str | None:
+    if _guided_patch_value_enabled(guided_patch):
+        return "guided_patch"
+    if _guided_patch_value_enabled(guided_diff):
+        return "guided_diff"
+    return None
+
+
+def _guided_patch_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    return _guided_patch_field(
+        getattr(request, "guided_patch", None),
+        getattr(request, "guided_diff", None),
+    ) is not None
+
+
 def _validate_tool_schema_requests(request: CompletionRequest | ChatCompletionRequest) -> None:
     if not isinstance(request, ChatCompletionRequest):
         return
@@ -6988,6 +7169,10 @@ def _response_format_json_object(request: CompletionRequest | ChatCompletionRequ
 
 def _response_format_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
     return _response_format_mode(request) in {"json_object", "json_schema"}
+
+
+def _structured_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    return _response_format_result_validation(request) or _guided_patch_result_validation(request)
 
 
 def _response_format_json_schema(
@@ -7211,6 +7396,103 @@ def _response_format_failure_reason(
     if schema is None:
         return "schema_violation"
     return None if _validate_json_schema_value(value, schema, path="$") is None else "schema_violation"
+
+
+def _structured_output_failure_reason(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+    finish_reason: str,
+) -> str | None:
+    response_format_failure = _response_format_failure_reason(request, text, finish_reason)
+    if response_format_failure is not None:
+        return response_format_failure
+    return _guided_patch_failure_reason(request, text, finish_reason)
+
+
+def _guided_patch_failure_reason(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+    finish_reason: str,
+) -> str | None:
+    if not _guided_patch_result_validation(request):
+        return None
+    if str(finish_reason).strip().lower() == "length":
+        return None
+    return None if _is_valid_guided_patch_text(text) else "schema_violation"
+
+
+def _is_valid_guided_patch_text(text: str) -> bool:
+    patch = _extract_guided_patch_body(str(text))
+    if patch is None:
+        return False
+    return _is_valid_unified_diff(patch)
+
+
+def _extract_guided_patch_body(text: str) -> str | None:
+    stripped = str(text).strip()
+    if not stripped:
+        return None
+    match = _PATCH_FENCE_RE.match(stripped)
+    if match is None:
+        return stripped
+    label = match.group("label").strip().lower()
+    if label and label not in {"diff", "patch"}:
+        return None
+    return match.group("body").strip()
+
+
+def _is_valid_unified_diff(text: str) -> bool:
+    lines = str(text).strip().splitlines()
+    if not lines:
+        return False
+    index = 0
+    file_count = 0
+    hunk_count = 0
+    while index < len(lines):
+        while index < len(lines) and _is_unified_diff_metadata_line(lines[index]):
+            index += 1
+        if index < len(lines) and lines[index].startswith(_UNIFIED_DIFF_BINARY_PREFIXES):
+            return False
+        if index >= len(lines) or not lines[index].startswith("--- "):
+            return False
+        index += 1
+        if index >= len(lines) or not lines[index].startswith("+++ "):
+            return False
+        file_count += 1
+        index += 1
+        file_hunks = 0
+        while index < len(lines) and _UNIFIED_DIFF_HUNK_RE.match(lines[index]):
+            file_hunks += 1
+            hunk_count += 1
+            index += 1
+            body_lines = 0
+            while index < len(lines):
+                line = lines[index]
+                if _UNIFIED_DIFF_HUNK_RE.match(line):
+                    break
+                if line.startswith("--- ") or _is_unified_diff_metadata_line(line):
+                    break
+                if not _is_unified_diff_body_line(line):
+                    return False
+                body_lines += 1
+                index += 1
+            if body_lines == 0:
+                return False
+        if file_hunks == 0:
+            return False
+    return file_count > 0 and hunk_count > 0
+
+
+def _is_unified_diff_metadata_line(line: str) -> bool:
+    return line.startswith(_UNIFIED_DIFF_METADATA_PREFIXES)
+
+
+def _is_unified_diff_body_line(line: str) -> bool:
+    return (
+        bool(line)
+        and line[0] in {" ", "+", "-"}
+        or line.startswith("\\ No newline at end of file")
+    )
 
 
 def _is_json_object_text(text: str) -> bool:

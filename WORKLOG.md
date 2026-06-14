@@ -89819,3 +89819,22 @@ Findings:
 Validation:
 - `python3 -m json.tool` passed for all four corrected JSON artifacts.
 - Targeted contradiction scan passed for `*rx7900xtx*.json`.
+
+## 2026-06-14 - AGENTIC guided patch result validation
+
+Promoted `guided_patch` and `guided_diff` from unsupported grammar fields to
+fail-closed unified-diff result validation. The server now accepts raw or fenced
+unified diffs for completions and chat, buffers streaming paths when patch
+validation is active, suppresses invalid stop-finished patch output with
+`finish_details.reason="schema_violation"`, and carries guided patch/diff
+settings across deterministic buffered continuation handles. Capabilities and
+docs now report patch/diff as result-validation-only while true grammar decoding
+remains future work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_guided_diff_validates_unified_diff_result tests/test_server_api.py::test_streaming_completion_guided_diff_buffers_validation_failure tests/test_server_api.py::test_chat_completion_guided_patch_validates_visible_unified_diff tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_patch_and_inherits_validation tests/test_server_api.py::test_guided_patch_request_validation_fails_before_generation -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `21 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json` -> clean.

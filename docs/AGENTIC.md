@@ -1345,6 +1345,11 @@ Current state:
   validation. Valid visible JSON is returned normally; invalid stop-finished
   outputs return `finish_details.reason="schema_violation"`, advertised under
   `features.structured_outputs.result_validation_failure_reasons`.
+- `guided_patch` and `guided_diff` are accepted as post-generation unified-diff
+  result validation. Valid raw unified diffs or a single fenced `diff`/`patch`
+  block are returned normally; invalid stop-finished outputs are suppressed with
+  `finish_details.reason="schema_violation"`. Length-finished partial patches
+  keep their text and may use deterministic buffered continuation handles.
 - Auto-mode constraints, full argument/schema grammar forcing, and
   grammar-constrained JSON/tool generation remain future work.
 
@@ -1445,13 +1450,14 @@ Current code reality:
   `strict_decoding=false`, an empty supported grammar list, and known
   unsupported grammar/guidance fields (`grammar`, `guided_json`,
   `guided_regex`, `guided_choice`, `guided_grammar`, and
-  `guided_decoding_backend`) plus patch/diff grammar fields (`guided_patch` and
-  `guided_diff`).
+  `guided_decoding_backend`). Patch/diff guidance is reported separately under
+  `features.grammars.result_validation_only` because it is validation-only, not
+  grammar decoding.
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
-  set to the rejected field. JSON-object / JSON-schema support remains
-  result-validation-only, not grammar decoding. Tests cover every advertised
-  unsupported grammar/guidance field.
+  set to the rejected field. JSON-object / JSON-schema / patch-diff support
+  remains result-validation-only, not grammar decoding. Tests cover every
+  advertised unsupported grammar/guidance field.
 
 #### P2.5 Patch/diff constrained mode
 
@@ -1469,13 +1475,18 @@ Exit gates:
 
 Current code reality:
 
-- Patch/diff constrained decoding is not implemented. The capabilities manifest
-  advertises future top-level request fields `guided_patch` and `guided_diff`
-  as unsupported grammar fields, and requests that send either field are
-  rejected before generation with `unsupported_parameter` and stable
-  `error.param`.
-- Plain text generation remains unaffected because unsupported patch/diff
-  controls fail closed at request validation time.
+- Patch/diff constrained decoding is not implemented, but `guided_patch` and
+  `guided_diff` now provide fail-closed result validation for coding agents.
+  The server accepts `true`, `"unified_diff"`, or an object with
+  `type`/`format="unified_diff"` and optional `fenced`. Chat rendering adds a
+  unified-diff prompt hint. Stop-finished outputs that are not raw unified diffs
+  or a single fenced `diff`/`patch` block return empty content with
+  `finish_details.reason="schema_violation"`.
+- Length-finished partial guided patches keep their partial text, are classified
+  as structured length finishes, and inherit patch validation across
+  deterministic buffered continuation handles.
+- Plain text generation remains unaffected when `guided_patch` / `guided_diff`
+  are absent; true token-level patch grammar enforcement remains future work.
 
 #### P2.6 Tool streaming polish
 
@@ -1883,7 +1894,8 @@ Current code reality:
   per request, and keeps stateful `session.id` out of the default streaming
   payload plus intentionally unused tool-policy/logprob fields
   (`parallel_tool_calls`, `top_logprobs`) and unsupported grammar/guidance
-  fields in `do_not_send`.
+  fields in `do_not_send`. `guided_patch` / `guided_diff` are no longer in
+  `do_not_send` because they are supported as result-validation controls.
 - `docs/examples/pi-agent/models.json` is a checked-in pi config example for the
   Qwen 3.6 PARO endpoint. It enables pi's thinking UI with `reasoning=true` and
   `compat.thinkingFormat="qwen"` while leaving `supportsReasoningEffort=false`

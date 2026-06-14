@@ -41,9 +41,7 @@
       "guided_regex",
       "guided_choice",
       "guided_grammar",
-      "guided_decoding_backend",
-      "guided_patch",
-      "guided_diff"
+      "guided_decoding_backend"
     ]
   },
   "token_diagnostics": {

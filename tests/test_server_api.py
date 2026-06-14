@@ -299,6 +299,8 @@ def _continuation_capability() -> dict[str, Any]:
             "tool_choice",
             "parallel_tool_calls",
             "response_format",
+            "guided_patch",
+            "guided_diff",
             "reasoning_effort",
             "max_think_tokens",
             "min_answer_tokens",
@@ -569,6 +571,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "response_format": True,
         "json_object": True,
         "json_schema": True,
+        "guided_patch": True,
+        "guided_diff": True,
         "strict_decoding": False,
         "strict_result_validation": True,
         "result_validation_failure_reasons": ["schema_violation"],
@@ -612,10 +616,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "guided_choice",
             "guided_grammar",
             "guided_decoding_backend",
-            "guided_patch",
-            "guided_diff",
         ],
-        "result_validation_only": ["json_object", "json_schema"],
+        "result_validation_only": ["json_object", "json_schema", "guided_patch", "guided_diff"],
     }
     assert body["features"]["token_diagnostics"] == {
         "tokenize": True,
@@ -766,7 +768,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert errors_by_code["routing_failed"]["emitted"] is False
     assert errors_by_code["invalid_tool_call"]["emitted"] is True
     assert "finish_details.reason" in errors_by_code["invalid_tool_call"]["description"]
-    assert "response_format result" in errors_by_code["schema_violation"]["description"]
+    assert "structured-output result" in errors_by_code["schema_violation"]["description"]
     assert {
         "legacy_code": "model_not_found",
         "code": "model_unavailable",
@@ -873,7 +875,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "continuation_id" not in body["unsupported_fields"]
     assert "grammar" in body["unsupported_fields"]
     assert "guided_json" in body["unsupported_fields"]
-    assert "guided_patch" in body["unsupported_fields"]
+    assert "guided_patch" not in body["unsupported_fields"]
+    assert "guided_diff" not in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -3115,6 +3118,21 @@ def _response_json_schema() -> dict[str, Any]:
     }
 
 
+def _unified_diff_text() -> str:
+    return "\n".join(
+        [
+            "diff --git a/README.md b/README.md",
+            "index 1111111..2222222 100644",
+            "--- a/README.md",
+            "+++ b/README.md",
+            "@@ -1,2 +1,2 @@",
+            " hello",
+            "-old",
+            "+new",
+        ]
+    )
+
+
 def test_completions_response_format_json_schema_validates_result() -> None:
     schema = _response_json_schema()
     valid_client = TestClient(
@@ -3263,6 +3281,67 @@ def test_completions_response_format_accepts_annotation_schema_keywords() -> Non
     assert choice["text"] == '{"ok":true,"path":"README.md"}'
     assert choice["finish_details"] == _stateless_finish_details("stop")
     assert len(fake.calls) == 1
+
+
+def test_completions_guided_diff_validates_unified_diff_result() -> None:
+    diff_text = _unified_diff_text()
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=[diff_text]),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=["Here is the patch:\n" + diff_text]),
+        )
+    )
+
+    payload = {
+        "model": "fake-model",
+        "prompt": "patch",
+        "guided_diff": {"type": "unified_diff"},
+    }
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == diff_text
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
+def test_streaming_completion_guided_diff_buffers_validation_failure() -> None:
+    fake = FakeLLM(outputs=["not a diff"], stream_chunks=[_unified_diff_text()])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "patch",
+            "guided_diff": True,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": _stateless_finish_details("schema_violation"),
+    }
+    assert fake.stream_calls == []
 
 
 def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
@@ -4443,6 +4522,39 @@ def test_chat_completion_response_format_json_schema_validates_visible_content()
     assert "Return only JSON that satisfies this JSON schema" in invalid_fake.calls[0][0][0]
 
 
+def test_chat_completion_guided_patch_validates_visible_unified_diff() -> None:
+    diff_text = _unified_diff_text()
+    fenced_diff = f"<think>patch</think>```diff\n{diff_text}\n```"
+    valid_fake = FakeLLM(outputs=[fenced_diff])
+    invalid_fake = FakeLLM(outputs=[f"<think>patch</think>Here is the patch:\n{diff_text}"])
+    valid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=valid_fake)
+    )
+    invalid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=invalid_fake)
+    )
+
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "edit README"}],
+        "guided_patch": {"format": "unified-diff"},
+    }
+    valid = valid_client.post("/v1/chat/completions", json=payload)
+    invalid = invalid_client.post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["message"]["content"] == f"```diff\n{diff_text}\n```"
+    assert valid_choice["message"]["reasoning_content"] == "patch"
+    assert valid_choice["finish_details"] == _stateless_finish_details("stop")
+    assert "Return only a valid unified diff patch" in valid_fake.calls[0][0][0]
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["message"] == {"role": "assistant", "content": ""}
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_chat_completion_response_format_length_keeps_partial_json() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -4476,6 +4588,53 @@ def test_chat_completion_response_format_length_keeps_partial_json() -> None:
         continuation_eligible=True,
         continuation_id=continuation_id,
     )
+
+
+def test_chat_continuation_resumes_partial_guided_patch_and_inherits_validation() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old",
+                finish_details=FinishDetails(reason="length", length_limit=12),
+            ),
+            GenerationOutput(text="\n+new", finish_details=FinishDetails(reason="stop")),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "edit README"}],
+            "guided_patch": True,
+            "max_tokens": 12,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert first_choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=12,
+        phase="structured",
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["message"]["content"].endswith("-old\n+new")
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["finish_details"] == _stateless_finish_details("stop")
 
 
 def test_chat_continuation_resumes_partial_json_and_inherits_response_format() -> None:
@@ -7266,24 +7425,6 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
             },
             "guided_decoding_backend",
         ),
-        (
-            "/v1/chat/completions",
-            {
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "hello"}],
-                "guided_patch": {"format": "unified_diff"},
-            },
-            "guided_patch",
-        ),
-        (
-            "/v1/chat/completions",
-            {
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "hello"}],
-                "guided_diff": {"format": "unified_diff"},
-            },
-            "guided_diff",
-        ),
     ],
 )
 def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, param) -> None:
@@ -7295,6 +7436,54 @@ def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, para
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "unsupported_parameter"
+    assert response.json()["error"]["param"] == param
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("payload", "param", "code"),
+    [
+        (
+            {
+                "guided_patch": {"type": "regex"},
+            },
+            "guided_patch.type",
+            "unsupported_parameter",
+        ),
+        (
+            {
+                "guided_patch": True,
+                "guided_diff": True,
+            },
+            "guided_patch",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_patch": True,
+                "response_format": {"type": "json_object"},
+            },
+            "guided_patch",
+            "invalid_request",
+        ),
+    ],
+)
+def test_guided_patch_request_validation_fails_before_generation(payload, param, code) -> None:
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            **payload,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == code
     assert response.json()["error"]["param"] == param
     assert fake.calls == []
 

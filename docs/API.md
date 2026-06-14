@@ -405,12 +405,21 @@ keywords are rejected before generation instead of being silently ignored;
 annotation keys are accepted but ignored by validation. This is result
 validation, not grammar-constrained decoding.
 
-Grammar/guidance request fields are not currently supported. The capabilities
-manifest reports `features.grammars.enabled=false` and lists known unsupported
-fields such as `grammar`, `guided_json`, `guided_regex`, `guided_choice`,
-`guided_grammar`, `guided_decoding_backend`, `guided_patch`, and
-`guided_diff`; sending them returns HTTP 400 with
-`error.code: "unsupported_parameter"` and `error.param` set to the field.
+Patch/diff guidance is also result-validation only. `guided_patch` and
+`guided_diff` accept `true`, `"unified_diff"`, or an object such as
+`{"type":"unified_diff"}` / `{"format":"unified_diff","fenced":"optional"}`.
+Chat requests add a prompt hint that asks for a raw unified diff or one fenced
+`diff` / `patch` block. Stop-finished outputs that are not a unified diff return
+empty successful content and `finish_details.reason: "schema_violation"`;
+length-finished partial patches keep their partial text and can produce a
+continuation handle in deterministic buffered mode.
+
+Grammar-constrained decoding is not currently supported. The capabilities
+manifest reports `features.grammars.enabled=false`, lists true grammar fields
+such as `grammar`, `guided_json`, `guided_regex`, `guided_choice`,
+`guided_grammar`, and `guided_decoding_backend` under unsupported fields, and
+reports `guided_patch` / `guided_diff` under
+`features.grammars.result_validation_only`.
 
 ### Thinking / no-think controls
 
@@ -511,8 +520,8 @@ defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
 hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
 explicitly sends `session.commit="append_none"` as the current stateless
 no-retain policy, and keeps stateful `session.id` out of the default streaming
-payload plus intentionally unused tool-policy and grammar/guidance fields in
-`do_not_send`.
+payload plus intentionally unused tool-policy fields and unsupported
+grammar/guidance fields in `do_not_send`.
 
 When `--chat-smoke` is used and the config enables tools, the validator sends a
 specific `record_result` tool choice and requires the server response to contain
