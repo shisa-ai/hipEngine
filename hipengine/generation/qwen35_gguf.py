@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -13,6 +13,7 @@ from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
+    GenerationStreamChunk,
     GenerationTelemetry,
     TokenLogprob,
     register_text_generator,
@@ -52,6 +53,34 @@ class Qwen35GGUFBringupGenerator:
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
         return [output.text for output in outputs]
+
+    def stream(self, request: GenerationRequest) -> Iterator[str]:
+        for chunk in self.stream_detailed(request):
+            yield chunk.text
+
+    def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
+        if len(request.prompts) != 1:
+            raise ValueError("streaming currently supports exactly one prompt")
+        if request.max_tokens < 0:
+            raise ValueError("max_tokens must be non-negative")
+        raise_if_generation_deadline_expired(request)
+        if request.max_tokens == 0:
+            return
+        prompt_ids = self.tokenizer.encode(request.prompts[0])
+        raise_if_generation_deadline_expired(request)
+        if not prompt_ids:
+            raise ValueError("GGUF prompt tokenization produced no token IDs")
+        plan = plan_sampler(request)
+        with Qwen35GGUFResidentSession(self.model_path) as session:
+            if plan.mode is SamplingMode.GREEDY_FAST:
+                yield from self._stream_greedy(session, prompt_ids, request)
+                return
+            yield from self._stream_sampled(
+                session,
+                prompt_ids,
+                request,
+                row_index=0,
+            )
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         if request.max_tokens < 0:
@@ -162,18 +191,7 @@ class Qwen35GGUFBringupGenerator:
         row_index: int,
     ) -> GenerationOutput:
         sampling_request = _request_with_tokenizer_eos(request, self.tokenizer)
-        state = RowSamplingState(
-            prompt_tokens=tuple(int(token) for token in prompt_ids),
-            seed=row_seed_for_index(sampling_request, row_index),
-            row_index=row_index,
-            forced_tokens_pending=sampling_request.forced_tokens_pending,
-            forced_token_reason=sampling_request.forced_token_reason,
-            post_thinking_forced_tokens_pending=sampling_request.post_thinking_forced_tokens_pending,
-            post_thinking_forced_token_reason=sampling_request.post_thinking_forced_token_reason,
-            force_sequence_completion_token_sequences=sampling_request.force_sequence_completion_token_sequences,
-            force_sequence_completion_reason=sampling_request.force_sequence_completion_reason,
-            thinking_budget=thinking_budget_state_from_params(sampling_request),
-        )
+        state = _gguf_row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         samples = []
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
@@ -216,6 +234,97 @@ class Qwen35GGUFBringupGenerator:
             ),
         )
 
+    def _stream_greedy(
+        self,
+        session: Qwen35GGUFResidentSession,
+        prompt_ids: list[int],
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        generated_ids: list[int] = []
+        raise_if_generation_deadline_expired(request)
+        result = session.prefill(prompt_ids, return_logits=False)
+        raise_if_generation_deadline_expired(request)
+        generated_ids.append(int(result.token_id))
+        yield GenerationStreamChunk(
+            self.tokenizer.decode([generated_ids[-1]]),
+            telemetry=_gguf_telemetry(
+                prompt_ids,
+                generated_ids,
+                request,
+                row_index=0,
+                phase="answer",
+            ),
+        )
+        if _gguf_finished(generated_ids, self.tokenizer, request):
+            return
+        for _ in range(request.max_tokens - 1):
+            raise_if_generation_deadline_expired(request)
+            step = session.step(generated_ids[-1], return_logits=False)
+            raise_if_generation_deadline_expired(request)
+            generated_ids.append(int(step.token_id))
+            yield GenerationStreamChunk(
+                self.tokenizer.decode([generated_ids[-1]]),
+                telemetry=_gguf_telemetry(
+                    prompt_ids,
+                    generated_ids,
+                    request,
+                    row_index=0,
+                    phase="answer",
+                ),
+            )
+            if _gguf_finished(generated_ids, self.tokenizer, request):
+                return
+
+    def _stream_sampled(
+        self,
+        session: Qwen35GGUFResidentSession,
+        prompt_ids: list[int],
+        request: GenerationRequest,
+        *,
+        row_index: int,
+    ) -> Iterator[GenerationStreamChunk]:
+        sampling_request = _request_with_tokenizer_eos(request, self.tokenizer)
+        state = _gguf_row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
+        generated_ids: list[int] = []
+        live_phase = None if state.thinking_budget is not None else "answer"
+        raise_if_generation_deadline_expired(request)
+        result = session.prefill(prompt_ids, return_logits=True)
+        raise_if_generation_deadline_expired(request)
+        sample = _select_from_gguf_logits(result, sampling_request, state)
+        generated_ids.append(int(sample.token_id))
+        yield GenerationStreamChunk(
+            self.tokenizer.decode([generated_ids[-1]]),
+            telemetry=_gguf_telemetry(
+                prompt_ids,
+                generated_ids,
+                sampling_request,
+                row_index=row_index,
+                sampling_state=state,
+                phase=live_phase,
+            ),
+        )
+        if _gguf_finished(generated_ids, self.tokenizer, request):
+            return
+        for _ in range(request.max_tokens - 1):
+            raise_if_generation_deadline_expired(request)
+            step = session.step(generated_ids[-1], return_logits=True)
+            raise_if_generation_deadline_expired(request)
+            sample = _select_from_gguf_logits(step, sampling_request, state)
+            generated_ids.append(int(sample.token_id))
+            yield GenerationStreamChunk(
+                self.tokenizer.decode([generated_ids[-1]]),
+                telemetry=_gguf_telemetry(
+                    prompt_ids,
+                    generated_ids,
+                    sampling_request,
+                    row_index=row_index,
+                    sampling_state=state,
+                    phase=live_phase,
+                ),
+            )
+            if _gguf_finished(generated_ids, self.tokenizer, request):
+                return
+
 
 def _select_from_gguf_logits(
     result: Any,
@@ -238,6 +347,26 @@ def _request_with_tokenizer_eos(
     if eos_token_id is None:
         return request
     return replace(request, eos_token_id=int(eos_token_id))
+
+
+def _gguf_row_sampling_state(
+    request: GenerationRequest,
+    prompt_ids: list[int],
+    *,
+    row_index: int,
+) -> RowSamplingState:
+    return RowSamplingState(
+        prompt_tokens=tuple(int(token) for token in prompt_ids),
+        seed=row_seed_for_index(request, row_index),
+        row_index=row_index,
+        forced_tokens_pending=request.forced_tokens_pending,
+        forced_token_reason=request.forced_token_reason,
+        post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
+        post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+        force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=request.force_sequence_completion_reason,
+        thinking_budget=thinking_budget_state_from_params(request),
+    )
 
 
 def _gguf_generation_output(
@@ -274,6 +403,7 @@ def _gguf_telemetry(
     *,
     row_index: int,
     sampling_state: RowSamplingState | None = None,
+    phase: str | None = None,
 ) -> GenerationTelemetry:
     plan = plan_sampler(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
@@ -281,7 +411,7 @@ def _gguf_telemetry(
         row_index=row_index,
         prompt_tokens=len(prompt_ids),
         generated_tokens=len(generated_ids),
-        phase=state_payload.get("phase", "done"),
+        phase=phase or state_payload.get("phase", "done"),
         reasoning_tokens=int(state_payload.get("reasoning_tokens", 0)),
         answer_tokens=int(state_payload.get("answer_tokens", 0)),
         forced_tokens_pending=tuple(state_payload.get("forced_tokens_pending", ())),

@@ -11,6 +11,7 @@ from hipengine.generation import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationRequest,
+    GenerationStreamChunk,
 )
 
 
@@ -321,6 +322,207 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
     assert ("prefill", (10, 11), True) in calls
     assert ("step", 1, True) in calls
     assert not any(call[0] == "capture_decode_graph" for call in calls)
+
+
+def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path):
+            calls.append(("init", str(model_path)))
+
+        def __enter__(self):
+            calls.append(("enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("exit", exc_type is None))
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=1)
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(token_id=2)
+
+        def capture_decode_graph(self, **kwargs):  # pragma: no cover - streaming should stay live
+            raise AssertionError("streaming should emit live one-token steps")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    chunks = list(generator.stream_detailed(_request(max_tokens=2)))
+
+    assert [chunk.text for chunk in chunks] == ["B", "C"]
+    assert all(isinstance(chunk, GenerationStreamChunk) for chunk in chunks)
+    assert [_decode_state(chunk) for chunk in chunks] == [
+        {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 2,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_mode": "greedy_fast",
+        },
+        {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 2,
+            "generated_tokens": 2,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_mode": "greedy_fast",
+        },
+    ]
+    assert calls == [
+        ("init", "/tmp/fake.gguf"),
+        ("enter",),
+        ("prefill", (10, 11), False),
+        ("step", 1, False),
+        ("exit", True),
+    ]
+
+
+def test_gguf_stream_text_wrapper_preserves_plain_chunks(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            return SimpleNamespace(token_id=1)
+
+        def step(self, token_id: int, *, return_logits=True):
+            return SimpleNamespace(token_id=2)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+
+    assert list(generator.stream(_request(max_tokens=2))) == ["B", "C"]
+
+
+def test_gguf_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            calls.append(("enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("exit", exc_type is None))
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 1.0, 5.0]], dtype=np.float32),
+            )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    chunks = list(generator.stream_detailed(_request(temperature=0.7, top_k=1, seed=5)))
+
+    assert [chunk.text for chunk in chunks] == ["B", "C"]
+    assert [_decode_state(chunk) for chunk in chunks] == [
+        {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 2,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_mode": "host_logits_sample",
+        },
+        {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 2,
+            "generated_tokens": 2,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_mode": "host_logits_sample",
+        },
+    ]
+    assert calls == [
+        ("enter",),
+        ("prefill", (10, 11), True),
+        ("step", 1, True),
+        ("exit", True),
+    ]
+
+
+def test_gguf_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):  # pragma: no cover - max_tokens=1
+            raise AssertionError("hard-close stream fixture should finish after prefill")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    chunks = list(
+        generator.stream_detailed(
+            _request(
+                max_tokens=1,
+                thinking_close_token_ids=(2,),
+                thinking_hard_token_cap=0,
+            )
+        )
+    )
+
+    assert [chunk.text for chunk in chunks] == ["C"]
+    assert _decode_state(chunks[0]) == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "reasoning_tokens": 1,
+        "active_processors": ["thinking_budget"],
+        "sampler_fast_path_blockers": ["thinking_budget"],
+        "sampler_fallback_reason": "processed_logits_required",
+        "budget_pressure": "hard_close",
+        "sampler_mode": "processed_argmax",
+    }
 
 
 def test_gguf_greedy_host_decode_checks_deadline_after_step(monkeypatch) -> None:

@@ -90523,3 +90523,19 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `25 passed`.
 - `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC GGUF live stream telemetry
+
+Added GGUF c=1 true `stream_detailed()` support using one-token resident decode
+steps so streaming no longer has to fall back to buffered `generate()`.
+`Qwen35GGUFBringupGenerator.stream()` remains a plain text iterator, while
+`stream_detailed()` emits backend-authored `GenerationStreamChunk.telemetry` for
+greedy and sampled answer tokens, including sampler blockers/fallback reason and
+host-sampled thinking-budget pressure. Updated `docs/AGENTIC.md` to move GGUF
+c=1 true streaming out of the live-telemetry follow-up bucket.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `15 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
