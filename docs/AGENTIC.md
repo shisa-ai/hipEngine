@@ -1364,6 +1364,21 @@ Implement stable errors for:
 - `model_unavailable`;
 - `routing_failed`.
 
+Current code reality:
+
+- HTTP and SSE error payloads preserve existing OpenAI-style `error.code` values
+  for compatibility and add `error.hipengine` with the canonical AGENTIC
+  taxonomy code, HTTP status, retryability, and `legacy_code` when the public
+  code still uses an older name.
+- `/v1/hipengine/capabilities` advertises
+  `errors.schema="hipengine.error_taxonomy.v1"`, canonical code metadata, and
+  legacy aliases. Currently emitted canonical codes include
+  `unsupported_parameter`, `schema_violation`, `context_overflow`,
+  `deadline_exceeded`, `cancelled`, and `model_unavailable`.
+- `invalid_tool_call`, `engine_busy`, and `routing_failed` are reserved in the
+  manifest but marked `emitted=false` until strict tool-call decoding,
+  admission/backpressure rejection, and multi-model routing exist.
+
 Exit gates:
 
 - each error has status code, machine code, parameter/path when applicable, and

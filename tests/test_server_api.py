@@ -224,6 +224,25 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "client_disconnect": True,
         "preemptive_decode_cancel": False,
     }
+    assert body["errors"]["schema"] == "hipengine.error_taxonomy.v1"
+    errors_by_code = {item["code"]: item for item in body["errors"]["codes"]}
+    for code in (
+        "unsupported_parameter",
+        "invalid_tool_call",
+        "schema_violation",
+        "context_overflow",
+        "deadline_exceeded",
+        "cancelled",
+        "engine_busy",
+        "model_unavailable",
+        "routing_failed",
+    ):
+        assert code in errors_by_code
+    assert errors_by_code["engine_busy"]["emitted"] is False
+    assert {
+        "legacy_code": "model_not_found",
+        "code": "model_unavailable",
+    } in body["errors"]["aliases"]
     assert body["sampling"]["execution_modes"] == [
         "greedy_fast",
         "processed_argmax",
@@ -790,6 +809,11 @@ def test_completion_timeout_returns_deadline_error_and_server_reuses() -> None:
     assert error["type"] == "timeout_error"
     assert error["code"] == "deadline_exceeded"
     assert error["param"] == "timeout_ms"
+    assert error["hipengine"] == {
+        "code": "deadline_exceeded",
+        "status_code": 408,
+        "retryable": True,
+    }
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
 
     deadline = time.perf_counter() + 1.0
@@ -829,6 +853,12 @@ def test_streaming_completion_timeout_emits_error_and_done() -> None:
     }
     assert payload["error"]["type"] == "timeout_error"
     assert payload["error"]["code"] == "deadline_exceeded"
+    assert payload["error"]["param"] == "timeout_ms"
+    assert payload["error"]["hipengine"] == {
+        "code": "deadline_exceeded",
+        "status_code": 408,
+        "retryable": True,
+    }
     assert payload["error"]["finish_details"] == payload["choices"][0]["finish_details"]
 
 
@@ -1633,6 +1663,12 @@ def test_server_rejects_requests_beyond_preallocated_context() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "context_length_exceeded"
+    assert response.json()["error"]["hipengine"] == {
+        "code": "context_overflow",
+        "status_code": 400,
+        "legacy_code": "context_length_exceeded",
+        "retryable": False,
+    }
     assert fake.calls == []
 
 
@@ -1668,6 +1704,25 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     )
     assert wrong_model.status_code == 404
     assert wrong_model.json()["error"]["code"] == "model_not_found"
+    assert wrong_model.json()["error"]["hipengine"] == {
+        "code": "model_unavailable",
+        "status_code": 404,
+        "legacy_code": "model_not_found",
+        "retryable": False,
+    }
+
+    schema_violation = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "max_tokens": 1},
+    )
+    assert schema_violation.status_code == 422
+    assert schema_violation.json()["error"]["code"] == "validation_error"
+    assert schema_violation.json()["error"]["hipengine"] == {
+        "code": "schema_violation",
+        "status_code": 422,
+        "legacy_code": "validation_error",
+        "retryable": False,
+    }
 
     unsupported_chat_top_logprobs = client.post(
         "/v1/chat/completions",
@@ -1686,6 +1741,11 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     )
     assert unsupported_extra.status_code == 400
     assert unsupported_extra.json()["error"]["code"] == "unsupported_parameter"
+    assert unsupported_extra.json()["error"]["hipengine"] == {
+        "code": "unsupported_parameter",
+        "status_code": 400,
+        "retryable": False,
+    }
     assert unsupported_extra.json()["error"]["param"] == "typical_p"
     assert "REQUEST_FAILED: POST /v1/completions status=404 code=model_not_found" in caplog.text
     assert "REQUEST_FAILED: POST /v1/completions status=400 code=unsupported_parameter" in caplog.text

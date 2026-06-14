@@ -102,6 +102,130 @@ class OpenAIHTTPError(Exception):
         super().__init__(message)
 
 
+_ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
+    "unsupported_parameter": {
+        "status_code": 400,
+        "retryable": False,
+        "emitted": True,
+        "description": "A request field or value is not supported by this server.",
+    },
+    "invalid_tool_call": {
+        "status_code": 400,
+        "retryable": False,
+        "emitted": False,
+        "description": "Reserved for strict tool-call decoding/parsing failures.",
+    },
+    "schema_violation": {
+        "status_code": 422,
+        "retryable": False,
+        "emitted": True,
+        "description": "The JSON request body does not match the endpoint schema.",
+    },
+    "context_overflow": {
+        "status_code": 400,
+        "retryable": False,
+        "emitted": True,
+        "description": "Prompt plus generation budget exceeds the admitted context.",
+    },
+    "deadline_exceeded": {
+        "status_code": 408,
+        "retryable": True,
+        "emitted": True,
+        "description": "The request exceeded its timeout_ms or server default deadline.",
+    },
+    "cancelled": {
+        "status_code": 499,
+        "retryable": True,
+        "emitted": True,
+        "description": "The client disconnected or the queued request was cancelled.",
+    },
+    "engine_busy": {
+        "status_code": 503,
+        "retryable": True,
+        "emitted": False,
+        "description": "Reserved for future admission/backpressure rejection.",
+    },
+    "model_unavailable": {
+        "status_code": 404,
+        "retryable": False,
+        "emitted": True,
+        "description": "The requested model is not served by this process.",
+    },
+    "routing_failed": {
+        "status_code": 502,
+        "retryable": True,
+        "emitted": False,
+        "description": "Reserved for future multi-model or multi-worker routing failures.",
+    },
+}
+
+_ERROR_CODE_ALIASES = {
+    "context_length_exceeded": "context_overflow",
+    "model_not_found": "model_unavailable",
+    "validation_error": "schema_violation",
+}
+
+
+def _canonical_error_code(code: str | None) -> str | None:
+    if code is None:
+        return None
+    return _ERROR_CODE_ALIASES.get(str(code), str(code))
+
+
+def _error_taxonomy_manifest() -> dict[str, Any]:
+    return {
+        "schema": "hipengine.error_taxonomy.v1",
+        "codes": [
+            {"code": code, **dict(metadata)}
+            for code, metadata in sorted(_ERROR_TAXONOMY.items())
+        ],
+        "aliases": [
+            {"legacy_code": legacy, "code": canonical}
+            for legacy, canonical in sorted(_ERROR_CODE_ALIASES.items())
+        ],
+    }
+
+
+def _error_extension(status_code: int, code: str | None) -> dict[str, Any] | None:
+    canonical = _canonical_error_code(code)
+    if canonical is None:
+        return None
+    payload: dict[str, Any] = {
+        "code": canonical,
+        "status_code": int(status_code),
+    }
+    legacy = None if code is None else str(code)
+    if legacy and legacy != canonical:
+        payload["legacy_code"] = legacy
+    metadata = _ERROR_TAXONOMY.get(canonical)
+    if metadata is not None:
+        payload["retryable"] = bool(metadata["retryable"])
+    return payload
+
+
+def _error_payload(
+    *,
+    message: str,
+    error_type: str,
+    code: str | None,
+    param: str | None,
+    status_code: int,
+    finish_details: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "message": message,
+        "type": error_type,
+        "param": param,
+        "code": code,
+    }
+    extension = _error_extension(status_code, code)
+    if extension is not None:
+        payload["hipengine"] = extension
+    if finish_details is not None:
+        payload["finish_details"] = dict(finish_details)
+    return payload
+
+
 if ConfigDict is not None:
 
     class _OpenAIBaseModel(BaseModel):
@@ -815,14 +939,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             message=exc.message,
         )
         headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
-        error_payload: dict[str, Any] = {
-            "message": exc.message,
-            "type": exc.error_type,
-            "param": exc.param,
-            "code": exc.code,
-        }
-        if exc.finish_details is not None:
-            error_payload["finish_details"] = dict(exc.finish_details)
+        error_payload = _error_payload(
+            message=exc.message,
+            error_type=exc.error_type,
+            code=exc.code,
+            param=exc.param,
+            status_code=exc.status_code,
+            finish_details=exc.finish_details,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": error_payload},
@@ -845,12 +969,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return JSONResponse(
             status_code=422,
             content={
-                "error": {
-                    "message": message,
-                    "type": "invalid_request_error",
-                    "param": None,
-                    "code": "validation_error",
-                }
+                "error": _error_payload(
+                    message=message,
+                    error_type="invalid_request_error",
+                    param=None,
+                    code="validation_error",
+                    status_code=422,
+                )
             },
         )
 
@@ -1005,7 +1130,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 created,
                 config.model_id,
                 exc.message,
+                status_code=exc.status_code,
                 code=exc.code,
+                param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
             )
@@ -1021,7 +1148,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _completion_stream_error(response_id, created, config.model_id, message)
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=400,
+                code="unsupported_parameter",
+                error_type="invalid_request_error",
+            )
             yield "data: [DONE]\n\n"
             return
         except ValueError as exc:
@@ -1034,7 +1169,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _completion_stream_error(response_id, created, config.model_id, message)
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=400,
+                code="invalid_request",
+                error_type="invalid_request_error",
+            )
             yield "data: [DONE]\n\n"
             return
         except Exception as exc:  # pragma: no cover - real runtime failures
@@ -1047,7 +1190,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _completion_stream_error(response_id, created, config.model_id, message)
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=500,
+                code="generation_failed",
+            )
             yield "data: [DONE]\n\n"
             return
 
@@ -1245,6 +1395,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
             },
+            "errors": _error_taxonomy_manifest(),
             "unsupported_fields": [
                 "continuation_id",
                 "session.commit",
@@ -1531,7 +1682,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 created,
                 config.model_id,
                 exc.message,
+                status_code=exc.status_code,
                 code=exc.code,
+                param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
             )
@@ -1545,7 +1698,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=500,
+                code="generation_failed",
+            )
         yield "data: [DONE]\n\n"
 
     async def stream_chat_completion(
@@ -1566,7 +1726,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 message=exc.message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, exc.message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                exc.message,
+                status_code=exc.status_code,
+                code=exc.code,
+                param=exc.param,
+                error_type=exc.error_type,
+                finish_details=exc.finish_details,
+            )
             yield "data: [DONE]\n\n"
             return
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -1636,7 +1806,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 created,
                 config.model_id,
                 exc.message,
+                status_code=exc.status_code,
                 code=exc.code,
+                param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
             )
@@ -1652,7 +1824,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=400,
+                code="unsupported_parameter",
+                error_type="invalid_request_error",
+            )
             yield "data: [DONE]\n\n"
             return
         except ValueError as exc:
@@ -1665,7 +1845,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=400,
+                code="invalid_request",
+                error_type="invalid_request_error",
+            )
             yield "data: [DONE]\n\n"
             return
         except Exception as exc:  # pragma: no cover - real runtime failures
@@ -1678,7 +1866,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=None,
                 message=message,
             )
-            yield _chat_stream_error(response_id, created, config.model_id, message)
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=500,
+                code="generation_failed",
+            )
             yield "data: [DONE]\n\n"
             return
 
@@ -3224,7 +3419,9 @@ def _completion_stream_error(
     model: str,
     message: str,
     *,
+    status_code: int = 500,
     code: str | None = None,
+    param: str | None = None,
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
 ) -> str:
@@ -3234,13 +3431,17 @@ def _completion_stream_error(
         "logprobs": None,
         "finish_reason": "error",
     }
-    error: dict[str, Any] = {"message": message, "type": error_type}
-    if code is not None:
-        error["code"] = code
+    error = _error_payload(
+        message=message,
+        error_type=error_type,
+        code=code,
+        param=param,
+        status_code=status_code,
+        finish_details=finish_details,
+    )
     if finish_details is not None:
         details = dict(finish_details)
         choice["finish_details"] = details
-        error["finish_details"] = details
     return _sse(
         {
             "id": response_id,
@@ -3555,7 +3756,9 @@ def _chat_stream_error(
     model: str,
     message: str,
     *,
+    status_code: int = 500,
     code: str | None = None,
+    param: str | None = None,
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
 ) -> str:
@@ -3564,13 +3767,17 @@ def _chat_stream_error(
         "delta": {"content": ""},
         "finish_reason": "error",
     }
-    error: dict[str, Any] = {"message": message, "type": error_type}
-    if code is not None:
-        error["code"] = code
+    error = _error_payload(
+        message=message,
+        error_type=error_type,
+        code=code,
+        param=param,
+        status_code=status_code,
+        finish_details=finish_details,
+    )
     if finish_details is not None:
         details = dict(finish_details)
         choice["finish_details"] = details
-        error["finish_details"] = details
     return _sse(
         {
             "id": response_id,

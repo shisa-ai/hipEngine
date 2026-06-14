@@ -263,6 +263,32 @@ If `HIPENGINE_API_KEY` is set, the validator uses it automatically. Add
 tool schema shape and verify that the generated request does not include fields
 listed in `do_not_send`.
 
+### Error taxonomy
+
+All JSON error responses use OpenAI-style `{"error": ...}` payloads with
+`message`, `type`, `code`, and `param`. hipEngine also adds
+`error.hipengine` when the error has a stable machine code. That extension
+contains the canonical AGENTIC code, HTTP status, retryability, and
+`legacy_code` when the OpenAI-facing `error.code` is kept for compatibility.
+Streaming failures use the same error object inside the final SSE error chunk.
+
+Clients should handle these canonical codes from `error.hipengine.code`:
+
+| Code | Status | Retry | Current emission |
+| --- | ---: | --- | --- |
+| `unsupported_parameter` | 400 | no | Unsupported request field/value. |
+| `invalid_tool_call` | 400 | no | Reserved for strict tool-call failures; prompt/parse mode currently treats malformed tool JSON as assistant text. |
+| `schema_violation` | 422 | no | Request body validation errors; legacy `error.code` is `validation_error`. |
+| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`. |
+| `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
+| `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
+| `engine_busy` | 503 | yes | Reserved for future admission/backpressure rejection. |
+| `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`. |
+| `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
+
+The same table is advertised programmatically under
+`/v1/hipengine/capabilities` as `errors`.
+
 ## Diagnostics
 
 Unsupported/unknown request fields, validation failures, and generation failures

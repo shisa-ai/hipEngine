@@ -87290,3 +87290,24 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas -q` -> `3 passed`.
 - `python3 scripts/validate_local_agent_config.py --help >/tmp/hipengine-local-agent-validator-help.txt`.
 - `git diff --check -- docs/AGENTIC.md docs/API.md docs/examples/local-agent/openai-compatible.json scripts/validate_local_agent_config.py tests/test_local_agent_config.py`.
+
+## 2026-06-14 - AGENTIC error taxonomy metadata
+
+Added a canonical AGENTIC error taxonomy to `/v1/hipengine/capabilities` under
+`errors.schema=hipengine.error_taxonomy.v1`. HTTP and SSE error payloads now
+preserve existing OpenAI-style `error.code` values and add
+`error.hipengine` with the canonical taxonomy code, HTTP status, retryability,
+and `legacy_code` when the compatibility code differs.
+
+Current emitted canonical codes cover `unsupported_parameter`,
+`schema_violation`, `context_overflow`, `deadline_exceeded`, `cancelled`, and
+`model_unavailable`. Reserved codes `invalid_tool_call`, `engine_busy`, and
+`routing_failed` are advertised with `emitted=false` until strict tool parsing,
+admission/backpressure rejection, and multi-model routing exist.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completion_timeout_returns_deadline_error_and_server_reuses tests/test_server_api.py::test_streaming_completion_timeout_emits_error_and_done tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `50 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
