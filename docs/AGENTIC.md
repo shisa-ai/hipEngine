@@ -1503,8 +1503,9 @@ Current code reality:
   `continuation_expired` errors. Current eligible handles store a null session
   id because `session.id` requests remain ineligible for continuation-handle
   creation;
-- resume requests can omit the original completion prompt or chat messages, and
-  inherit stored `response_format` when the follow-up omits it;
+- resume requests use the stored prompt/rendered chat plus prior generated text,
+  reject fresh completion `prompt` or chat `messages` payloads before
+  generation, and inherit stored `response_format` when the follow-up omits it;
 - the implementation re-prefills the stored rendered prompt plus prior generated
   text and reports `resident_state_reuse=false`; it does not yet preserve
   decode state, full tokenizer state, RNG state, or resident KV;
@@ -1512,12 +1513,13 @@ Current code reality:
   `choices[].hipengine.decode_state.continuation_eligible` when backend
   telemetry is present, but live lower-loop decode states still do not create or
   scope continuation handles themselves;
-- streaming, logprobs, completion `echo`, `n != 1`, non-deterministic
-  sampling/logit processors, `ignore_eos=true`, OpenAI `stop` controls, chat
-  tools, explicit `response_format` overrides, and thinking-budget controls
-  (`reasoning_effort`, top-level budget fields, `chat_template_kwargs`, nested
-  `thinking`, and nested `reasoning`) are rejected on resume and are not
-  eligible for new handles. The capabilities manifest exposes these
+- streaming, fresh prompt/messages payloads, logprobs, completion `echo`,
+  `n != 1`, non-deterministic sampling/logit processors, `ignore_eos=true`,
+  OpenAI `stop` controls, chat tools, explicit `response_format` overrides, and
+  thinking-budget controls (`reasoning_effort`, top-level budget fields,
+  `chat_template_kwargs`, nested `thinking`, and nested `reasoning`) are
+  rejected on resume and are not eligible for new handles. The capabilities
+  manifest exposes these
   creation/resume blockers under
   `sessions.continuations.ineligible_when` and
   `sessions.continuations.unsupported_resume_fields`.

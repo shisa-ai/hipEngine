@@ -98,6 +98,8 @@ _CONTINUATION_INELIGIBLE_WHEN = (
     "session_id",
 )
 _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
+    "prompt",
+    "messages",
     "stream",
     "n",
     "logprobs",
@@ -7486,6 +7488,10 @@ def _validate_continuation_resume_request(request: CompletionRequest | ChatCompl
 
 
 def _continuation_resume_unsupported_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    if isinstance(request, CompletionRequest) and request.prompt is not None:
+        return "prompt"
+    if isinstance(request, ChatCompletionRequest) and request.messages:
+        return "messages"
     if request.temperature not in (None, 0, 0.0):
         return "temperature"
     if request.logit_bias:

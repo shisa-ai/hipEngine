@@ -328,15 +328,17 @@ continuation handles yet. Handles expire after 15 minutes and are cleared on
 server restart.
 
 Resume by sending the returned `continuation_id` to the same endpoint. The
-original `prompt` or `messages` can be omitted on resume; resumes also inherit
-the stored `response_format` when the follow-up request omits it. This
-first implementation re-prefills the stored rendered prompt plus prior generated
-text instead of reusing resident KV state, and the capabilities manifest reports
+resume uses the stored prompt/rendered chat plus prior generated text, so the
+follow-up request must not include a fresh `prompt` or `messages` payload.
+Resumes also inherit the stored `response_format` when the follow-up request
+omits it. This first implementation re-prefills stored text instead of reusing
+resident KV state, and the capabilities manifest reports
 `sessions.continuations.resident_state_reuse: false`.
 
 Unsupported resume combinations fail before generation: `stream=true`,
-`n != 1`, logprobs, completion `echo=true`, non-deterministic sampling/logit
-processors, `ignore_eos=true`, OpenAI `stop` controls, chat tools,
+fresh completion `prompt` or chat `messages`, `n != 1`, logprobs, completion
+`echo=true`, non-deterministic sampling/logit processors, `ignore_eos=true`,
+OpenAI `stop` controls, chat tools,
 `parallel_tool_calls`, explicit `response_format` overrides, and
 thinking-budget controls such as `reasoning_effort`,
 `chat_template_kwargs`, nested `thinking`, and nested `reasoning`. The

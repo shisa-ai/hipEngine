@@ -372,6 +372,8 @@ def _continuation_capability() -> dict[str, Any]:
             "session_id",
         ],
         "unsupported_resume_fields": [
+            "prompt",
+            "messages",
             "stream",
             "n",
             "logprobs",
@@ -3510,6 +3512,52 @@ def test_completion_continuation_resume_rejects_explicit_response_format_overrid
     assert len(fake.calls) == 2
 
 
+def test_completion_continuation_resume_rejects_prompt_without_consuming_handle() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="alpha",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" beta", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "Say: ", "max_tokens": 1, "temperature": 0.0},
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    with_prompt = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "prompt": "ignored prompt",
+            "max_tokens": 4,
+        },
+    )
+
+    assert with_prompt.status_code == 400
+    assert with_prompt.json()["error"]["code"] == "unsupported_parameter"
+    assert with_prompt.json()["error"]["param"] == "prompt"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    resumed = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert resumed.status_code == 200
+    assert resumed.json()["choices"][0]["text"] == "alpha beta"
+    assert len(fake.calls) == 2
+
+
 def test_completion_length_finish_with_stop_is_continuation_ineligible() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -3838,6 +3886,56 @@ def test_chat_continuation_resume_rejects_reasoning_control_with_specific_param(
     assert resumed.json()["error"]["param"] == "reasoning"
     assert continuation_id in app.state.hipengine_continuations
     assert len(fake.calls) == 1
+
+
+def test_chat_continuation_resume_rejects_messages_without_consuming_handle() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" answer", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 1,
+        },
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    with_messages = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "messages": [{"role": "user", "content": "ignored follow-up"}],
+            "max_tokens": 4,
+        },
+    )
+
+    assert with_messages.status_code == 400
+    assert with_messages.json()["error"]["code"] == "unsupported_parameter"
+    assert with_messages.json()["error"]["param"] == "messages"
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    resumed = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert resumed.status_code == 200
+    assert resumed.json()["choices"][0]["message"]["content"] == "partial answer"
+    assert len(fake.calls) == 2
 
 
 def test_completion_continuation_expiration_reports_stable_error() -> None:

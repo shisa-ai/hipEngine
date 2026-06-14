@@ -91774,3 +91774,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC continuation resume input guards
+
+Continuation resumes now reject fresh completion `prompt` or chat `messages`
+payloads before generation. Handles already carry the stored prompt/rendered
+chat plus prior generated text; rejecting new input avoids silently ignoring it
+or committing ignored chat messages in later session work. The public
+capabilities manifest advertises `prompt` and `messages` under
+`sessions.continuations.unsupported_resume_fields`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completion_continuation_resume_rejects_prompt_without_consuming_handle tests/test_server_api.py::test_completion_continuation_resume_rejects_explicit_response_format_override tests/test_server_api.py::test_chat_continuation_resume_rejects_messages_without_consuming_handle tests/test_server_api.py::test_chat_continuation_resume_rejects_reasoning_control_with_specific_param tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `6 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py -q` -> `65 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
