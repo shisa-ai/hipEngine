@@ -171,7 +171,7 @@ ordinary delta chunks are unchanged.
 When a backend does not yet provide structured finish metadata, the server emits
 the conservative fallback `{"reason": finish_reason}`.
 
-### Request deadlines
+### Request deadlines and cancellation
 
 `POST /v1/completions` and `POST /v1/chat/completions` accept `timeout_ms` as a
 positive relative deadline in milliseconds. Buffered requests that exceed the
@@ -195,6 +195,11 @@ Streaming requests send HTTP `200 OK` when the SSE stream starts. If a deadline
 expires after that, the stream emits a final error SSE payload with
 `finish_reason: "error"` and the same `finish_details`, then emits
 `data: [DONE]`.
+
+Client disconnects are checked at the same server await/stream iteration
+boundaries. Detected disconnects cancel queued work and use structured
+`{"reason": "cancelled", "cancelled": true}` finish details when cancellation
+can still be surfaced as an error payload.
 
 ### Tool calling
 
@@ -252,9 +257,10 @@ shared or sensitive deployments.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.
-- Request deadlines are enforced at server await/iteration boundaries. They fail
-  the HTTP/SSE request promptly, but already-running backend calls or GPU kernels
-  are not preempted until those calls return.
+- Request deadlines and detected client disconnects are enforced at server
+  await/iteration boundaries. They fail the HTTP/SSE request promptly, but
+  already-running backend calls or GPU kernels are not preempted until those
+  calls return.
 - Request execution is serialized with an in-process lock. Continuous batching,
   concurrent decode, and scheduling fairness are later runtime work.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,

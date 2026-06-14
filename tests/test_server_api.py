@@ -6,13 +6,21 @@ import logging
 import time
 from types import SimpleNamespace
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, FinishDetails, GenerationOutput, TokenLogprob
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
-from hipengine.server.api import ChatCompletionRequest, _GenerationBatcher
+from hipengine.server.api import (
+    ChatCompletionRequest,
+    CompletionRequest,
+    OpenAIHTTPError,
+    _await_with_request_control,
+    _GenerationBatcher,
+    _request_control,
+)
 
 
 class FakeLLM:
@@ -212,6 +220,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth() -> None:
     assert body["features"]["request_timeouts"] == {
         "timeout_ms": True,
         "default_timeout_ms": 250.0,
+        "client_disconnect": True,
         "preemptive_decode_cancel": False,
     }
     assert body["sessions"] == {
@@ -448,6 +457,33 @@ def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> Non
     asyncio.run(run())
 
 
+def test_generation_batcher_skips_cancelled_queued_submit() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        cancelled = asyncio.create_task(batcher.submit(("cancelled",), sampling))
+        await asyncio.sleep(0)
+        cancelled.cancel()
+        try:
+            await cancelled
+        except asyncio.CancelledError:
+            pass
+        else:  # pragma: no cover - defensive guard for cancellation semantics
+            raise AssertionError("cancelled submit task did not raise CancelledError")
+
+        live = await batcher.submit(("live",), sampling)
+
+        assert live == ["generated:live"]
+        assert fake.calls == [(("live",), sampling)]
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
     async def run() -> None:
         fake = FakeLLM()
@@ -466,6 +502,44 @@ def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
         assert first == ["generated:one"]
         assert second == ["generated:two"]
         assert fake.calls == [(("one",), first_sampling), (("two",), second_sampling)]
+
+    asyncio.run(run())
+
+
+def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
+    async def run() -> None:
+        async def receive() -> dict[str, object]:
+            return {"type": "http.disconnect"}
+
+        raw_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/v1/completions",
+                "headers": [],
+                "query_string": b"",
+            },
+            receive,
+        )
+        control = _request_control(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            CompletionRequest(model="fake-model", prompt="hello"),
+            raw_request,
+        )
+
+        async def work() -> str:
+            await asyncio.sleep(1.0)
+            return "late"
+
+        try:
+            await _await_with_request_control(work(), control)
+        except OpenAIHTTPError as exc:
+            assert exc.status_code == 499
+            assert exc.error_type == "cancelled_error"
+            assert exc.code == "cancelled"
+            assert exc.finish_details == {"reason": "cancelled", "cancelled": True}
+        else:  # pragma: no cover - defensive guard for cancellation semantics
+            raise AssertionError("disconnect did not cancel request")
 
     asyncio.run(run())
 

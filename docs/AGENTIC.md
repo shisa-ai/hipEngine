@@ -800,15 +800,18 @@ Current code reality:
 - Live SSE streams cannot change the already-sent HTTP status; timeout expiry
   emits a final SSE error payload whose choice and error object both include
   deadline finish details, then emits `data: [DONE]`.
+- A request-control object checks the FastAPI request disconnect signal at the
+  same await/iteration boundaries. Detected disconnects map to structured
+  `cancelled` finish details and HTTP-style status 499 when the transport can
+  still surface an error payload.
 - `_GenerationBatcher` marks abandoned stream items cancelled and skips queued
   futures that were cancelled before dispatch. Already-running blocking
   generator calls are not preempted inside the backend; the awaiting server task
-  fails fast and later requests can reuse the server once the worker unwinds.
+  fails fast on timeout/disconnect and later requests can reuse the server once
+  the worker unwinds.
 
 Remaining implementation:
 
-- client-disconnect cancellation needs request-scope cancellation tokens rather
-  than only stream-generator close/cancel behavior;
 - resident decode / GPU loops still need explicit cooperative deadline checks
   and row/session cleanup hooks for already-running kernels;
 - backend `GenerationOutput.finish_details` still needs native
@@ -819,8 +822,10 @@ Exit gates:
 
 - deadline tests cover HTTP 408 errors, streaming error+done, and follow-up
   server reuse;
-- cancellation tests leave no active row/session leak once request-scope
-  cancellation tokens exist;
+- cancellation tests cover queued work cleanup and request-control disconnect
+  mapping;
+- active row/session leak tests cover lower decode loops once cooperative
+  backend cancellation hooks exist;
 - streaming cancellation emits a final error/done event instead of hanging.
 
 ### P1 — Controlled decoding and thinking budgets
@@ -1250,12 +1255,13 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
-  parameters, request-timeout support, cache/session settings, loaded-model
-  count, and unsupported fields.
+  parameters, request-timeout/client-disconnect support, cache/session settings,
+  loaded-model count, and unsupported fields.
 - Continuations, `session.commit`, multi-model routing, and strict tool decoding
   are advertised as unsupported until their runtime paths exist. Request
-  timeouts are advertised as supported with `preemptive_decode_cancel=false`;
-  token diagnostics are advertised from current tokenizer/counting callables.
+  timeouts and client-disconnect cancellation are advertised as supported with
+  `preemptive_decode_cancel=false`; token diagnostics are advertised from
+  current tokenizer/counting callables.
 
 Exit gates:
 

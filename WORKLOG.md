@@ -87188,3 +87188,22 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py hipengine/generation/sampling.py hipengine/dispatch/sampling.py tests/test_server_api.py tests/test_sampling.py`.
 - `python3 -m pytest tests/test_sampling.py -q` -> `17 passed`.
 - `git diff --check -- hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.
+
+## 2026-06-14 - AGENTIC request-control cancellation
+
+Extended the P0.5 server deadline plumbing into a request-control path that also
+polls FastAPI request disconnect state while awaiting preparation, queued or
+buffered generation, and token stream iteration. Disconnects now map to
+structured `cancelled` finish details (`code=cancelled`, `cancelled=true`) when
+surfaced, and queued `_GenerationBatcher` futures cancelled before dispatch are
+skipped.
+
+Already-running backend calls and GPU kernels remain cooperative-preemption
+future work; capabilities advertise `client_disconnect=true` and
+`preemptive_decode_cancel=false`. Updated `docs/API.md` and `docs/AGENTIC.md`
+with the exact supported boundary and remaining backend/GPU cancellation gap.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `50 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.

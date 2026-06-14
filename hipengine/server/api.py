@@ -9,6 +9,7 @@ limited to short model/session preparation mutations.
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import json
 import logging
 import math
@@ -16,7 +17,7 @@ import re
 import time
 import uuid
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -230,6 +231,15 @@ class _ServerMetrics:
     def record_failure(self) -> None:
         self.request_total += 1
         self.request_failed_total += 1
+
+
+@dataclass(frozen=True)
+class _RequestControl:
+    """Server-side cancellation/deadline state for one HTTP generation."""
+
+    deadline_at: float | None = None
+    disconnected: Callable[[], Awaitable[bool]] | None = None
+    poll_interval_s: float = 0.01
 
 
 _STREAM_DONE = object()
@@ -923,26 +933,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
 
-    async def generate_with_deadline(
+    async def generate_with_request_control(
         prompts: Sequence[str],
         request: CompletionRequest | ChatCompletionRequest,
+        control: _RequestControl | None = None,
     ) -> _GeneratedBatch:
         try:
-            return await _await_with_deadline(generate(prompts, request), _request_deadline_at(config, request))
+            return await _await_with_request_control(
+                generate(prompts, request),
+                control or _request_control(config, request),
+            )
         except OpenAIHTTPError as exc:
-            if exc.code == "deadline_exceeded":
+            if exc.code in {"deadline_exceeded", "cancelled"}:
                 app.state.hipengine_server_metrics.record_failure()
             raise
 
     async def stream_completion_one(
         prompt: str,
         request: CompletionRequest,
+        control: _RequestControl,
     ) -> AsyncIterator[str]:
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
-        deadline_at = _request_deadline_at(config, request)
         full_text: list[str] = []
         try:
             _validate_generation_request(config, request)
@@ -955,8 +969,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
                     return engine, sampling
 
-            engine, sampling = await _await_with_deadline(prepare_stream(), deadline_at)
-            async for token in _iterate_with_deadline(generation_batcher.stream((prompt,), sampling), deadline_at):
+            engine, sampling = await _await_with_request_control(prepare_stream(), control)
+            async for token in _iterate_with_request_control(generation_batcher.stream((prompt,), sampling), control):
                 text = str(token)
                 if not text:
                     continue
@@ -1154,6 +1168,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "request_timeouts": {
                     "timeout_ms": True,
                     "default_timeout_ms": config.request_timeout_ms,
+                    "client_disconnect": True,
                     "preemptive_decode_cancel": False,
                 },
             },
@@ -1271,6 +1286,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.post("/v1/completions", response_model=None)
     async def completions(
         request: CompletionRequest,
+        raw_request: Request,
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
@@ -1278,12 +1294,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts = _normalize_prompts(request.prompt)
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
+        control = _request_control(config, request, raw_request)
         if request.stream and len(expanded_prompts) == 1 and not request.echo and not _request_logprobs_enabled(request):
             return StreamingResponse(
-                stream_completion_one(expanded_prompts[0], request),
+                stream_completion_one(expanded_prompts[0], request, control),
                 media_type="text/event-stream",
             )
-        batch = await generate_with_deadline(expanded_prompts, request)
+        batch = await generate_with_request_control(expanded_prompts, request, control)
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
@@ -1340,6 +1357,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.post("/v1/chat/completions", response_model=None)
     async def chat_completions(
         request: ChatCompletionRequest,
+        raw_request: Request,
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
@@ -1351,15 +1369,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             tool_choice=request.tool_choice,
             thinking=thinking,
         )
+        control = _request_control(config, request, raw_request)
         if request.stream:
             streamer = stream_chat_completion_many if _request_n(request) > 1 or request.logprobs else stream_chat_completion
             return StreamingResponse(
-                streamer(prompt, request),
+                streamer(prompt, request, control),
                 media_type="text/event-stream",
             )
         n = _request_n(request)
         prompts = tuple(prompt for _ in range(n))
-        batch = await generate_with_deadline(prompts, request)
+        batch = await generate_with_request_control(prompts, request, control)
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
@@ -1402,6 +1421,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def stream_chat_completion_many(
         prompt: str,
         request: ChatCompletionRequest,
+        control: _RequestControl,
     ) -> AsyncIterator[str]:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
@@ -1409,7 +1429,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         include_hipengine = _stream_include_hipengine(request)
         try:
             n = _request_n(request)
-            batch = await generate_with_deadline(tuple(prompt for _ in range(n)), request)
+            batch = await generate_with_request_control(tuple(prompt for _ in range(n)), request, control)
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
@@ -1489,6 +1509,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def stream_chat_completion(
         prompt: str,
         request: ChatCompletionRequest,
+        control: _RequestControl,
     ) -> AsyncIterator[str]:
         try:
             _validate_generation_request(config, request)
@@ -1510,7 +1531,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
-        deadline_at = _request_deadline_at(config, request)
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
@@ -1524,7 +1544,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
                     return engine, sampling
 
-            engine, sampling = await _await_with_deadline(prepare_stream(), deadline_at)
+            engine, sampling = await _await_with_request_control(prepare_stream(), control)
             yield _chat_stream_role(
                 response_id,
                 created,
@@ -1532,7 +1552,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
             )
-            async for token in _iterate_with_deadline(generation_batcher.stream((prompt,), sampling), deadline_at):
+            async for token in _iterate_with_request_control(generation_batcher.stream((prompt,), sampling), control):
                 text = str(token)
                 if not text:
                     continue
@@ -2259,8 +2279,30 @@ def _request_deadline_at(config: ServerConfig, request: CompletionRequest | Chat
     return time.perf_counter() + float(timeout_ms) / 1000.0
 
 
+def _request_control(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    raw_request: Request | None = None,
+) -> _RequestControl:
+    disconnected: Callable[[], Awaitable[bool]] | None = None
+    if raw_request is not None:
+
+        async def is_disconnected() -> bool:
+            try:
+                return bool(await raw_request.is_disconnected())
+            except Exception:
+                return False
+
+        disconnected = is_disconnected
+    return _RequestControl(deadline_at=_request_deadline_at(config, request), disconnected=disconnected)
+
+
 def _deadline_finish_details() -> dict[str, Any]:
     return FinishDetails(reason="deadline_exceeded", deadline_exceeded=True).to_json_dict()
+
+
+def _cancelled_finish_details() -> dict[str, Any]:
+    return FinishDetails(reason="cancelled", cancelled=True).to_json_dict()
 
 
 def _deadline_exceeded_error() -> OpenAIHTTPError:
@@ -2274,27 +2316,67 @@ def _deadline_exceeded_error() -> OpenAIHTTPError:
     )
 
 
-async def _await_with_deadline(awaitable, deadline_at: float | None):
-    if deadline_at is None:
-        return await awaitable
-    remaining = float(deadline_at) - time.perf_counter()
+def _request_cancelled_error() -> OpenAIHTTPError:
+    return OpenAIHTTPError(
+        499,
+        "request cancelled",
+        error_type="cancelled_error",
+        code="cancelled",
+        finish_details=_cancelled_finish_details(),
+    )
+
+
+async def _raise_for_request_control(control: _RequestControl) -> None:
+    if control.deadline_at is not None and float(control.deadline_at) - time.perf_counter() <= 0.0:
+        raise _deadline_exceeded_error()
+    if control.disconnected is not None and await control.disconnected():
+        raise _request_cancelled_error()
+
+
+def _request_control_poll_interval(control: _RequestControl) -> float:
+    interval = max(0.001, float(control.poll_interval_s))
+    if control.deadline_at is None:
+        return interval
+    remaining = float(control.deadline_at) - time.perf_counter()
     if remaining <= 0.0:
+        return 0.0
+    return min(interval, remaining)
+
+
+async def _await_with_request_control(awaitable, control: _RequestControl | None = None):
+    control = control or _RequestControl()
+    if control.deadline_at is None and control.disconnected is None:
+        return await awaitable
+    try:
+        await _raise_for_request_control(control)
+    except OpenAIHTTPError:
         close = getattr(awaitable, "close", None)
         if callable(close):
             close()
-        raise _deadline_exceeded_error()
+        raise
+    task = asyncio.ensure_future(awaitable)
     try:
-        return await asyncio.wait_for(awaitable, timeout=remaining)
-    except TimeoutError as exc:
-        raise _deadline_exceeded_error() from exc
+        while True:
+            done, _pending = await asyncio.wait({task}, timeout=_request_control_poll_interval(control))
+            if task in done:
+                return await task
+            await _raise_for_request_control(control)
+    except OpenAIHTTPError:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        raise
 
 
-async def _iterate_with_deadline(iterator: AsyncIterator[str], deadline_at: float | None) -> AsyncIterator[str]:
+async def _iterate_with_request_control(
+    iterator: AsyncIterator[str],
+    control: _RequestControl | None = None,
+) -> AsyncIterator[str]:
     async_iterator = iterator.__aiter__()
     try:
         while True:
             try:
-                item = await _await_with_deadline(async_iterator.__anext__(), deadline_at)
+                item = await _await_with_request_control(async_iterator.__anext__(), control)
             except StopAsyncIteration:
                 break
             yield item
