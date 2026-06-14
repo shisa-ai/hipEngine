@@ -6,7 +6,12 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_paro as qwen35
-from hipengine.generation import GenerationDeadlineExceeded, GenerationRequest
+from hipengine.generation import (
+    GenerationCancellationToken,
+    GenerationCancelled,
+    GenerationDeadlineExceeded,
+    GenerationRequest,
+)
 from hipengine.generation.sampling import select_token
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
@@ -323,7 +328,7 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
 def test_qwen35_paro_generator_checks_deadline_after_prefill(monkeypatch) -> None:
     calls = []
 
-    def check_deadline(value) -> None:
+    def check_deadline(value, **kwargs) -> None:
         calls.append(("deadline", None if value is None else getattr(value, "deadline_at", value)))
         if ("prefill_native", (10, 11), True) in calls:
             raise GenerationDeadlineExceeded(deadline_at=getattr(value, "deadline_at", value))
@@ -355,6 +360,42 @@ def test_qwen35_paro_generator_checks_deadline_after_prefill(monkeypatch) -> Non
     with pytest.raises(GenerationDeadlineExceeded):
         generator.generate(_request(max_tokens=2, deadline_at=123.0))
 
+    assert ("prefill_native", (10, 11), True) in calls
+    assert not any(call[0] == "capture_decode_graph" for call in calls)
+
+
+def test_qwen35_paro_generator_checks_cancellation_after_prefill(monkeypatch) -> None:
+    calls = []
+    token = GenerationCancellationToken()
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            token.cancel()
+            return _result(100, "A") if sample else None
+
+        def capture_decode_graph(self, **kwargs):  # pragma: no cover - cancellation should stop first
+            calls.append(("capture_decode_graph", kwargs))
+            raise AssertionError("cancellation should stop before graph replay")
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    with pytest.raises(GenerationCancelled) as raised:
+        generator.generate(_request(max_tokens=2, cancellation_token=token))
+
+    assert raised.value.finish_details.to_json_dict() == {"reason": "cancelled", "cancelled": True}
     assert ("prefill_native", (10, 11), True) in calls
     assert not any(call[0] == "capture_decode_graph" for call in calls)
 

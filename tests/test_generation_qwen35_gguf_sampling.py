@@ -6,7 +6,12 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
-from hipengine.generation import GenerationDeadlineExceeded, GenerationRequest
+from hipengine.generation import (
+    GenerationCancellationToken,
+    GenerationCancelled,
+    GenerationDeadlineExceeded,
+    GenerationRequest,
+)
 
 
 class _FakeTokenizer:
@@ -206,6 +211,46 @@ def test_gguf_greedy_host_decode_checks_deadline_after_step(monkeypatch) -> None
     with pytest.raises(GenerationDeadlineExceeded):
         generator.generate(_request(max_tokens=2, deadline_at=123.0))
 
+    assert ("prefill", (10, 11), False) in calls
+    assert ("step", 1, False) in calls
+    assert ("exit", False) in calls
+
+
+def test_gguf_greedy_host_decode_checks_cancellation_after_step(monkeypatch) -> None:
+    calls = []
+    token = GenerationCancellationToken()
+
+    class FakeSession:
+        def __init__(self, model_path):
+            calls.append(("init", str(model_path)))
+
+        def __enter__(self):
+            calls.append(("enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("exit", exc_type is None))
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=1, logits=np.array([[0.0, 1.0]], dtype=np.float32))
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            token.cancel()
+            return SimpleNamespace(token_id=2, logits=np.array([[0.0, 0.0, 1.0]], dtype=np.float32))
+
+        def capture_decode_graph(self, **kwargs):  # pragma: no cover - host decode forced
+            raise AssertionError("host-routed decode should not capture graph")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setattr(qwen35_gguf, "_session_uses_host_routed_decode", lambda session: True)
+
+    generator = _generator()
+    with pytest.raises(GenerationCancelled) as raised:
+        generator.generate(_request(max_tokens=2, cancellation_token=token))
+
+    assert raised.value.finish_details.to_json_dict() == {"reason": "cancelled", "cancelled": True}
     assert ("prefill", (10, 11), False) in calls
     assert ("step", 1, False) in calls
     assert ("exit", False) in calls

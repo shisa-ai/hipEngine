@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from hipengine import LLM, SamplingParams
-from hipengine.generation import GenerationRequest, register_text_generator
+from hipengine.generation import GenerationCancellationToken, GenerationRequest, register_text_generator
 
 
 def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> None:
@@ -142,6 +142,7 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     )
 
     llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    cancellation_token = GenerationCancellationToken()
     assert llm.generate(
         "a",
         SamplingParams(
@@ -164,6 +165,7 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
             thinking_soft_close_window=2,
             seed=123,
             deadline_at=456.0,
+            cancellation_token=cancellation_token,
         ),
     ) == ["ok"]
     assert calls["request"].top_k == 40
@@ -182,6 +184,7 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     assert calls["request"].thinking_soft_close_window == 2
     assert calls["request"].seed == 123
     assert calls["request"].deadline_at == 456.0
+    assert calls["request"].cancellation_token is cancellation_token
 
 
 def test_llm_reuses_generator_across_generate_calls(monkeypatch) -> None:

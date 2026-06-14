@@ -15,6 +15,8 @@ from hipengine import SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     FinishDetails,
+    GenerationCancellationToken,
+    GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationOutput,
     GenerationTelemetry,
@@ -169,6 +171,23 @@ class BackendDeadlineFakeLLM(FakeLLM):
         self.calls.append(((prompt,), sampling_params))
         assert sampling_params.deadline_at is not None
         raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
+        yield  # pragma: no cover - keeps this method a generator
+
+
+class BackendCancelledFakeLLM(FakeLLM):
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        prompts = tuple(prompts)
+        self.calls.append((prompts, sampling_params))
+        assert sampling_params.cancellation_token is not None
+        sampling_params.cancellation_token.cancel()
+        raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
+        self.calls.append(((prompt,), sampling_params))
+        assert sampling_params.cancellation_token is not None
+        sampling_params.cancellation_token.cancel()
+        raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
         yield  # pragma: no cover - keeps this method a generator
 
 
@@ -394,6 +413,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "timeout_ms": True,
         "default_timeout_ms": 250.0,
         "client_disconnect": True,
+        "cooperative_backend_deadline": True,
+        "cooperative_backend_cancel": True,
         "preemptive_decode_cancel": False,
     }
     assert body["errors"]["schema"] == "hipengine.error_taxonomy.v1"
@@ -1006,6 +1027,28 @@ def test_generation_batcher_keeps_different_deadlines_separate() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_keeps_different_cancellation_tokens_separate() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        first_sampling = SamplingParams(max_tokens=2, cancellation_token=GenerationCancellationToken())
+        second_sampling = SamplingParams(max_tokens=2, cancellation_token=GenerationCancellationToken())
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), first_sampling),
+            batcher.submit(("two",), second_sampling),
+        )
+
+        assert first == ["generated:one"]
+        assert second == ["generated:two"]
+        assert fake.calls == [(("one",), first_sampling), (("two",), second_sampling)]
+
+    asyncio.run(run())
+
+
 def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
     async def run() -> None:
         async def receive() -> dict[str, object]:
@@ -1038,6 +1081,8 @@ def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
             assert exc.error_type == "cancelled_error"
             assert exc.code == "cancelled"
             assert exc.finish_details == {"reason": "cancelled", "cancelled": True}
+            assert control.cancellation_token.cancelled is True
+            assert control.cancellation_token.finish_details.to_json_dict() == exc.finish_details
         else:  # pragma: no cover - defensive guard for cancellation semantics
             raise AssertionError("disconnect did not cancel request")
 
@@ -1494,6 +1539,25 @@ def test_backend_deadline_exception_maps_to_completion_408() -> None:
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
 
 
+def test_backend_cancelled_exception_maps_to_completion_499() -> None:
+    fake = BackendCancelledFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "cancel", "max_tokens": 4},
+    )
+
+    assert response.status_code == 499
+    assert fake.calls[0][1].cancellation_token is not None
+    assert fake.calls[0][1].cancellation_token.cancelled is True
+    error = response.json()["error"]
+    assert error["type"] == "cancelled_error"
+    assert error["code"] == "cancelled"
+    assert error["finish_details"] == {"reason": "cancelled", "cancelled": True}
+
+
 def test_backend_deadline_finish_detail_maps_to_chat_408() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -1613,6 +1677,31 @@ def test_streaming_chat_backend_deadline_exception_emits_error_and_done() -> Non
     assert payload["error"]["type"] == "timeout_error"
     assert payload["error"]["code"] == "deadline_exceeded"
     assert payload["error"]["param"] == "timeout_ms"
+
+
+def test_streaming_completion_backend_cancelled_exception_emits_error_and_done() -> None:
+    fake = BackendCancelledFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "cancel", "max_tokens": 4, "stream": True},
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    assert fake.calls[0][1].cancellation_token is not None
+    assert fake.calls[0][1].cancellation_token.cancelled is True
+    payloads = _sse_payloads(response.text)
+    payload = next(item for item in payloads if item.get("error"))
+    assert payload["choices"][0]["finish_reason"] == "error"
+    assert payload["choices"][0]["finish_details"] == {
+        "reason": "cancelled",
+        "cancelled": True,
+    }
+    assert payload["error"]["type"] == "cancelled_error"
+    assert payload["error"]["code"] == "cancelled"
 
 
 def test_completions_endpoint_returns_openai_logprobs() -> None:

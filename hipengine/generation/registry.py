@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -48,6 +48,7 @@ class GenerationRequest:
     seed: int | None = None
     row_seeds: tuple[int, ...] = ()
     deadline_at: float | None = None
+    cancellation_token: Any | None = field(default=None, compare=False, repr=False)
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -87,6 +88,7 @@ class GenerationRequest:
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "row_seeds", tuple(int(seed) for seed in self.row_seeds))
         object.__setattr__(self, "deadline_at", None if self.deadline_at is None else float(self.deadline_at))
+        object.__setattr__(self, "cancellation_token", self.cancellation_token)
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)

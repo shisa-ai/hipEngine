@@ -223,9 +223,11 @@ expires after that, the stream emits a final error SSE payload with
 tokenization, prefill, decode, host-sampling, and graph-replay boundaries.
 
 Client disconnects are checked at the same server await/stream iteration
-boundaries. Detected disconnects cancel queued work and use structured
+boundaries. Detected disconnects cancel queued work, mark the generation
+`cancellation_token` passed through `SamplingParams`, and use structured
 `{"reason": "cancelled", "cancelled": true}` finish details when cancellation
-can still be surfaced as an error payload.
+can still be surfaced as an error payload. PARO/GGUF generation checks that
+token at the same cooperative boundaries as request deadlines.
 
 Set `HIPENGINE_MAX_QUEUED_REQUESTS` or `--max-queued-requests` to enable an
 OpenAI-server generation queue cap. When the batcher queue is full, new
@@ -456,10 +458,10 @@ strings and should only be used in local, non-sensitive debugging sessions.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.
-- Request deadlines are enforced at server await/iteration boundaries and at
-  PARO/GGUF cooperative decode boundaries. Already-running GPU kernels or a
-  captured graph replay are not preempted mid-call. Detected client disconnects
-  are still enforced at server await/stream iteration boundaries only.
+- Request deadlines and detected client disconnects are enforced at server
+  await/iteration boundaries and at PARO/GGUF cooperative decode boundaries.
+  Already-running GPU kernels or a captured graph replay are not preempted
+  mid-call.
 - HTTP generation requests route through the in-process generation batcher.
   Compatible queued prompts can coalesce into one prompt-list engine call, but
   true continuous decode, concurrent backend execution, max-active-session

@@ -91,7 +91,12 @@ def _capabilities(**overrides):
                 "hard_close_token_forcing": True,
                 "soft_close_bias": False,
             },
-            "request_timeouts": {"timeout_ms": True},
+            "request_timeouts": {
+                "timeout_ms": True,
+                "cooperative_backend_deadline": True,
+                "cooperative_backend_cancel": True,
+                "preemptive_decode_cancel": False,
+            },
             "token_diagnostics": {
                 "tokenize": True,
                 "detokenize": True,

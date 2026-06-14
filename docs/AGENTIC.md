@@ -62,8 +62,8 @@ Already available or recently added:
   `--request-timeout-ms` / `HIPENGINE_REQUEST_TIMEOUT_MS`. Buffered requests
   return HTTP 408 with structured deadline finish details; live streams emit an
   SSE error chunk with the same detail and then `[DONE]`. The server lowers the
-  deadline into `SamplingParams.deadline_at` / `GenerationRequest.deadline_at`,
-  and PARO/GGUF generation checks it cooperatively around tokenization,
+  deadline and cancellation token into `SamplingParams` / `GenerationRequest`,
+  and PARO/GGUF generation checks them cooperatively around tokenization,
   prefill, decode, host-sampled steps, and graph replay boundaries.
 - OpenAI-style chat `tools` / `tool_choice` prompt injection and output parsing
   for Qwen-style `<tool_call>{...}</tool_call>` blocks.
@@ -909,24 +909,28 @@ Current code reality:
   same await/iteration boundaries. Detected disconnects map to structured
   `cancelled` finish details and HTTP-style status 499 when the transport can
   still surface an error payload.
+- `GenerationCancellationToken` is carried through `SamplingParams` and
+  `GenerationRequest`. Server-side deadline/disconnect detection cancels the
+  token, `GenerationCancelled` carries
+  `FinishDetails(reason="cancelled", cancelled=true)`, and the OpenAI server
+  maps backend-observed cancellations to the same 499 / SSE error contract.
 - `_GenerationBatcher` marks abandoned stream items cancelled and skips queued
   futures that were cancelled before dispatch. Requests with different absolute
-  deadlines do not coalesce into the same batcher engine call.
+  deadlines or cancellation tokens do not coalesce into the same batcher engine
+  call.
 - PARO and GGUF resident generation paths check deadlines before and after
-  tokenization/prefill/decode calls, including host-sampled and scheduler-owned
-  PARO c>N loops. Captured graph replay and individual GPU kernels are not
-  preempted mid-call; the check happens immediately before and after the replay
-  or kernel-backed step.
+  tokenization/prefill/decode calls and check cancellation tokens at the same
+  cooperative boundaries, including host-sampled and scheduler-owned PARO c>N
+  loops. Captured graph replay and individual GPU kernels are not preempted
+  mid-call; the check happens immediately before and after the replay or
+  kernel-backed step.
 
 Remaining implementation:
 
-- backend cancellation still needs a cancellation token lowered past server
-  await/stream boundaries; already-running backend calls only observe
-  deadlines, not disconnect cancellation;
 - explicit row/session cleanup hooks for deadline/cancel exits still need
   active-row leak tests on the resident scheduler paths;
-- native `cancelled=true` finish details remain future work when lower layers
-  stop a row themselves.
+- native row-level `cancelled=true` finish details remain future work when a
+  lower layer stops only one row inside a still-live batch.
 
 Exit gates:
 
@@ -934,8 +938,7 @@ Exit gates:
   server reuse;
 - cancellation tests cover queued work cleanup and request-control disconnect
   mapping;
-- active row/session leak tests cover lower decode loops once cooperative
-  backend cancellation hooks exist;
+- active row/session leak tests cover lower decode loops;
 - streaming cancellation emits a final error/done event instead of hanging.
 
 ### P1 — Controlled decoding and thinking budgets
@@ -1572,9 +1575,9 @@ Current code reality:
   multi-model routing, and strict tool decoding are advertised as unsupported
   until their runtime paths exist. Stateless `session.commit="append_none"` is
   advertised as the only supported session policy. Request timeouts and
-  client-disconnect cancellation are advertised as supported with
-  `preemptive_decode_cancel=false`; token diagnostics are advertised from current
-  tokenizer/counting callables.
+  client-disconnect cancellation are advertised as supported with cooperative
+  backend deadline/cancel checks and `preemptive_decode_cancel=false`; token
+  diagnostics are advertised from current tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
   `continuation_id`, stateful `session.id`, unsupported `session.commit` modes,
   and other `session` payloads return `unsupported_parameter` with `error.param`

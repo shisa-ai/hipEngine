@@ -27,8 +27,11 @@ from hipengine.generation.constraints import (
     token_sequence_state_for_tokens,
 )
 from hipengine.generation.deadline import (
+    GenerationCancellationToken,
+    GenerationCancelled,
     GenerationDeadlineExceeded,
     generation_deadline_expired,
+    raise_if_generation_cancelled,
     raise_if_generation_deadline_expired,
 )
 from hipengine.generation.engine_loop import (
@@ -114,6 +117,8 @@ __all__ = [
     "EngineLoopRunner",
     "FinishDetails",
     "ForcedTokenQueue",
+    "GenerationCancellationToken",
+    "GenerationCancelled",
     "GenerationDeadlineExceeded",
     "GenerationTelemetry",
     "GeneratedToken",
@@ -161,6 +166,7 @@ __all__ = [
     "register_text_generator",
     "registered_text_generators",
     "resolve_text_generator",
+    "raise_if_generation_cancelled",
     "raise_if_generation_deadline_expired",
     "row_seed_for_index",
     "sampler_fast_path_blockers",

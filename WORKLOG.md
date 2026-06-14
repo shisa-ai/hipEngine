@@ -88276,3 +88276,23 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py -q` -> `31 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `25 passed`.
 - `python3 -m ruff check hipengine/generation/deadline.py hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC cooperative backend cancellation
+
+Extended the generation control path with a thread-safe
+`GenerationCancellationToken` and `GenerationCancelled` finish metadata.
+Server request-control now lowers the token through `SamplingParams` /
+`GenerationRequest`, marks it when deadline or disconnect polling fires, maps
+backend-observed cancellations to the existing 499 / SSE cancelled contract, and
+keeps different cancellation tokens in separate batcher engine calls. PARO and
+GGUF decode loops observe the token at the same cooperative boundaries as
+deadlines; GPU kernels and captured graph replays still are not preempted
+mid-call. The capabilities manifest now advertises cooperative backend
+deadline/cancel support while keeping `preemptive_decode_cancel=false`.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/deadline.py hipengine/generation/__init__.py hipengine/llm.py hipengine/generation/registry.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_generation_batcher_keeps_different_cancellation_tokens_separate tests/test_server_api.py::test_request_control_maps_http_disconnect_to_cancelled_error tests/test_server_api.py::test_backend_cancelled_exception_maps_to_completion_499 tests/test_server_api.py::test_streaming_completion_backend_cancelled_exception_emits_error_and_done tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_checks_cancellation_after_prefill tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_cancellation_after_step tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params tests/test_local_agent_config.py -q` -> `16 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `58 passed`.
+- `python3 -m ruff check hipengine/generation/deadline.py hipengine/generation/__init__.py hipengine/llm.py hipengine/generation/registry.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_local_agent_config.py` -> `All checks passed!`.
