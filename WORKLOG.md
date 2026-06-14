@@ -91365,3 +91365,19 @@ Validation:
 - `python3 -m py_compile hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> passed.
 - `python3 -m ruff check hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC PARO native stream telemetry coverage
+
+Added coverage for the supported PARO c=1 native GPU sampler streaming route.
+The new regression proves `stream_detailed()` configures the native sampler
+instead of host sampling for an exact supported request, emits live
+`sampler_mode="gpu_sample"` chunks, and reports
+`full_vocab_logits_d2h=false` / `logits_d2h_bytes=0` on every chunk. AGENTIC now
+records that live native stream diagnostics match the non-streaming native
+route.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_native_sampler_route tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_env_routes_supported_c1_request_to_native_sampler tests/test_generation_qwen35_paro.py::test_qwen35_paro_native_opt_in_stream_reports_unsupported_top_k_fallback -q` -> `3 passed`.
+- `python3 -m py_compile tests/test_generation_qwen35_paro.py` -> passed.
+- `python3 -m ruff check tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_generation_qwen35_paro.py docs/AGENTIC.md WORKLOG.md` -> clean.

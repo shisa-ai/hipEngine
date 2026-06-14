@@ -924,6 +924,9 @@ Current code reality:
 - PARO and GGUF c=1 true streaming emit live per-token
   `GenerationStreamChunk` telemetry for greedy and sampled answer tokens,
   including host-sampled budget-pressure metadata when row state is available.
+  PARO c=1 native-GPU sampled streams also mark `sampler_mode="gpu_sample"`
+  with `full_vocab_logits_d2h=false` / `logits_d2h_bytes=0`, matching the
+  non-streaming native route diagnostics.
   The scheduler submit/poll wrapper preserves an inner generator's
   `stream_detailed()` chunks instead of downgrading them to plain text, so
   wrapped `LLM.stream_detailed()` / server streaming paths keep backend-authored

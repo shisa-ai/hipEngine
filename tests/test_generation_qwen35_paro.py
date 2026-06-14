@@ -693,6 +693,85 @@ def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -
     ]
 
 
+def test_qwen35_paro_stream_detailed_reports_native_sampler_route(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def configure_native_sampler(self, params, state):
+            calls.append(
+                (
+                    "configure_native_sampler",
+                    None if params is None else params.temperature,
+                    None if state is None else state.seed,
+                    None if state is None else state.prompt_tokens,
+                )
+            )
+
+        def configure_host_sampler(self, params, state):  # pragma: no cover
+            raise AssertionError("supported native stream request should not use host sampler")
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append(("step", token_id, position, sample))
+            return _result(101, "B") if sample else None
+
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    chunks = list(generator.stream_detailed(_request(max_tokens=2, temperature=0.7, top_k=4, seed=5)))
+
+    assert [chunk.text for chunk in chunks] == ["A", "B"]
+    assert [_decode_state(chunk) for chunk in chunks] == [
+        {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 2,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_mode": "gpu_sample",
+            "full_vocab_logits_d2h": False,
+            "logits_d2h_bytes": 0,
+        },
+        {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 2,
+            "generated_tokens": 2,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "sampler_fast_path_blockers": ["temperature"],
+            "sampler_mode": "gpu_sample",
+            "full_vocab_logits_d2h": False,
+            "logits_d2h_bytes": 0,
+        },
+    ]
+    assert calls[0][0] == "configure_native_sampler"
+    assert calls[0][1] == 0.7
+    assert calls[0][3] == (10, 11)
+    assert calls[1:] == [
+        ("prefill_native", (10, 11), True),
+        ("step", 100, 2, True),
+        ("configure_native_sampler", None, None, None),
+    ]
+
+
 def test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
     class FakeSession:
         tokenizer = SimpleNamespace(
