@@ -2248,9 +2248,11 @@ Current code reality:
   ready. The payload reports model loaded state, eager-load/warmup completion,
   last startup timings, configured/effective context, KV policy and capacity
   estimate, KV pool metrics, graph cache metrics, backend/device environment,
-  generation queue depth/worker state, active backend request count/configured
-  cap, active session count, stored-message count, pending session creations,
-  configured session cap, continuation-handle count, and loaded-model count.
+  parsed visible GPU ids and selected visible device from ROCm visibility env
+  vars, generation queue depth/worker state, active backend request
+  count/configured cap, active session count, stored-message count, pending
+  session creations, configured session cap, continuation-handle count, and
+  loaded-model count.
 - Readiness is `false` for eager-load servers until startup preparation and
   warmup complete. Lazy-load servers report ready after startup with
   `model.loaded=false` until the first lazy model load.

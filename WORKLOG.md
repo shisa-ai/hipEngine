@@ -90961,3 +90961,16 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry -q` -> `5 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `49 passed`.
 - `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py && python3 -m ruff check hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py && git diff --check -- hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/API.md docs/AGENTIC.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC readiness selected GPU diagnostics
+
+Made `/ready` device diagnostics expose parsed ROCm visibility state instead
+of only raw environment strings. The readiness payload now includes
+`visible_devices`, `selected_visible_device`, and `selection_source`, preferring
+`HIP_VISIBLE_DEVICES` over `ROCR_VISIBLE_DEVICES`, so local harnesses can see a
+stable GPU0-style selection without parsing env strings themselves. Updated
+API/AGENTIC docs and added a readiness fixture for the parsed GPU list.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_ready_reports_selected_visible_gpu_from_rocm_env tests/test_server_api.py::test_ready_reports_lazy_server_ready_without_loaded_model -q` -> `3 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

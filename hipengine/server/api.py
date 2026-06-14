@@ -6056,11 +6056,41 @@ def _kv_capacity_estimate_payload(engine: Any | None) -> dict[str, Any] | None:
 
 
 def _selected_device_payload(config: ServerConfig) -> dict[str, Any]:
+    hip_visible = os.environ.get("HIP_VISIBLE_DEVICES")
+    rocr_visible = os.environ.get("ROCR_VISIBLE_DEVICES")
+    source, visible_devices = _visible_device_selection(
+        hip_visible_devices=hip_visible,
+        rocr_visible_devices=rocr_visible,
+    )
     return {
         "backend": config.backend,
-        "hip_visible_devices": os.environ.get("HIP_VISIBLE_DEVICES"),
-        "rocr_visible_devices": os.environ.get("ROCR_VISIBLE_DEVICES"),
+        "hip_visible_devices": hip_visible,
+        "rocr_visible_devices": rocr_visible,
+        "visible_devices": visible_devices,
+        "selected_visible_device": None if not visible_devices else visible_devices[0],
+        "selection_source": source,
     }
+
+
+def _visible_device_selection(
+    *,
+    hip_visible_devices: str | None,
+    rocr_visible_devices: str | None,
+) -> tuple[str | None, list[str]]:
+    for source, raw in (
+        ("HIP_VISIBLE_DEVICES", hip_visible_devices),
+        ("ROCR_VISIBLE_DEVICES", rocr_visible_devices),
+    ):
+        devices = _parse_visible_devices(raw)
+        if devices:
+            return source, devices
+    return None, []
+
+
+def _parse_visible_devices(value: str | None) -> list[str]:
+    if value is None:
+        return []
+    return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
 def _resident_session_for_engine(engine: Any) -> Any | None:

@@ -1555,6 +1555,28 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert "private warmup output" not in serialized
 
 
+def test_ready_reports_selected_visible_gpu_from_rocm_env(monkeypatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0, 2")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "3")
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["device"] == {
+        "backend": "auto",
+        "hip_visible_devices": "0, 2",
+        "rocr_visible_devices": "3",
+        "visible_devices": ["0", "2"],
+        "selected_visible_device": "0",
+        "selection_source": "HIP_VISIBLE_DEVICES",
+    }
+
+
 def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> None:
     fake = ScratchProbeFailureFakeLLM(outputs=["private warmup output"])
     app = create_app(

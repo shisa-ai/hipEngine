@@ -695,11 +695,13 @@ returns HTTP 200 with `ready=true` after startup is ready, or HTTP 503 with
 `ready=false` while startup is not ready. The payload includes non-sensitive
 diagnostics for model loaded state, eager warmup completion, last startup timing,
 configured/effective context, KV policy/capacity estimate, KV pool counters,
-graph cache counters, selected backend/device environment, generation queue
-depth/max-depth, active worker state, active backend request count/configured
-cap, app-local session counts, stored message counts, configured chat-session
-cap, pending session creations, and continuation-handle counts. It
-intentionally omits prompts, generated text, tool results, and raw
+graph cache counters, selected backend/device environment, parsed visible GPU
+list plus selected visible device from `HIP_VISIBLE_DEVICES` /
+`ROCR_VISIBLE_DEVICES`, generation queue depth/max-depth, active worker state,
+active backend request count/configured cap, app-local session counts, stored
+message counts, configured chat-session cap, pending session creations, and
+continuation-handle counts. It intentionally omits prompts, generated text,
+tool results, and raw
 request/response payloads.
 
 If eager startup fails, the process stays live but unready. `/ready` returns
