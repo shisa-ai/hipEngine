@@ -280,12 +280,15 @@ can still be surfaced as an error payload. PARO/GGUF generation checks that
 token at the same cooperative boundaries as request deadlines.
 
 Set `HIPENGINE_MAX_QUEUED_REQUESTS` or `--max-queued-requests` to enable an
-OpenAI-server generation queue cap. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
-`--max-chat-sessions` to cap app-local chat transcript sessions. When either cap
-is full, new work fails before enqueue/generation with HTTP 429 `engine_busy`
-and `Retry-After: 1`; rejected requests do not allocate KV/session state.
-Existing chat sessions may continue when the session cap is full, and deleting a
-session frees capacity.
+OpenAI-server generation queue cap. Set `HIPENGINE_MAX_ACTIVE_REQUESTS` or
+`--max-active-requests` to limit how many HTTP requests can be coalesced into
+one active backend generation batch; overflow remains queued and is still
+bounded by the queue cap when configured. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
+`--max-chat-sessions` to cap app-local chat transcript sessions. When a
+rejecting admission cap is full, new work fails before enqueue/generation with
+HTTP 429 `engine_busy` and `Retry-After: 1`; rejected requests do not allocate
+KV/session state. Existing chat sessions may continue when the session cap is
+full, and deleting a session frees capacity.
 
 ### Tool calling
 
@@ -527,10 +530,11 @@ returns HTTP 200 with `ready=true` after startup is ready, or HTTP 503 with
 diagnostics for model loaded state, eager warmup completion, last startup timing,
 configured/effective context, KV policy/capacity estimate, KV pool counters,
 graph cache counters, selected backend/device environment, generation queue
-depth/max-depth, active worker state, app-local session counts, stored message
-counts, configured chat-session cap, pending session creations, and
-continuation-handle counts. It intentionally omits prompts, generated text, tool
-results, and raw request/response payloads.
+depth/max-depth, active worker state, active backend request count/configured
+cap, app-local session counts, stored message counts, configured chat-session
+cap, pending session creations, and continuation-handle counts. It
+intentionally omits prompts, generated text, tool results, and raw
+request/response payloads.
 
 ## Diagnostics
 
@@ -576,12 +580,15 @@ strings and should only be used in local, non-sensitive debugging sessions.
 - HTTP generation requests route through the in-process generation batcher.
   Compatible queued prompts can coalesce into one prompt-list engine call, but
   true continuous decode, concurrent backend execution, and scheduler fairness
-  remain later runtime work. App-local chat transcript sessions can be capped
-  with `--max-chat-sessions`, but this is an admission limit, not a resident KV
-  fairness scheduler.
+  remain later runtime work. Backend batch width can be capped with
+  `--max-active-requests`; app-local chat transcript sessions can be capped with
+  `--max-chat-sessions`. These are admission/batching limits, not resident KV
+  fairness schedulers.
   Prometheus mode exposes `hipengine_generation_queue_depth`,
   `hipengine_generation_queue_max_depth`, and
-  `hipengine_generation_worker_active` gauges for backpressure monitors.
+  `hipengine_generation_worker_active` gauges plus
+  `hipengine_generation_requests_active` and
+  `hipengine_generation_requests_max_active` for backpressure monitors.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `suppress_token_ids`, forced-token queues, `min_tokens` / `eos_token_id`,

@@ -1682,17 +1682,22 @@ Current state:
   preparation/generation with the same HTTP 429 `engine_busy` and
   `Retry-After: 1`; existing sessions may continue, and deleting a session frees
   capacity.
-- `/ready` reports queue depth and configured max depth. Prometheus metrics
-  include `hipengine_request_rejected_total`, queue depth, configured queue cap,
-  active/pending/max chat-session gauges, and worker-active gauges in addition
-  to completed/failed request counters.
+- The OpenAI server batcher also has an opt-in active backend request cap via
+  `--max-active-requests` / `HIPENGINE_MAX_ACTIVE_REQUESTS`. It limits how many
+  HTTP requests can be coalesced into one active backend generation batch;
+  overflow stays queued and is still bounded by the queue cap when configured.
+- `/ready` reports queue depth, configured max depth, active backend request
+  count, and configured active-request cap. Prometheus metrics include
+  `hipengine_request_rejected_total`, queue depth, configured queue cap,
+  active/max backend request gauges, active/pending/max chat-session gauges, and
+  worker-active gauges in addition to completed/failed request counters.
 - Default behavior remains unlimited server queueing until a cap is configured.
-  Default chat-session behavior remains unlimited until a cap is configured.
-  Scheduler fairness remains future runtime work.
+  Default active backend request grouping remains uncapped until a cap is
+  configured. Default chat-session behavior remains unlimited until a cap is
+  configured. Scheduler fairness remains future runtime work.
 
 Implement:
 
-- max active request/concurrent backend cap;
 - scheduler fairness policy visible in metrics.
 
 Exit gates:
@@ -1734,7 +1739,8 @@ Current code reality:
   tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
   sampler scope, speculative/MTP sampling compatibility,
   request-timeout/client-disconnect support, backend-authored choice telemetry,
-  cache/session settings, loaded-model count, and
+  queue/active-request/chat-session admission caps, cache/session settings,
+  loaded-model count, and
   unsupported fields.
 - Continuations are advertised as supported with `stateful=false`,
   `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,
@@ -1888,7 +1894,9 @@ Current code reality:
   schema results.
 - `engine_busy` currently means the opt-in OpenAI server queue cap or app-local
   chat-session cap rejected a request before generation with HTTP 429 and
-  `Retry-After: 1`.
+  `Retry-After: 1`. The active backend request cap limits coalesced backend
+  batch width but does not itself reject unless queued overflow also hits the
+  configured queue cap.
 - `routing_failed` is reserved in the manifest and marked `emitted=false` until
   multi-model routing exists. HTTP/SSE `invalid_tool_call` errors remain future
   strict decode-time work.
@@ -1917,9 +1925,9 @@ Current code reality:
   ready. The payload reports model loaded state, eager-load/warmup completion,
   last startup timings, configured/effective context, KV policy and capacity
   estimate, KV pool metrics, graph cache metrics, backend/device environment,
-  generation queue depth/worker state, active session count, stored-message
-  count, pending session creations, configured session cap, continuation-handle
-  count, and loaded-model count.
+  generation queue depth/worker state, active backend request count/configured
+  cap, active session count, stored-message count, pending session creations,
+  configured session cap, continuation-handle count, and loaded-model count.
 - Readiness is `false` for eager-load servers until startup preparation and
   warmup complete. Lazy-load servers report ready after startup with
   `model.loaded=false` until the first lazy model load.

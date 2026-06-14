@@ -114,6 +114,7 @@ class ServerConfig:
     replay_dir: str | None = None
     replay_redaction: str = "hash"
     max_queued_requests: int | None = None
+    max_active_requests: int | None = None
     max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
     created: int = field(default_factory=lambda: int(time.time()))
@@ -671,6 +672,24 @@ def _structured_outputs_capability() -> dict[str, Any]:
     }
 
 
+def _admission_capability(config: ServerConfig) -> dict[str, Any]:
+    return {
+        "queue": {
+            "max_queued_requests": config.max_queued_requests,
+            "retry_after_seconds": int(config.queue_retry_after_seconds),
+            "rejects_when_full": config.max_queued_requests is not None,
+        },
+        "active_requests": {
+            "max_active_requests": config.max_active_requests,
+            "limits_backend_batch_width": config.max_active_requests is not None,
+        },
+        "chat_sessions": {
+            "max_active": config.max_chat_sessions,
+            "rejects_new_sessions_when_full": config.max_chat_sessions is not None,
+        },
+    }
+
+
 def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
     return {
         "model": {
@@ -766,6 +785,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "continuations": _session_continuation_capability(),
             "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
+        "admission": _admission_capability(config),
         "unsupported_fields": [],
     }
 
@@ -1169,6 +1189,7 @@ class _GenerationBatcher:
         engine_factory: Callable[[], Any],
         batch_window_seconds: float,
         max_queue_size: int | None = None,
+        max_active_requests: int | None = None,
         retry_after_seconds: int = 1,
     ) -> None:
         self._engine_factory = engine_factory
@@ -1176,9 +1197,13 @@ class _GenerationBatcher:
         self._max_queue_size = None if max_queue_size is None else int(max_queue_size)
         if self._max_queue_size is not None and self._max_queue_size < 1:
             raise ValueError("max_queue_size must be positive when set")
+        self._max_active_requests = None if max_active_requests is None else int(max_active_requests)
+        if self._max_active_requests is not None and self._max_active_requests < 1:
+            raise ValueError("max_active_requests must be positive when set")
         self._retry_after_seconds = max(1, int(retry_after_seconds))
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
+        self._active_requests = 0
 
     def queue_depth(self) -> int:
         return len(self._queue)
@@ -1186,8 +1211,17 @@ class _GenerationBatcher:
     def max_queue_size(self) -> int | None:
         return self._max_queue_size
 
+    def active_requests(self) -> int:
+        return self._active_requests
+
+    def max_active_requests(self) -> int | None:
+        return self._max_active_requests
+
     def active(self) -> bool:
         return self._worker is not None and not self._worker.done()
+
+    def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
+        return self._max_active_requests is None or len(group) < self._max_active_requests
 
     def _raise_if_full(self) -> None:
         if self._max_queue_size is None:
@@ -1266,7 +1300,7 @@ class _GenerationBatcher:
                     item = self._queue.popleft()
                     if _queued_generation_cancelled(item):
                         continue
-                    if _sampling_key(item.sampling) == key:
+                    if _sampling_key(item.sampling) == key and self._group_has_capacity(group):
                         group.append(item)
                     else:
                         deferred.append(item)
@@ -1282,26 +1316,30 @@ class _GenerationBatcher:
     async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
         if not group:
             return
-        if len(group) == 1 and group[0].stream_queue is not None and len(group[0].prompts) == 1:
-            await self._stream_single(group[0])
-            return
-        prompts: list[str] = []
-        slices: list[tuple[_QueuedGeneration, int, int]] = []
-        for item in group:
-            start = len(prompts)
-            prompts.extend(item.prompts)
-            slices.append((item, start, len(prompts)))
         try:
-            outputs = await self._generate_prompts(tuple(prompts), group[0].sampling)
-        except Exception as exc:
+            self._active_requests = len(group)
+            if len(group) == 1 and group[0].stream_queue is not None and len(group[0].prompts) == 1:
+                await self._stream_single(group[0])
+                return
+            prompts: list[str] = []
+            slices: list[tuple[_QueuedGeneration, int, int]] = []
             for item in group:
-                _finish_queued_generation(item, exception=exc)
-            return
-        for item, start, end in slices:
-            item_outputs: Sequence[Any] = outputs[start:end]
-            if not item.detailed:
-                item_outputs = [_coerce_generation_output(output).text for output in item_outputs]
-            _finish_queued_generation(item, outputs=item_outputs)
+                start = len(prompts)
+                prompts.extend(item.prompts)
+                slices.append((item, start, len(prompts)))
+            try:
+                outputs = await self._generate_prompts(tuple(prompts), group[0].sampling)
+            except Exception as exc:
+                for item in group:
+                    _finish_queued_generation(item, exception=exc)
+                return
+            for item, start, end in slices:
+                item_outputs: Sequence[Any] = outputs[start:end]
+                if not item.detailed:
+                    item_outputs = [_coerce_generation_output(output).text for output in item_outputs]
+                _finish_queued_generation(item, outputs=item_outputs)
+        finally:
+            self._active_requests = 0
 
     async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[Any]:
         raw_outputs = await _generate_detailed(self._engine_factory(), prompts, sampling)
@@ -1752,6 +1790,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         engine_factory=get_llm,
         batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
         max_queue_size=config.max_queued_requests,
+        max_active_requests=config.max_active_requests,
         retry_after_seconds=config.queue_retry_after_seconds,
     )
     app.state.hipengine_generation_batcher = generation_batcher
@@ -2585,6 +2624,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "depth": generation_batcher.queue_depth(),
                 "max_depth": generation_batcher.max_queue_size(),
                 "worker_active": generation_batcher.active(),
+                "active_requests": generation_batcher.active_requests(),
+                "max_active_requests": generation_batcher.max_active_requests(),
                 "batch_window_ms": float(config.generation_batch_window_ms),
             },
             "sessions": chat_session_summary(),
@@ -2884,6 +2925,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "continuations": _session_continuation_capability(),
                 "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
+            "admission": _admission_capability(config),
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
@@ -3768,6 +3810,8 @@ def _render_prometheus_metrics(
         "hipengine_generation_queue_depth": queue["depth"],
         "hipengine_generation_queue_max_depth": queue["max_depth"],
         "hipengine_generation_worker_active": queue["worker_active"],
+        "hipengine_generation_requests_active": queue["active_requests"],
+        "hipengine_generation_requests_max_active": queue["max_active_requests"],
         "hipengine_chat_sessions_active": 0.0 if chat_sessions is None else float(len(chat_sessions)),
         "hipengine_chat_sessions_pending": (
             0.0 if pending_chat_sessions is None else float(len(pending_chat_sessions))
@@ -3797,6 +3841,8 @@ def _render_prometheus_metrics(
         "hipengine_generation_queue_depth": "Current generation-batcher queue depth.",
         "hipengine_generation_queue_max_depth": "Configured generation-batcher queue cap, or 0 when unset.",
         "hipengine_generation_worker_active": "Whether the generation-batcher worker is active, as 0 or 1.",
+        "hipengine_generation_requests_active": "Current number of HTTP requests in the active backend batch.",
+        "hipengine_generation_requests_max_active": "Configured active backend request cap, or 0 when unset.",
         "hipengine_chat_sessions_active": "Current app-local chat transcript session count.",
         "hipengine_chat_sessions_pending": "Current app-local chat session creations in flight.",
         "hipengine_chat_sessions_max_active": "Configured app-local chat session cap, or 0 when unset.",
@@ -3857,15 +3903,26 @@ def _pool_metric_values(engine: Any | None) -> dict[str, float]:
 
 def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
     if generation_batcher is None:
-        return {"depth": 0.0, "max_depth": 0.0, "worker_active": 0.0}
+        return {
+            "depth": 0.0,
+            "max_depth": 0.0,
+            "worker_active": 0.0,
+            "active_requests": 0.0,
+            "max_active_requests": 0.0,
+        }
     depth = _non_negative_metric_value(_call_metric_getter(generation_batcher, "queue_depth"))
     max_depth_raw = _call_metric_getter(generation_batcher, "max_queue_size")
     max_depth = 0.0 if max_depth_raw is None else _non_negative_metric_value(max_depth_raw)
     active = _call_metric_getter(generation_batcher, "active")
+    active_requests = _non_negative_metric_value(_call_metric_getter(generation_batcher, "active_requests"))
+    max_active_raw = _call_metric_getter(generation_batcher, "max_active_requests")
+    max_active = 0.0 if max_active_raw is None else _non_negative_metric_value(max_active_raw)
     return {
         "depth": depth,
         "max_depth": max_depth,
         "worker_active": 1.0 if bool(active) else 0.0,
+        "active_requests": active_requests,
+        "max_active_requests": max_active,
     }
 
 

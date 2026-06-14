@@ -191,6 +191,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--max-active-requests",
+        type=_positive_int,
+        default=_env_positive_int("HIPENGINE_MAX_ACTIVE_REQUESTS"),
+        help=(
+            "Optional active backend request cap for one generation batch "
+            "(env HIPENGINE_MAX_ACTIVE_REQUESTS; default: unlimited)"
+        ),
+    )
+    parser.add_argument(
         "--max-chat-sessions",
         type=_positive_int,
         default=_env_positive_int("HIPENGINE_MAX_CHAT_SESSIONS"),
@@ -273,6 +282,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         replay_dir=args.replay_dir,
         replay_redaction=args.replay_redaction,
         max_queued_requests=args.max_queued_requests,
+        max_active_requests=args.max_active_requests,
         max_chat_sessions=args.max_chat_sessions,
     )
     app = create_app(config)

@@ -384,6 +384,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             eager_load=False,
             max_context_tokens=2048,
             request_timeout_ms=250.0,
+            max_queued_requests=5,
+            max_active_requests=2,
+            max_chat_sessions=3,
         ),
         llm=fake,
     )
@@ -524,6 +527,21 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "cooperative_backend_cancel": True,
         "preemptive_decode_cancel": False,
     }
+    assert body["admission"] == {
+        "queue": {
+            "max_queued_requests": 5,
+            "retry_after_seconds": 1,
+            "rejects_when_full": True,
+        },
+        "active_requests": {
+            "max_active_requests": 2,
+            "limits_backend_batch_width": True,
+        },
+        "chat_sessions": {
+            "max_active": 3,
+            "rejects_new_sessions_when_full": True,
+        },
+    }
     assert body["errors"]["schema"] == "hipengine.error_taxonomy.v1"
     errors_by_code = {item["code"]: item for item in body["errors"]["codes"]}
     for code in (
@@ -628,7 +646,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "resident_context": True,
         "commit_policy": _session_commit_policy_capability(),
         "continuations": _continuation_capability(),
-        "metadata": _session_metadata_capability(),
+        "metadata": _session_metadata_capability(3),
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
     assert "session.id" not in body["unsupported_fields"]
@@ -1016,6 +1034,8 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["graph_cache"]["entries"] == 0.0
     assert body["queue"]["depth"] == 0
     assert body["queue"]["max_depth"] is None
+    assert body["queue"]["active_requests"] == 0
+    assert body["queue"]["max_active_requests"] is None
     assert body["sessions"] == {
         "resident_context": True,
         "active": 0,
@@ -1354,6 +1374,31 @@ def test_generation_batcher_rejects_when_queue_cap_is_full() -> None:
         assert exc.headers == {"Retry-After": "2"}
         assert await first == ["generated:one"]
         assert fake.calls == [(("one",), sampling)]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_limits_active_request_group_size() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=1,
+        )
+
+        first = asyncio.create_task(batcher.submit(("one",), sampling))
+        await asyncio.sleep(0)
+        second = asyncio.create_task(batcher.submit(("two",), sampling))
+
+        first_result, second_result = await asyncio.gather(first, second)
+
+        assert first_result == ["generated:one"]
+        assert second_result == ["generated:two"]
+        assert fake.calls == [(("one",), sampling), (("two",), sampling)]
+        assert batcher.active_requests() == 0
+        assert batcher.max_active_requests() == 1
 
     asyncio.run(run())
 
@@ -4568,6 +4613,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_STARTUP_MIN_FREE_MIB", raising=False)
     monkeypatch.delenv("HIPENGINE_REQUEST_TIMEOUT_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_QUEUED_REQUESTS", raising=False)
+    monkeypatch.delenv("HIPENGINE_MAX_ACTIVE_REQUESTS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_CHAT_SESSIONS", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
@@ -4580,6 +4626,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert default_args.startup_min_free_mib is None
     assert default_args.request_timeout_ms is None
     assert default_args.max_queued_requests is None
+    assert default_args.max_active_requests is None
     assert default_args.max_chat_sessions is None
     assert default_args.replay_dir is None
     assert default_args.replay_redaction == "hash"
@@ -4594,6 +4641,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_STARTUP_MIN_FREE_MIB", "512")
     monkeypatch.setenv("HIPENGINE_REQUEST_TIMEOUT_MS", "250.5")
     monkeypatch.setenv("HIPENGINE_MAX_QUEUED_REQUESTS", "7")
+    monkeypatch.setenv("HIPENGINE_MAX_ACTIVE_REQUESTS", "6")
     monkeypatch.setenv("HIPENGINE_MAX_CHAT_SESSIONS", "5")
     monkeypatch.setenv("HIPENGINE_REPLAY_DIR", "/tmp/hipengine-replay")
     monkeypatch.setenv("HIPENGINE_REPLAY_REDACTION", "none")
@@ -4608,6 +4656,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert env_args.startup_min_free_mib == 512
     assert env_args.request_timeout_ms == 250.5
     assert env_args.max_queued_requests == 7
+    assert env_args.max_active_requests == 6
     assert env_args.max_chat_sessions == 5
     assert env_args.replay_dir == "/tmp/hipengine-replay"
     assert env_args.replay_redaction == "none"
@@ -4626,6 +4675,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "123.5",
             "--max-queued-requests",
             "3",
+            "--max-active-requests",
+            "4",
             "--max-chat-sessions",
             "2",
             "--chat-default-max-tokens",
@@ -4646,6 +4697,7 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert cli_args.generation_batch_window_ms == 0.0
     assert cli_args.request_timeout_ms == 123.5
     assert cli_args.max_queued_requests == 3
+    assert cli_args.max_active_requests == 4
     assert cli_args.max_chat_sessions == 2
     assert cli_args.chat_default_max_tokens == 123
     assert cli_args.replay_dir == "/tmp/hipengine-cli-replay"
@@ -5028,6 +5080,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
             eager_load=False,
             metrics="prometheus",
             max_queued_requests=3,
+            max_active_requests=2,
             max_chat_sessions=4,
         ),
         llm=fake,
@@ -5040,6 +5093,8 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(before.text, "hipengine_generation_queue_depth") == 0
     assert _metric_value(before.text, "hipengine_generation_queue_max_depth") == 3
     assert _metric_value(before.text, "hipengine_generation_worker_active") == 0
+    assert _metric_value(before.text, "hipengine_generation_requests_active") == 0
+    assert _metric_value(before.text, "hipengine_generation_requests_max_active") == 2
     assert _metric_value(before.text, "hipengine_chat_sessions_active") == 0
     assert _metric_value(before.text, "hipengine_chat_sessions_pending") == 0
     assert _metric_value(before.text, "hipengine_chat_sessions_max_active") == 4
@@ -5061,6 +5116,8 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_generation_queue_depth") == 0
     assert _metric_value(metrics.text, "hipengine_generation_queue_max_depth") == 3
     assert _metric_value(metrics.text, "hipengine_generation_worker_active") == 0
+    assert _metric_value(metrics.text, "hipengine_generation_requests_active") == 0
+    assert _metric_value(metrics.text, "hipengine_generation_requests_max_active") == 2
     assert _metric_value(metrics.text, "hipengine_chat_sessions_active") == 0
     assert _metric_value(metrics.text, "hipengine_chat_sessions_pending") == 0
     assert _metric_value(metrics.text, "hipengine_chat_sessions_max_active") == 4

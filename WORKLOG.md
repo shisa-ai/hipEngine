@@ -88757,3 +88757,20 @@ Validation:
 - `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> success.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC active backend request cap
+
+Added an opt-in OpenAI server backend batch-width cap with
+`--max-active-requests` / `HIPENGINE_MAX_ACTIVE_REQUESTS`. The generation
+batcher now limits how many HTTP requests can coalesce into one active backend
+generation group while leaving overflow queued and still governed by the
+existing queue cap. `/ready`, `/v1/hipengine/capabilities`, replay capability
+snapshots, and Prometheus metrics now expose active/max backend request state.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_generation_batcher_limits_active_request_group_size tests/test_server_api.py::test_generation_batcher_rejects_when_queue_cap_is_full tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
+- `python3 -m ruff check hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check` -> clean.
