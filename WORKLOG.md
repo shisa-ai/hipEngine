@@ -89268,3 +89268,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC strict tool failure session downgrade tests
+
+Added app-local transcript regressions for unsafe strict tool outputs under
+`session.commit="append_visible_only"`. Invalid tool-call markup, missing
+required tool calls, and strict tool schema violations now have focused tests
+proving the server reports `append_prompt_only`, stores only the incoming prompt
+message, and does not replay the bad generated content into the next turn.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_visible_only_downgrades_length_finish_to_prompt_only tests/test_server_api.py::test_chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_only -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.

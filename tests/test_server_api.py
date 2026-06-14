@@ -2468,6 +2468,95 @@ def test_chat_session_visible_only_downgrades_length_finish_to_prompt_only() -> 
     assert record.messages == ({"role": "user", "content": "start"},)
 
 
+@pytest.mark.parametrize(
+    ("case", "first_output", "request_extra", "expected_reason", "rejected_text"),
+    [
+        (
+            "invalid_tool_call",
+            '<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+            {},
+            "invalid_tool_call",
+            '<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+        ),
+        (
+            "missing_required_tool",
+            "ordinary answer",
+            {"tool_choice": "required"},
+            "tool_required_not_satisfied",
+            "ordinary answer",
+        ),
+        (
+            "schema_violation",
+            '<tool_call>{"name":"read","arguments":{"path":7}}</tool_call>',
+            {},
+            "schema_violation",
+            '"path":7',
+        ),
+    ],
+)
+def test_chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_only(
+    case: str,
+    first_output: str,
+    request_extra: dict[str, Any],
+    expected_reason: str,
+    rejected_text: str,
+) -> None:
+    fake = SequentialFakeLLM([first_output, "done"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    session_id = f"sess_tool_failure_{case}"
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "try tool"}],
+            "tools": tools,
+            "max_tokens": 4,
+            "session": {"id": session_id, "commit": "append_visible_only"},
+            **request_extra,
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "tools": tools,
+            "max_tokens": 4,
+            "session": {"id": session_id, "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_choice = first.json()["choices"][0]
+    assert first_choice["finish_details"]["reason"] == expected_reason
+    assert first_choice["finish_details"]["cache_action"] == "append_prompt_only"
+    prompt = fake.calls[1][0][0]
+    assert "try tool" in prompt
+    assert "continue" in prompt
+    assert rejected_text not in prompt
+    record = app.state.hipengine_chat_sessions[session_id]
+    assert record.messages == ({"role": "user", "content": "try tool"},)
+
+
 def test_chat_session_visible_only_commits_tool_calls_without_reasoning() -> None:
     fake = SequentialFakeLLM(
         [
