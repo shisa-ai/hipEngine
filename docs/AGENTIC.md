@@ -1572,6 +1572,10 @@ Current code reality:
 
 - Unit tests keep the snippet synchronized with the advertised unsupported-field
   list and prove the generated smoke payload strips every `do_not_send` field.
+- `scripts/validate_pi_agent_models.py` validates the checked-in pi
+  `models.json` shape offline and fails on the common `reasoning=false` or
+  missing `compat.thinkingFormat="qwen"` misconfiguration that disables pi's
+  thinking UI for a Qwen endpoint.
   Existing server fake-session tests cover parsed Qwen tool calls in
   non-streaming and streaming responses; deterministic multi-turn golden traces
   remain P5.3.

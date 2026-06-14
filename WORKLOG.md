@@ -88167,6 +88167,20 @@ Validation:
 - `python3 -m py_compile tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_local_agent_config.py tests/test_agentic_server_conformance.py -q` -> `22 passed`.
 
+## 2026-06-14 - Pi agent config validator
+
+Added `scripts/validate_pi_agent_models.py`, an offline validator for the
+checked-in pi `models.json` shape. It catches the concrete misconfiguration that
+disables pi's thinking UI for Qwen endpoints (`reasoning=false`) along with
+missing `compat.thinkingFormat="qwen"`, missing streaming-usage support, wrong
+OpenAI `/v1` URL shape, and invalid model token limits.
+
+Validation:
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `9 passed`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+
 ## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
 
 Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).

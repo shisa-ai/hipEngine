@@ -12,6 +12,7 @@ from hipengine.server.api import ServerConfig, create_app
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "validate_local_agent_config.py"
+PI_SCRIPT_PATH = REPO_ROOT / "scripts" / "validate_pi_agent_models.py"
 CONFIG_PATH = REPO_ROOT / "docs" / "examples" / "local-agent" / "openai-compatible.json"
 PI_CONFIG_PATH = REPO_ROOT / "docs" / "examples" / "pi-agent" / "models.json"
 
@@ -19,6 +20,11 @@ _SPEC = importlib.util.spec_from_file_location("validate_local_agent_config", SC
 assert _SPEC is not None and _SPEC.loader is not None
 validate_local_agent_config = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(validate_local_agent_config)
+
+_PI_SPEC = importlib.util.spec_from_file_location("validate_pi_agent_models", PI_SCRIPT_PATH)
+assert _PI_SPEC is not None and _PI_SPEC.loader is not None
+validate_pi_agent_models = importlib.util.module_from_spec(_PI_SPEC)
+_PI_SPEC.loader.exec_module(validate_pi_agent_models)
 
 
 class _FakeLLM:
@@ -181,3 +187,30 @@ def test_pi_agent_models_config_enables_qwen_thinking() -> None:
     assert provider["compat"]["supportsReasoningEffort"] is False
     assert model["reasoning"] is True
     assert model["input"] == ["text"]
+
+
+def test_pi_agent_models_config_validates_with_helper() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+
+    summary = validate_pi_agent_models.validate_pi_models_config(config)
+
+    assert summary["provider_count"] == 1
+    assert summary["model_count"] == 1
+    assert summary["providers"][0]["provider"] == "hipengine-local"
+    assert summary["providers"][0]["models"][0]["reasoning"] is True
+
+
+def test_pi_agent_models_validator_rejects_reasoning_disabled() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    config["providers"]["hipengine-local"]["models"][0]["reasoning"] = False
+
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="reasoning must be true"):
+        validate_pi_agent_models.validate_pi_models_config(config)
+
+
+def test_pi_agent_models_validator_rejects_missing_qwen_thinking_format() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    config["providers"]["hipengine-local"]["compat"].pop("thinkingFormat")
+
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="thinkingFormat"):
+        validate_pi_agent_models.validate_pi_models_config(config)

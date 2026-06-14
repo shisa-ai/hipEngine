@@ -326,6 +326,14 @@ set to `false` if you only want the Qwen flag and not OpenAI
 server's effective `/v1/hipengine/capabilities` context; the checked-in value is
 a conservative W7900 example, not a model-family guarantee.
 
+Validate the pi snippet, including the fields that keep pi's thinking UI
+enabled, with:
+
+```bash
+python3 scripts/validate_pi_agent_models.py \
+  --config docs/examples/pi-agent/models.json
+```
+
 ### Local-agent config validation
 
 A minimal OpenAI-compatible local-agent config is checked in at
