@@ -361,7 +361,11 @@ ended because the generation budget was exhausted; in that case
 `features.tools.result_validation_failure_reasons`. Compatibility parsing
 recovers a common duplicated-start form,
 `<tool_call><tool_call>{...}</tool_call>`, when the inner JSON is otherwise a
-valid tool call; strict validation still rejects that original malformed block.
+valid tool call; the manifest reports this under
+`features.tools.compatibility_parser_repairs`. Truly malformed tool JSON remains
+assistant text when strict validation is inactive, reported as
+`features.tools.malformed_json_compatibility`, while strict validation rejects
+malformed blocks, reported as `features.tools.strict_malformed_blocks_rejected`.
 When
 `tool_choice="none"` and tokenization is available, the sampler also suppresses
 the first token of the Qwen `<tool_call>` start marker; this is a no-tool

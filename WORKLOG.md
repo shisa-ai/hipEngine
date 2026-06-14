@@ -89971,3 +89971,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_server_conformance.py --collect-only -q` -> `tests/test_agentic_server_conformance.py: 5`, `tests/test_server_api.py: 230`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC tool parser capability metadata
+
+Advertised Qwen tool-call compatibility parser policy in
+`/v1/hipengine/capabilities` and replay capability snapshots. Tool features now
+report the duplicated-start parser repair, the permissive malformed-JSON policy
+(`assistant_text_when_not_strict`), and strict malformed-block rejection so
+agent harnesses can discover the behavior instead of inferring it from prose.
+Updated `docs/API.md` and `docs/AGENTIC.md` to name the manifest fields.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_chat_completion_auto_tool_recovers_duplicated_start_marker tests/test_server_api.py::test_streaming_chat_completion_recovers_duplicated_tool_start_marker -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `230` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 230`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

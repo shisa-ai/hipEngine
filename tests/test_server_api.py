@@ -672,6 +672,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "writeOnly",
         ],
         "format": "qwen_tool_call_json",
+        "compatibility_parser_repairs": ["duplicated_tool_call_start"],
+        "malformed_json_compatibility": "assistant_text_when_not_strict",
+        "strict_malformed_blocks_rejected": True,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": 128,
@@ -6688,6 +6691,14 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     )
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing"] is True
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
+    assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
+        "duplicated_tool_call_start"
+    ]
+    assert (
+        artifact["capabilities"]["features"]["tools"]["malformed_json_compatibility"]
+        == "assistant_text_when_not_strict"
+    )
+    assert artifact["capabilities"]["features"]["tools"]["strict_malformed_blocks_rejected"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunks"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunk_chars"] == 128
     assert artifact["capabilities"]["features"]["reasoning_controls"]["token_budget_enforced"] is True

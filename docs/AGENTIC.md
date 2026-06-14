@@ -1851,8 +1851,9 @@ Current code reality:
   logprobs backend-metadata fallback errors,
   the stream metadata extension version/event/timing fields, no-tool
   start-marker suppression, required/specific tool start-marker forcing plus
-  its initial-or-post-thinking scope, sampling parameters and execution modes,
-  strict tool result-validation support,
+  its initial-or-post-thinking scope, Qwen tool-call compatibility parser
+  repairs and malformed-JSON strict/permissive policy, sampling parameters and
+  execution modes, strict tool result-validation support,
   JSON-object and JSON-schema structured-output result validation, the
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
