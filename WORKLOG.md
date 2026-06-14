@@ -87792,3 +87792,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_completion_timeout_returns_deadline_error_and_server_reuses -q` -> `1 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_generation_registry.py tests/test_agentic_harness_traces.py tests/test_model_quant_and_imports.py -q` -> `20 passed`.
+
+## 2026-06-14 - Right-size PARO verifier trunk scratch for 128k GPU1 serving
+
+Follow-up to the GPU1 128k OOM trace. The recent DFlash/MTP verifier trunk restoration (`8fcd2d3c`) allocated two dedicated verifier hidden buffers at full prompt prefill capacity (`prefill_capacity_rows = max_sequence_length * max_batch_size`). For the Qwen3.6 35B PARO shape at 128k and hidden=2048, that costs ~0.98 GiB resident memory on GPU1. The verifier entrypoints already reject `rows > max_batch_size`, and the rest of the verifier metadata/logit buffers are sized by `max_batch_size`, so the trunk pair only needs verifier-row capacity.
+
+Measurements on clean GPU1 (`HIP_VISIBLE_DEVICES=1`, model `shisa-ai/Qwen3.6-35B-A3B-PARO-packed`, `quant=w4_paro`, `kv_storage=int8_per_token_head`):
+- Current pre-fix code: `llm.prepare(max_sequence_length=128000)` left `free=3.232 GiB`, matching the OOM-prone trace.
+- Monkeypatch disabling only `_allocate_verify_trunk_buffers`: after prepare `free=4.209 GiB`; `llm.stream(' one' * 4096, max_tokens=1)` succeeded in 1.618 s.
+- After right-sizing `_allocate_verify_trunk_buffers` to `max_batch_size * hidden_nbytes` per trunk buffer: after prepare `free=4.209 GiB`; same 4096-token prompt succeeded in 1.626 s and ended with `free=4.168 GiB`.
+
+Validation:
+- `uv run pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_verify_trunk_is_distinct_verifier_capacity_pair` -> passed.
+- `uv run pytest -q tests/test_dflash_verify_graph.py tests/test_target_verify_ladder.py tests/test_speculative_buffer_owner.py tests/test_qwen35_resident_tree_metadata.py` -> `16 passed`.
+- Direct GPU1 128k/4096 smoke above -> passed.
+
+Note: full `tests/test_qwen35_resident_batch_layout.py` currently has unrelated synthetic-session failures from missing recently added cache/sampler fields (`_slot_linear_state_cache`, `_resident_tensor_view_cache_enabled_value`, `_host_sampling_params`); the targeted verifier-trunk test passes.
