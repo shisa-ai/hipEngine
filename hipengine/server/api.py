@@ -259,12 +259,14 @@ async def _maybe_write_replay_artifact(
     config: ServerConfig,
     request: Request,
     error_payload: Mapping[str, Any],
+    *,
+    engine: Any | None = None,
 ) -> None:
     if not config.replay_dir:
         return
     try:
         body_bytes = await request.body()
-        artifact = _build_replay_artifact(config, request, error_payload, body_bytes)
+        artifact = _build_replay_artifact(config, request, error_payload, body_bytes, engine=engine)
         _write_replay_artifact(Path(config.replay_dir), artifact)
     except Exception as exc:  # pragma: no cover - best-effort diagnostic path
         _LOGGER.warning("failed to write replay artifact: %s", exc)
@@ -275,6 +277,8 @@ def _build_replay_artifact(
     request: Request,
     error_payload: Mapping[str, Any],
     body_bytes: bytes,
+    *,
+    engine: Any | None = None,
 ) -> dict[str, Any]:
     body_json = _decode_replay_body(body_bytes)
     redaction = _replay_redaction_mode(config.replay_redaction)
@@ -299,12 +303,7 @@ def _build_replay_artifact(
         },
         "sampling": _replay_sampling_payload(body_json),
         "seeds": _replay_seed_payload(body_json),
-        "token_counts": {
-            "prompt_tokens": None,
-            "completion_tokens": None,
-            "total_tokens": None,
-            "available": False,
-        },
+        "token_counts": _replay_token_counts(body_json, engine),
         "finish_details": error_payload.get("finish_details"),
         "error": {
             "type": error_payload.get("type"),
@@ -380,6 +379,47 @@ def _prompt_hash(path: str, text: str) -> dict[str, Any]:
         "sha256": _sha256_text(text),
         "length": len(text),
     }
+
+
+def _replay_token_counts(body_json: Any, engine: Any | None) -> dict[str, Any]:
+    unavailable = {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "available": False,
+    }
+    if engine is None:
+        return {**unavailable, "unavailable_reason": "engine_not_loaded"}
+    prompt_entries = _replay_completion_prompt_texts(body_json)
+    if prompt_entries is None:
+        return {**unavailable, "unavailable_reason": "unsupported_request_shape"}
+    try:
+        entries = [
+            {"path": path, "token_count": _count_tokens_strict(engine, text)}
+            for path, text in prompt_entries
+        ]
+    except Exception:
+        return {**unavailable, "unavailable_reason": "token_count_failed"}
+    prompt_tokens = sum(int(item["token_count"]) for item in entries)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "available": True,
+        "source": "completion_prompt",
+        "entries": entries,
+    }
+
+
+def _replay_completion_prompt_texts(body_json: Any) -> list[tuple[str, str]] | None:
+    if not isinstance(body_json, Mapping) or "prompt" not in body_json:
+        return None
+    prompt = body_json.get("prompt")
+    if isinstance(prompt, str):
+        return [("$.prompt", prompt)]
+    if isinstance(prompt, list) and all(isinstance(item, str) for item in prompt):
+        return [(f"$.prompt[{index}]", item) for index, item in enumerate(prompt)]
+    return None
 
 
 def _sha256_text(text: str) -> str:
@@ -1567,7 +1607,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             finish_details=exc.finish_details,
             extra=exc.extra,
         )
-        await _maybe_write_replay_artifact(config, request, error_payload)
+        await _maybe_write_replay_artifact(
+            config,
+            request,
+            error_payload,
+            engine=getattr(app.state, "hipengine_llm", None),
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": error_payload},
@@ -1595,7 +1640,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             code="validation_error",
             status_code=422,
         )
-        await _maybe_write_replay_artifact(config, request, error_payload)
+        await _maybe_write_replay_artifact(
+            config,
+            request,
+            error_payload,
+            engine=getattr(app.state, "hipengine_llm", None),
+        )
         return JSONResponse(
             status_code=422,
             content={"error": error_payload},

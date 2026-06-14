@@ -3283,8 +3283,16 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["sampling"]["top_logprobs"] == 2
     assert artifact["sampling"]["response_format"] == {"type": "json_object"}
     assert artifact["seeds"] == {"seed": 123, "row_seeds": []}
-    assert artifact["token_counts"]["available"] is False
+    assert artifact["token_counts"] == {
+        "prompt_tokens": 2,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "available": True,
+        "source": "completion_prompt",
+        "entries": [{"path": "$.prompt", "token_count": 2}],
+    }
     assert artifact["error"]["code"] == "unsupported_parameter"
+    assert artifact["error"]["param"] == "top_logprobs"
     assert artifact["error"]["hipengine"]["code"] == "unsupported_parameter"
     assert artifact["capabilities"]["model"]["id"] == "fake-model"
     assert artifact["capabilities"]["sampling"]["speculative_mtp"] == {

@@ -1705,8 +1705,9 @@ Current code reality:
 - Artifacts use `schema="hipengine.replay.v1"` and include method/path,
   redacted request JSON, prompt/tool-result hashes, served model id, requested
   sampler fields, seed fields, error metadata, finish details when present,
-  token-count placeholders, and a compact capability snapshot with current
-  sampler/MTP compatibility plus cache/session support.
+  completion prompt token counts when an already-loaded engine can count them
+  safely, explicit unavailable reasons otherwise, and a compact capability
+  snapshot with current sampler/MTP compatibility plus cache/session support.
 - `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
   and replaces request strings with SHA-256/length metadata. The explicit
   `none` mode stores raw strings for local debugging only.

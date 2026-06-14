@@ -88098,3 +88098,16 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `2 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC replay token counts
+
+Filled a P5.6 replay-bundle gap by recording completion prompt token counts in
+failed-request replay artifacts when an engine is already loaded and supports
+token counting. Artifacts remain finite and passive: the error handler does not
+lazy-load a model for diagnostics, and unavailable cases now carry an explicit
+reason such as `engine_not_loaded` or `unsupported_request_shape`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifacts_are_default_off tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
