@@ -2103,7 +2103,10 @@ Current code reality:
 - `scripts/validate_pi_agent_models.py` validates the checked-in pi
   `models.json` shape offline and fails on the common `reasoning=false` or
   missing `compat.thinkingFormat="qwen"` misconfiguration that disables pi's
-  thinking UI for a Qwen endpoint. It also rejects disabled
+  thinking UI for a Qwen endpoint. The offline check aggregates these common
+  provider/model mistakes, so a config can report missing `thinkingFormat`,
+  disabled `supportsUsageInStreaming`, and model-level `reasoning=false` in one
+  run instead of failing at the first mismatch. It also rejects disabled
   `supportsUsageInStreaming` because the server advertises usage-bearing SSE
   responses. With `--base-url`, it checks the config model id, context window,
   streaming usage, Qwen thinking control, and tool support against

@@ -91005,3 +91005,17 @@ missing-backend-metadata fallback coverage.
 Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns tests/test_agentic_harness_traces.py::test_agentic_golden_trace -q` -> passed.
 - `python3 -m py_compile tests/test_agentic_harness_traces.py && python3 -m ruff check tests/test_agentic_harness_traces.py && git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC pi config aggregate diagnostics
+
+Made the pi `models.json` offline validator aggregate provider/model
+compatibility errors so common Qwen thinking misconfigurations are reported
+together. A config like the observed EPYC snippet now reports missing
+`compat.thinkingFormat="qwen"`, disabled `supportsUsageInStreaming`, and
+model-level `reasoning=false` in one validation error instead of stopping at
+the first mismatch. Updated AGENTIC's local-agent section to describe the
+aggregate diagnostic behavior.
+
+Validation:
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `25 passed`.
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py && python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py && git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/AGENTIC.md` -> `All checks passed!` / clean.

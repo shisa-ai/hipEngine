@@ -502,6 +502,25 @@ def test_pi_agent_models_validator_rejects_reasoning_disabled() -> None:
         validate_pi_agent_models.validate_pi_models_config(config)
 
 
+def test_pi_agent_models_validator_reports_multiple_thinking_misconfigs() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    config["providers"] = {"epyc": config["providers"]["hipengine-local"]}
+    provider = config["providers"]["epyc"]
+    provider["baseUrl"] = "http://epyc:8000/v1"
+    provider["compat"].pop("thinkingFormat")
+    provider["compat"]["supportsUsageInStreaming"] = False
+    provider["models"][0]["reasoning"] = False
+    provider["models"][0]["contextWindow"] = 262144
+
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError) as raised:
+        validate_pi_agent_models.validate_pi_models_config(config)
+
+    message = str(raised.value)
+    assert "providers.epyc.compat.thinkingFormat must be 'qwen'" in message
+    assert "providers.epyc.compat.supportsUsageInStreaming must be true" in message
+    assert "providers.epyc.models[0].reasoning must be true" in message
+
+
 def test_pi_agent_models_validator_rejects_missing_qwen_thinking_format() -> None:
     config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
     config["providers"]["hipengine-local"]["compat"].pop("thinkingFormat")

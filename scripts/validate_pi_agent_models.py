@@ -43,17 +43,40 @@ def validate_pi_models_config(
         selected = [(provider_name, providers[provider_name])]
 
     summaries: list[dict[str, Any]] = []
+    errors: list[str] = []
     for provider_id, raw_provider in selected:
         label = f"providers.{provider_id}"
-        provider = _object_value(raw_provider, label)
-        _validate_provider(provider, label)
-        models = _list(provider.get("models"), f"{label}.models")
+        provider_error_start = len(errors)
+        try:
+            provider = _object_value(raw_provider, label)
+        except PiConfigValidationError as exc:
+            errors.append(str(exc))
+            continue
+        try:
+            _validate_provider(provider, label)
+        except PiConfigValidationError as exc:
+            errors.append(str(exc))
+        try:
+            models = _list(provider.get("models"), f"{label}.models")
+        except PiConfigValidationError as exc:
+            errors.append(str(exc))
+            continue
         if not models:
-            raise PiConfigValidationError(f"{label}.models must contain at least one model")
+            errors.append(f"{label}.models must contain at least one model")
+            continue
         model_summaries = []
         for index, raw_model in enumerate(models):
-            model = _object_value(raw_model, f"{label}.models[{index}]")
-            _validate_model(model, f"{label}.models[{index}]")
+            model_label = f"{label}.models[{index}]"
+            try:
+                model = _object_value(raw_model, model_label)
+            except PiConfigValidationError as exc:
+                errors.append(str(exc))
+                continue
+            try:
+                _validate_model(model, model_label)
+            except PiConfigValidationError as exc:
+                errors.append(str(exc))
+                continue
             model_summaries.append(
                 {
                     "id": str(model["id"]),
@@ -62,13 +85,16 @@ def validate_pi_models_config(
                     "maxTokens": int(model["maxTokens"]),
                 }
             )
-        summaries.append(
-            {
-                "provider": provider_id,
-                "baseUrl": str(provider["baseUrl"]),
-                "models": model_summaries,
-            }
-        )
+        if len(errors) == provider_error_start:
+            summaries.append(
+                {
+                    "provider": provider_id,
+                    "baseUrl": str(provider["baseUrl"]),
+                    "models": model_summaries,
+                }
+            )
+
+    _raise_config_errors(errors)
 
     return {
         "providers": summaries,
@@ -293,37 +319,63 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _validate_provider(provider: dict[str, Any], label: str) -> None:
+    errors: list[str] = []
     base_url = provider.get("baseUrl")
     if not isinstance(base_url, str) or not base_url.rstrip("/").endswith("/v1"):
-        raise PiConfigValidationError(f"{label}.baseUrl must point at the OpenAI /v1 endpoint")
+        errors.append(f"{label}.baseUrl must point at the OpenAI /v1 endpoint")
     if provider.get("api") != "openai-completions":
-        raise PiConfigValidationError(f"{label}.api must be 'openai-completions'")
-    compat = _object(provider, "compat", label=f"{label}.compat")
-    if compat.get("thinkingFormat") != "qwen":
-        raise PiConfigValidationError(f"{label}.compat.thinkingFormat must be 'qwen'")
-    if compat.get("supportsReasoningEffort") is not False:
-        raise PiConfigValidationError(f"{label}.compat.supportsReasoningEffort must be false")
-    if compat.get("supportsUsageInStreaming") is not True:
-        raise PiConfigValidationError(f"{label}.compat.supportsUsageInStreaming must be true")
-    if compat.get("maxTokensField") != "max_tokens":
-        raise PiConfigValidationError(f"{label}.compat.maxTokensField must be 'max_tokens'")
+        errors.append(f"{label}.api must be 'openai-completions'")
+    try:
+        compat = _object(provider, "compat", label=f"{label}.compat")
+    except PiConfigValidationError as exc:
+        errors.append(str(exc))
+    else:
+        if compat.get("thinkingFormat") != "qwen":
+            errors.append(f"{label}.compat.thinkingFormat must be 'qwen'")
+        if compat.get("supportsReasoningEffort") is not False:
+            errors.append(f"{label}.compat.supportsReasoningEffort must be false")
+        if compat.get("supportsUsageInStreaming") is not True:
+            errors.append(f"{label}.compat.supportsUsageInStreaming must be true")
+        if compat.get("maxTokensField") != "max_tokens":
+            errors.append(f"{label}.compat.maxTokensField must be 'max_tokens'")
+    _raise_config_errors(errors)
 
 
 def _validate_model(model: dict[str, Any], label: str) -> None:
+    errors: list[str] = []
     model_id = model.get("id")
     if not isinstance(model_id, str) or not model_id.strip():
-        raise PiConfigValidationError(f"{label}.id must be a non-empty string")
+        errors.append(f"{label}.id must be a non-empty string")
     if model.get("reasoning") is not True:
-        raise PiConfigValidationError(
-            f"{label}.reasoning must be true so pi enables thinking for this model"
-        )
-    inputs = _list(model.get("input"), f"{label}.input")
-    if "text" not in {str(item) for item in inputs}:
-        raise PiConfigValidationError(f"{label}.input must include 'text'")
-    context_window = _positive_int(model.get("contextWindow"), f"{label}.contextWindow")
-    max_tokens = _positive_int(model.get("maxTokens"), f"{label}.maxTokens")
-    if max_tokens > context_window:
-        raise PiConfigValidationError(f"{label}.maxTokens must not exceed contextWindow")
+        errors.append(f"{label}.reasoning must be true so pi enables thinking for this model")
+    try:
+        inputs = _list(model.get("input"), f"{label}.input")
+    except PiConfigValidationError as exc:
+        errors.append(str(exc))
+    else:
+        if "text" not in {str(item) for item in inputs}:
+            errors.append(f"{label}.input must include 'text'")
+    context_window: int | None = None
+    max_tokens: int | None = None
+    try:
+        context_window = _positive_int(model.get("contextWindow"), f"{label}.contextWindow")
+    except PiConfigValidationError as exc:
+        errors.append(str(exc))
+    try:
+        max_tokens = _positive_int(model.get("maxTokens"), f"{label}.maxTokens")
+    except PiConfigValidationError as exc:
+        errors.append(str(exc))
+    if context_window is not None and max_tokens is not None and max_tokens > context_window:
+        errors.append(f"{label}.maxTokens must not exceed contextWindow")
+    _raise_config_errors(errors)
+
+
+def _raise_config_errors(errors: list[str]) -> None:
+    if not errors:
+        return
+    if len(errors) == 1:
+        raise PiConfigValidationError(errors[0])
+    raise PiConfigValidationError("pi config validation failed: " + "; ".join(errors))
 
 
 def _live_provider(config: dict[str, Any], *, provider_name: str | None = None) -> dict[str, Any]:
