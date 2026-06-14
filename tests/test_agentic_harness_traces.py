@@ -93,7 +93,9 @@ def _assert_chat_response(payload: dict[str, Any], expected: dict[str, Any]) -> 
     if "finish_reason" in expected:
         assert choice["finish_reason"] == expected["finish_reason"]
     if "finish_details" in expected:
-        assert choice["finish_details"] == expected["finish_details"]
+        assert choice["finish_details"] == _expected_finish_details(choice, expected)
+    if expected.get("continuation_id"):
+        assert choice["continuation_id"].startswith("gen_")
     message = choice["message"]
     if "message_content" in expected:
         assert message["content"] == expected["message_content"]
@@ -114,7 +116,16 @@ def _assert_completion_response(payload: dict[str, Any], expected: dict[str, Any
     choice = payload["choices"][0]
     assert choice["text"] == expected["text"]
     assert choice["finish_reason"] == expected["finish_reason"]
-    assert choice["finish_details"] == expected["finish_details"]
+    assert choice["finish_details"] == _expected_finish_details(choice, expected)
+    if expected.get("continuation_id"):
+        assert choice["continuation_id"].startswith("gen_")
+
+
+def _expected_finish_details(choice: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    details = dict(expected["finish_details"])
+    if details.get("continuation_id") == "$continuation_id":
+        details["continuation_id"] = choice["continuation_id"]
+    return details
 
 
 def _assert_stream_response(text: str, expected: dict[str, Any]) -> None:

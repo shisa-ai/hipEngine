@@ -585,6 +585,61 @@
       }
     },
     {
+      "name": "length_finish_chat_answer_continuation",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {"text": "partial answer", "finish_details": {"reason": "length", "length_limit": 5}}
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "answer briefly"}],
+        "max_tokens": 5
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "length",
+        "message_content": "partial answer",
+        "continuation_id": true,
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 5,
+          "cache_action": "append_none",
+          "phase": "answer",
+          "continuation_eligible": true,
+          "continuation_id": "$continuation_id"
+        }
+      }
+    },
+    {
+      "name": "length_finish_chat_structured_continuation",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_detailed_outputs": [
+        {"text": "{\"status\":", "finish_details": {"reason": "length", "length_limit": 6}}
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Return JSON."}],
+        "response_format": {"type": "json_object"},
+        "max_tokens": 6
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "length",
+        "message_content": "{\"status\":",
+        "continuation_id": true,
+        "finish_details": {
+          "reason": "length",
+          "length_limit": 6,
+          "cache_action": "append_none",
+          "phase": "structured",
+          "continuation_eligible": true,
+          "continuation_id": "$continuation_id"
+        }
+      }
+    },
+    {
       "name": "length_finish_chat_partial_tool_call",
       "kind": "http",
       "endpoint": "/v1/chat/completions",

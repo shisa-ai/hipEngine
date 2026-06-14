@@ -89455,3 +89455,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `46 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC continuation-eligible length traces
+
+Extended the golden trace runner to assert generated continuation IDs inside
+`finish_details`, then added deterministic chat length traces for normal answer
+and partial structured-output phases. These cases pin the contract that
+deterministic buffered answer/structured length stops are continuation-eligible,
+unlike reasoning, closing-think, and tool-call length stops.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `25 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
