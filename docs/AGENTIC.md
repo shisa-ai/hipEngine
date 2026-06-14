@@ -1994,9 +1994,9 @@ Current code reality:
   tool-call request and requires a parsed `record_result` tool call with JSON
   arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
   including a doubled start-marker form, is rejected as a tool-calling mismatch.
-- Existing server fake-session tests cover parsed Qwen tool calls in
-  non-streaming and streaming responses; deterministic multi-turn golden traces
-  remain P5.3.
+- Existing server fake-session tests and the P5.3 golden trace harness cover
+  parsed Qwen tool calls in non-streaming and streaming responses, including
+  multi-turn tool loops and raw-markup rejection.
 
 Exit gates:
 
@@ -2349,24 +2349,31 @@ Use this as the handoff for an implementation agent:
 
 ## Near-term implementation slices
 
-Good next logical units, in order:
+The single-model server contract, capabilities manifest, token diagnostics,
+session transcript commit policy, deterministic continuations, host processor
+stack, thinking-budget hard/soft close, strict tool result validation, and
+golden harness traces are now implemented. Good next logical units, in order:
 
-1. **DecodeState MVP:** add generation-layer phase/token accounting and finish
-   details, then thread it through server responses without changing output text.
-2. **Reasoning soft-close MVP:** implement effort-default budget mapping,
-   tokenized `</think>` close sequences, optional transition-message override,
-   soft logit-bias ramp, hard forced close, manual force hook, and answer-token
-   reserve on the host-stepped tail path.
-3. **Token diagnostics endpoints:** expose tokenizer/count/fit helpers; useful to
-   every harness and low risk to runtime performance.
-4. **Stop DFA promotion + forced-token queue:** move host stop-sequence state
-   into the canonical decode/processor layer and reuse it for forced delimiters.
-5. **Strict tool-call fixtures:** lock down prompt/render/parse behavior and add
-   schema-validation errors before attempting grammar-constrained decoding.
-6. **Session commit policy:** prevent hidden reasoning or malformed partial tool
-   calls from being silently retained in resident sessions.
-7. **Capabilities manifest:** advertise effective context/max-token behavior,
-   tool/reasoning support, sampling/logprob support, and loaded-model limits.
+1. **Live backend DecodeState telemetry:** move remaining per-token phase,
+   forced-token, sampler-fallback, and continuation-eligibility metadata out of
+   server post-parse inference and into generation-owned live state.
+2. **Native/scheduler controlled-decoding parity:** extend c>N/GGUF/native GPU
+   sampler paths to emit the same processor metadata, fallback reasons, and
+   logprob semantics as host AR sampling, or reject clearly.
+3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
+   limited to greedy-fast requests until the target verifier applies the same
+   logit bias, penalties, suppressions, forced-token, thinking-budget, and
+   logprob policy as AR sampling.
+4. **Decode-time grammar constraints:** add tokenizer-aware JSON/tool/patch
+   grammars on the shared DFA/forced-token path, including close-brace/quote and
+   tool-argument schema enforcement.
+5. **Resident KV session/cache work:** implement visible-only re-prefill,
+   forkable prefix/cache handles, rollback/delete semantics, and resident-state
+   continuation reuse.
+6. **Context policies beyond reject:** add explicit auto-clear/truncate/summary
+   policies only after they can report kept/dropped/reset segments deterministically.
+7. **Multi-model routing and TP runtime:** build these after the single-model
+   agentic contract stays green, using `docs/TENSOR_PARALLEL.md` as the TP gate.
 
 ## Validation expectations
 

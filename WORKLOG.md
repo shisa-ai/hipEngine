@@ -90434,3 +90434,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'finish_details or deadline or cancelled or stop_sequence or thinking_budget_exhausted'` -> `19 passed`.
 - `python3 -m ruff check tests/test_generation_registry.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_generation_registry.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC roadmap and pi failure-mode sync
+
+Updated `docs/API.md` to call out pi's `Current model does not support
+thinking` symptom as a `models.json` issue: Qwen entries need
+`reasoning=true` and `compat.thinkingFormat="qwen"`. Refreshed
+`docs/AGENTIC.md` P5.2 and the near-term implementation slices so they no
+longer list completed server-contract, token-diagnostic, session-commit,
+thinking-budget, strict-tool, capability-manifest, and golden-trace work as
+next tasks.
+
+Validation:
+- Re-read the edited `docs/API.md` pi guidance, `docs/AGENTIC.md` P5.2, and
+  `docs/AGENTIC.md` near-term implementation slices.
+- `python3 -m pytest tests/test_local_agent_config.py -q -k 'pi_agent'` -> `14 passed`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `1 passed`.
+- `git diff --check -- docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

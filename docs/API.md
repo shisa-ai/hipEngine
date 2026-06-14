@@ -512,6 +512,10 @@ request usage metadata on SSE responses. A minimal pi `models.json` example is
 checked in at `docs/examples/pi-agent/models.json`. Keep its `contextWindow`
 aligned with the server's effective `/v1/hipengine/capabilities` context; the
 checked-in value is a conservative W7900 example, not a model-family guarantee.
+If pi reports `Current model does not support thinking` for a Qwen endpoint,
+check the selected `models.json` entry first: `reasoning` must be `true` and
+`compat.thinkingFormat` must be `"qwen"`. Setting `reasoning:false` disables
+pi's thinking UI even when the server supports Qwen `enable_thinking`.
 
 Validate the pi snippet, including the fields that keep pi's thinking UI
 enabled, with:
