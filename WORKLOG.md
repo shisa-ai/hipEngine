@@ -91239,3 +91239,18 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC guided replay artifacts
+
+Extended replay-bundle coverage for validation-only guided outputs. Added a
+parameterized server replay test proving `guided_json`, `guided_regex`, and
+`guided_choice` result-validation failures emit opt-in replay artifacts with
+failure `finish_details`, affected choice indexes, redacted prompt/control
+metadata, and no generated assistant text. Updated AGENTIC P5.6 current reality
+to list all supported validation-only guided controls instead of only patch/diff.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_captures_guided_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_completion_structured_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_guided_patch_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_guided_diff_result_validation_failure -q` -> `6 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -2389,20 +2389,21 @@ Current code reality:
   explicit unavailable reasons otherwise, and a compact capability snapshot with
   current sampler/MTP compatibility, tokenizer-dependent tool/reasoning
   controls, and cache/session support.
-- Strict tool, structured-output, and guided patch/diff result-validation
-  failures that return normal HTTP 200 responses also write replay artifacts
-  when replay is enabled; the artifact stores the failure `finish_details` and
-  affected choice indexes, not generated assistant text.
+- Strict tool, structured-output, and validation-only guided-output
+  result-validation failures (`guided_json`, `guided_regex`, `guided_choice`,
+  `guided_patch`, and `guided_diff`) that return normal HTTP 200 responses also
+  write replay artifacts when replay is enabled; the artifact stores the failure
+  `finish_details` and affected choice indexes, not generated assistant text.
 - `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
   and replaces request strings plus compact sampler/agentic-control strings
   with SHA-256/length metadata. The explicit `none` mode stores raw strings for
   local debugging only.
 - Tests cover default-off behavior, failed HTTP request redaction, streaming
   backend deadline/cancel errors, strict tool validation failures, streaming
-  strict tool failures, completion structured failures, and streaming chat
-  structured failures. Replay artifact tests load each emitted artifact and
-  re-serialize it with `allow_nan=false`, so non-standard JSON values fail the
-  suite.
+  strict tool failures, completion structured failures, validation-only guided
+  JSON/regex/choice/patch/diff failures, and streaming chat structured
+  failures. Replay artifact tests load each emitted artifact and re-serialize it
+  with `allow_nan=false`, so non-standard JSON values fail the suite.
 
 Exit gates:
 

@@ -9339,6 +9339,120 @@ def test_replay_artifact_captures_completion_structured_result_validation_failur
     assert "not json" not in serialized
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "prompt_text", "request_extra", "generated", "sampling_assertion"),
+    [
+        (
+            "/v1/completions",
+            "secret guided json prompt",
+            {"guided_json": True},
+            "[true]",
+            ("guided_json", True),
+        ),
+        (
+            "/v1/chat/completions",
+            "secret guided regex task",
+            {"guided_regex": r"[A-Z]{2}-\d{2}"},
+            "AB",
+            ("guided_regex", {"length": len(r"[A-Z]{2}-\d{2}")}),
+        ),
+        (
+            "/v1/chat/completions",
+            "secret guided choice task",
+            {"guided_choice": ["yes", "no"]},
+            "maybe",
+            ("guided_choice", [{"length": 3}, {"length": 2}]),
+        ),
+    ],
+)
+def test_replay_artifact_captures_guided_result_validation_failure(
+    tmp_path,
+    endpoint: str,
+    prompt_text: str,
+    request_extra: dict[str, Any],
+    generated: str,
+    sampling_assertion: tuple[str, Any],
+) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(outputs=[generated]),
+    )
+    client = TestClient(app)
+    is_chat = endpoint.endswith("/chat/completions")
+    if not is_chat:
+        payload: dict[str, Any] = {"model": "fake-model", "prompt": prompt_text, "max_tokens": 16}
+    else:
+        payload = {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": prompt_text}],
+            "max_tokens": 16,
+        }
+    payload.update(request_extra)
+
+    response = client.post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("schema_violation")
+    if is_chat:
+        assert choice["message"] == {"role": "assistant", "content": ""}
+        prompt_path = "$.messages[0].content"
+    else:
+        assert choice["text"] == ""
+        prompt_path = "$.prompt"
+
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["request"]["path"] == endpoint
+    redacted_prompt = (
+        artifact["request"]["json"]["messages"][0]["content"]
+        if is_chat
+        else artifact["request"]["json"]["prompt"]
+    )
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": prompt_path,
+            "sha256": redacted_prompt["sha256"],
+            "length": len(prompt_text),
+        }
+    ]
+    field, expected_sampling = sampling_assertion
+    actual_sampling = artifact["sampling"][field]
+    if isinstance(expected_sampling, list):
+        assert [item["length"] for item in actual_sampling] == [
+            item["length"] for item in expected_sampling
+        ]
+        assert all(item["redacted"] == "sha256" for item in actual_sampling)
+    elif isinstance(expected_sampling, dict):
+        assert actual_sampling["redacted"] == "sha256"
+        assert actual_sampling["length"] == expected_sampling["length"]
+    else:
+        assert actual_sampling is expected_sampling
+    assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
+    assert artifact["error"] is None
+    assert artifact["result"] == {
+        "type": "agentic_result_validation",
+        "finish_details": _stateless_finish_details("schema_violation"),
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "finish_details": _stateless_finish_details("schema_violation"),
+            }
+        ],
+    }
+    assert prompt_text not in serialized
+    assert generated not in serialized
+
+
 def test_replay_artifact_captures_guided_patch_result_validation_failure(tmp_path) -> None:
     replay_dir = tmp_path / "replay"
     invalid_patch = "Here is the patch:\n" + _unified_diff_text()
