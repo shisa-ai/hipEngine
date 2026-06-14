@@ -2850,6 +2850,78 @@ def test_completion_length_finish_marks_sampled_continuation_ineligible() -> Non
     )
 
 
+def test_completion_length_finish_with_n_gt_one_is_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial one",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(
+                text="partial two",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "Say: ", "max_tokens": 1, "n": 2},
+    )
+
+    assert response.status_code == 200
+    choices = response.json()["choices"]
+    assert len(choices) == 2
+    for choice in choices:
+        assert "continuation_id" not in choice
+        assert choice["finish_details"] == _stateless_finish_details(
+            "length",
+            length_limit=1,
+            continuation_eligible=False,
+        )
+
+
+def test_chat_length_finish_with_n_gt_one_is_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial one",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(
+                text="partial two",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 1,
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    choices = response.json()["choices"]
+    assert len(choices) == 2
+    for choice in choices:
+        assert "continuation_id" not in choice
+        assert choice["finish_details"] == _stateless_finish_details(
+            "length",
+            length_limit=1,
+            phase="answer",
+            continuation_eligible=False,
+        )
+
+
 def test_chat_length_finish_with_reasoning_effort_is_continuation_ineligible() -> None:
     fake = FakeLLM(
         detailed_outputs=[

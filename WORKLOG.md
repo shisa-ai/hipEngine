@@ -90097,3 +90097,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 237`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC continuation n>1 creation guard
+
+Fixed a continuation contract mismatch where length-finished `n > 1`
+completion/chat requests could still create continuation handles even though
+the manifest and docs advertise `n_not_1` as ineligible. `_continuation_can_create`
+now requires exactly one choice, and server tests cover both completions and
+chat length finishes.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completion_length_finish_with_n_gt_one_is_continuation_ineligible tests/test_server_api.py::test_chat_length_finish_with_n_gt_one_is_continuation_ineligible tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `4 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `239` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 239`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py` -> clean.

@@ -6614,7 +6614,7 @@ def _continuation_can_create(
         return False
     if _session_id(request) is not None:
         return False
-    if request.stream or _request_n(request) < 1 or _request_logprobs_enabled(request):
+    if request.stream or _request_n(request) != 1 or _request_logprobs_enabled(request):
         return False
     if isinstance(request, CompletionRequest) and request.echo:
         return False
