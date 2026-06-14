@@ -340,6 +340,7 @@ _ERROR_CODE_ALIASES = {
     "context_length_exceeded": "context_overflow",
     "invalid_request": "schema_violation",
     "model_not_found": "model_unavailable",
+    "unsupported_content_type": "unsupported_parameter",
     "validation_error": "schema_violation",
 }
 

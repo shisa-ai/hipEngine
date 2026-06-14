@@ -89641,3 +89641,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_models_endpoint_reports_served_model_name_and_auth tests/test_server_api.py::test_models_endpoint_reports_lazy_model_not_loaded tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC unsupported content-type taxonomy alias
+
+Mapped legacy public `error.code="unsupported_content_type"` responses for
+non-text chat content parts to canonical
+`error.hipengine.code="unsupported_parameter"`. The capabilities error manifest
+now advertises the legacy alias, and tests assert both the compatibility code
+and canonical AGENTIC taxonomy extension.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_endpoint_rejects_non_text_content_parts -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

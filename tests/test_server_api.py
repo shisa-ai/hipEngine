@@ -755,6 +755,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "code": "model_unavailable",
     } in body["errors"]["aliases"]
     assert {
+        "legacy_code": "unsupported_content_type",
+        "code": "unsupported_parameter",
+    } in body["errors"]["aliases"]
+    assert {
         "legacy_code": "invalid_request",
         "code": "schema_violation",
     } in body["errors"]["aliases"]
@@ -7151,7 +7155,14 @@ def test_chat_endpoint_rejects_non_text_content_parts() -> None:
     )
 
     assert response.status_code == 400
-    assert response.json()["error"]["code"] == "unsupported_content_type"
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_content_type"
+    assert error["hipengine"] == {
+        "code": "unsupported_parameter",
+        "status_code": 400,
+        "legacy_code": "unsupported_content_type",
+        "retryable": False,
+    }
 
 
 def _metric_value(text: str, name: str) -> float:
