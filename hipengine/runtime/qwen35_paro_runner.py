@@ -3246,6 +3246,7 @@ class Qwen35ParoResidentSession:
         scratch = self._prefill_scratch_owner().reserve_linear_attention_scratch(
             tokens=tokens,
             activation_dtype=DType.FP16,
+            include_tree_state=False,
         )
         self.prefill_linear_scratch = scratch
         return scratch
@@ -3477,6 +3478,9 @@ class Qwen35ParoResidentSession:
         linear_chunk_rows = 0
         full_chunk_rows = 0
         int8_oracle_bytes = 0
+        linear_tree_state_rows = 0
+        linear_tree_state_bytes = 0
+        linear_tree_state_full_bytes = 0
         live_memory_samples: list[dict[str, int | float | str]] = []
         minimize_workspace_overlap = self._should_minimize_prefill_workspace_overlap(prompt_rows)
 
@@ -3535,8 +3539,27 @@ class Qwen35ParoResidentSession:
                     capture_live_memory(f"after_{previous_phase}_workspace_release")
                 previous_phase = phase
                 if phase == "linear_attention":
-                    self._ensure_linear_prefill_scratch(tokens=linear_chunk_rows)
+                    linear_scratch = self._ensure_linear_prefill_scratch(tokens=linear_chunk_rows)
                     self._ensure_moe_prefill_scratch(None, tokens=linear_chunk_rows)
+                    linear_tree_state_rows = int(linear_scratch.tree_recurrent_state.shape[0])
+                    linear_tree_state_bytes = int(
+                        linear_scratch.tree_conv_state.numel * linear_scratch.tree_conv_state.dtype.itemsize
+                        + linear_scratch.tree_recurrent_state.numel * linear_scratch.tree_recurrent_state.dtype.itemsize
+                        + linear_scratch.tree_gdn_acc.numel * linear_scratch.tree_gdn_acc.dtype.itemsize
+                    )
+                    if linear_chunk_rows:
+                        full_tree_rows = int(linear_chunk_rows)
+                        linear_tree_state_full_bytes = int(
+                            full_tree_rows
+                            * (
+                                int(np.prod(linear_scratch.tree_conv_state.shape[1:]))
+                                * linear_scratch.tree_conv_state.dtype.itemsize
+                                + int(np.prod(linear_scratch.tree_recurrent_state.shape[1:]))
+                                * linear_scratch.tree_recurrent_state.dtype.itemsize
+                                + int(np.prod(linear_scratch.tree_gdn_acc.shape[1:]))
+                                * linear_scratch.tree_gdn_acc.dtype.itemsize
+                            )
+                        )
                     capture_live_memory("linear_prefill_scratch_live")
                 elif phase == "full_attention":
                     use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(prompt_rows)
@@ -3562,6 +3585,10 @@ class Qwen35ParoResidentSession:
                 "prefill_hidden_bytes": int(prompt_rows * self.hidden_nbytes),
                 "linear_prefill_chunk_rows": int(linear_chunk_rows),
                 "full_prefill_chunk_rows": int(full_chunk_rows),
+                "linear_prefill_tree_state_rows": int(linear_tree_state_rows),
+                "linear_prefill_tree_state_bytes": int(linear_tree_state_bytes),
+                "linear_prefill_tree_state_full_bytes": int(linear_tree_state_full_bytes),
+                "linear_prefill_tree_state_saved_bytes": int(max(0, linear_tree_state_full_bytes - linear_tree_state_bytes)),
                 "int8_oracle_bytes": int(int8_oracle_bytes),
                 "decode_scratch_released_for_probe": bool(minimize_workspace_overlap),
                 "workspace_overlap_minimized": bool(minimize_workspace_overlap),

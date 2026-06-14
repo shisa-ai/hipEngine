@@ -1283,6 +1283,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         activation_dtype: str | DType = DType.BF16,
+        include_tree_state: bool = True,
     ) -> Qwen35ParoLinearAttentionScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -1292,6 +1293,7 @@ class Qwen35ParoDecodeState:
         cfg = self.config
         qkv_width = _linear_qkv_width(cfg)
         z_width = _linear_value_width(cfg)
+        tree_rows = tokens if include_tree_state else 1
         qkv_z = self.workspace.reserve_tensor("linear_attn.qkv_z", (tokens, qkv_width + z_width), lowp)
         qkv = Tensor.from_handle(qkv_z.ptr, (tokens, qkv_width), lowp, qkv_z.device)
         z = Tensor.from_handle(qkv_z.ptr + tokens * qkv_width * lowp.itemsize, (tokens, z_width), lowp, qkv_z.device)
@@ -1339,15 +1341,15 @@ class Qwen35ParoDecodeState:
             out_proj=self.workspace.reserve_tensor("linear_attn.out_proj", (tokens, cfg.hidden_size), lowp),
             tree_conv_state=self.workspace.reserve_tensor(
                 "linear_attn.tree_conv_state",
-                (tokens, qkv_width, cfg.linear_conv_kernel_dim),
+                (tree_rows, qkv_width, cfg.linear_conv_kernel_dim),
                 DType.FP32,
             ),
             tree_recurrent_state=self.workspace.reserve_tensor(
                 "linear_attn.tree_recurrent_state",
-                (tokens, cfg.linear_num_value_heads, cfg.linear_key_head_dim, cfg.linear_value_head_dim),
+                (tree_rows, cfg.linear_num_value_heads, cfg.linear_key_head_dim, cfg.linear_value_head_dim),
                 DType.FP32,
             ),
-            tree_gdn_acc=self.workspace.reserve_tensor("linear_attn.tree_gdn_acc", (tokens, z_width), DType.FP32),
+            tree_gdn_acc=self.workspace.reserve_tensor("linear_attn.tree_gdn_acc", (tree_rows, z_width), DType.FP32),
         )
 
     def rotate_linear_attention_inputs_bf16(
@@ -7432,6 +7434,12 @@ class Qwen35ParoDecodeState:
         if parent_rows.dtype is not DType.INT64 or parent_rows.shape != (tokens,):
             raise ValueError("parent_rows must be int64 with shape (tokens,)")
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if (
+            linear_scratch.tree_conv_state.shape[0] < tokens
+            or linear_scratch.tree_recurrent_state.shape[0] < tokens
+            or linear_scratch.tree_gdn_acc.shape[0] < tokens
+        ):
+            raise ValueError("linear-attention tree scratch must include one tree-state row per token")
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         # Verifier chains/trees are tiny (typically B+1 <= 8).  The grouped
         # compact/WMMA MoE route wins for real prefill chunks, but its fixed

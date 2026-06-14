@@ -17,6 +17,7 @@ from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import (
+    Qwen35ParoDecodeState,
     Qwen35ParoGroupedMoeScratch,
     qwen35_grouped_moe_expert_lane_groups,
     qwen35_grouped_moe_expert_starts,
@@ -203,6 +204,67 @@ def test_qwen35_resident_verify_trunk_is_distinct_verifier_capacity_pair() -> No
     assert session.verify_trunk_next_hidden.shape == (session.max_batch_size, 8)
     # Both buffers are tracked for teardown.
     assert len(session.buffers) == 2
+
+
+def test_qwen35_prefill_linear_scratch_reserves_only_sentinel_tree_rows() -> None:
+    device = Device("hip", 0)
+
+    class FakeWorkspace:
+        def __init__(self) -> None:
+            self.next_ptr = 0xB000
+            self.calls: list[tuple[str, tuple[int, ...], DType]] = []
+
+        def reserve_tensor(self, name: str, shape, dtype) -> Tensor:
+            parsed = DType.parse(dtype)
+            tensor = Tensor.from_handle(self.next_ptr, tuple(int(dim) for dim in shape), parsed, device)
+            self.next_ptr += max(tensor.numel * parsed.itemsize, 1) + 0x100
+            self.calls.append((name, tensor.shape, parsed))
+            return tensor
+
+    def make_state() -> Qwen35ParoDecodeState:
+        state = Qwen35ParoDecodeState.__new__(Qwen35ParoDecodeState)
+        state.workspace = FakeWorkspace()
+        state.layer_weights = SimpleNamespace(
+            config=SimpleNamespace(
+                hidden_size=16,
+                linear_num_key_heads=2,
+                linear_num_value_heads=4,
+                linear_key_head_dim=8,
+                linear_value_head_dim=8,
+                linear_conv_kernel_dim=4,
+            )
+        )
+        return state
+
+    full = make_state().reserve_linear_attention_scratch(tokens=6, activation_dtype=DType.FP16)
+    compact = make_state().reserve_linear_attention_scratch(
+        tokens=6,
+        activation_dtype=DType.FP16,
+        include_tree_state=False,
+    )
+
+    assert full.attn_input.shape == compact.attn_input.shape == (6, 16)
+    assert full.tree_conv_state.shape[0] == 6
+    assert full.tree_recurrent_state.shape[0] == 6
+    assert full.tree_gdn_acc.shape[0] == 6
+    assert compact.tree_conv_state.shape[0] == 1
+    assert compact.tree_recurrent_state.shape[0] == 1
+    assert compact.tree_gdn_acc.shape[0] == 1
+    assert compact.tree_recurrent_state.numel < full.tree_recurrent_state.numel
+
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.prefill_linear_scratch = None
+    calls: list[dict[str, object]] = []
+
+    class FakeOwner:
+        def reserve_linear_attention_scratch(self, **kwargs):
+            calls.append(dict(kwargs))
+            return SimpleNamespace(attn_input=SimpleNamespace(shape=(int(kwargs["tokens"]),)))
+
+    session._prefill_scratch_owner = MethodType(lambda self: FakeOwner(), session)
+    session._ensure_linear_prefill_scratch(tokens=6)
+
+    assert calls == [{"tokens": 6, "activation_dtype": DType.FP16, "include_tree_state": False}]
 
 
 def test_qwen35_resident_release_decode_scratch_for_prefill_frees_state_workspaces() -> None:
@@ -5145,9 +5207,10 @@ class _FakePrefillState:
         self.grouped_reservations = []
         self.run_calls = []
 
-    def reserve_linear_attention_scratch(self, *, tokens: int, activation_dtype):
+    def reserve_linear_attention_scratch(self, *, tokens: int, activation_dtype, include_tree_state: bool = True):
         scratch = SimpleNamespace(
             attn_input=Tensor.from_handle(0x10000 + tokens * 0x100, (tokens, 8), DType.parse(activation_dtype), self.device),
+            include_tree_state=bool(include_tree_state),
         )
         self.linear_reservations.append(scratch)
         return scratch

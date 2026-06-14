@@ -88855,3 +88855,34 @@ Validation:
 - `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> success.
 - `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - PARO compact linear prefill tree scratch
+
+Reduced ordinary long-prompt linear prefill scratch by reserving verifier/tree
+state buffers (`tree_conv_state`, `tree_recurrent_state`, `tree_gdn_acc`) at one
+sentinel row for prefill-only scratch. Verifier tree/t-loop scratch still keeps
+one tree-state row per token and now raises if compact prefill scratch is passed
+to the tree path. `prepare_request_scratch()` now reports tree-state row/byte
+accounting so memory probes can track the saved bytes explicitly.
+
+Expected from shisa packed config: tree-state row is `2.140625 MiB`, so the
+24GB low-memory `256`-row full-context profile should save about `0.533 GiB` at
+`linear_prefill_scratch_live`; 1024-row larger-memory/manual-long probes save
+about `2.139 GiB`.
+
+Speed/memory gates run on free GPU0 (W7900 48GB; GPU1 24GB was occupied by
+`hipengine serve`, PID 3491740, so exact 24GB peak is pending):
+- `HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --decode-tokens 8 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version-current.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head --prompt-length 512 --json /tmp/hipengine-prefill-gates-20260614-190158/gate-512.json` -> prefill `2345.653 tok/s`, decode `105.565 tok/s`, tracked peak `18.138 GiB`, HIP peak `18.151 GiB`, unchunked.
+- same command with `--prompt-length 4096 --json /tmp/hipengine-prefill-gates-20260614-190158/gate-4096.json` -> prefill `2858.327 tok/s`, decode `105.026 tok/s`, tracked peak `19.128 GiB`, HIP peak `18.226 GiB`, chunks `linear=moe=1024`, `full_query=4096`, `full_post=full_rope=1024`.
+- GPU0 direct `LLM.prepare(max_sequence_length=262144)` + warmup + `prepare_request_scratch(max_prompt_tokens=262143)` with `quant='w4_paro'` and `kv_storage='int8_per_token_head'` -> selected context `262144`, chunks `linear=1024/full=4096`, `linear_prefill_tree_state_rows=1`, `linear_prefill_tree_state_saved_bytes=2.139 GiB`, `int8_oracle_bytes=0.5 GiB`, live peak stage `full_prefill_scratch_live` used `24.186 GiB` on 48GB GPU0. Artifact: `/tmp/hipengine-prefill-gates-20260614-190158/scratch-262k-gpu0.json`.
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py`.
+- `python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_qwen35_prefill_linear_scratch_reserves_only_sentinel_tree_rows tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_prefill_chunk_helpers_select_safe_ranges tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_prefill_restores_decode_scratch_token1 -q` -> `3 passed`.
+- Attempted full `python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q`; it still has unrelated `__new__` fixture failures from missing resident-view/session attrs plus `_host_sampling_params` setup, so not used as this unit's gate.
+- Attempted `python3 -m ruff check hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py`; it still reports unrelated pre-existing F401 imports and an F841 in the runtime files, so not used as this unit's gate.
+- `git diff --check` -> clean.
+
+Next: rerun the exact 24GB/GPU1 startup/scratch memory gate after the active
+server exits to confirm min-free improves from `~0.61 GiB` toward `~1.1 GiB`,
+then start the BF16 int8 prefill oracle reduction.

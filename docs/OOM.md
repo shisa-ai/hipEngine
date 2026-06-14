@@ -109,6 +109,51 @@ eliminate the temporary BF16 int8 prefill oracle, and compact persistent prefill
 metadata so 262k has a safer live-peak margin and can potentially return to
 larger/faster chunks.
 
+### Optimization gate protocol
+
+For scratch optimizations, keep three gates visible before promoting the change:
+
+1. **Short/mid speed smoke:** run `scripts/qwen35_paro_bench.py` at `512` and
+   `4096` prompt tokens with the packed PARO model, `w4_paro`, graph replay,
+   and `int8_per_token_head` KV. Treat these as regression smokes rather than
+   rollup benchmarks unless repeated-run/correctness requirements are met.
+2. **Full-context memory gate:** rerun the 24GB GPU1 startup or direct scratch
+   probe at `262144` context and track `STARTUP_MEMORY` min-free/peak plus the
+   scratch payload (`linear_prefill_chunk_rows`, `full_prefill_chunk_rows`,
+   `int8_oracle_bytes`).
+3. **Allocator accounting:** keep `prepare_request_scratch()` output with the
+   artifact/log. It now also reports `linear_prefill_tree_state_rows`,
+   `linear_prefill_tree_state_bytes`, `linear_prefill_tree_state_full_bytes`,
+   and `linear_prefill_tree_state_saved_bytes` so the linear scratch reduction is
+   explicit.
+
+First linear scratch reduction implemented for measurement: ordinary c=1 prompt
+prefill now reserves only one sentinel row for verifier/tree state buffers
+(`tree_conv_state`, `tree_recurrent_state`, `tree_gdn_acc`). Those buffers are
+needed by verifier tree/t-loop paths, but not by normal long-prompt prefill. The
+verifier tree path still requires full tree rows and raises if handed compact
+prefill scratch.
+
+Expected model-config saving from that change:
+
+- tree-state row size: `2.140625 MiB`;
+- 24GB low-memory full-context chunks (`256` rows): `~0.533 GiB` saved at
+  `linear_prefill_scratch_live`;
+- larger-memory/manual-long chunks (`1024` rows): `~2.139 GiB` saved.
+
+Post-change GPU0 smoke results (W7900 48GB, not the final 24GB gate; one run,
+`decode_tokens=8`, artifact/logs under `/tmp/hipengine-prefill-gates-20260614-190158/`):
+
+| Gate | Prefill tok/s | Decode tok/s | Tracked peak | HIP peak | Chunks |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 512/8 | 2345.653 | 105.565 | 18.138 GiB | 18.151 GiB | unchunked |
+| 4096/8 | 2858.327 | 105.026 | 19.128 GiB | 18.226 GiB | `linear=moe=1024`, `full_query=4096`, `full_post=full_rope=1024` |
+| 262k scratch smoke | n/a | n/a | n/a | live used 24.186 GiB on GPU0 | 1024/4096 chunks, `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.5 GiB` |
+
+The 24GB/GPU1 exact peak still needs rerun after the current GPU1 server process
+is stopped; that is the gate that should confirm whether min-free moves from
+`~0.61 GiB` to roughly `~1.1 GiB` before starting the BF16 int8 oracle work.
+
 ## Current measurements
 
 All measurements below are from 2026-06-14 on GPU1 with a clean GPU before
