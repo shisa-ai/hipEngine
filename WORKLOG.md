@@ -90369,3 +90369,22 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `46 passed`.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC tensor-parallel design gate
+
+Added `docs/TENSOR_PARALLEL.md` as the P6.3 design gate for future TP serving.
+It records rank-0 ownership, weight-shard boundaries, replicated-KV first
+policy, loop-visible collectives, rank-0 sampler/logit-bias contract,
+graph-capture and session snapshot limits, routing/failure handling, and the
+smallest required multi-GPU smoke before default-path code can land. Added the
+doc to the index, cited it from `docs/AGENTIC.md`, and added a server API test
+that keeps the document's unsupported-feature ids aligned with the capability
+manifest.
+
+Validation:
+- Re-read `docs/TENSOR_PARALLEL.md` end-to-end.
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_tensor_parallel_design_doc_matches_capability_manifest -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- docs/TENSOR_PARALLEL.md docs/README.md docs/AGENTIC.md tests/test_server_api.py WORKLOG.md` -> clean.

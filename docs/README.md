@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -46,6 +46,7 @@ working on.
 | [`CONCURRENCY.md`](CONCURRENCY.md) | c>N serving readiness, diagnostic evidence, and server/scheduler/kernel/KV punchlist. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
 | [`AGENTIC.md`](AGENTIC.md) | Serving features for local agent harnesses built on top of sampling/decode-state primitives. |
+| [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md) | Tensor-parallel serving design gate, current disabled manifest contract, and multi-GPU validation plan. |
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
 | [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |

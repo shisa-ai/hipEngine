@@ -2273,6 +2273,12 @@ Exit gates:
 
 Current code reality:
 
+- `docs/TENSOR_PARALLEL.md` is the current P6.3 design gate. It defines rank-0
+  ownership for routing, scheduling, sampling, sessions, and response assembly;
+  weight-shard, replicated-KV, loop-visible collective, sampler-output,
+  graph-capture, session/snapshot, routing, and failure-handling boundaries;
+  the smallest required multi-GPU smoke; and the default rule that no TP code
+  lands on the single-GPU default path without multi-GPU hardware validation.
 - `/v1/hipengine/capabilities` reports
   `parallelism.tensor_parallel.enabled=false` with a single-process topology
   (`world_size=1`, rank/local-rank `0`), no collective backend, and explicit

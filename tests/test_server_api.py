@@ -432,6 +432,20 @@ def _parallelism_capability() -> dict[str, Any]:
     }
 
 
+def test_tensor_parallel_design_doc_matches_capability_manifest() -> None:
+    doc = (REPO_ROOT / "docs" / "TENSOR_PARALLEL.md").read_text(encoding="utf-8")
+    tensor_parallel = _parallelism_capability()["tensor_parallel"]
+
+    assert "`parallelism.tensor_parallel.enabled=false`" in doc
+    assert '`topology.mode="single_process"`' in doc
+    assert "`world_size=1`" in doc
+    assert "Rank 0 owns sampling." in doc
+    assert "Phase 1 replicates KV cache on every rank." in doc
+    assert "No TP code may affect the default single-GPU path without hardware validation" in doc
+    for feature_id in tensor_parallel["unsupported_features"]:
+        assert f"`{feature_id}`" in doc
+
+
 def test_coerce_generation_output_preserves_telemetry() -> None:
     raw = SimpleNamespace(
         text="answer",
