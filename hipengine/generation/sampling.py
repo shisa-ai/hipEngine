@@ -18,6 +18,7 @@ import numpy as np
 
 from hipengine.generation.constraints import (
     ForcedTokenQueue,
+    JsonObjectConstraintState,
     ThinkingBudgetState,
     TokenSequenceDFAState,
     normalize_token_sequences,
@@ -959,6 +960,7 @@ def _apply_probability_filters(
 __all__ = [
     "RowSamplingState",
     "ForcedTokenQueue",
+    "JsonObjectConstraintState",
     "SampleResult",
     "SamplerPlan",
     "SamplingMode",

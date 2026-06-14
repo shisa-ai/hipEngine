@@ -91398,3 +91398,14 @@ Validation:
 - `python3 -m py_compile hipengine/generation/sampling.py tests/test_sampling.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/generation/sampling.py tests/test_sampling.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/sampling.py tests/test_sampling.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON object constraint primitive
+
+Added a torch-free `JsonObjectConstraintState` alongside the existing token-sequence DFA and forced-token queue primitives. The new state tracks a root JSON object, string/escape state, object/array nesting, trailing content, invalid close delimiters, and the deterministic close suffix needed when an incomplete object can be safely closed. AGENTIC now records that this primitive exists while public JSON/tool/patch controls remain result-validation-only until decode-time grammar masks or close forcing are wired into generation.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py::test_json_object_constraint_accepts_complete_root_object tests/test_sampling.py::test_json_object_constraint_reports_safe_forced_close_suffix tests/test_sampling.py::test_json_object_constraint_ignores_delimiters_inside_strings tests/test_sampling.py::test_json_object_constraint_reports_invalid_states -q` -> `6 passed`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `45 passed`.
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> passed.
+- `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py docs/AGENTIC.md` -> clean.

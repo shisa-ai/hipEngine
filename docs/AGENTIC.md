@@ -491,6 +491,24 @@ Required operations:
 Start with exact token-sequence matching and JSON-object close-brace fixtures;
 do not block P1 on full JSON Schema support.
 
+Current code reality:
+
+- `hipengine.generation.constraints.TokenSequenceDFAState` provides exact
+  token-sequence matching and partial-suffix reporting for stop sequences and
+  forced delimiter repair.
+- `ForcedTokenQueue` provides the decode-through-model FIFO used for thinking
+  hard close, tool-call marker/name prefix forcing, and delimiter suffix repair.
+- `JsonObjectConstraintState` now provides a tokenizer-agnostic structural state
+  for JSON-object outputs: it tracks a root object, string/escape state,
+  object/array nesting, trailing content, invalid close delimiters, and the
+  deterministic close suffix needed to finish the current object when closing is
+  safe. It is covered by fixtures for complete objects, nested object/array
+  suffixes, escaped delimiters inside strings, and invalid root/trailing/mismatch
+  cases.
+- JSON/tool/patch constraints are still result-validation-only in the public
+  server path. The JSON object state is not yet wired into token masks,
+  decode-time close forcing, or sampler/MTP compatibility decisions.
+
 ### Session/cache control
 
 Resident-session APIs need explicit commit semantics before long-lived agent use.
@@ -1559,7 +1577,10 @@ Current state:
   capabilities manifest advertises the supported format, fence labels, allowed
   `fenced` policies, and default policy under `features.structured_outputs`.
 - Auto-mode constraints, full argument/schema grammar forcing, and
-  grammar-constrained JSON/tool generation remain future work.
+  grammar-constrained JSON/tool generation remain future work. A shared
+  `JsonObjectConstraintState` exists for structural JSON-object balance and
+  close-suffix fixtures, but public structured-output controls still use
+  post-generation result validation rather than decode-time masks.
 
 #### P2.1 Strict tool-call mode
 

@@ -7,6 +7,7 @@ import pytest
 
 from hipengine.generation.sampling import (
     ForcedTokenQueue,
+    JsonObjectConstraintState,
     RowSamplingState,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
@@ -575,6 +576,61 @@ def test_force_sequence_completion_extends_overlapping_forced_prefix_once() -> N
     ]
     assert selected[-1].forced_tokens_remaining == 0
     assert state.generated_tokens == [77, 78, 90, 91, 92]
+
+
+def test_json_object_constraint_accepts_complete_root_object() -> None:
+    state = JsonObjectConstraintState().observe_text('  {"path": ["README.md"], "ok": true}  ')
+
+    assert state.started is True
+    assert state.complete is True
+    assert state.invalid is False
+    assert state.forced_close_suffix == ""
+    assert state.to_json_dict() == {
+        "started": True,
+        "complete": True,
+        "invalid": False,
+    }
+
+
+def test_json_object_constraint_reports_safe_forced_close_suffix() -> None:
+    state = JsonObjectConstraintState().observe_text('{"outer": [{"inner": 1')
+
+    assert state.complete is False
+    assert state.invalid is False
+    assert state.forced_close_suffix == "}]}"
+    assert state.needs_close is True
+    assert state.to_json_dict()["expected_close_stack"] == ["}", "]", "}"]
+
+    state.observe_text(state.forced_close_suffix)
+
+    assert state.complete is True
+    assert state.invalid is False
+
+
+def test_json_object_constraint_ignores_delimiters_inside_strings() -> None:
+    state = JsonObjectConstraintState().observe_text(r'{"text": "literal } and escaped \" brace {", "open": [')
+
+    assert state.complete is False
+    assert state.invalid is False
+    assert state.in_string is False
+    assert state.escaping is False
+    assert state.forced_close_suffix == "]}"
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("[]", "root_must_be_object"),
+        ('{"a": [1}', "mismatched_closing_delimiter"),
+        ('{"a": 1} trailing', "trailing_content"),
+    ],
+)
+def test_json_object_constraint_reports_invalid_states(text: str, reason: str) -> None:
+    state = JsonObjectConstraintState().observe_text(text)
+
+    assert state.invalid is True
+    assert state.error_reason == reason
+    assert state.forced_close_suffix == ""
 
 
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:

@@ -129,6 +129,125 @@ class ForcedTokenQueue:
 
 
 @dataclass(slots=True)
+class JsonObjectConstraintState:
+    """Incremental, tokenizer-agnostic balance state for JSON-object output.
+
+    This is deliberately a structural primitive, not a full JSON parser. It
+    tracks the root object, strings/escapes, object/array nesting, trailing
+    content, and the deterministic suffix needed to close the current structure
+    when closing is safe.
+    """
+
+    started: bool = False
+    complete: bool = False
+    invalid: bool = False
+    error_reason: str | None = None
+    stack: Iterable[str] = ()
+    in_string: bool = False
+    escaping: bool = False
+
+    def __post_init__(self) -> None:
+        self.started = bool(self.started)
+        self.complete = bool(self.complete)
+        self.invalid = bool(self.invalid)
+        self.error_reason = None if self.error_reason is None else str(self.error_reason)
+        self.stack = [str(item) for item in self.stack]
+        if any(item not in {"}", "]"} for item in self.stack):
+            raise ValueError("JsonObjectConstraintState.stack may contain only '}' and ']'")
+        self.in_string = bool(self.in_string)
+        self.escaping = bool(self.escaping)
+
+    @property
+    def forced_close_suffix(self) -> str:
+        """Return the close suffix for an incomplete object when safe to force."""
+
+        if self.invalid or not self.started or self.complete or self.in_string or self.escaping:
+            return ""
+        return "".join(reversed(self.stack))
+
+    @property
+    def needs_close(self) -> bool:
+        return bool(self.forced_close_suffix)
+
+    def observe_text(self, text: str) -> "JsonObjectConstraintState":
+        for char in str(text):
+            self.observe_char(char)
+            if self.invalid:
+                break
+        return self
+
+    def observe_char(self, char: str) -> "JsonObjectConstraintState":
+        if self.invalid:
+            return self
+        if len(char) != 1:
+            raise ValueError("observe_char expects exactly one character")
+
+        if not self.started:
+            if char.isspace():
+                return self
+            if char != "{":
+                return self._mark_invalid("root_must_be_object")
+            self.started = True
+            self.stack.append("}")
+            return self
+
+        if self.complete:
+            if char.isspace():
+                return self
+            return self._mark_invalid("trailing_content")
+
+        if self.in_string:
+            if self.escaping:
+                self.escaping = False
+            elif char == "\\":
+                self.escaping = True
+            elif char == '"':
+                self.in_string = False
+            return self
+
+        if char == '"':
+            self.in_string = True
+        elif char == "{":
+            self.stack.append("}")
+        elif char == "[":
+            self.stack.append("]")
+        elif char in {"}", "]"}:
+            if not self.stack:
+                return self._mark_invalid("unmatched_closing_delimiter")
+            expected = self.stack[-1]
+            if char != expected:
+                return self._mark_invalid("mismatched_closing_delimiter")
+            self.stack.pop()
+            if not self.stack:
+                self.complete = True
+        return self
+
+    def to_json_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "started": bool(self.started),
+            "complete": bool(self.complete),
+            "invalid": bool(self.invalid),
+        }
+        if self.error_reason is not None:
+            payload["error_reason"] = self.error_reason
+        if self.stack:
+            payload["expected_close_stack"] = list(self.stack)
+        if self.in_string:
+            payload["in_string"] = True
+        if self.escaping:
+            payload["escaping"] = True
+        suffix = self.forced_close_suffix
+        if suffix:
+            payload["forced_close_suffix"] = suffix
+        return payload
+
+    def _mark_invalid(self, reason: str) -> "JsonObjectConstraintState":
+        self.invalid = True
+        self.error_reason = reason
+        return self
+
+
+@dataclass(slots=True)
 class ThinkingBudgetState:
     """Tokenizer-agnostic state for decode-time thinking budget control.
 
@@ -341,6 +460,7 @@ def _longest_prefix_suffix(
 
 __all__ = [
     "ForcedTokenQueue",
+    "JsonObjectConstraintState",
     "ThinkingBudgetState",
     "TokenSequenceDFAState",
     "normalize_token_sequences",
