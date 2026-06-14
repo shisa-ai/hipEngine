@@ -44,7 +44,7 @@ def _capabilities(**overrides):
             "structured_outputs": {
                 "response_format": True,
                 "json_object": True,
-                "json_schema": False,
+                "json_schema": True,
                 "strict_decoding": False,
                 "strict_result_validation": True,
             },

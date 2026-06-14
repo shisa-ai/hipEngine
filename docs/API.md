@@ -263,16 +263,20 @@ validation only; decode-time JSON/schema constraints remain unsupported.
 
 ### Structured outputs
 
-Completion and chat requests accept `response_format: {"type": "json_object"}`
-or `{"type": "text"}`. JSON-object mode adds a chat prompt hint and validates
-the completed visible output after generation. Valid JSON objects are returned
+Completion and chat requests accept `response_format: {"type": "json_object"}`,
+`{"type": "json_schema", "json_schema": {"schema": ...}}`, or
+`{"type": "text"}`. JSON-object and JSON-schema modes add prompt hints and
+validate the completed visible output after generation. Valid JSON is returned
 normally; invalid stop-finished outputs return a normal response with empty
 successful content and `finish_details.reason: "schema_violation"`. Length
 finishes keep their length finish metadata because the partial JSON may be
 resumable once continuation handles exist.
 
-This is result validation, not grammar-constrained decoding. `json_schema`
-response formats remain unsupported and return `unsupported_parameter`.
+JSON-schema result validation uses the same supported subset as strict tool
+argument validation: `type`, `enum`, `const`, object `properties` / `required` /
+`additionalProperties: false`, array `items` / `minItems` / `maxItems`, string
+`minLength` / `maxLength`, and numeric min/max bounds. This is result
+validation, not grammar-constrained decoding.
 
 ### Thinking / no-think controls
 

@@ -268,7 +268,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert body["features"]["structured_outputs"] == {
         "response_format": True,
         "json_object": True,
-        "json_schema": False,
+        "json_schema": True,
         "strict_decoding": False,
         "strict_result_validation": True,
     }
@@ -1126,12 +1126,68 @@ def test_completions_response_format_json_object_validates_result() -> None:
     assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
 
 
+def _response_json_schema() -> dict[str, Any]:
+    return {
+        "name": "agent_result",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "ok": {"type": "boolean"},
+                "path": {"type": "string", "minLength": 1},
+            },
+            "required": ["ok", "path"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def test_completions_response_format_json_schema_validates_result() -> None:
+    schema = _response_json_schema()
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true,"path":"README.md"}']),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":"yes","path":"README.md"}']),
+        )
+    )
+
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"ok":true,"path":"README.md"}'
+    assert valid.json()["choices"][0]["finish_details"] == {"reason": "stop"}
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+
+
 def test_completions_response_format_rejects_unsupported_modes() -> None:
     fake = FakeLLM(outputs=['{"ok":true}'])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
     unsupported = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {"type": "xml"},
+        },
+    )
+    missing_schema = client.post(
         "/v1/completions",
         json={
             "model": "fake-model",
@@ -1152,6 +1208,9 @@ def test_completions_response_format_rejects_unsupported_modes() -> None:
     assert unsupported.status_code == 400
     assert unsupported.json()["error"]["code"] == "unsupported_parameter"
     assert unsupported.json()["error"]["param"] == "response_format"
+    assert missing_schema.status_code == 400
+    assert missing_schema.json()["error"]["code"] == "invalid_request"
+    assert missing_schema.json()["error"]["param"] == "response_format.json_schema.schema"
     assert echo.status_code == 400
     assert echo.json()["error"]["code"] == "invalid_request"
     assert echo.json()["error"]["param"] == "echo"
@@ -1481,6 +1540,36 @@ def test_streaming_completion_response_format_buffers_validation() -> None:
     payloads = _sse_payloads(response.text)
     assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "schema_violation"},
+    }
+    assert fake.stream_calls == []
+
+
+def test_streaming_completion_response_format_json_schema_buffers_validation() -> None:
+    fake = FakeLLM(outputs=['{"ok":"yes","path":"README.md"}'], stream_chunks=['{"ok":true}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "stream": True,
+            "response_format": {"type": "json_schema", "json_schema": _response_json_schema()},
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
+    done = next(
+        payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"]
+    )
     assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
@@ -1936,6 +2025,37 @@ def test_chat_completion_response_format_json_object_validates_visible_content()
     assert "Return only one valid JSON object" in invalid_fake.calls[0][0][0]
 
 
+def test_chat_completion_response_format_json_schema_validates_visible_content() -> None:
+    valid_fake = FakeLLM(outputs=['<think>check</think>{"ok":true,"path":"README.md"}'])
+    invalid_fake = FakeLLM(outputs=['{"ok":true,"path":""}'])
+    valid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=valid_fake)
+    )
+    invalid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=invalid_fake)
+    )
+
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "return json"}],
+        "response_format": {"type": "json_schema", "json_schema": _response_json_schema()},
+    }
+    valid = valid_client.post("/v1/chat/completions", json=payload)
+    invalid = invalid_client.post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["message"]["content"] == '{"ok":true,"path":"README.md"}'
+    assert valid_choice["message"]["reasoning_content"] == "check"
+    assert valid_choice["finish_details"] == {"reason": "stop"}
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["message"] == {"role": "assistant", "content": ""}
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+    assert "Return only JSON that satisfies this JSON schema" in invalid_fake.calls[0][0][0]
+
+
 def test_chat_completion_response_format_length_keeps_partial_json() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -1994,6 +2114,42 @@ def test_streaming_chat_completion_response_format_buffers_validation() -> None:
         "phase": "done",
         "finish_details": {"reason": "schema_violation"},
     }
+
+
+def test_streaming_chat_completion_response_format_json_schema_buffers_validation() -> None:
+    fake = FakeLLM(outputs=['{"ok":true,"path":""}'], stream_chunks=['{"ok":true,"path":"README.md"}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_schema", "json_schema": _response_json_schema()},
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(
+        payload["choices"][0]["delta"].get("content")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    done = next(
+        payload
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"]
+    )
+    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "schema_violation"},
+    }
+    assert fake.stream_calls == []
 
 
 def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:

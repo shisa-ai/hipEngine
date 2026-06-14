@@ -484,7 +484,7 @@ def _structured_outputs_capability() -> dict[str, Any]:
     return {
         "response_format": True,
         "json_object": True,
-        "json_schema": False,
+        "json_schema": True,
         "strict_decoding": False,
         "strict_result_validation": True,
     }
@@ -2258,7 +2258,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             and len(expanded_prompts) == 1
             and not request.echo
             and not _request_logprobs_enabled(request)
-            and not _response_format_json_object(request)
+            and not _response_format_result_validation(request)
         ):
             return StreamingResponse(
                 stream_completion_one(expanded_prompts[0], request, control),
@@ -2344,7 +2344,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if request.stream:
             streamer = (
                 stream_chat_completion_many
-                if _request_n(request) > 1 or request.logprobs or _response_format_json_object(request)
+                if _request_n(request) > 1
+                or request.logprobs
+                or _response_format_result_validation(request)
                 else stream_chat_completion
             )
             return StreamingResponse(
@@ -3451,12 +3453,18 @@ def _render_response_format_prompt(response_format: Any | None) -> str:
         response_type = response_format.strip().lower()
     elif isinstance(response_format, Mapping):
         response_type = str(response_format.get("type", "")).strip().lower()
-    if response_type != "json_object":
-        return ""
-    return (
-        "Return only one valid JSON object in the final answer. Do not wrap it in "
-        "Markdown, prose, arrays, or scalar JSON values."
-    )
+    if response_type == "json_object":
+        return (
+            "Return only one valid JSON object in the final answer. Do not wrap it in "
+            "Markdown, prose, arrays, or scalar JSON values."
+        )
+    if response_type == "json_schema":
+        schema = _response_format_json_schema_from_value(response_format)
+        if schema is None:
+            return "Return only JSON that satisfies the requested JSON schema."
+        schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+        return f"Return only JSON that satisfies this JSON schema: {schema_text}"
+    return ""
 
 
 def _render_tools_prompt(
@@ -4346,12 +4354,19 @@ def _validate_response_format_request(request: CompletionRequest | ChatCompletio
     mode = _response_format_mode(request)
     if mode is None:
         return
-    if mode == "json_object" and isinstance(request, CompletionRequest) and bool(request.echo):
+    if mode in {"json_object", "json_schema"} and isinstance(request, CompletionRequest) and bool(request.echo):
         raise OpenAIHTTPError(
             400,
-            "response_format json_object is incompatible with echo=true",
+            f"response_format {mode} is incompatible with echo=true",
             code="invalid_request",
             param="echo",
+        )
+    if mode == "json_schema" and _response_format_json_schema(request) is None:
+        raise OpenAIHTTPError(
+            400,
+            "response_format json_schema requires json_schema.schema",
+            code="invalid_request",
+            param="response_format.json_schema.schema",
         )
 
 
@@ -4374,6 +4389,8 @@ def _response_format_mode(request: CompletionRequest | ChatCompletionRequest) ->
         return "text"
     if response_type == "json_object":
         return "json_object"
+    if response_type == "json_schema":
+        return "json_schema"
     raise OpenAIHTTPError(
         400,
         f"response_format type {response_type!r} is not supported",
@@ -4384,6 +4401,28 @@ def _response_format_mode(request: CompletionRequest | ChatCompletionRequest) ->
 
 def _response_format_json_object(request: CompletionRequest | ChatCompletionRequest) -> bool:
     return _response_format_mode(request) == "json_object"
+
+
+def _response_format_result_validation(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    return _response_format_mode(request) in {"json_object", "json_schema"}
+
+
+def _response_format_json_schema(
+    request: CompletionRequest | ChatCompletionRequest,
+) -> Mapping[str, Any] | None:
+    return _response_format_json_schema_from_value(getattr(request, "response_format", None))
+
+
+def _response_format_json_schema_from_value(value: Any) -> Mapping[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    if str(value.get("type", "")).strip().lower() != "json_schema":
+        return None
+    json_schema = value.get("json_schema")
+    if not isinstance(json_schema, Mapping):
+        return None
+    schema = json_schema.get("schema")
+    return schema if isinstance(schema, Mapping) else None
 
 
 def _request_extra_keys(request: CompletionRequest | ChatCompletionRequest) -> set[str]:
@@ -4533,11 +4572,21 @@ def _response_format_failure_reason(
     text: str,
     finish_reason: str,
 ) -> str | None:
-    if not _response_format_json_object(request):
+    mode = _response_format_mode(request)
+    if mode not in {"json_object", "json_schema"}:
         return None
     if str(finish_reason).strip().lower() == "length":
         return None
-    return None if _is_json_object_text(text) else "schema_violation"
+    try:
+        value = json.loads(str(text).strip())
+    except Exception:
+        return "schema_violation"
+    if mode == "json_object":
+        return None if isinstance(value, dict) else "schema_violation"
+    schema = _response_format_json_schema(request)
+    if schema is None:
+        return "schema_violation"
+    return None if _validate_json_schema_value(value, schema, path="$") is None else "schema_violation"
 
 
 def _is_json_object_text(text: str) -> bool:

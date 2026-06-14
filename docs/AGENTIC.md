@@ -1134,11 +1134,11 @@ Current state:
 - Strict failures return normal chat responses with no successful `tool_calls`,
   coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
   `invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
-- `response_format={"type":"json_object"}` is accepted for completion and chat
-  requests as post-generation result validation. Valid visible JSON objects are
-  returned normally; invalid stop-finished outputs return
-  `finish_details.reason="schema_violation"`. `json_schema` response formats
-  remain unsupported.
+- `response_format={"type":"json_object"}` and
+  `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
+  accepted for completion and chat requests as post-generation result
+  validation. Valid visible JSON is returned normally; invalid stop-finished
+  outputs return `finish_details.reason="schema_violation"`.
 - Decode-time suppression/forcing and grammar-constrained JSON/tool generation
   remain future work.
 
@@ -1201,12 +1201,12 @@ Exit gates:
 
 Current code reality:
 
-- `response_format={"type":"json_object"}` is implemented as prompt-hint plus
-  post-generation result validation for completion and chat outputs; streaming
-  requests use buffered response paths so invalid JSON is not emitted as
-  successful deltas;
-- `response_format={"type":"text"}` is a no-op, and `json_schema` remains
-  `unsupported_parameter`;
+- `response_format={"type":"json_object"}` and
+  `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
+  implemented as prompt-hint plus post-generation result validation for
+  completion and chat outputs. Streaming requests use buffered response paths so
+  invalid JSON is not emitted as successful deltas;
+- `response_format={"type":"text"}` is a no-op;
 - decode-time close-brace/quote enforcement and schema-constrained generation
   remain future grammar work.
 
@@ -1510,11 +1510,12 @@ Current code reality:
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
   parameters and execution modes, strict tool result-validation support,
-  JSON-object structured-output result validation, the reasoning-control field
-  list with `budget_policy="prompt_hint_only"` and `token_budget_enforced=false`,
-  the default-off PARO c=1 native GPU sampler scope, speculative/MTP sampling
-  compatibility, request-timeout/client-disconnect support, cache/session
-  settings, loaded-model count, and unsupported fields.
+  JSON-object and JSON-schema structured-output result validation, the
+  reasoning-control field list with `budget_policy="prompt_hint_only"` and
+  `token_budget_enforced=false`, the default-off PARO c=1 native GPU sampler
+  scope, speculative/MTP sampling compatibility, request-timeout/client-disconnect
+  support, cache/session settings, loaded-model count, and
+  unsupported fields.
 - Continuations, stateful `session.id`, stateful `session.commit` modes,
   multi-model routing, and strict tool decoding are advertised as unsupported
   until their runtime paths exist. Stateless `session.commit="append_none"` is

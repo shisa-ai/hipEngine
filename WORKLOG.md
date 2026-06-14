@@ -88041,3 +88041,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_chat_completion_preserves_reasoning_with_openai_tool_call tests/test_server_api.py::test_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_chat_completion_required_tool_reports_missing_call tests/test_server_api.py::test_chat_completion_tool_choice_none_rejects_tool_call tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_reasoning_with_tool_call tests/test_server_api.py::test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure -q` -> `9 passed`.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC JSON-schema response-format validation
+
+Promoted `response_format={"type":"json_schema","json_schema":{"schema": ...}}`
+from unsupported to post-generation result validation for completions and chat.
+The implementation reuses the existing strict-tool JSON Schema subset, adds a
+schema prompt hint, buffers streaming responses so invalid schema results are
+not emitted as successful deltas, and advertises JSON-schema result validation
+in capabilities. This remains result validation only; grammar-constrained
+decode-time schema enforcement is still future P2.3/P2.4 work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_object_validates_result tests/test_server_api.py::test_completions_response_format_json_schema_validates_result tests/test_server_api.py::test_completions_response_format_rejects_unsupported_modes tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_json_schema_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_json_schema_buffers_validation tests/test_local_agent_config.py -q` -> `17 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.
