@@ -1395,6 +1395,22 @@ Implement:
   and last startup/load timings;
 - distinction between liveness (`/health`) and readiness/capability.
 
+Current code reality:
+
+- `GET /health` is a liveness-only probe that returns `status=ok` and the served
+  model id without implying readiness.
+- `GET /ready` returns HTTP 200 when ready and HTTP 503 while startup is not
+  ready. The payload reports model loaded state, eager-load/warmup completion,
+  last startup timings, configured/effective context, KV policy and capacity
+  estimate, KV pool metrics, graph cache metrics, backend/device environment,
+  generation queue depth/worker state, active session count, and loaded-model
+  count.
+- Readiness is `false` for eager-load servers until startup preparation and
+  warmup complete. Lazy-load servers report ready after startup with
+  `model.loaded=false` until the first lazy model load.
+- Tests assert the readiness payload does not expose warmup prompt text or
+  generated warmup output.
+
 Exit gates:
 
 - readiness turns true only after eager load/warmup when enabled;

@@ -87311,3 +87311,24 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `50 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC health/readiness diagnostics
+
+Split liveness from readiness. `GET /health` now stays a small unauthenticated
+liveness probe, while `GET /ready` returns HTTP 200 only when the server is
+ready and HTTP 503 while startup is not ready. Readiness records eager-load
+state, warmup completion, model loaded count, last startup timing, context
+capacity, KV policy/capacity estimate, KV pool metrics, graph cache metrics,
+backend/device environment, generation queue depth/worker state, and session
+counts.
+
+Eager-load servers now remain readiness-false until startup preparation and
+warmup complete. Lazy-load servers report ready after startup with
+`model.loaded=false` until the first lazy load. Readiness tests verify the
+payload does not expose the warmup prompt or generated warmup output.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_ready_reports_lazy_server_ready_without_loaded_model -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `52 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.

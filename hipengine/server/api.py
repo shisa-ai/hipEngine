@@ -537,6 +537,12 @@ class _GenerationBatcher:
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
 
+    def queue_depth(self) -> int:
+        return len(self._queue)
+
+    def active(self) -> bool:
+        return self._worker is not None and not self._worker.done()
+
     async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[Any]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
@@ -724,6 +730,17 @@ class _ThinkingControl:
     effort: str | None = None
 
 
+@dataclass
+class _ReadinessState:
+    ready: bool
+    status: str
+    eager_load: bool
+    model_loaded: bool
+    warmup_complete: bool
+    startup_error: dict[str, Any] | None = None
+    last_startup_timings: dict[str, float | None] = field(default_factory=dict)
+
+
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     """Create a FastAPI app for OpenAI-compatible local inference.
 
@@ -741,6 +758,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     app.state.hipengine_effective_max_context_tokens = config.max_context_tokens
     app.state.hipengine_prefix_cache_mode = prefix_cache_mode
     app.state.hipengine_server_metrics = _ServerMetrics()
+    app.state.hipengine_readiness = _ReadinessState(
+        ready=not bool(config.eager_load),
+        status="ready" if not bool(config.eager_load) else "starting",
+        eager_load=bool(config.eager_load),
+        model_loaded=llm is not None,
+        warmup_complete=not bool(config.eager_load),
+        last_startup_timings={
+            "engine_create_s": None,
+            "resident_prepare_s": None,
+            "warmup_s": None,
+            "startup_total_s": None,
+        },
+    )
     if config.debug:
         app.add_middleware(_DebugPayloadMiddleware)
     session_lock = asyncio.Lock()
@@ -748,6 +778,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
             app.state.hipengine_llm = LLM(config.model, backend=config.backend, quant=config.quant)
+        app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
 
     generation_batcher = _GenerationBatcher(
@@ -845,6 +876,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return effective
 
     async def eager_load_model() -> None:
+        readiness = app.state.hipengine_readiness
+        readiness.status = "starting"
+        readiness.ready = not bool(config.eager_load)
+        readiness.startup_error = None
         startup_started = time.perf_counter()
         max_tokens = max(1, int(config.eager_load_max_tokens))
         if not config.eager_load:
@@ -861,7 +896,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.kv_scale_dtype,
                 config.kv_scale_granularity,
             )
-            _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", time.perf_counter() - startup_started)
+            startup_total_s = time.perf_counter() - startup_started
+            readiness.ready = True
+            readiness.status = "ready"
+            readiness.model_loaded = app.state.hipengine_llm is not None
+            readiness.warmup_complete = True
+            readiness.last_startup_timings = {
+                "engine_create_s": None,
+                "resident_prepare_s": None,
+                "warmup_s": None,
+                "startup_total_s": round(startup_total_s, 6),
+            }
+            _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", startup_total_s)
             _LOGGER.info("hipEngine is ready (lazy load).")
             return
         sampling = SamplingParams(
@@ -902,13 +948,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         warmup_started = time.perf_counter()
         await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
         warmup_s = time.perf_counter() - warmup_started
+        startup_total_s = time.perf_counter() - startup_started
+        readiness.ready = True
+        readiness.status = "ready"
+        readiness.model_loaded = True
+        readiness.warmup_complete = True
+        readiness.last_startup_timings = {
+            "engine_create_s": round(engine_create_s, 6),
+            "resident_prepare_s": round(resident_prepare_s, 6),
+            "warmup_s": round(warmup_s, 6),
+            "startup_total_s": round(startup_total_s, 6),
+        }
         _LOGGER.info(
             "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f startup_total_s=%.3f",
             config.model_id,
             engine_create_s,
             resident_prepare_s,
             warmup_s,
-            time.perf_counter() - startup_started,
+            startup_total_s,
         )
         _LOGGER.info("hipEngine is ready.")
 
@@ -1224,9 +1281,77 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         yield "data: [DONE]\n\n"
 
+    def readiness_payload() -> dict[str, Any]:
+        engine = getattr(app.state, "hipengine_llm", None)
+        readiness: _ReadinessState = app.state.hipengine_readiness
+        effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
+        graph = _graph_bucket_metric_values(engine)
+        pool = _pool_metric_values(engine)
+        diagnostics: list[str] = []
+        if not readiness.ready:
+            diagnostics.append("server startup is not ready; check startup.error and server logs")
+        return {
+            "object": "hipengine.readiness",
+            "status": readiness.status,
+            "ready": bool(readiness.ready),
+            "diagnostics": diagnostics,
+            "model": {
+                "id": config.model_id,
+                "backend": config.backend,
+                "quant": config.quant,
+                "loaded": bool(readiness.model_loaded),
+                "loaded_model_count": 0 if engine is None else 1,
+            },
+            "startup": {
+                "eager_load": bool(readiness.eager_load),
+                "warmup_complete": bool(readiness.warmup_complete),
+                "last_timings_s": dict(readiness.last_startup_timings),
+                "error": readiness.startup_error,
+            },
+            "context": {
+                "configured_max_context_tokens": configured_max_context_tokens(),
+                "effective_max_context_tokens": (
+                    None if effective_context is None else int(effective_context)
+                ),
+                "chat_default_max_tokens": config.chat_default_max_tokens,
+            },
+            "kv_capacity": {
+                "storage": config.kv_storage,
+                "scale_dtype": config.kv_scale_dtype,
+                "scale_granularity": config.kv_scale_granularity,
+                "estimate": _kv_capacity_estimate_payload(engine),
+                "pool": pool,
+            },
+            "graph_cache": {
+                "entries": graph["entries"],
+                "hits": graph["hits"],
+                "misses": graph["misses"],
+                "replay_hit_rate": graph["replay_hit_rate"],
+            },
+            "device": _selected_device_payload(config),
+            "queue": {
+                "depth": generation_batcher.queue_depth(),
+                "worker_active": generation_batcher.active(),
+                "batch_window_ms": float(config.generation_batch_window_ms),
+            },
+            "sessions": {
+                "resident_context": True,
+                "active": 0,
+            },
+        }
+
     @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok", "model": config.model_id}
+    async def health() -> dict[str, Any]:
+        return {
+            "object": "hipengine.health",
+            "status": "ok",
+            "model": config.model_id,
+        }
+
+    @app.get("/ready")
+    async def ready() -> JSONResponse:
+        payload = readiness_payload()
+        return JSONResponse(status_code=200 if payload["ready"] else 503, content=payload)
 
     if metrics_mode == "prometheus":
 
@@ -2392,6 +2517,50 @@ def _log_kv_capacity_summary(engine: Any) -> None:
             int(getattr(int8_estimate, "allocatable_context_tokens", 0) or 0),
             int8_model_max,
         )
+
+
+def _kv_capacity_estimate_payload(engine: Any | None) -> dict[str, Any] | None:
+    if engine is None:
+        return None
+    session = _resident_session_for_engine(engine)
+    estimate = None
+    for owner in (session, engine):
+        if owner is None:
+            continue
+        estimate = getattr(owner, "kv_capacity_estimate", None)
+        if estimate is not None:
+            break
+    if estimate is None:
+        return None
+    payload: dict[str, Any] = {}
+    for name in (
+        "requested_context_tokens",
+        "model_max_context_tokens",
+        "allocatable_context_tokens",
+        "requested_kv_bytes",
+        "bytes_per_token",
+        "usable_bytes",
+        "reserve_bytes",
+        "fits_model_max",
+        "kv_storage_dtype",
+        "kv_scale_dtype",
+    ):
+        if not hasattr(estimate, name):
+            continue
+        value = getattr(estimate, name)
+        if isinstance(value, bool) or value is None:
+            payload[name] = value
+        elif isinstance(value, (int, float, str)):
+            payload[name] = value
+    return payload or None
+
+
+def _selected_device_payload(config: ServerConfig) -> dict[str, Any]:
+    return {
+        "backend": config.backend,
+        "hip_visible_devices": os.environ.get("HIP_VISIBLE_DEVICES"),
+        "rocr_visible_devices": os.environ.get("ROCR_VISIBLE_DEVICES"),
+    }
 
 
 def _resident_session_for_engine(engine: Any) -> Any | None:

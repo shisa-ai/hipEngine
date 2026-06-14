@@ -79,7 +79,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 
 | Endpoint | Status | Notes |
 | --- | --- | --- |
-| `GET /health` | Built in | Unauthenticated health/model probe. |
+| `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
+| `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
@@ -288,6 +289,20 @@ Clients should handle these canonical codes from `error.hipengine.code`:
 
 The same table is advertised programmatically under
 `/v1/hipengine/capabilities` as `errors`.
+
+### Health and readiness
+
+`GET /health` is a liveness probe. It returns only `status=ok` plus the served
+model id and should not be used to infer that eager warmup has completed.
+
+`GET /ready` is the readiness probe for local harnesses and process managers. It
+returns HTTP 200 with `ready=true` after startup is ready, or HTTP 503 with
+`ready=false` while startup is not ready. The payload includes non-sensitive
+diagnostics for model loaded state, eager warmup completion, last startup timing,
+configured/effective context, KV policy/capacity estimate, KV pool counters,
+graph cache counters, selected backend/device environment, generation queue
+depth, active worker state, and session counts. It intentionally omits prompts,
+generated text, and raw request/response payloads.
 
 ## Diagnostics
 

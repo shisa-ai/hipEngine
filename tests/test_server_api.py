@@ -431,6 +431,71 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
     ]
 
 
+def test_health_and_ready_report_eager_startup_diagnostics() -> None:
+    fake = FakeLLM(outputs=["private warmup output"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        eager_load_prompt="private startup prompt",
+        eager_load_max_tokens=2,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+        ready = client.get("/ready")
+
+    assert health.status_code == 200
+    assert health.json() == {
+        "object": "hipengine.health",
+        "status": "ok",
+        "model": "fake-model",
+    }
+    assert ready.status_code == 200
+    body = ready.json()
+    assert body["object"] == "hipengine.readiness"
+    assert body["ready"] is True
+    assert body["status"] == "ready"
+    assert body["model"] == {
+        "id": "fake-model",
+        "backend": "auto",
+        "quant": "w4_paro",
+        "loaded": True,
+        "loaded_model_count": 1,
+    }
+    assert body["startup"]["eager_load"] is True
+    assert body["startup"]["warmup_complete"] is True
+    assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
+    assert body["context"]["effective_max_context_tokens"] == 131072
+    assert body["kv_capacity"]["estimate"]["allocatable_context_tokens"] == 131072
+    assert body["kv_capacity"]["storage"] == "auto"
+    assert body["graph_cache"]["entries"] == 0.0
+    assert body["queue"]["depth"] == 0
+    assert body["sessions"] == {"resident_context": True, "active": 0}
+    serialized = json.dumps(body)
+    assert "private startup prompt" not in serialized
+    assert "private warmup output" not in serialized
+
+
+def test_ready_reports_lazy_server_ready_without_loaded_model() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False)
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is True
+    assert body["status"] == "ready"
+    assert body["startup"]["eager_load"] is False
+    assert body["startup"]["warmup_complete"] is True
+    assert body["startup"]["last_timings_s"]["startup_total_s"] >= 0.0
+    assert body["model"]["loaded"] is False
+    assert body["model"]["loaded_model_count"] == 0
+
+
 def test_chat_default_max_tokens_is_dynamic_when_omitted() -> None:
     request = ChatCompletionRequest(
         model="fake-model",
