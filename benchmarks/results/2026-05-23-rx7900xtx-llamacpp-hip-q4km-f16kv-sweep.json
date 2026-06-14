@@ -3,7 +3,7 @@
   "status": "diagnostic_retained",
   "performance_claim": false,
   "date": "2026-05-23",
-  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100",
   "host": "rocm",
   "tool": "scripts/llamacpp_bench_with_peak.py",
   "tool_version": 1,

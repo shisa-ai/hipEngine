@@ -89790,3 +89790,32 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - Benchmark hardware-label audit
+
+Audited README.md, benchmarks/README.md, benchmarks/W7900.md,
+benchmarks/7900XTX.md, and the linked benchmark/result artifacts for W7900 vs
+RX 7900 XTX provenance.
+
+Findings:
+- Current compact README gfx1100 tables are W7900 rows. The linked hipEngine
+  PARO/GGUF topline artifacts report `AMD Radeon Pro W7900 / gfx1100`, and the
+  reused llama.cpp HIP/Vulkan peak artifacts report `gpu_info=AMD Radeon Pro
+  W7900`, `card1`, `vram_total_gib=44.984375`.
+- benchmarks/W7900.md is internally consistent: W7900 hardware, W7900
+  hipEngine rows, and reused W7900 llama.cpp Q4_K_M baselines.
+- benchmarks/7900XTX.md is internally an RX 7900 XTX diagnostic page. Its
+  hipEngine rows and blocked artifacts are RX/24 GiB where hardware metadata is
+  present.
+- Found and fixed four raw RX 7900 XTX llama.cpp artifacts whose top-level
+  `hardware` string had been copied from the W7900 template even though
+  `gpu_info` and card metadata already proved RX 7900 XTX / 23.984 GiB:
+  `2026-05-23-rx7900xtx-llamacpp-{hip,vulkan}-q4km-{f16kv-sweep,q8kv-maxctx}.json`.
+  Updated only `hardware` to `AMD Radeon RX 7900 XTX / gfx1100`; benchmark
+  numbers, commands, and per-phase records are unchanged.
+- Post-fix scan found zero `*rx7900xtx*.json` artifacts with W7900 top-level
+  hardware, except an explicit note artifact stating W7900 was not involved.
+
+Validation:
+- `python3 -m json.tool` passed for all four corrected JSON artifacts.
+- Targeted contradiction scan passed for `*rx7900xtx*.json`.
