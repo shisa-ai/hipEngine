@@ -89300,3 +89300,44 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - TheRock 7.13 short/mid PARO speed smoke rerun
+
+Reran the short/mid PARO int8-KV speed gates on GPU0 under the clean TheRock
+ROCm 7.13 wrapper to compare against the earlier `/opt/rocm` 7.2 smoke. GPU0
+and GPU1 were free before and after. The 7.13 cache key was initially missing
+for the current tree, so the first `--require-cached-build` run failed before
+measurement; ran one build+gate pass to populate the cache, then reran with
+`--require-cached-build`.
+
+Environment wrapper:
+`PY=/home/lhl/mambaforge/envs/therock/bin/python3.12; ROOT=$($PY -m rocm_sdk path --root); env -i PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:... LD_LIBRARY_PATH=$ROOT/lib:... HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt $PY scripts/qwen35_paro_bench.py ...`
+
+Common command flags: packed shisa PARO snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, `--backend hip_gfx1100`,
+`--max-layers 40`, `--shared-expert-format packed_paro_w4`,
+`--graph-replay-decode`, `--attn-aotriton-min-tokens 512`,
+`--kv-storage int8_per_token_head`, `--decode-tokens 8`. Compiler line:
+`HIP version: 7.13.26162-1140233ffe`.
+
+Cached 7.13 artifacts: `/tmp/hipengine-prefill-gates-therock713-cached-20260614-203955/`.
+Comparison vs earlier `/opt/rocm` 7.2 GPU0 smoke (`512/8` prefill/decode
+`2345.653/105.565 tok/s`, peak `18.138 GiB`; `4096/8`
+`2858.327/105.026 tok/s`, peak `19.128 GiB`):
+
+- `512/8`: 7.13 cached `2310.983` prefill tok/s (`-1.48%`), `104.544` decode
+  tok/s (`-0.97%`), tracked peak `18.138 GiB`, chunks all `0`, preview token
+  IDs `[9707, 9707]`, artifact dirty flag `false` at commit `3fbc7da1`.
+- `4096/8`: 7.13 cached `2878.981` prefill tok/s (`+0.72%`), `103.676`
+  decode tok/s (`-1.29%`), tracked peak `19.128 GiB`, chunks
+  `linear=moe=1024`, `full_attn_query=4096`, `full_attn_post=full_attn_rope=1024`,
+  preview token IDs `[9707, 9707]`. Artifact dirty flag was `true` because the
+  other workstream had unrelated tracked edits in `docs/API.md`,
+  `hipengine/server/api.py`, and `tests/test_server_api.py` during that second
+  run; no runtime/kernel files were dirty.
+
+Interpretation: this smoke does not show a broad TheRock 7.13 uplift for the
+short/mid c=1 gates. 4K prefill is slightly higher, 512 prefill and decode are
+slightly lower, and tracked memory is unchanged. Treat as diagnostic/no-promote
+single runs; the retained README rows still use repeated 128-token decode sweeps
+and correctness gates.
