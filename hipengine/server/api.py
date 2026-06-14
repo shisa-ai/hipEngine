@@ -1969,8 +1969,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> AsyncIterator[str]:
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
-        stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
+        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
         full_text: list[str] = []
         try:
             _validate_generation_request(config, request)
@@ -2659,7 +2659,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             engine=getattr(app.state, "hipengine_llm", None),
         )
         if request.stream:
-            stream_started_at = time.perf_counter()
+            include_hipengine = _stream_include_hipengine(request)
+            stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
             return StreamingResponse(
                 _completion_stream(
                     response_id,
@@ -2668,7 +2669,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     final_texts,
                     choices,
                     usage=batch.usage if _stream_include_usage(request) else None,
-                    include_hipengine=_stream_include_hipengine(request),
+                    include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                 ),
                 media_type="text/event-stream",
@@ -2792,8 +2793,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> AsyncIterator[str]:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
-        stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
+        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
         try:
             n = _request_n(request)
             batch = await generate_with_request_control(tuple(prompt for _ in range(n)), request, control)
@@ -2940,8 +2941,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> AsyncIterator[str]:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
-        stream_started_at = time.perf_counter()
         include_hipengine = _stream_include_hipengine(request)
+        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
         try:
             _validate_generation_request(config, request)
         except OpenAIHTTPError as exc:
@@ -6000,6 +6001,66 @@ class _StreamTokenAccounting:
         return payload
 
 
+@dataclass(slots=True)
+class _StreamTimingTracker:
+    started_at: float
+    first_token_at: float | None = None
+    observed_tokens: int = 0
+
+    @classmethod
+    def start(cls) -> "_StreamTimingTracker":
+        return cls(started_at=time.perf_counter())
+
+    def observe(
+        self,
+        *,
+        event: str,
+        token_event: bool = False,
+        tokens: Mapping[str, int] | None = None,
+        usage: Mapping[str, int] | None = None,
+    ) -> dict[str, float]:
+        now = time.perf_counter()
+        token_total = _stream_timing_token_total(tokens=tokens, usage=usage)
+        if token_event:
+            if self.first_token_at is None:
+                self.first_token_at = now
+        if token_total > self.observed_tokens:
+            self.observed_tokens = token_total
+        return self.snapshot(now=now, event=event)
+
+    def snapshot(self, *, now: float, event: str) -> dict[str, float]:
+        elapsed_s = max(0.0, now - self.started_at)
+        payload: dict[str, float] = {"elapsed_ms": round(elapsed_s * 1000.0, 3)}
+        if self.first_token_at is None:
+            return payload
+        ttft_s = max(0.0, self.first_token_at - self.started_at)
+        payload["ttft_ms"] = round(ttft_s * 1000.0, 3)
+        if str(event) in {"done", "usage"}:
+            decode_elapsed_s = max(0.0, now - self.first_token_at)
+            payload["decode_elapsed_ms"] = round(decode_elapsed_s * 1000.0, 3)
+            if self.observed_tokens > 0:
+                payload["decode_tokens_per_second"] = round(self.observed_tokens / max(decode_elapsed_s, 1e-9), 3)
+        return payload
+
+
+_StreamTimingSource = float | _StreamTimingTracker | None
+
+
+def _stream_timing_token_total(
+    *,
+    tokens: Mapping[str, int] | None = None,
+    usage: Mapping[str, int] | None = None,
+) -> int:
+    for source in (tokens, usage):
+        if source is None:
+            continue
+        for key in ("streamed_tokens", "completion_tokens"):
+            raw_value = source.get(key)
+            if isinstance(raw_value, int) and raw_value > 0:
+                return raw_value
+    return 0
+
+
 def _stream_usage_token_payload(
     usage: Mapping[str, int],
     accounting: _StreamTokenAccounting | None,
@@ -6017,12 +6078,24 @@ def _stream_usage_token_payload(
 def _stream_hipengine_payload(
     event: str,
     *,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
     usage: Mapping[str, int] | None = None,
+    tokens: Mapping[str, int] | None = None,
+    token_event: bool = False,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"metadata_version": 1, "event": str(event)}
     if stream_started_at is not None:
-        payload["timing"] = {"elapsed_ms": round(max(0.0, (time.perf_counter() - stream_started_at) * 1000.0), 3)}
+        if isinstance(stream_started_at, _StreamTimingTracker):
+            payload["timing"] = stream_started_at.observe(
+                event=event,
+                token_event=token_event,
+                tokens=tokens,
+                usage=usage,
+            )
+        else:
+            payload["timing"] = {
+                "elapsed_ms": round(max(0.0, (time.perf_counter() - stream_started_at) * 1000.0), 3)
+            }
     if usage is not None:
         payload["usage"] = dict(usage)
     return payload
@@ -6052,11 +6125,19 @@ def _attach_stream_hipengine(
     *,
     include_hipengine: bool,
     event: str,
-    stream_started_at: float | None,
+    stream_started_at: _StreamTimingSource,
     usage: Mapping[str, int] | None = None,
+    tokens: Mapping[str, int] | None = None,
+    token_event: bool = False,
 ) -> dict[str, Any]:
     if include_hipengine:
-        payload["hipengine"] = _stream_hipengine_payload(event, stream_started_at=stream_started_at, usage=usage)
+        payload["hipengine"] = _stream_hipengine_payload(
+            event,
+            stream_started_at=stream_started_at,
+            usage=usage,
+            tokens=tokens,
+            token_event=token_event,
+        )
     return payload
 
 
@@ -6070,7 +6151,7 @@ def _completion_stream_delta(
     logprobs: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     choice = {
         "text": text,
@@ -6092,6 +6173,8 @@ def _completion_stream_delta(
             include_hipengine=include_hipengine,
             event="delta",
             stream_started_at=stream_started_at,
+            tokens=tokens,
+            token_event=bool(text),
         )
     )
 
@@ -6106,7 +6189,7 @@ def _completion_stream_done(
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -6134,6 +6217,7 @@ def _completion_stream_done(
             include_hipengine=include_hipengine,
             event="done",
             stream_started_at=stream_started_at,
+            tokens=tokens,
         )
     )
 
@@ -6145,7 +6229,7 @@ def _completion_stream_usage(
     usage: Mapping[str, int],
     *,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -6177,7 +6261,7 @@ def _completion_stream_error(
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     choice: dict[str, Any] = {
         "text": "",
@@ -6227,7 +6311,7 @@ def _completion_stream(
     *,
     usage: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     for index, text in enumerate(texts):
@@ -6301,7 +6385,7 @@ def _chat_stream_role(
     *,
     index: int = 0,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -6330,7 +6414,7 @@ def _chat_stream_delta(
     logprobs: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
@@ -6350,6 +6434,8 @@ def _chat_stream_delta(
             include_hipengine=include_hipengine,
             event="delta",
             stream_started_at=stream_started_at,
+            tokens=tokens,
+            token_event=bool(text),
         )
     )
 
@@ -6364,7 +6450,7 @@ def _chat_stream_tool_call(
     tool_index: int = 0,
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     choice = {
         "index": int(index),
@@ -6394,6 +6480,8 @@ def _chat_stream_tool_call(
             include_hipengine=include_hipengine,
             event="tool_call",
             stream_started_at=stream_started_at,
+            tokens=tokens,
+            token_event=True,
         )
     )
 
@@ -6410,7 +6498,7 @@ def _chat_stream_parsed(
     finish_details: Mapping[str, Any] | None = None,
     done_tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
@@ -6471,7 +6559,7 @@ def _chat_stream_done(
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -6498,6 +6586,7 @@ def _chat_stream_done(
             include_hipengine=include_hipengine,
             event="done",
             stream_started_at=stream_started_at,
+            tokens=tokens,
         )
     )
 
@@ -6509,7 +6598,7 @@ def _chat_stream_usage(
     usage: Mapping[str, int],
     *,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -6541,7 +6630,7 @@ def _chat_stream_error(
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
     include_hipengine: bool = False,
-    stream_started_at: float | None = None,
+    stream_started_at: _StreamTimingSource = None,
 ) -> str:
     choice: dict[str, Any] = {
         "index": 0,

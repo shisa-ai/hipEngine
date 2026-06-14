@@ -116,9 +116,11 @@ Known baseline limitations:
   streams. Completion `echo+logprobs` does not compute real prompt-token
   logprobs yet; the echoed prompt is represented as a prefix entry with `null`
   logprob.
-- Streaming supports opt-in basic `stream_options.include_hipengine` metadata,
-  but exact reasoning/answer/tool token counts, TTFT/prefill/decode timings,
-  cache state, and budget pressure still need runtime signals.
+- Streaming supports opt-in `stream_options.include_hipengine` metadata with
+  server-measured elapsed time, TTFT, decode-rate timing, final finish details,
+  and best-effort token accounting. Exact backend-authored per-phase counts,
+  prefill timing, cache state, KV bytes, and budget pressure still need runtime
+  signals.
 - Resident session reuse needs an explicit commit policy before hidden reasoning
   or failed/truncated tool-call attempts can safely be retained across turns.
 - Public agent/runtime capability discovery is exposed through
@@ -865,8 +867,12 @@ Current code reality:
 - `stream_options: {"include_hipengine": true}` is accepted for completion and
   chat streams without changing default OpenAI-compatible SSE payloads.
 - Opt-in SSE payloads include top-level `hipengine.metadata_version`,
-  `hipengine.event`, and `hipengine.timing.elapsed_ms`; choice chunks include
-  `choices[].hipengine.phase` for answer/reasoning/tool/done chunks.
+  `hipengine.event`, and `hipengine.timing.elapsed_ms`. Token-bearing chunks
+  add server-measured `ttft_ms` once the first generated chunk is emitted; final
+  done/usage chunks also include server-measured `decode_elapsed_ms` and
+  `decode_tokens_per_second` when generated-token counts are available. Choice
+  chunks include `choices[].hipengine.phase` for answer/reasoning/tool/done
+  chunks.
 - When tokenizer/counting hooks are available, live completion/chat deltas also
   include `choices[].hipengine.tokens` with per-chunk `delta_tokens`,
   cumulative `streamed_tokens`, and best-effort server-side phase counters;
@@ -878,8 +884,8 @@ Current code reality:
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
-- Backend TTFT/prefill/decode-rate, cache hit/miss, KV-byte, budget-pressure,
-  and backend-authored per-phase token counts are still omitted until
+- Backend-authored prefill timing, cache hit/miss, KV-byte, budget-pressure, and
+  authoritative per-phase token counts are still omitted until
   generation/runtime code emits those signals.
 
 Exit gates:

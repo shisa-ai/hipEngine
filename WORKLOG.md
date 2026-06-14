@@ -88594,3 +88594,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC stream timing metadata
+
+Extended opt-in `stream_options.include_hipengine` SSE metadata with a
+server-side timing tracker. Top-level `hipengine.timing` still carries
+`elapsed_ms`; after the first generated token/chunk it also carries `ttft_ms`,
+and final done/usage events include `decode_elapsed_ms` plus
+`decode_tokens_per_second` when generated-token counts are available. This is
+server-wall metadata only; backend prefill/cache/KV/budget-pressure signals
+remain future runtime work. Default OpenAI-compatible streams remain unchanged.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

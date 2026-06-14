@@ -3547,9 +3547,11 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     assert payloads[0]["hipengine"]["metadata_version"] == 1
     assert payloads[0]["hipengine"]["event"] == "role"
     assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
+    assert "ttft_ms" not in payloads[0]["hipengine"]["timing"]
 
     reasoning = next(payload for payload in payloads if payload.get("choices") and "reasoning_content" in payload["choices"][0]["delta"])
     assert reasoning["hipengine"]["event"] == "delta"
+    assert isinstance(reasoning["hipengine"]["timing"]["ttft_ms"], float)
     assert reasoning["choices"][0]["hipengine"] == {
         "phase": "think",
         "tokens": {
@@ -3591,6 +3593,9 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
 
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"] == "stop")
     assert done["hipengine"]["event"] == "done"
+    assert isinstance(done["hipengine"]["timing"]["ttft_ms"], float)
+    assert isinstance(done["hipengine"]["timing"]["decode_elapsed_ms"], float)
+    assert isinstance(done["hipengine"]["timing"]["decode_tokens_per_second"], float)
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
         "finish_details": _stateless_finish_details("stop"),
@@ -3615,6 +3620,9 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     }
     assert payloads[-1]["hipengine"]["event"] == "usage"
     assert payloads[-1]["hipengine"]["usage"] == payloads[-1]["usage"]
+    assert isinstance(payloads[-1]["hipengine"]["timing"]["ttft_ms"], float)
+    assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_elapsed_ms"], float)
+    assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
 
 
 def test_streaming_completion_uses_engine_stream_and_usage() -> None:
@@ -3664,6 +3672,7 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
     assert [payload["hipengine"]["event"] for payload in payloads] == ["delta", "delta", "done", "usage"]
+    assert isinstance(payloads[0]["hipengine"]["timing"]["ttft_ms"], float)
     assert payloads[0]["choices"][0]["hipengine"] == {
         "phase": "answer",
         "tokens": {
@@ -3682,6 +3691,9 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
         },
     }
     assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
+    assert isinstance(payloads[2]["hipengine"]["timing"]["ttft_ms"], float)
+    assert isinstance(payloads[2]["hipengine"]["timing"]["decode_elapsed_ms"], float)
+    assert isinstance(payloads[2]["hipengine"]["timing"]["decode_tokens_per_second"], float)
     assert payloads[2]["choices"][0]["hipengine"] == {
         "phase": "done",
         "finish_details": _stateless_finish_details("stop"),
@@ -3703,6 +3715,9 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
         },
     }
     assert payloads[-1]["hipengine"]["usage"] == payloads[-1]["usage"]
+    assert isinstance(payloads[-1]["hipengine"]["timing"]["ttft_ms"], float)
+    assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_elapsed_ms"], float)
+    assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
 
 
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:
