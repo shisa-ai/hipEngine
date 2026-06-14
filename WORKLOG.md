@@ -90470,3 +90470,20 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `22 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `11 passed`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC sampler fallback telemetry
+
+Added `SamplerPlan.fallback_reason` and surfaced it through backend
+`DecodeState.sampler_fallback_reason` so processed-argmax and host-logits paths
+explain why they left the graph/native fast path. PARO/GGUF final telemetry now
+reports `processed_logits_required`, `host_sampling_required`, or
+`native_gpu_unsupported_request` as appropriate. Updated `docs/API.md` and
+`docs/AGENTIC.md` to document the field and remove it from future-work wording.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'sampler_plan or native_gpu_sampler_support'` -> `7 passed`.
+- `python3 -m pytest tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `39 passed`.
+- `python3 -m ruff check hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_chat_completion_exposes_backend_generation_telemetry -q` -> `2 passed`.
+- `git diff --check -- hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md docs/API.md` -> clean.

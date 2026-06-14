@@ -415,6 +415,7 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_sequences=request.stop_token_sequences,
                         active_processors=plan.active_processors,
                         sampler_fast_path_blockers=plan.fast_path_blockers,
+                        sampler_fallback_reason=plan.fallback_reason,
                         sampling_state=state,
                     ),
                 )
@@ -459,6 +460,7 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                     active_processors=plan.active_processors,
                     sampler_fast_path_blockers=plan.fast_path_blockers,
+                    sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=state,
                 ),
             )
@@ -878,6 +880,7 @@ class Qwen35ParoOneTokenGenerator:
                     stop_token_sequences=request.stop_token_sequences,
                     active_processors=plan.active_processors,
                     sampler_fast_path_blockers=plan.fast_path_blockers,
+                    sampler_fallback_reason=plan.fallback_reason,
                     sampling_state=sampling_state_snapshots.get(request_id),
                 ),
             )
@@ -1165,6 +1168,7 @@ def _telemetry_for_tokens(
     request_id: str | None = None,
     active_processors: tuple[str, ...] = (),
     sampler_fast_path_blockers: tuple[str, ...] = (),
+    sampler_fallback_reason: str | None = None,
     sampling_state: RowSamplingState | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
@@ -1182,6 +1186,7 @@ def _telemetry_for_tokens(
         stop_suffix_state=_stop_suffix_state(generated_token_ids, stop_token_sequences),
         active_processors=active_processors,
         sampler_fast_path_blockers=sampler_fast_path_blockers,
+        sampler_fallback_reason=sampler_fallback_reason,
     )
 
 

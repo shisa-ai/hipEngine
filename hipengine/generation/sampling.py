@@ -80,6 +80,7 @@ class SamplerPlan:
     active_processors: tuple[str, ...] = ()
     native_gpu_available: bool = False
     fast_path_blockers: tuple[str, ...] = ()
+    fallback_reason: str | None = None
 
     @property
     def uses_host_logits(self) -> bool:
@@ -571,14 +572,27 @@ def plan_sampler(
     needs_logits = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     if temperature <= 0.0:
         if processors or needs_logits:
-            return SamplerPlan(SamplingMode.PROCESSED_ARGMAX, processors, native_gpu_available, fast_path_blockers)
+            return SamplerPlan(
+                SamplingMode.PROCESSED_ARGMAX,
+                processors,
+                native_gpu_available,
+                fast_path_blockers,
+                "processed_logits_required",
+            )
         return SamplerPlan(SamplingMode.GREEDY_FAST, processors, native_gpu_available, fast_path_blockers)
     native_ready = native_gpu_available and supports_native_gpu_sampling(params)
     if native_ready:
         return SamplerPlan(SamplingMode.GPU_SAMPLE, processors, native_gpu_available, fast_path_blockers)
     if native_only:
         raise NotImplementedError("native GPU sampling is not available for this request")
-    return SamplerPlan(SamplingMode.HOST_LOGITS_SAMPLE, processors, native_gpu_available, fast_path_blockers)
+    fallback_reason = "native_gpu_unsupported_request" if native_gpu_available else "host_sampling_required"
+    return SamplerPlan(
+        SamplingMode.HOST_LOGITS_SAMPLE,
+        processors,
+        native_gpu_available,
+        fast_path_blockers,
+        fallback_reason,
+    )
 
 
 def speculative_mtp_sampling_blockers(params: Any) -> tuple[str, ...]:

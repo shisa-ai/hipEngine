@@ -290,6 +290,7 @@ def _gguf_telemetry(
         stop_suffix_state=_gguf_stop_suffix_state(generated_ids, request.stop_token_sequences),
         active_processors=plan.active_processors,
         sampler_fast_path_blockers=plan.fast_path_blockers,
+        sampler_fallback_reason=plan.fallback_reason,
     )
 
 

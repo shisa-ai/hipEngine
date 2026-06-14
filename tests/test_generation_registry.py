@@ -41,6 +41,7 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
                 "sampler_mode": "greedy_fast",
                 "active_processors": "logit_bias",
                 "sampler_fast_path_blockers": ["logit_bias"],
+                "sampler_fallback_reason": "processed_logits_required",
             },
             "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
         },
@@ -58,6 +59,7 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
             "answer_tokens": 2,
             "active_processors": ["logit_bias"],
             "sampler_fast_path_blockers": ["logit_bias"],
+            "sampler_fallback_reason": "processed_logits_required",
             "sampler_mode": "greedy_fast",
         },
         "event": "done",
@@ -75,6 +77,7 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         forced_tokens_pending=(42,),
         budget_pressure="hard_close",
         sampler_mode="processed_argmax",
+        sampler_fallback_reason="processed_logits_required",
     )
 
     assert telemetry.to_json_dict()["decode_state"] == {
@@ -87,6 +90,7 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "reasoning_tokens": 2,
         "answer_tokens": 1,
         "forced_tokens_pending": [42],
+        "sampler_fallback_reason": "processed_logits_required",
         "budget_pressure": "hard_close",
         "sampler_mode": "processed_argmax",
     }

@@ -183,8 +183,10 @@ deltas also include `choices[].hipengine.tokens` with
 `prompt_tokens`, `completion_tokens`, and `total_tokens` in the same object.
 Those token-bearing chunks also include a canonical
 `choices[].hipengine.decode_state` snapshot with row index, step index, phase,
-prompt/generated token counts, and continuation eligibility. Final choice chunks
-include the same `finish_details` under
+prompt/generated token counts, continuation eligibility, and sampler/processor
+metadata when the backend provides it (`active_processors`,
+`sampler_fast_path_blockers`, `sampler_fallback_reason`, and `sampler_mode`).
+Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. Streaming error chunks use top-level
 `hipengine.event: "error"` and include `choices[].hipengine.finish_details` when

@@ -191,6 +191,7 @@ class DecodeState:
     forced_tokens_pending: tuple[int, ...] = ()
     active_processors: tuple[str, ...] = ()
     sampler_fast_path_blockers: tuple[str, ...] = ()
+    sampler_fallback_reason: str | None = None
     budget_pressure: str | None = None
     sampler_mode: str | None = None
     continuation_eligible: bool = False
@@ -209,6 +210,11 @@ class DecodeState:
         object.__setattr__(self, "forced_tokens_pending", _pending_token_tuple(self.forced_tokens_pending))
         object.__setattr__(self, "active_processors", _string_tuple(self.active_processors))
         object.__setattr__(self, "sampler_fast_path_blockers", _string_tuple(self.sampler_fast_path_blockers))
+        object.__setattr__(
+            self,
+            "sampler_fallback_reason",
+            None if self.sampler_fallback_reason is None else str(self.sampler_fallback_reason),
+        )
         object.__setattr__(self, "budget_pressure", None if self.budget_pressure is None else str(self.budget_pressure))
         object.__setattr__(self, "sampler_mode", None if self.sampler_mode is None else str(self.sampler_mode))
         object.__setattr__(self, "continuation_eligible", bool(self.continuation_eligible))
@@ -233,6 +239,7 @@ class DecodeState:
                 forced_tokens_pending=value.get("forced_tokens_pending", ()),
                 active_processors=value.get("active_processors", ()),
                 sampler_fast_path_blockers=value.get("sampler_fast_path_blockers", ()),
+                sampler_fallback_reason=value.get("sampler_fallback_reason"),
                 budget_pressure=value.get("budget_pressure"),
                 sampler_mode=value.get("sampler_mode"),
                 continuation_eligible=bool(value.get("continuation_eligible", False)),
@@ -252,6 +259,7 @@ class DecodeState:
             forced_tokens_pending=getattr(value, "forced_tokens_pending", ()),
             active_processors=getattr(value, "active_processors", ()),
             sampler_fast_path_blockers=getattr(value, "sampler_fast_path_blockers", ()),
+            sampler_fallback_reason=getattr(value, "sampler_fallback_reason", None),
             budget_pressure=getattr(value, "budget_pressure", None),
             sampler_mode=getattr(value, "sampler_mode", None),
             continuation_eligible=bool(getattr(value, "continuation_eligible", False)),
@@ -307,6 +315,8 @@ class DecodeState:
             payload["active_processors"] = list(self.active_processors)
         if self.sampler_fast_path_blockers:
             payload["sampler_fast_path_blockers"] = list(self.sampler_fast_path_blockers)
+        if self.sampler_fallback_reason is not None:
+            payload["sampler_fallback_reason"] = self.sampler_fallback_reason
         if self.budget_pressure is not None:
             payload["budget_pressure"] = self.budget_pressure
         if self.sampler_mode is not None:
@@ -367,6 +377,7 @@ class GenerationTelemetry:
         forced_tokens_pending: tuple[int, ...] = (),
         active_processors: tuple[str, ...] = (),
         sampler_fast_path_blockers: tuple[str, ...] = (),
+        sampler_fallback_reason: str | None = None,
         budget_pressure: str | None = None,
         continuation_eligible: bool = False,
         event: str | None = None,
@@ -387,6 +398,7 @@ class GenerationTelemetry:
                 forced_tokens_pending=forced_tokens_pending,
                 active_processors=active_processors,
                 sampler_fast_path_blockers=sampler_fast_path_blockers,
+                sampler_fallback_reason=sampler_fallback_reason,
                 budget_pressure=budget_pressure,
                 sampler_mode=sampler_mode,
                 continuation_eligible=continuation_eligible,

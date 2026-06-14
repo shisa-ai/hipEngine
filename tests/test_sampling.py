@@ -92,6 +92,7 @@ def test_sampler_plan_keeps_inert_top_p_top_k_on_greedy_fast_path() -> None:
     assert plan.mode is SamplingMode.GREEDY_FAST
     assert plan.active_processors == ()
     assert plan.fast_path_blockers == ()
+    assert plan.fallback_reason is None
 
 
 def test_sampler_plan_uses_processed_argmax_for_active_processors() -> None:
@@ -100,6 +101,7 @@ def test_sampler_plan_uses_processed_argmax_for_active_processors() -> None:
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
     assert plan.active_processors == ("presence_penalty",)
     assert plan.fast_path_blockers == ("presence_penalty",)
+    assert plan.fallback_reason == "processed_logits_required"
 
 
 def test_sampler_plan_uses_processed_argmax_for_logprobs() -> None:
@@ -107,6 +109,7 @@ def test_sampler_plan_uses_processed_argmax_for_logprobs() -> None:
 
     assert plan.mode is SamplingMode.PROCESSED_ARGMAX
     assert plan.fast_path_blockers == ("logprobs", "top_logprobs")
+    assert plan.fallback_reason == "processed_logits_required"
 
 
 def test_stop_token_sequences_are_active_processors() -> None:
@@ -154,6 +157,7 @@ def test_sampler_plan_uses_host_logits_for_non_greedy_without_gpu_sampler() -> N
     plan = plan_sampler(_params(temperature=0.7, top_p=0.9))
 
     assert plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert plan.fallback_reason == "host_sampling_required"
 
 
 def test_sampler_plan_uses_gpu_sample_for_native_supported_request() -> None:
@@ -163,6 +167,7 @@ def test_sampler_plan_uses_gpu_sample_for_native_supported_request() -> None:
     assert supports_native_gpu_sampling(params) is True
     assert plan.mode is SamplingMode.GPU_SAMPLE
     assert plan.native_gpu_available is True
+    assert plan.fallback_reason is None
 
 
 def test_sampler_plan_allows_native_gpu_sample_with_supported_processors() -> None:
@@ -205,6 +210,10 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
         is False
     )
     assert plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert (
+        plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).fallback_reason
+        == "native_gpu_unsupported_request"
+    )
     assert (
         plan_sampler(_params(temperature=0.7, forced_tokens_pending=(1,)), native_gpu_available=True).mode
         is SamplingMode.HOST_LOGITS_SAMPLE

@@ -315,6 +315,7 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(monkeypatch) -> None:
         "phase": "done",
         "continuation_eligible": False,
         "sampler_fast_path_blockers": ["temperature"],
+        "sampler_fallback_reason": "host_sampling_required",
         "sampler_mode": "host_logits_sample",
     }
     assert ("prefill", (10, 11), True) in calls
@@ -546,6 +547,7 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
         "stop_suffix_state": {"matched_sequence": [1, 2]},
         "active_processors": ["stop_token_sequences"],
         "sampler_fast_path_blockers": ["temperature", "stop_token_sequences"],
+        "sampler_fallback_reason": "host_sampling_required",
         "sampler_mode": "host_logits_sample",
     }
     assert len([call for call in calls if call[0] == "step"]) == 1

@@ -235,6 +235,9 @@ class DecodeState:
     structured_tokens: int = 0
     stop_suffix_state: object | None = None
     forced_tokens_pending: tuple[int, ...] = ()
+    active_processors: tuple[str, ...] = ()
+    sampler_fast_path_blockers: tuple[str, ...] = ()
+    sampler_fallback_reason: str | None = None
     budget_pressure: str | None = None
     sampler_mode: str | None = None
     continuation_eligible: bool = False
@@ -848,13 +851,14 @@ Current code reality:
 - Token-emitting PARO/GGUF generation loops now author final
   `GenerationTelemetry` snapshots with prompt/generated token counts, row index,
   sampler mode, stop suffix match/partial-suffix state where applicable, and
-  sampled thinking-budget phase, reasoning/answer counts, budget pressure, and
-  pending forced-token state when row state is available.
+  sampled thinking-budget phase, reasoning/answer counts, budget pressure,
+  pending forced-token state when row state is available, and sampler fallback
+  reasons for processed-argmax / host-logits paths.
 - Non-streaming OpenAI-compatible completion/chat choices now expose backend
   `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
   the final `finish_details` alongside the backend-authored `decode_state`.
-- Live backend-authored per-token phase transitions, sampler fallback reason
-  metadata, and real continuation eligibility remain future lower-loop work.
+- Live backend-authored per-token phase transitions and real continuation
+  eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -1062,16 +1066,17 @@ Build this on top of P0 telemetry rather than as a Qwen-only special case.
 
 Current code reality:
 
-- `hipengine.generation.sampling.plan_sampler()` reports both
-  `active_processors` and `fast_path_blockers`, so callers can distinguish
-  token-selection processors from fields such as `temperature` / requested
-  logprobs that also leave the graph argmax fast path.
+- `hipengine.generation.sampling.plan_sampler()` reports
+  `active_processors`, `fast_path_blockers`, and `fallback_reason`, so callers
+  can distinguish token-selection processors from fields such as `temperature`
+  / requested logprobs that also leave the graph argmax fast path.
 - Host `select_token()` returns the same processor/blocker metadata on
   `SampleResult`; row-local forced-token queues are included even when they were
   not part of request-level params.
 - `DecodeState` serializes `active_processors` and
-  `sampler_fast_path_blockers`, and PARO/GGUF final telemetry snapshots attach
-  those fields for sampled / processed requests.
+  `sampler_fast_path_blockers` plus `sampler_fallback_reason`, and PARO/GGUF
+  final telemetry snapshots attach those fields for sampled / processed
+  requests.
 - Host suppress-token ids and min-token/EOS policy are implemented as
   pre-selection processors after static bias/history penalties and before the
   forced-token override. They are exposed through public/server request fields,
