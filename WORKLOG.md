@@ -91490,3 +91490,17 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC malformed tool session safety
+
+Added session coverage for the new non-strict malformed tool-call failure path.
+`session.commit="append_visible_only"` now has a regression proving unparseable
+tool markup reports `invalid_tool_call`, downgrades the effective cache action
+to `append_prompt_only`, and does not replay the raw `<tool_call>` text on the
+next turn.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_only tests/test_server_api.py::test_chat_session_visible_only_downgrades_unparseable_tool_markup_to_prompt_only tests/test_server_api.py::test_chat_completion_auto_tool_rejects_unparseable_tool_markup -q` -> `5 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.

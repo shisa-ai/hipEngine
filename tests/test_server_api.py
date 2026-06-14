@@ -4055,6 +4055,56 @@ def test_chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_onl
     assert record.messages == ({"role": "user", "content": "try tool"},)
 
 
+def test_chat_session_visible_only_downgrades_unparseable_tool_markup_to_prompt_only() -> None:
+    raw_tool_markup = '<tool_call>{"name":"read","arguments":</tool_call>'
+    fake = SequentialFakeLLM([raw_tool_markup, "done"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "try tool"}],
+            "tools": tools,
+            "max_tokens": 4,
+            "session": {"id": "sess_unparseable_tool", "commit": "append_visible_only"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "tools": tools,
+            "max_tokens": 4,
+            "session": {"id": "sess_unparseable_tool", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_choice = first.json()["choices"][0]
+    assert first_choice["finish_details"]["reason"] == "invalid_tool_call"
+    assert first_choice["finish_details"]["cache_action"] == "append_prompt_only"
+    prompt = fake.calls[1][0][0]
+    assert "try tool" in prompt
+    assert "continue" in prompt
+    assert raw_tool_markup not in prompt
+    record = app.state.hipengine_chat_sessions["sess_unparseable_tool"]
+    assert record.messages == ({"role": "user", "content": "try tool"},)
+
+
 @pytest.mark.parametrize(
     ("error", "expected_status", "expected_finish_details", "request_extra"),
     [
