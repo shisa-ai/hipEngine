@@ -90555,3 +90555,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `6 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - PARO native sampler unsupported fallback telemetry
+
+Adjusted the default-off PARO c=1 native sampler opt-in route so unsupported
+sampled requests still plan against native availability and then fall back to
+host sampling with `sampler_fallback_reason="native_gpu_unsupported_request"`.
+This keeps actual execution on the host for unsupported shapes while exposing
+the precise fallback reason in final and streaming decode-state telemetry.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py && python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'native_opt_in or env_routes_supported_c1_request'` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `77 passed`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'native_gpu_sampler_support or sampler_plan_uses_gpu_sample or sampler_plan_allows_native_gpu_sample'` -> `3 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `27 passed`.
+- `python3 -m ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py && git diff --check -- hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> clean.

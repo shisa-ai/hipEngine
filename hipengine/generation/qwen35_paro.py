@@ -27,7 +27,6 @@ from hipengine.generation.sampling import (
     clone_thinking_budget_state,
     plan_sampler,
     row_seed_for_index,
-    supports_native_gpu_sampling,
     thinking_budget_state_from_params,
 )
 from hipengine.kvcache import resolve_kv_policy
@@ -71,7 +70,7 @@ class Qwen35ParoOneTokenGenerator:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
         raise_if_generation_deadline_expired(request)
-        native_gpu_available = _native_gpu_sampler_available(request, prompt_count=len(request.prompts))
+        native_gpu_available = _native_gpu_sampler_route_available(prompt_count=len(request.prompts))
         plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
             self.last_batch_generation = None
@@ -228,7 +227,7 @@ class Qwen35ParoOneTokenGenerator:
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
         raise_if_generation_deadline_expired(request)
-        native_gpu_available = _native_gpu_sampler_available(request, prompt_count=1)
+        native_gpu_available = _native_gpu_sampler_route_available(prompt_count=1)
         plan = plan_sampler(request, native_gpu_available=native_gpu_available)
         if request.max_tokens == 0:
             return
@@ -1337,12 +1336,8 @@ def _configure_host_sampler(
     configure(request, state)
 
 
-def _native_gpu_sampler_available(request: GenerationRequest, *, prompt_count: int) -> bool:
-    return (
-        int(prompt_count) == 1
-        and _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER")
-        and supports_native_gpu_sampling(request)
-    )
+def _native_gpu_sampler_route_available(*, prompt_count: int) -> bool:
+    return int(prompt_count) == 1 and _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER")
 
 
 def _session_capacity_for(required_sequence_length: int) -> int:
