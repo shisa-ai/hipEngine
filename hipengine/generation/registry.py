@@ -203,6 +203,10 @@ class DecodeState:
     sampler_mode: str | None = None
     full_vocab_logits_d2h: bool | None = None
     logits_d2h_bytes: int | None = None
+    execution_path: str | None = None
+    native_compact_prefill: bool | None = None
+    native_caware_decode: bool | None = None
+    serial_decode_fallback: bool | None = None
     continuation_eligible: bool = False
 
     def __post_init__(self) -> None:
@@ -239,6 +243,22 @@ class DecodeState:
             None if self.full_vocab_logits_d2h is None else bool(self.full_vocab_logits_d2h),
         )
         object.__setattr__(self, "logits_d2h_bytes", _optional_nonnegative_int(self.logits_d2h_bytes))
+        object.__setattr__(self, "execution_path", None if self.execution_path is None else str(self.execution_path))
+        object.__setattr__(
+            self,
+            "native_compact_prefill",
+            None if self.native_compact_prefill is None else bool(self.native_compact_prefill),
+        )
+        object.__setattr__(
+            self,
+            "native_caware_decode",
+            None if self.native_caware_decode is None else bool(self.native_caware_decode),
+        )
+        object.__setattr__(
+            self,
+            "serial_decode_fallback",
+            None if self.serial_decode_fallback is None else bool(self.serial_decode_fallback),
+        )
         object.__setattr__(self, "continuation_eligible", bool(self.continuation_eligible))
 
     @classmethod
@@ -269,6 +289,10 @@ class DecodeState:
                 sampler_mode=value.get("sampler_mode"),
                 full_vocab_logits_d2h=value.get("full_vocab_logits_d2h"),
                 logits_d2h_bytes=value.get("logits_d2h_bytes"),
+                execution_path=value.get("execution_path"),
+                native_compact_prefill=value.get("native_compact_prefill"),
+                native_caware_decode=value.get("native_caware_decode"),
+                serial_decode_fallback=value.get("serial_decode_fallback"),
                 continuation_eligible=bool(value.get("continuation_eligible", False)),
             )
         return cls(
@@ -294,6 +318,10 @@ class DecodeState:
             sampler_mode=getattr(value, "sampler_mode", None),
             full_vocab_logits_d2h=getattr(value, "full_vocab_logits_d2h", None),
             logits_d2h_bytes=getattr(value, "logits_d2h_bytes", None),
+            execution_path=getattr(value, "execution_path", None),
+            native_compact_prefill=getattr(value, "native_compact_prefill", None),
+            native_caware_decode=getattr(value, "native_caware_decode", None),
+            serial_decode_fallback=getattr(value, "serial_decode_fallback", None),
             continuation_eligible=bool(getattr(value, "continuation_eligible", False)),
         )
 
@@ -363,6 +391,14 @@ class DecodeState:
             payload["full_vocab_logits_d2h"] = self.full_vocab_logits_d2h
         if self.logits_d2h_bytes is not None:
             payload["logits_d2h_bytes"] = self.logits_d2h_bytes
+        if self.execution_path is not None:
+            payload["execution_path"] = self.execution_path
+        if self.native_compact_prefill is not None:
+            payload["native_compact_prefill"] = self.native_compact_prefill
+        if self.native_caware_decode is not None:
+            payload["native_caware_decode"] = self.native_caware_decode
+        if self.serial_decode_fallback is not None:
+            payload["serial_decode_fallback"] = self.serial_decode_fallback
         return payload
 
 
@@ -426,6 +462,10 @@ class GenerationTelemetry:
         budget_pressure: str | None = None,
         full_vocab_logits_d2h: bool | None = None,
         logits_d2h_bytes: int | None = None,
+        execution_path: str | None = None,
+        native_compact_prefill: bool | None = None,
+        native_caware_decode: bool | None = None,
+        serial_decode_fallback: bool | None = None,
         continuation_eligible: bool = False,
         event: str | None = None,
         timing: Mapping[str, float] | None = None,
@@ -455,6 +495,10 @@ class GenerationTelemetry:
                 sampler_mode=sampler_mode,
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
+                execution_path=execution_path,
+                native_compact_prefill=native_compact_prefill,
+                native_caware_decode=native_caware_decode,
+                serial_decode_fallback=serial_decode_fallback,
                 continuation_eligible=continuation_eligible,
             ),
             event=event,

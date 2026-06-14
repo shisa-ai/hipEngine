@@ -200,11 +200,15 @@ Those token-bearing chunks also include a canonical
 prompt/generated token counts, continuation eligibility, and sampler/processor
 metadata when the backend provides it (`active_processors`,
 `sampler_fast_path_blockers`, `sampler_fallback_reason`, `sampler_mode`,
-`full_vocab_logits_d2h`, and `logits_d2h_bytes`).
+`full_vocab_logits_d2h`, `logits_d2h_bytes`, `execution_path`,
+`native_compact_prefill`, `native_caware_decode`, and
+`serial_decode_fallback`).
 `logits_d2h_bytes` is the per-token full-vocabulary logits vector readback size
 when known, not a cumulative transfer counter. Current PARO/GGUF host-logits
 sampled paths report `full_vocab_logits_d2h=true` with the known vector byte
 size; the PARO c=1 native GPU sampler reports `false` and `0`.
+PARO scheduler-owned c>N paths report `execution_path` plus the native packed
+prefill / c-aware decode / serial fallback flags when that metadata is known.
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
 the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.
@@ -242,7 +246,8 @@ backend returns `GenerationTelemetry`. This extension currently mirrors the
 backend-authored `decode_state` snapshot, optional backend-authored `timing` and
 `usage` payloads, and the final `finish_details`, giving agent harnesses access
 to row index, prompt/generated token counts, sampler mode, active processors,
-fast-path blockers, stop suffix state, forced-token queue state, and budget
+fast-path blockers, scheduler execution path, native/serial fallback state, stop
+suffix state, forced-token queue state, and budget
 pressure when those fields were authored by the generation loop. The field is
 omitted when the backend or fake engine does not provide telemetry.
 

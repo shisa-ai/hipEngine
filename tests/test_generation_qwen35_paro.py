@@ -1290,6 +1290,22 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         "greedy_fast",
         "greedy_fast",
     ]
+    assert [_decode_state(output)["execution_path"] for output in generator.last_generation_outputs] == [
+        "scheduler_native_packed_prefill_serial_decode",
+        "scheduler_native_packed_prefill_serial_decode",
+    ]
+    assert [_decode_state(output)["native_compact_prefill"] for output in generator.last_generation_outputs] == [
+        True,
+        True,
+    ]
+    assert [_decode_state(output)["native_caware_decode"] for output in generator.last_generation_outputs] == [
+        False,
+        False,
+    ]
+    assert [_decode_state(output)["serial_decode_fallback"] for output in generator.last_generation_outputs] == [
+        True,
+        True,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1414,6 +1430,22 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     assert [_decode_state(output)["sampler_fallback_reason"] for output in generator.last_generation_outputs] == [
         expected_fallback,
         expected_fallback,
+    ]
+    assert [_decode_state(output)["execution_path"] for output in generator.last_generation_outputs] == [
+        "scheduler_native_packed_prefill_serial_host_sampler_decode",
+        "scheduler_native_packed_prefill_serial_host_sampler_decode",
+    ]
+    assert [_decode_state(output)["native_compact_prefill"] for output in generator.last_generation_outputs] == [
+        True,
+        True,
+    ]
+    assert [_decode_state(output)["native_caware_decode"] for output in generator.last_generation_outputs] == [
+        False,
+        False,
+    ]
+    assert [_decode_state(output)["serial_decode_fallback"] for output in generator.last_generation_outputs] == [
+        True,
+        True,
     ]
     assert [_decode_state(output)["full_vocab_logits_d2h"] for output in generator.last_generation_outputs] == [
         True,

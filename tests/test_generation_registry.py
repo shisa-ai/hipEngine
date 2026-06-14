@@ -52,6 +52,10 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
                 "sampler_fallback_reason": "processed_logits_required",
                 "full_vocab_logits_d2h": False,
                 "logits_d2h_bytes": "0",
+                "execution_path": "scheduler_native_packed_prefill_serial_decode",
+                "native_compact_prefill": True,
+                "native_caware_decode": False,
+                "serial_decode_fallback": True,
             },
             "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
         },
@@ -73,6 +77,10 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
             "sampler_mode": "greedy_fast",
             "full_vocab_logits_d2h": False,
             "logits_d2h_bytes": 0,
+            "execution_path": "scheduler_native_packed_prefill_serial_decode",
+            "native_compact_prefill": True,
+            "native_caware_decode": False,
+            "serial_decode_fallback": True,
         },
         "event": "done",
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
@@ -92,6 +100,10 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         sampler_fallback_reason="processed_logits_required",
         full_vocab_logits_d2h=True,
         logits_d2h_bytes=1024,
+        execution_path="scheduler_native_packed_prefill_native_decode",
+        native_compact_prefill=True,
+        native_caware_decode=True,
+        serial_decode_fallback=False,
         timing={"prefill_ms": 12.5, "decode_ms": 3},
         usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
     )
@@ -112,6 +124,10 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "sampler_mode": "processed_argmax",
         "full_vocab_logits_d2h": True,
         "logits_d2h_bytes": 1024,
+        "execution_path": "scheduler_native_packed_prefill_native_decode",
+        "native_compact_prefill": True,
+        "native_caware_decode": True,
+        "serial_decode_fallback": False,
     }
     assert payload["timing"] == {"prefill_ms": 12.5, "decode_ms": 3.0}
     assert payload["usage"] == {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}

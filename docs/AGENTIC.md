@@ -121,7 +121,9 @@ Known baseline limitations:
   generation loops emit final decode-state telemetry snapshots. PARO and GGUF
   c=1 true streaming also emit live `GenerationStreamChunk` snapshots for
   greedy and sampled answer tokens, including sampler mode and
-  fallback/blocker metadata. Buffered streaming preserves final backend
+  fallback/blocker metadata. PARO scheduler-owned c>N final telemetry reports
+  scheduler execution path and native-prefill/native-decode/serial-fallback
+  state. Buffered streaming preserves final backend
   telemetry on choice `done` chunks and, when tokenizer/counting hooks are
   available, emits server-derived per-delta token/decode-state snapshots for
   parsed answer/reasoning/tool/structured chunks. Backend-authored buffered
@@ -889,6 +891,10 @@ Current code reality:
   byte counts when the vocabulary/logits width is known. PARO c=1 native
   sampled paths mark `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` in
   the decode-state snapshot when the native GPU sampler route actually runs.
+  PARO c>N scheduler-owned final snapshots also carry `execution_path`,
+  `native_compact_prefill`, `native_caware_decode`, and
+  `serial_decode_fallback` so harnesses can tell whether the row used native
+  packed prefill, c-aware native decode, or the serial decode bridge.
   PARO/GGUF host-sampled forced-token selections also expose the selected
   `forced_token_id`, `forced_token_reason`, and post-selection
   `forced_tokens_remaining` alongside any still-pending queue state.
@@ -906,9 +912,9 @@ Current code reality:
   Buffered streaming preserves backend final telemetry on choice `done` chunks
   and now emits server-derived token/decode-state snapshots for opt-in buffered
   answer/reasoning/tool/structured deltas when tokenizer counting is available.
-  Backend-authored buffered per-token snapshots, c>N/scheduler paths, canonical
-  tool/structured phases, and real continuation eligibility remain future
-  lower-loop work.
+  Backend-authored buffered per-token snapshots, live c>N/scheduler stream
+  chunks, canonical tool/structured phases, and real continuation eligibility
+  remain future lower-loop work.
 
 Exit gates:
 
@@ -1142,7 +1148,10 @@ Current code reality:
 - `DecodeState` serializes `active_processors` and
   `sampler_fast_path_blockers` plus `sampler_fallback_reason`, and PARO/GGUF
   final telemetry snapshots attach those fields for sampled / processed
-  requests.
+  requests. PARO scheduler-owned c>N final snapshots also expose scheduler
+  execution path and native/serial fallback state; live per-token scheduler
+  chunks still need the same lower-loop metadata before server streams can
+  become fully backend-authoritative.
 - Host suppress-token ids and min-token/EOS policy are implemented as
   pre-selection processors after static bias/history penalties and before the
   forced-token override. They are exposed through public/server request fields,
@@ -2483,9 +2492,10 @@ stack, thinking-budget hard/soft close, strict tool result validation, and
 golden harness traces are now implemented. Good next logical units, in order:
 
 1. **Live backend DecodeState telemetry:** extend buffered streaming beyond
-   final `done`-chunk telemetry and extend c>N/native scheduler paths to emit
-   per-token `GenerationStreamChunk` snapshots for phase, forced-token state,
-   budget pressure, and continuation eligibility instead of relying on server
+   final `done`-chunk telemetry and extend c>N/native scheduler paths from
+   their current final execution-path/fallback snapshots to per-token
+   `GenerationStreamChunk` snapshots for phase, forced-token state, budget
+   pressure, and continuation eligibility instead of relying on server
    post-parse inference. PARO/GGUF c=1 true streaming already emits
    greedy/sampled answer-token snapshots.
 2. **Native/scheduler controlled-decoding parity:** extend c>N/GGUF/native GPU

@@ -691,6 +691,10 @@ class Qwen35ParoOneTokenGenerator:
                     request_id=str(request_id),
                     sampler_mode=sampler_mode,
                     stop_token_sequences=(),
+                    execution_path=self.last_batch_generation["path"],
+                    native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
+                    native_caware_decode=self.last_batch_generation["native_caware_decode"],
+                    serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
                 ),
             )
             for request_id in request_ids
@@ -912,6 +916,10 @@ class Qwen35ParoOneTokenGenerator:
                     forced_sample=output_steps[request_id][-1] if output_steps[request_id] else None,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
+                    execution_path=self.last_batch_generation["path"],
+                    native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
+                    native_caware_decode=self.last_batch_generation["native_caware_decode"],
+                    serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
                 ),
             )
             for request_id in request_ids
@@ -1278,6 +1286,10 @@ def _telemetry_for_tokens(
     forced_sample: Qwen35ParoAutoregressiveStepResult | None = None,
     full_vocab_logits_d2h: bool | None = None,
     logits_d2h_bytes: int | None = None,
+    execution_path: str | None = None,
+    native_compact_prefill: bool | None = None,
+    native_caware_decode: bool | None = None,
+    serial_decode_fallback: bool | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _forced_token_metadata(forced_sample)
@@ -1301,6 +1313,10 @@ def _telemetry_for_tokens(
         sampler_fallback_reason=sampler_fallback_reason,
         full_vocab_logits_d2h=full_vocab_logits_d2h,
         logits_d2h_bytes=logits_d2h_bytes,
+        execution_path=execution_path,
+        native_compact_prefill=native_compact_prefill,
+        native_caware_decode=native_caware_decode,
+        serial_decode_fallback=serial_decode_fallback,
     )
 
 

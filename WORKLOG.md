@@ -91034,3 +91034,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_use_session_prefix_for_chat tests/test_server_api.py::test_chat_context_overflow_reports_session_fit_context tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context tests/test_server_api.py::test_streaming_completion_context_overflow_preserves_error_diagnostics -q` -> `4 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC PARO scheduler telemetry
+
+Exposed PARO scheduler-owned c>N execution metadata in backend
+`GenerationTelemetry.decode_state`. Final c>N rows now report
+`execution_path`, `native_compact_prefill`, `native_caware_decode`, and
+`serial_decode_fallback`, using the scheduler metadata that was already
+recorded in `last_batch_generation`. This keeps c>N final choice telemetry
+self-describing for agent harnesses while leaving live per-token scheduler
+stream chunks as future lower-loop work.
+
+Validation:
+- `python3 -m pytest tests/test_generation_registry.py tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill -q` -> `10 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `31 passed`.
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> passed.
+- `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
