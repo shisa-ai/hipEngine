@@ -90417,3 +90417,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC finish-details contract evidence
+
+Added a generation-registry unit test that proves `GenerationOutput` normalizes
+mapping-based `finish_details` into `FinishDetails` and serializes every
+AGENTIC finish-detail field, including reason override, stop sequences,
+deadline/forced-close flags, synthetic/token counts, budget pressure, cache
+action, sampler mode, phase, and continuation eligibility. Added a P0.2
+current-code reality block to `docs/AGENTIC.md` summarizing the implemented
+finish-details contract and test evidence.
+
+Validation:
+- `python3 -m py_compile tests/test_generation_registry.py`.
+- `python3 -m pytest tests/test_generation_registry.py -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'finish_details or deadline or cancelled or stop_sequence or thinking_budget_exhausted'` -> `19 passed`.
+- `python3 -m ruff check tests/test_generation_registry.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_generation_registry.py docs/AGENTIC.md WORKLOG.md` -> clean.

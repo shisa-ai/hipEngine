@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from hipengine.generation import DecodePhase, DecodeState, GenerationOutput, GenerationTelemetry
+from hipengine.generation import DecodePhase, DecodeState, FinishDetails, GenerationOutput
 
 
 def test_decode_state_stream_snapshot_normalizes_json_payload() -> None:
@@ -62,6 +62,67 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
         },
         "event": "done",
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
+    }
+
+
+def test_generation_output_accepts_finish_details_mapping() -> None:
+    output = GenerationOutput(
+        text="answer",
+        finish_details={
+            "reason": "eos",
+            "eos_token_id": "151645",
+            "stop_sequence": ["42", "43"],
+            "length_limit": "7",
+            "deadline_exceeded": True,
+            "forced_close": True,
+            "synthetic_tokens": 2,
+            "reasoning_tokens": 3,
+            "answer_tokens": 4,
+            "tool_call_tokens": 5,
+            "structured_tokens": 6,
+            "budget_pressure": "hard_close",
+            "cache_action": "append_prompt_only",
+            "sampler_mode": "processed_argmax",
+            "phase": "answer",
+            "continuation_eligible": False,
+        },
+    )
+
+    assert output.finish_details == FinishDetails(
+        reason="eos",
+        eos_token_id=151645,
+        stop_sequence=(42, 43),
+        length_limit=7,
+        deadline_exceeded=True,
+        forced_close=True,
+        synthetic_tokens=2,
+        reasoning_tokens=3,
+        answer_tokens=4,
+        tool_call_tokens=5,
+        structured_tokens=6,
+        budget_pressure="hard_close",
+        cache_action="append_prompt_only",
+        sampler_mode="processed_argmax",
+        phase="answer",
+        continuation_eligible=False,
+    )
+    assert output.finish_details.to_json_dict(reason="stop") == {
+        "reason": "stop",
+        "eos_token_id": 151645,
+        "stop_sequence": [42, 43],
+        "length_limit": 7,
+        "deadline_exceeded": True,
+        "forced_close": True,
+        "synthetic_tokens": 2,
+        "reasoning_tokens": 3,
+        "answer_tokens": 4,
+        "tool_call_tokens": 5,
+        "structured_tokens": 6,
+        "budget_pressure": "hard_close",
+        "cache_action": "append_prompt_only",
+        "sampler_mode": "processed_argmax",
+        "phase": "answer",
+        "continuation_eligible": False,
     }
 
 

@@ -872,6 +872,26 @@ Implement:
 - include EOS, stop sequence, length, cancellation, deadline, forced close,
   synthetic tokens, budget pressure, cache action, and sampler mode.
 
+Current code reality:
+
+- `hipengine.generation.FinishDetails` is the canonical torch-free structured
+  finish object, and `GenerationOutput` normalizes either a `FinishDetails`
+  instance or a mapping into that shape.
+- `FinishDetails.to_json_dict()` emits compact JSON only for active fields while
+  preserving the full AGENTIC surface: EOS token id, stop token sequence, length
+  limit, deadline/cancel flags, forced close, synthetic token count,
+  reasoning/answer/tool/structured token counts, budget pressure, cache action,
+  sampler mode, phase, and continuation eligibility.
+- The OpenAI server keeps coarse compatibility (`eos` -> public `stop`,
+  `length` -> public `length`, parsed tool calls -> public `tool_calls`) while
+  preserving backend details under `choices[].finish_details`,
+  final SSE choice chunks, and structured error payloads.
+- Unit and server tests cover structured finish-detail normalization,
+  completion/chat coarse mapping, EOS, token and sequence stops, length phases,
+  tool-call/malformed-tool/schema failures, thinking-budget exhaustion,
+  deadline/cancellation errors, sampler mode, budget pressure, and session cache
+  action reporting.
+
 Exit gates:
 
 - server tests cover EOS, token stop, stop sequence, length, tool call,
