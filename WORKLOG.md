@@ -88151,6 +88151,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_models_endpoint_reports_served_model_name_and_auth tests/test_server_api.py::test_models_endpoint_reports_lazy_model_not_loaded tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 
+## 2026-06-14 - AGENTIC server conformance tests
+
+Added a focused FastAPI conformance suite for agent-client request patterns. The
+new tests exercise strict reasoning-plus-tool response shape, prior assistant
+tool-call/tool-result replay rendering exactly once, pi-style
+`enable_thinking=false` prompt pre-close behavior, stateless
+`session.commit="append_none"` finish metadata, and streaming tool-call parity
+without leaking raw `<tool_call>` markup.
+
+Validation:
+- `python3 -m py_compile tests/test_agentic_server_conformance.py`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py -q` -> `3 passed`.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py` -> `All checks passed!`.
+- `python3 -m py_compile tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_local_agent_config.py tests/test_agentic_server_conformance.py -q` -> `22 passed`.
+
 ## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
 
 Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).

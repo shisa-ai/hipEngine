@@ -1605,6 +1605,12 @@ Current code reality:
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,
   parsed tool calls, reasoning deltas, finish details, and expected absence of
   raw tool markup where strict validation handles malformed output.
+- `tests/test_agentic_server_conformance.py` adds a compact client-pattern
+  matrix for the FastAPI `/v1/chat/completions` surface: strict
+  reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
+  rendering exactly once, `enable_thinking=false` pre-close rendering,
+  `session.commit="append_none"` finish metadata, and streaming tool-call parity
+  without raw `<tool_call>` leakage.
 
 Exit gates:
 
