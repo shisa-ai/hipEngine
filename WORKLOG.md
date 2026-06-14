@@ -89170,3 +89170,20 @@ Conclusion: exact/default BF16-oracle removal requires a new streaming or
 row-batched INT8 prefill-attention kernel that reads retained INT8 K/V and
 reduces per row without materializing huge split partials. Do not replace the
 oracle with the existing decode wrapper or a giant batched split-K partial route.
+
+## 2026-06-14 - AGENTIC TP capability manifest
+
+Added a conservative `parallelism.tensor_parallel` block to live capabilities
+and replay capability snapshots. It reports the current single-process topology
+(`world_size=1`, rank/local-rank `0`), no collective backend, and explicit
+unsupported features for multi-GPU weight/KV sharding, collectives, graph
+capture, and cross-rank session snapshots. This satisfies the AGENTIC P6.3
+manifest-status gate without implying tensor-parallel runtime support exists.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

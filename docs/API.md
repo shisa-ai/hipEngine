@@ -83,7 +83,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, context defaults, KV policy/estimate, routing count, and capabilities URL. |
-| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
+| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
@@ -654,6 +654,10 @@ strings and should only be used in local, non-sensitive debugging sessions.
   The manifest also includes `incompatible_conditions`, for example
   `temperature > 0`, so inert greedy `top_p` / `top_k` / `min_p` settings are
   not mistaken for MTP blockers.
+- The capabilities manifest reports `parallelism.tensor_parallel` as disabled
+  with `world_size=1`, `mode="single_process"`, no collective backend, and a
+  stable unsupported-feature list for multi-GPU weight/KV sharding, collectives,
+  graph capture, and cross-rank session snapshots.
 - Non-text chat content parts are rejected.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
   available, one-token stops lower to runtime `stop_token_ids` and multi-token

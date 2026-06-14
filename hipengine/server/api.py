@@ -799,6 +799,33 @@ def _grammar_capability() -> dict[str, Any]:
     }
 
 
+def _parallelism_capability() -> dict[str, Any]:
+    return {
+        "tensor_parallel": {
+            "enabled": False,
+            "topology": {
+                "mode": "single_process",
+                "world_size": 1,
+                "local_world_size": 1,
+                "rank": 0,
+                "local_rank": 0,
+            },
+            "collectives": {
+                "available": False,
+                "backend": None,
+            },
+            "unsupported_features": [
+                "world_size_gt_1",
+                "weight_sharding",
+                "kv_cache_sharding",
+                "collective_reduce_scatter_all_gather",
+                "multi_gpu_graph_capture",
+                "cross_rank_session_snapshots",
+            ],
+        },
+    }
+
+
 def _known_unsupported_fields() -> list[str]:
     return list(_UNSUPPORTED_GRAMMAR_FIELDS)
 
@@ -919,6 +946,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
             "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
         "admission": _admission_capability(config),
+        "parallelism": _parallelism_capability(),
         "unsupported_fields": _known_unsupported_fields(),
     }
 
@@ -3194,6 +3222,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
             },
+            "parallelism": _parallelism_capability(),
             "errors": _error_taxonomy_manifest(),
             "unsupported_fields": _known_unsupported_fields(),
         }

@@ -1815,10 +1815,12 @@ Current code reality:
   storage with `resident_state_reuse=false`, buffered chat-only scope,
   `append_visible_only` as the stateful default, and downgrade reasons for
   unsafe visible-only finishes. Multi-model routing and strict tool decoding
-  remain advertised as unsupported until their runtime paths exist. Request
-  timeouts and client-disconnect cancellation are advertised as supported with
-  cooperative backend deadline/cancel checks and `preemptive_decode_cancel=false`;
-  token diagnostics are advertised from current tokenizer/counting callables.
+  remain advertised as unsupported until their runtime paths exist. Tensor
+  parallelism is advertised as disabled with single-process topology and
+  explicit unsupported multi-GPU/sharding features. Request timeouts and
+  client-disconnect cancellation are advertised as supported with cooperative
+  backend deadline/cancel checks and `preemptive_decode_cancel=false`; token
+  diagnostics are advertised from current tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
   `session.id` outside buffered chat, unsupported streaming/`n`/continuation
   combinations, unsupported `session.commit` modes, known unsupported
@@ -2115,6 +2117,16 @@ Exit gates:
   smoke;
 - no TP code lands on the default path without hardware validation;
 - capability manifest reports TP topology and unsupported features.
+
+Current code reality:
+
+- `/v1/hipengine/capabilities` reports
+  `parallelism.tensor_parallel.enabled=false` with a single-process topology
+  (`world_size=1`, rank/local-rank `0`), no collective backend, and explicit
+  unsupported features for multi-GPU weight/KV sharding, collectives, graph
+  capture, and cross-rank session snapshots.
+- No tensor-parallel runtime, sharded weight loader, distributed KV cache,
+  collectives, or multi-GPU graph capture path exists yet.
 
 #### P6.4 Model-family fallback policy
 

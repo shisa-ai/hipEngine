@@ -324,6 +324,33 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
     }
 
 
+def _parallelism_capability() -> dict[str, Any]:
+    return {
+        "tensor_parallel": {
+            "enabled": False,
+            "topology": {
+                "mode": "single_process",
+                "world_size": 1,
+                "local_world_size": 1,
+                "rank": 0,
+                "local_rank": 0,
+            },
+            "collectives": {
+                "available": False,
+                "backend": None,
+            },
+            "unsupported_features": [
+                "world_size_gt_1",
+                "weight_sharding",
+                "kv_cache_sharding",
+                "collective_reduce_scatter_all_gather",
+                "multi_gpu_graph_capture",
+                "cross_rank_session_snapshots",
+            ],
+        },
+    }
+
+
 def test_coerce_generation_output_preserves_telemetry() -> None:
     raw = SimpleNamespace(
         text="answer",
@@ -771,6 +798,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "metadata": _session_metadata_capability(3),
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
+    assert body["parallelism"] == _parallelism_capability()
     assert "session.id" not in body["unsupported_fields"]
     assert "timeout_ms" not in body["unsupported_fields"]
     assert "parallel_tool_calls" not in body["unsupported_fields"]
@@ -5351,6 +5379,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         "continuations": _continuation_capability(),
         "metadata": _session_metadata_capability(),
     }
+    assert artifact["capabilities"]["parallelism"] == _parallelism_capability()
     assert "secret prompt" not in serialized
 
 
