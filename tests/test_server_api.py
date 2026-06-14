@@ -2351,6 +2351,44 @@ def test_completions_response_format_rejects_unsupported_schema_keywords() -> No
     assert fake.calls == []
 
 
+def test_completions_response_format_accepts_annotation_schema_keywords() -> None:
+    fake = FakeLLM(outputs=['{"ok":true,"path":"README.md"}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_result",
+                    "schema": {
+                        "title": "Agent result",
+                        "description": "Annotation-only metadata is ignored by validation.",
+                        "default": {"ok": True, "path": "README.md"},
+                        "type": "object",
+                        "properties": {
+                            "ok": {"type": "boolean", "description": "success flag"},
+                            "path": {"type": "string", "examples": ["README.md"]},
+                        },
+                        "required": ["ok", "path"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == '{"ok":true,"path":"README.md"}'
+    assert choice["finish_details"] == _stateless_finish_details("stop")
+    assert len(fake.calls) == 1
+
+
 def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
     fake = FakeLLM(outputs=["alpha!tail"], token_map={"!": [99], "two tokens": [10, 11]})
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -4103,6 +4141,50 @@ def test_chat_completion_strict_tool_schema_rejects_unsupported_keywords() -> No
     assert error["hipengine"]["code"] == "schema_violation"
     assert error["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
+
+
+def test_chat_completion_strict_tool_schema_accepts_annotation_keywords() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": {
+                            "title": "Read arguments",
+                            "description": "Annotation-only metadata is ignored by validation.",
+                            "default": {"path": "README.md"},
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "string",
+                                    "description": "Repository path",
+                                    "examples": ["README.md"],
+                                }
+                            },
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["finish_details"]["reason"] == "tool_calls"
+    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == {"path": "README.md"}
 
 
 @pytest.mark.parametrize(

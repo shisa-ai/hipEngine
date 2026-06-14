@@ -89028,3 +89028,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC schema annotation acceptance coverage
+
+Added regression tests proving annotation-only JSON Schema keywords remain
+accepted and ignored by validation after the fail-closed subset change. Coverage
+now includes `response_format` JSON schema annotations and strict tool parameter
+schema annotations next to unsupported-keyword rejection tests.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_response_format_rejects_unsupported_schema_keywords tests/test_server_api.py::test_completions_response_format_accepts_annotation_schema_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_unsupported_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_accepts_annotation_keywords -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
