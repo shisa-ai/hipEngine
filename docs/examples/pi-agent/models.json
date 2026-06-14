@@ -1,0 +1,34 @@
+{
+  "providers": {
+    "hipengine-local": {
+      "baseUrl": "http://localhost:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "x",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "thinkingFormat": "qwen",
+        "supportsUsageInStreaming": true,
+        "maxTokensField": "max_tokens",
+        "supportsStore": false,
+        "supportsStrictMode": false
+      },
+      "models": [
+        {
+          "id": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+          "name": "hipEngine Qwen 3.6 35B-A3B MoE PARO",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    }
+  }
+}

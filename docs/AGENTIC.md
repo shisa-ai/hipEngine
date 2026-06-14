@@ -1554,6 +1554,10 @@ Current code reality:
   per request, and keeps unsupported stateful-session fields plus intentionally
   unused tool-policy/logprob fields (`parallel_tool_calls`, `top_logprobs`) in
   `do_not_send`.
+- `docs/examples/pi-agent/models.json` is a checked-in pi config example for the
+  Qwen 3.6 PARO endpoint. It enables pi's thinking UI with `reasoning=true` and
+  `compat.thinkingFormat="qwen"` while leaving `supportsReasoningEffort=false`
+  so pi sends Qwen `enable_thinking` rather than OpenAI `reasoning_effort`.
 - `scripts/validate_local_agent_config.py` validates the snippet against a
   running server capability manifest and can optionally POST a small
   chat/tools smoke request:

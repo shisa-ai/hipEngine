@@ -88009,3 +88009,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_session_append_none_reports_cache_action tests/test_server_api.py::test_streaming_session_append_none_reports_cache_action tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_local_agent_config.py -q` -> `14 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - Pi-agent Qwen thinking config example
+
+Added a checked-in `docs/examples/pi-agent/models.json` for the local
+OpenAI-compatible Qwen 3.6 PARO endpoint. The example sets `reasoning=true` and
+`compat.thinkingFormat="qwen"` while keeping `supportsReasoningEffort=false`, so
+pi advertises thinking support and sends Qwen `enable_thinking` rather than
+OpenAI `reasoning_effort`. Documented that `contextWindow` must track the
+server's effective capabilities context instead of the theoretical model window.
+
+Validation:
+- `python3 -m json.tool docs/examples/pi-agent/models.json >/dev/null`.
+- `python3 -m py_compile tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `6 passed`.
+- `python3 -m ruff check tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

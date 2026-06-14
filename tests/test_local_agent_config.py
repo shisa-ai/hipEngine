@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from hipengine.server.api import ServerConfig, create_app
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "validate_local_agent_config.py"
 CONFIG_PATH = REPO_ROOT / "docs" / "examples" / "local-agent" / "openai-compatible.json"
+PI_CONFIG_PATH = REPO_ROOT / "docs" / "examples" / "pi-agent" / "models.json"
 
 _SPEC = importlib.util.spec_from_file_location("validate_local_agent_config", SCRIPT_PATH)
 assert _SPEC is not None and _SPEC.loader is not None
@@ -167,3 +169,15 @@ def test_local_agent_config_rejects_strict_tool_decoding_when_unavailable() -> N
         match="strict tool decoding",
     ):
         validate_local_agent_config.validate_config_against_capabilities(config, _capabilities())
+
+
+def test_pi_agent_models_config_enables_qwen_thinking() -> None:
+    config = json.loads(PI_CONFIG_PATH.read_text(encoding="utf-8"))
+    provider = config["providers"]["hipengine-local"]
+    model = provider["models"][0]
+
+    assert provider["baseUrl"].endswith("/v1")
+    assert provider["compat"]["thinkingFormat"] == "qwen"
+    assert provider["compat"]["supportsReasoningEffort"] is False
+    assert model["reasoning"] is True
+    assert model["input"] == ["text"]
