@@ -841,7 +841,9 @@ Current code reality:
   endpoints.
 - Raw text diagnostics use the served tokenizer/counting hooks. Chat diagnostics
   render the same Qwen-style prompt as generation, including tool markup and
-  thinking controls, before counting.
+  thinking controls, before counting. Chat count/fit diagnostics also expose
+  lowered thinking-budget close tokens and the initialized
+  `ThinkingBudgetState` payload when tokenization is available.
 - `/fit_context` uses the same context arithmetic and chat default max-token
   policy as generation admission, and reports the current clear policy as
   `reject` with no automatic truncation/dropping.
@@ -1042,9 +1044,12 @@ Current code reality:
   budget pressure, enqueues a tokenizer-lowered close sequence through
   `ForcedTokenQueue`, and transitions to answer phase when the close DFA
   matches;
-- not implemented: request-time tokenizer lowering into `ThinkingBudgetState`,
-  generation-loop wiring for dynamic soft-close bias, hard/manual forced close,
-  EOS suppression, and backend-authored per-phase finish metadata.
+- chat token diagnostics can lower the configured hard close sequence (or the
+  default `</think>` marker) into token ids and return an initialized
+  `ThinkingBudgetState` payload for harness/debug verification;
+- not implemented: live generation request-time wiring into
+  `ThinkingBudgetState`, dynamic soft-close bias, hard/manual forced close, EOS
+  suppression, and backend-authored per-phase finish metadata.
 
 Exit gates:
 

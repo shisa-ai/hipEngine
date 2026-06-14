@@ -450,13 +450,13 @@ def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> N
 
 
 def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
-    fake = FakeLLM(token_map={"hello": [10, 11]})
+    fake = FakeLLM(token_map={"hello": [10, 11], "closing now</think>\n": [42, 43, 44]})
     app = create_app(
         ServerConfig(
             model="fake-path",
             served_model_name="fake-model",
             eager_load=False,
-            max_context_tokens=64,
+            max_context_tokens=512,
             chat_default_max_tokens=7,
         ),
         llm=fake,
@@ -487,30 +487,46 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
 
     chat_payload = {
         "messages": [{"role": "user", "content": "hello"}],
-        "enable_thinking": False,
+        "reasoning_effort": "low",
+        "hard_close_sequence": "closing now</think>\n",
+        "soft_close_window": 4,
+        "max_tokens": 32,
     }
     count_chat = client.post("/v1/hipengine/count_tokens", json=chat_payload)
     assert count_chat.status_code == 200
     chat_body = count_chat.json()
     assert chat_body["input_type"] == "chat"
     assert "<|im_start|>user\nhello<|im_end|>" in chat_body["text"]
-    assert "<think>" in chat_body["text"]
+    assert "use 'closing now</think>\\n' as the close sequence" in chat_body["text"]
     assert chat_body["token_count"] == fake.count_tokens(chat_body["text"])
+    assert chat_body["thinking_budget"]["close_text"] == "closing now</think>\n"
+    assert chat_body["thinking_budget"]["close_token_ids"] == [42, 43, 44]
+    assert chat_body["thinking_budget"]["initial_state"] == {
+        "phase": "think",
+        "reasoning_tokens": 0,
+        "answer_tokens": 0,
+        "hard_token_cap": 16,
+        "remaining_think_tokens": 16,
+        "soft_close_window": 4,
+        "close_sequence": [42, 43, 44],
+    }
 
     fit = client.post("/v1/hipengine/fit_context", json=chat_payload)
     assert fit.status_code == 200
     fit_body = fit.json()
-    expected_max_tokens = min(7, 64 - chat_body["token_count"] - 1)
+    expected_max_tokens = 32
     assert fit_body["input_type"] == "chat"
     assert fit_body["prompt_tokens"] == chat_body["token_count"]
-    assert fit_body["max_context_tokens"] == 64
-    assert fit_body["requested_max_tokens"] is None
+    assert fit_body["max_context_tokens"] == 512
+    assert fit_body["requested_max_tokens"] == 32
     assert fit_body["effective_max_tokens"] == expected_max_tokens
     assert fit_body["required_context_tokens"] == chat_body["token_count"] + expected_max_tokens + 1
     assert fit_body["fits"] is True
     assert fit_body["chat_default_max_tokens"] == 7
     assert fit_body["clear_policy"] == "reject"
     assert fit_body["would_drop"] == []
+    assert fit_body["thinking_budget"]["lowering_supported"] is True
+    assert fit_body["thinking_budget"]["close_token_ids"] == [42, 43, 44]
 
 
 def test_token_diagnostics_reject_ambiguous_inputs() -> None:

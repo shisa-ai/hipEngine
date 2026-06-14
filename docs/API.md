@@ -86,8 +86,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
-| `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, and thinking controls. |
-| `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, required context, and reject/truncation policy using the same admission arithmetic as generation. |
+| `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, and thinking controls. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
+| `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, required context, and reject/truncation policy using the same admission arithmetic as generation. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
@@ -307,7 +307,10 @@ Budget fields are compatibility hints today. The server validates that any
 does not yet enforce token-level thinking budgets, soft logit-bias ramps, or
 forced close sequences during decode. Generic sampler `min_tokens` /
 `eos_token_id` can suppress EOS for ordinary generation, but it is not wired to
-thinking-budget policy yet.
+thinking-budget policy yet. Chat `count_tokens` and `fit_context` diagnostics
+do lower the configured close sequence into token ids and return an initial
+thinking-budget state for harness/debug verification when tokenization is
+available.
 
 For pi, prefer `compat.thinkingFormat: "qwen"` with `reasoning: true` if you want
 pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`

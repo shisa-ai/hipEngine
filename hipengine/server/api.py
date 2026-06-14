@@ -44,6 +44,7 @@ from hipengine.generation import (
     GenerationOutput,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
+    ThinkingBudgetState,
     TokenLogprob,
     derive_row_seed,
 )
@@ -1995,12 +1996,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_context_tokens=max_context,
         )
         token_count = await run_in_threadpool(_count_tokens_strict, engine, text)
-        return {
+        response = {
             "object": "hipengine.count_tokens",
             "input_type": input_type,
             "text": text,
             "token_count": token_count,
         }
+        thinking_budget = _diagnostic_thinking_budget_payload(
+            config,
+            request,
+            engine=engine,
+            max_context_tokens=max_context,
+        )
+        if thinking_budget is not None:
+            response["thinking_budget"] = thinking_budget
+        return response
 
     @app.post("/v1/hipengine/fit_context")
     async def fit_context(request: FitContextRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
@@ -2031,7 +2041,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_context_tokens=max_context,
             max_tokens=int(effective_max_tokens),
         )
-        return {
+        response = {
             "object": "hipengine.fit_context",
             "input_type": input_type,
             "text": text,
@@ -2040,6 +2050,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "chat_default_max_tokens": config.chat_default_max_tokens if input_type == "chat" else None,
             "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
         }
+        thinking_budget = _diagnostic_thinking_budget_payload(
+            config,
+            request,
+            engine=engine,
+            max_context_tokens=max_context,
+        )
+        if thinking_budget is not None:
+            response["thinking_budget"] = thinking_budget
+        return response
 
     @app.post("/v1/completions", response_model=None)
     async def completions(
@@ -3957,6 +3976,67 @@ def _diagnostic_text_from_request(
         max_context_tokens=max_context_tokens,
     )
     return prompt, "chat"
+
+
+def _diagnostic_thinking_budget_payload(
+    config: ServerConfig,
+    request: TokenDiagnosticRequest,
+    *,
+    engine: Any,
+    max_context_tokens: int | None,
+) -> dict[str, Any] | None:
+    if request.messages is None:
+        return None
+    chat_request = _chat_request_from_diagnostic(config, request)
+    _prompt, thinking = _render_chat_prompt_for_request(
+        chat_request,
+        chat_default_max_tokens=config.chat_default_max_tokens,
+        engine=engine,
+        max_context_tokens=max_context_tokens,
+    )
+    has_budget_policy = any(
+        value is not None
+        for value in (
+            thinking.effort,
+            thinking.max_think_tokens,
+            thinking.min_answer_tokens,
+            thinking.hard_think_cap,
+            thinking.soft_close_window,
+            thinking.hard_close_message,
+            thinking.hard_close_sequence,
+        )
+    )
+    if thinking.enabled is False or not has_budget_policy:
+        return None
+    close_text = thinking.hard_close_sequence or _THINKING_CLOSE_MARKER
+    payload: dict[str, Any] = {
+        "enabled": True,
+        "effort": thinking.effort,
+        "max_think_tokens": thinking.max_think_tokens,
+        "min_answer_tokens": thinking.min_answer_tokens,
+        "hard_think_cap": thinking.hard_think_cap,
+        "soft_close_window": thinking.soft_close_window,
+        "hard_close_message": thinking.hard_close_message,
+        "close_text": close_text,
+    }
+    try:
+        close_token_ids = _tokenize_text(engine, close_text)
+    except OpenAIHTTPError:
+        payload["lowering_supported"] = False
+        return {key: value for key, value in payload.items() if value is not None}
+    state = ThinkingBudgetState(
+        close_sequence=close_token_ids,
+        hard_token_cap=thinking.hard_think_cap,
+        soft_close_window=0 if thinking.soft_close_window is None else thinking.soft_close_window,
+    )
+    payload.update(
+        {
+            "lowering_supported": True,
+            "close_token_ids": list(close_token_ids),
+            "initial_state": state.to_json_dict(),
+        }
+    )
+    return {key: value for key, value in payload.items() if value is not None}
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

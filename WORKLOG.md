@@ -87923,3 +87923,17 @@ Validation:
 - `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/__init__.py tests/test_generation_constraints.py`.
 - `python3 -m pytest tests/test_generation_constraints.py tests/test_generation_registry.py tests/test_model_quant_and_imports.py -q` -> `22 passed`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC thinking budget diagnostic lowering
+
+Advanced P1.4 diagnostics by exposing tokenizer-lowered hard-close tokens and
+an initialized `ThinkingBudgetState` payload on chat `/count_tokens` and
+`/fit_context` diagnostics when tokenizer support exists. This proves request
+normalization plus tokenizer lowering without changing live decode behavior;
+live generation wiring for dynamic bias, forced close, EOS suppression, and
+per-phase finish metadata remains future work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `2 passed`.
+- `git diff --check` -> clean.
