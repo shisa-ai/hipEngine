@@ -669,6 +669,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "chat_completions": True,
             "completions": True,
             "streaming": True,
+            "choice_telemetry": _choice_telemetry_capability(),
             "structured_outputs": _structured_outputs_capability(),
             "tools": {
                 "enabled": True,
@@ -777,6 +778,15 @@ def _session_continuation_capability() -> dict[str, Any]:
         "supported_finishes": ["length"],
         "supported_streaming": False,
         "supported_sampling": "deterministic_buffered_only",
+    }
+
+
+def _choice_telemetry_capability() -> dict[str, Any]:
+    return {
+        "non_streaming": True,
+        "streaming": "stream_options.include_hipengine",
+        "decode_state": True,
+        "source": "backend_generation_telemetry_when_available",
     }
 
 
@@ -2505,6 +2515,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
                     "choice_decode_state": tokenizer_caps["count_tokens"],
                 },
+                "choice_telemetry": _choice_telemetry_capability(),
                 "structured_outputs": _structured_outputs_capability(),
                 "finish_details": True,
                 "token_diagnostics": {
@@ -2805,6 +2816,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     response_format=request.response_format,
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
+            _attach_choice_telemetry(choice, detail)
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, index // n, index % n)
             choices.append(choice)
@@ -2954,6 +2966,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     response_format=request.response_format,
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
+            _attach_choice_telemetry(choice, detail)
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, 0, index)
             choices.append(choice)
@@ -6460,6 +6473,23 @@ def _choice_hipengine_payload(
             tokens=token_payload,
         ).to_json_dict()
     return payload
+
+
+def _attach_choice_telemetry(choice: dict[str, Any], detail: GenerationOutput | None) -> None:
+    telemetry = None if detail is None else detail.telemetry
+    if telemetry is None:
+        return
+    payload = telemetry.to_json_dict()
+    finish_details = choice.get("finish_details")
+    if isinstance(finish_details, Mapping):
+        payload["finish_details"] = dict(finish_details)
+    existing = choice.get("hipengine")
+    if isinstance(existing, Mapping):
+        merged = dict(existing)
+        merged.update(payload)
+        choice["hipengine"] = merged
+        return
+    choice["hipengine"] = payload
 
 
 def _attach_stream_hipengine(

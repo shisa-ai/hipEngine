@@ -826,6 +826,9 @@ Current code reality:
 - Token-emitting PARO/GGUF generation loops now author final
   `GenerationTelemetry` snapshots with prompt/generated token counts, row index,
   sampler mode, and stop suffix match/partial-suffix state where applicable.
+- Non-streaming OpenAI-compatible completion/chat choices now expose backend
+  `GenerationTelemetry` under `choices[].hipengine` when it is present, mirroring
+  the final `finish_details` alongside the backend-authored `decode_state`.
 - Live backend-authored per-token phase transitions, forced-token queue state,
   sampler fallback reason metadata, and real continuation eligibility remain
   future lower-loop work.
@@ -1691,8 +1694,8 @@ Current code reality:
   `hard_close_token_forcing`, tokenizer-dependent `soft_close_bias`, and
   tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
   sampler scope, speculative/MTP sampling compatibility,
-  request-timeout/client-disconnect support, cache/session settings,
-  loaded-model count, and
+  request-timeout/client-disconnect support, backend-authored choice telemetry,
+  cache/session settings, loaded-model count, and
   unsupported fields.
 - Continuations are advertised as supported with `stateful=false`,
   `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,

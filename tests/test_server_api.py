@@ -390,6 +390,12 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "choice_token_accounting": True,
         "choice_decode_state": True,
     }
+    assert body["features"]["choice_telemetry"] == {
+        "non_streaming": True,
+        "streaming": "stream_options.include_hipengine",
+        "decode_state": True,
+        "source": "backend_generation_telemetry_when_available",
+    }
     assert body["features"]["structured_outputs"] == {
         "response_format": True,
         "json_object": True,
@@ -1248,6 +1254,55 @@ def test_completions_preserve_structured_finish_details() -> None:
         budget_pressure="answer_budget",
         continuation_eligible=False,
     )
+
+
+def test_completions_expose_backend_generation_telemetry() -> None:
+    fake = DetailedGenerateFakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="answer",
+                finish_details=FinishDetails(reason="eos", eos_token_id=151645, sampler_mode="greedy_fast"),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=3,
+                    generated_tokens=1,
+                    row_index=0,
+                    phase="done",
+                    sampler_mode="greedy_fast",
+                    active_processors=("logit_bias",),
+                    sampler_fast_path_blockers=("logit_bias",),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "one two three", "max_tokens": 1},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == "answer"
+    assert choice["hipengine"] == {
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 3,
+            "generated_tokens": 1,
+            "phase": "done",
+            "continuation_eligible": False,
+            "active_processors": ["logit_bias"],
+            "sampler_fast_path_blockers": ["logit_bias"],
+            "sampler_mode": "greedy_fast",
+        },
+        "finish_details": _stateless_finish_details(
+            "eos",
+            eos_token_id=151645,
+            sampler_mode="greedy_fast",
+        ),
+    }
 
 
 def test_completion_continuation_resumes_buffered_length_finish_once() -> None:
@@ -2183,6 +2238,59 @@ def test_chat_completion_renders_messages_to_prompt() -> None:
         "<|im_start|>assistant\n",
     )
     assert fake.calls[0][1].max_tokens == 4
+
+
+def test_chat_completion_exposes_backend_generation_telemetry() -> None:
+    fake = DetailedGenerateFakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="assistant reply",
+                finish_details=FinishDetails(reason="eos", eos_token_id=151645, sampler_mode="processed_argmax"),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=4,
+                    generated_tokens=2,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="processed_argmax",
+                    active_processors=("min_tokens",),
+                    sampler_fast_path_blockers=("min_tokens",),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["message"] == {"role": "assistant", "content": "assistant reply"}
+    assert choice["hipengine"] == {
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 4,
+            "generated_tokens": 2,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "active_processors": ["min_tokens"],
+            "sampler_fast_path_blockers": ["min_tokens"],
+            "sampler_mode": "processed_argmax",
+        },
+        "finish_details": _stateless_finish_details(
+            "eos",
+            eos_token_id=151645,
+            sampler_mode="processed_argmax",
+        ),
+    }
 
 
 def test_chat_completion_segregates_reasoning_content() -> None:

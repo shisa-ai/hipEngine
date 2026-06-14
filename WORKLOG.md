@@ -88648,3 +88648,20 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC non-streaming choice telemetry
+
+Exposed backend-authored `GenerationTelemetry` on non-streaming completion and
+chat choices under `choices[].hipengine` when the backend supplies it. The
+extension mirrors the backend `decode_state` snapshot plus the final
+`finish_details`, so agent harnesses can see row index, prompt/generated token
+counts, sampler mode, active processors, fast-path blockers, stop suffix state,
+forced-token queue state, and budget pressure without using SSE. Added
+`features.choice_telemetry` to capabilities and updated API/AGENTIC docs.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

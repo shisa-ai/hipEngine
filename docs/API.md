@@ -171,6 +171,17 @@ field names, and whether the server can attach token-accounting-backed
 Cache, backend prefill timing, budget-pressure, KV-byte, and backend-authored
 per-phase token metadata are omitted until the runtime exposes those signals.
 
+### Choice telemetry
+
+Non-streaming completion and chat choices include `choices[].hipengine` when the
+backend returns `GenerationTelemetry`. This extension currently mirrors the
+backend-authored `decode_state` snapshot and the final `finish_details`, giving
+agent harnesses access to row index, prompt/generated token counts, sampler
+mode, active processors, fast-path blockers, stop suffix state, forced-token
+queue state, and budget pressure when those fields were authored by the
+generation loop. The field is omitted when the backend or fake engine does not
+provide telemetry.
+
 ### Finish details
 
 Completion and chat choices include a hipEngine extension field,
