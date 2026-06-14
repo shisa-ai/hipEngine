@@ -1314,7 +1314,8 @@ Current state:
   `features.tools.result_validation_failure_reasons`.
 - Inconsistent `tool_choice` requests are rejected before generation:
   `required` or specific-function choices require a non-empty `tools` list, and
-  specific-function choices must name a declared tool.
+  specific-function choices must use a valid object shape and name a declared
+  tool.
 - For `tool_choice="none"`, chat sampling suppresses the first token of the
   Qwen `<tool_call>` start marker when tokenization is available. This keeps
   no-tool requests on the existing processor path while preserving result

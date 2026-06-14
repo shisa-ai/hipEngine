@@ -89701,3 +89701,18 @@ Validation:
 - `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `27 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `52 passed`.
+
+## 2026-06-14 - AGENTIC malformed tool-choice coverage
+
+Added fail-fast server coverage for malformed specific-function
+`tool_choice` objects: unsupported `type`, missing/non-object `function`, and
+missing/empty `function.name` now have explicit regression tests proving they
+return `invalid_request` / canonical `schema_violation` before any backend
+generation call. API and AGENTIC docs now describe the object-shape requirement
+alongside missing-tools and undeclared-function validation.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_choice_rejects_missing_tools_without_generation tests/test_server_api.py::test_chat_completion_specific_tool_choice_rejects_unknown_function_without_generation tests/test_server_api.py::test_chat_completion_malformed_tool_choice_rejects_without_generation -q` -> `7 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
