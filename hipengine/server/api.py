@@ -443,6 +443,16 @@ def _tool_schema_subset() -> list[str]:
     ]
 
 
+def _structured_outputs_capability() -> dict[str, Any]:
+    return {
+        "response_format": True,
+        "json_object": True,
+        "json_schema": False,
+        "strict_decoding": False,
+        "strict_result_validation": True,
+    }
+
+
 def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
     return {
         "model": {
@@ -459,6 +469,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "chat_completions": True,
             "completions": True,
             "streaming": True,
+            "structured_outputs": _structured_outputs_capability(),
             "tools": {
                 "enabled": True,
                 "strict_decoding": False,
@@ -479,7 +490,6 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
         "unsupported_fields": [
             "continuation_id",
             "session.commit",
-            "response_format",
         ],
     }
 
@@ -1764,6 +1774,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "include_usage": True,
                     "include_hipengine": True,
                 },
+                "structured_outputs": _structured_outputs_capability(),
                 "finish_details": True,
                 "token_diagnostics": {
                     "tokenize": tokenizer_caps["tokenize"],
@@ -1873,7 +1884,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "unsupported_fields": [
                 "continuation_id",
                 "session.commit",
-                "response_format",
             ],
         }
 
@@ -1961,7 +1971,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
         control = _request_control(config, request, raw_request)
-        if request.stream and len(expanded_prompts) == 1 and not request.echo and not _request_logprobs_enabled(request):
+        if (
+            request.stream
+            and len(expanded_prompts) == 1
+            and not request.echo
+            and not _request_logprobs_enabled(request)
+            and not _response_format_json_object(request)
+        ):
             return StreamingResponse(
                 stream_completion_one(expanded_prompts[0], request, control),
                 media_type="text/event-stream",
@@ -1976,6 +1992,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             server_stop = generated_text != output
             finish_reason = _finish_reason_for_output(detail, finish_reason, server_stop=server_stop)
             text = prompt + generated_text if request.echo else generated_text
+            response_format_failure = _response_format_failure_reason(request, generated_text, finish_reason)
+            if response_format_failure is not None:
+                finish_reason = "stop"
+                text = ""
             final_texts.append(text)
             choice = {
                 "text": text,
@@ -1989,7 +2009,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "finish_details": _finish_details_payload(
                     detail,
                     finish_reason,
-                    reason_override="stop" if server_stop else None,
+                    reason_override=response_format_failure or ("stop" if server_stop else None),
                 ),
             }
             if n > 1:
@@ -2034,10 +2054,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             tools=request.tools,
             tool_choice=request.tool_choice,
             thinking=thinking,
+            response_format=request.response_format,
         )
         control = _request_control(config, request, raw_request)
         if request.stream:
-            streamer = stream_chat_completion_many if _request_n(request) > 1 or request.logprobs else stream_chat_completion
+            streamer = (
+                stream_chat_completion_many
+                if _request_n(request) > 1 or request.logprobs or _response_format_json_object(request)
+                else stream_chat_completion
+            )
             return StreamingResponse(
                 streamer(prompt, request, control),
                 media_type="text/event-stream",
@@ -2064,11 +2089,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     server_stop=server_stop,
                     tool_calls=bool(parsed.tool_calls),
                 )
-            finish_reason_override = (
-                tool_validation.failure_reason
-                if tool_validation.failed
-                else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
+            response_format_failure = _response_format_failure_reason(
+                request,
+                _chat_response_format_text(message),
+                finish_reason,
             )
+            if response_format_failure is not None:
+                finish_reason = "stop"
+                message = {"role": "assistant", "content": ""}
+            if tool_validation.failed:
+                finish_reason_override = tool_validation.failure_reason
+            elif response_format_failure is not None:
+                finish_reason_override = response_format_failure
+            elif parsed.tool_calls:
+                finish_reason_override = "tool_calls"
+            elif server_stop:
+                finish_reason_override = "stop"
+            else:
+                finish_reason_override = None
             choice = {
                 "index": index,
                 "message": message,
@@ -2123,11 +2161,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         server_stop=server_stop,
                         tool_calls=bool(parsed.tool_calls),
                     )
-                finish_reason_override = (
-                    tool_validation.failure_reason
-                    if tool_validation.failed
-                    else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
+                response_format_failure = _response_format_failure_reason(
+                    request,
+                    _chat_response_format_text_from_parsed(parsed),
+                    finish_reason,
                 )
+                if response_format_failure is not None:
+                    finish_reason = "stop"
+                    parsed = _ParsedChatOutput(text="", tool_calls=())
+                if tool_validation.failed:
+                    finish_reason_override = tool_validation.failure_reason
+                elif response_format_failure is not None:
+                    finish_reason_override = response_format_failure
+                elif parsed.tool_calls:
+                    finish_reason_override = "tool_calls"
+                elif server_stop:
+                    finish_reason_override = "stop"
+                else:
+                    finish_reason_override = None
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
                 yield _chat_stream_role(
                     response_id,
@@ -2920,6 +2971,22 @@ def _assistant_prefix_for_thinking(thinking: _ThinkingControl | None) -> str:
     return prefix
 
 
+def _render_response_format_prompt(response_format: Any | None) -> str:
+    if response_format is None:
+        return ""
+    response_type = ""
+    if isinstance(response_format, str):
+        response_type = response_format.strip().lower()
+    elif isinstance(response_format, Mapping):
+        response_type = str(response_format.get("type", "")).strip().lower()
+    if response_type != "json_object":
+        return ""
+    return (
+        "Return only one valid JSON object in the final answer. Do not wrap it in "
+        "Markdown, prose, arrays, or scalar JSON values."
+    )
+
+
 def _render_tools_prompt(
     tools: Sequence[Mapping[str, Any]] | None,
     tool_choice: str | Mapping[str, Any] | None,
@@ -2992,6 +3059,7 @@ def render_chat_prompt(
     tools: Sequence[Mapping[str, Any]] | None = None,
     tool_choice: str | Mapping[str, Any] | None = None,
     thinking: _ThinkingControl | None = None,
+    response_format: Any | None = None,
 ) -> str:
     """Render OpenAI chat messages to a Qwen-style text prompt.
 
@@ -3003,7 +3071,15 @@ def render_chat_prompt(
     if not messages:
         raise OpenAIHTTPError(400, "messages must contain at least one item", param="messages")
     rendered: list[str] = []
-    control_prompts = [item for item in (_render_thinking_prompt(thinking), _render_tools_prompt(tools, tool_choice)) if item]
+    control_prompts = [
+        item
+        for item in (
+            _render_thinking_prompt(thinking),
+            _render_response_format_prompt(response_format),
+            _render_tools_prompt(tools, tool_choice),
+        )
+        if item
+    ]
     if control_prompts:
         rendered.append(f"<|im_start|>system\n{'\n\n'.join(control_prompts)}<|im_end|>")
     for index, message in enumerate(messages):
@@ -3381,6 +3457,7 @@ def _validate_generation_request(config: ServerConfig, request: CompletionReques
             code="unsupported_parameter",
             param=unsupported_param,
         )
+    _validate_response_format_request(request)
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
@@ -3605,8 +3682,6 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
 
 
 def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
-    if getattr(request, "response_format", None) is not None:
-        return "response_format"
     if getattr(request, "continuation_id", None) is not None:
         return "continuation_id"
     session = getattr(request, "session", None)
@@ -3615,6 +3690,50 @@ def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompleti
             return "session.commit"
         return "session"
     return None
+
+
+def _validate_response_format_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+    mode = _response_format_mode(request)
+    if mode is None:
+        return
+    if mode == "json_object" and isinstance(request, CompletionRequest) and bool(request.echo):
+        raise OpenAIHTTPError(
+            400,
+            "response_format json_object is incompatible with echo=true",
+            code="invalid_request",
+            param="echo",
+        )
+
+
+def _response_format_mode(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+    value = getattr(request, "response_format", None)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        response_type = value.strip().lower()
+    elif isinstance(value, Mapping):
+        response_type = str(value.get("type", "")).strip().lower()
+    else:
+        raise OpenAIHTTPError(
+            400,
+            "response_format must be an object with type",
+            code="invalid_request",
+            param="response_format",
+        )
+    if response_type in {"", "text"}:
+        return "text"
+    if response_type == "json_object":
+        return "json_object"
+    raise OpenAIHTTPError(
+        400,
+        f"response_format type {response_type!r} is not supported",
+        code="unsupported_parameter",
+        param="response_format",
+    )
+
+
+def _response_format_json_object(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    return _response_format_mode(request) == "json_object"
 
 
 def _request_extra_keys(request: CompletionRequest | ChatCompletionRequest) -> set[str]:
@@ -3747,6 +3866,37 @@ def _chat_finish_details_payload(
         payload.setdefault("phase", _classify_chat_length_phase(text))
         payload.setdefault("continuation_eligible", False)
     return payload
+
+
+def _response_format_failure_reason(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+    finish_reason: str,
+) -> str | None:
+    if not _response_format_json_object(request):
+        return None
+    if str(finish_reason).strip().lower() == "length":
+        return None
+    return None if _is_json_object_text(text) else "schema_violation"
+
+
+def _is_json_object_text(text: str) -> bool:
+    try:
+        value = json.loads(str(text).strip())
+    except Exception:
+        return False
+    return isinstance(value, dict)
+
+
+def _chat_response_format_text(message: Mapping[str, Any]) -> str:
+    content = message.get("content", "")
+    return content if isinstance(content, str) else ""
+
+
+def _chat_response_format_text_from_parsed(parsed: _ParsedChatOutput) -> str:
+    if parsed.tool_calls:
+        return ""
+    return _split_reasoning(parsed.text).content
 
 
 def _is_length_finish_payload(payload: Mapping[str, Any]) -> bool:

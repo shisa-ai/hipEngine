@@ -1034,6 +1034,11 @@ Current state:
 - Strict failures return normal chat responses with no successful `tool_calls`,
   coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
   `invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
+- `response_format={"type":"json_object"}` is accepted for completion and chat
+  requests as post-generation result validation. Valid visible JSON objects are
+  returned normally; invalid stop-finished outputs return
+  `finish_details.reason="schema_violation"`. `json_schema` response formats
+  remain unsupported.
 - Decode-time suppression/forcing and grammar-constrained JSON/tool generation
   remain future work.
 
@@ -1093,6 +1098,17 @@ Exit gates:
 - generated JSON parses on fixture prompts;
 - invalid schema requests return `unsupported_parameter` or `schema_violation`;
 - unconstrained sampling behavior is unchanged when no constraint is active.
+
+Current code reality:
+
+- `response_format={"type":"json_object"}` is implemented as prompt-hint plus
+  post-generation result validation for completion and chat outputs; streaming
+  requests use buffered response paths so invalid JSON is not emitted as
+  successful deltas;
+- `response_format={"type":"text"}` is a no-op, and `json_schema` remains
+  `unsupported_parameter`;
+- decode-time close-brace/quote enforcement and schema-constrained generation
+  remain future grammar work.
 
 #### P2.4 Guidance / grammar plugin interface
 
@@ -1356,20 +1372,20 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
-  parameters and execution modes, strict tool result-validation support, the
-  reasoning-control field list with `budget_policy="prompt_hint_only"` and
-  `token_budget_enforced=false`, the default-off PARO c=1 native GPU sampler
-  scope, speculative/MTP sampling compatibility, request-timeout/client-disconnect
-  support, cache/session settings, loaded-model count, and unsupported fields.
+  parameters and execution modes, strict tool result-validation support,
+  JSON-object structured-output result validation, the reasoning-control field
+  list with `budget_policy="prompt_hint_only"` and `token_budget_enforced=false`,
+  the default-off PARO c=1 native GPU sampler scope, speculative/MTP sampling
+  compatibility, request-timeout/client-disconnect support, cache/session
+  settings, loaded-model count, and unsupported fields.
 - Continuations, `session.commit`, multi-model routing, and strict tool decoding
   are advertised as unsupported until their runtime paths exist. Request
   timeouts and client-disconnect cancellation are advertised as supported with
   `preemptive_decode_cancel=false`; token diagnostics are advertised from
   current tokenizer/counting callables.
 - Known unsupported agent fields are rejected explicitly before generation work:
-  `response_format`, `continuation_id`, `session.commit`, and other `session`
-  payloads return `unsupported_parameter` with `error.param` set to the rejected
-  field.
+  `continuation_id`, `session.commit`, and other `session` payloads return
+  `unsupported_parameter` with `error.param` set to the rejected field.
 
 Exit gates:
 
@@ -1394,8 +1410,7 @@ Current code reality:
   to deterministic Qwen-friendly chat (`temperature=0`, `reasoning_effort=none`),
   bounds ordinary generations to `max_tokens=4096`, enables SSE usage and
   hipEngine extension metadata, sets a request `timeout_ms`, sends tools
-  per request, and keeps unsupported/session/structured-output fields in
-  `do_not_send`.
+  per request, and keeps unsupported/session fields in `do_not_send`.
 - `scripts/validate_local_agent_config.py` validates the snippet against a
   running server capability manifest and can optionally POST a small
   chat/tools smoke request:

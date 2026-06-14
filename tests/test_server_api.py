@@ -212,6 +212,13 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert body["tokenizer"]["detokenize"] is True
     assert body["tokenizer"]["count_tokens"] is True
     assert body["features"]["stream_options"] == {"include_usage": True, "include_hipengine": True}
+    assert body["features"]["structured_outputs"] == {
+        "response_format": True,
+        "json_object": True,
+        "json_schema": False,
+        "strict_decoding": False,
+        "strict_result_validation": True,
+    }
     assert body["features"]["token_diagnostics"] == {
         "tokenize": True,
         "detokenize": True,
@@ -346,6 +353,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
     assert "timeout_ms" not in body["unsupported_fields"]
     assert "parallel_tool_calls" not in body["unsupported_fields"]
+    assert "response_format" not in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -836,6 +844,79 @@ def test_completions_preserve_structured_finish_details() -> None:
         "length_limit": 2,
         "budget_pressure": "answer_budget",
     }
+
+
+def test_completions_response_format_json_object_validates_result() -> None:
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true}']),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=["not json"]),
+        )
+    )
+
+    valid = valid_client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {"type": "json_object"},
+        },
+    )
+    invalid = invalid_client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"ok":true}'
+    assert valid.json()["choices"][0]["finish_details"] == {"reason": "stop"}
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+
+
+def test_completions_response_format_rejects_unsupported_modes() -> None:
+    fake = FakeLLM(outputs=['{"ok":true}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    unsupported = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {"type": "json_schema", "json_schema": {"name": "x"}},
+        },
+    )
+    echo = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "echo": True,
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert unsupported.status_code == 400
+    assert unsupported.json()["error"]["code"] == "unsupported_parameter"
+    assert unsupported.json()["error"]["param"] == "response_format"
+    assert echo.status_code == 400
+    assert echo.json()["error"]["code"] == "invalid_request"
+    assert echo.json()["error"]["param"] == "echo"
+    assert fake.calls == []
 
 
 def test_server_lowers_single_token_stop_strings_to_stop_token_ids() -> None:
@@ -1438,6 +1519,66 @@ def test_chat_completion_length_finish_details_include_phase(
         assert "reasoning_content" not in choice["message"]
     else:
         assert choice["message"]["reasoning_content"] == reasoning_content
+
+
+def test_chat_completion_response_format_json_object_validates_visible_content() -> None:
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['<think>check</think>{"ok":true}']),
+        )
+    )
+    invalid_fake = FakeLLM(outputs=["not json"])
+    invalid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=invalid_fake)
+    )
+
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "return json"}],
+        "response_format": {"type": "json_object"},
+    }
+    valid = valid_client.post("/v1/chat/completions", json=payload)
+    invalid = invalid_client.post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["message"]["content"] == '{"ok":true}'
+    assert valid_choice["message"]["reasoning_content"] == "check"
+    assert valid_choice["finish_details"] == {"reason": "stop"}
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["message"] == {"role": "assistant", "content": ""}
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+    assert "Return only one valid JSON object" in invalid_fake.calls[0][0][0]
+
+
+def test_streaming_chat_completion_response_format_buffers_validation() -> None:
+    fake = FakeLLM(outputs=["not json"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("content") for payload in payloads if payload.get("choices"))
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "done",
+        "finish_details": {"reason": "schema_violation"},
+    }
 
 
 def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
@@ -2515,11 +2656,6 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
 @pytest.mark.parametrize(
     ("endpoint", "payload", "param"),
     [
-        (
-            "/v1/completions",
-            {"model": "fake-model", "prompt": "hello", "response_format": {"type": "json_object"}},
-            "response_format",
-        ),
         (
             "/v1/chat/completions",
             {

@@ -39,6 +39,13 @@ def _capabilities(**overrides):
             "chat_completions": True,
             "streaming": True,
             "stream_options": {"include_usage": True, "include_hipengine": True},
+            "structured_outputs": {
+                "response_format": True,
+                "json_object": True,
+                "json_schema": False,
+                "strict_decoding": False,
+                "strict_result_validation": True,
+            },
             "tools": {"enabled": True, "strict_decoding": False},
             "reasoning_controls": {
                 "enabled": True,
@@ -71,7 +78,6 @@ def _capabilities(**overrides):
         "unsupported_fields": [
             "continuation_id",
             "session.commit",
-            "response_format",
             "parallel_tool_calls",
         ],
     }

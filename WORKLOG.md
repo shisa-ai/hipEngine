@@ -87520,3 +87520,26 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC response_format JSON object validation
+
+Implemented the documented `response_format={"type":"json_object"}` surface for
+completion and chat requests as prompt-hint plus post-generation result
+validation. Valid visible JSON objects return normally. Invalid stop-finished
+outputs return normal responses with empty successful content and
+`finish_details.reason="schema_violation"`; length finishes keep length metadata
+so the partial JSON can become resumable when continuation handles exist.
+
+Streaming chat/completion requests that ask for JSON-object validation now use
+buffered response paths so invalid text is not emitted as successful deltas.
+Capabilities and the local-agent example no longer advertise `response_format`
+as an unsupported field. `json_schema` response formats and grammar-constrained
+decode-time JSON enforcement remain unsupported.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_object_validates_result tests/test_server_api.py::test_completions_response_format_rejects_unsupported_modes tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_local_agent_config.py -q` -> `13 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `88 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json`.

@@ -250,6 +250,19 @@ with `minItems` / `maxItems`, string `minLength` / `maxLength`, and numeric
 `minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`. This is result
 validation only; decode-time JSON/schema constraints remain unsupported.
 
+### Structured outputs
+
+Completion and chat requests accept `response_format: {"type": "json_object"}`
+or `{"type": "text"}`. JSON-object mode adds a chat prompt hint and validates
+the completed visible output after generation. Valid JSON objects are returned
+normally; invalid stop-finished outputs return a normal response with empty
+successful content and `finish_details.reason: "schema_violation"`. Length
+finishes keep their length finish metadata because the partial JSON may be
+resumable once continuation handles exist.
+
+This is result validation, not grammar-constrained decoding. `json_schema`
+response formats remain unsupported and return `unsupported_parameter`.
+
 ### Thinking / no-think controls
 
 Chat requests accept common OpenAI/Qwen thinking controls:
@@ -290,12 +303,12 @@ A minimal OpenAI-compatible local-agent config is checked in at
 model id from `/v1/hipengine/capabilities`, uses deterministic Qwen-friendly
 defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
 hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
-and keeps unsupported/session/structured-output fields plus intentionally unused
-tool-policy fields in `do_not_send`.
+and keeps unsupported/session fields plus intentionally unused tool-policy fields
+in `do_not_send`.
 
 Known agent fields that are advertised as unsupported are rejected before
-generation work starts. `response_format`, `continuation_id`, `session.commit`,
-and other `session` payloads return HTTP 400 with
+generation work starts. `continuation_id`, `session.commit`, and other
+`session` payloads return HTTP 400 with
 `error.code: "unsupported_parameter"` and `error.param` set to the rejected
 field.
 

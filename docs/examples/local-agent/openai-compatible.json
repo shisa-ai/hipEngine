@@ -31,7 +31,6 @@
     "do_not_send": [
       "continuation_id",
       "session.commit",
-      "response_format",
       "parallel_tool_calls",
       "top_logprobs"
     ]
