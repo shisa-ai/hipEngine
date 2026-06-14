@@ -9779,6 +9779,43 @@ def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, para
     assert fake.calls == []
 
 
+def test_capabilities_advertised_unsupported_fields_are_rejected_before_generation() -> None:
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+
+    unsupported_fields = capabilities["unsupported_fields"]
+    assert unsupported_fields == capabilities["features"]["grammars"]["unsupported_fields"]
+
+    field_values = {
+        "grammar": {"type": "json"},
+        "guided_json": {"type": "object"},
+        "guided_regex": "[a-z]+",
+        "guided_choice": ["yes", "no"],
+        "guided_grammar": "root ::= 'ok'",
+        "guided_decoding_backend": "outlines",
+    }
+    assert set(unsupported_fields) == set(field_values)
+
+    for endpoint in ("/v1/completions", "/v1/chat/completions"):
+        for field in unsupported_fields:
+            payload = (
+                {"model": "fake-model", "prompt": "hello"}
+                if endpoint == "/v1/completions"
+                else {"model": "fake-model", "messages": [{"role": "user", "content": "hello"}]}
+            )
+            payload[field] = field_values[field]
+
+            response = client.post(endpoint, json=payload)
+
+            assert response.status_code == 400
+            assert response.json()["error"]["code"] == "unsupported_parameter"
+            assert response.json()["error"]["param"] == field
+
+    assert fake.calls == []
+
+
 @pytest.mark.parametrize(
     ("payload", "param", "code"),
     [

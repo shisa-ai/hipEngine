@@ -2065,6 +2065,9 @@ Current code reality:
   combinations, unsupported `session.commit` modes, known unsupported
   grammar/guidance fields, and other `session` payloads return
   `unsupported_parameter` with `error.param` set to the rejected field.
+  Server tests now derive the advertised `unsupported_fields` list from
+  `/v1/hipengine/capabilities` and prove each listed field is rejected on both
+  completions and chat before generation is called.
   Unknown, consumed, wrong-endpoint, or wrong-model
   `continuation_id` values return `invalid_continuation`; expired handles return
   `continuation_expired`.

@@ -91100,3 +91100,14 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC unsupported-field manifest guard
+
+Added a server-contract regression that reads `/v1/hipengine/capabilities` and
+proves every advertised `unsupported_fields` grammar/guidance parameter is
+rejected on both `/v1/completions` and `/v1/chat/completions` before generation.
+This keeps the AGENTIC unsupported-field manifest tied to endpoint behavior
+instead of a hand-maintained example list.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_advertised_unsupported_fields_are_rejected_before_generation -q` -> `1 passed`.
