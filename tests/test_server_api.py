@@ -983,6 +983,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "presence_penalty",
             "frequency_penalty",
         ],
+        "post_selection_controls": [
+            "stop_token_ids",
+            "stop_token_sequences",
+        ],
         "unsupported": [
             "c_gt_1",
             "gguf",

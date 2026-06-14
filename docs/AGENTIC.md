@@ -1898,7 +1898,10 @@ Current state:
   generic host fallback reason. The capabilities manifest now advertises the
   same current native-sampler blockers enforced by `supports_native_gpu_sampling`,
   including forced-token queues, post-thinking forced-token queues, and
-  sequence-completion repairs;
+  sequence-completion repairs. It also separates native GPU pre-selection
+  `processors` from `post_selection_controls` for stop token ids and
+  multi-token stop sequences, which PARO c=1 native sampling checks after each
+  selected token;
 - c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
   default-path promotion remain unimplemented.
 

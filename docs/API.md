@@ -798,7 +798,10 @@ in local, non-sensitive debugging sessions.
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`,
   suppress-token ids, min-token/EOS policy, forced-token queues,
   sequence-completion repair, thinking-budget controls, and unsupported native
-  filter combinations fall back to the host path.
+  filter combinations fall back to the host path. The capabilities manifest
+  distinguishes native GPU pre-selection `processors` from
+  `post_selection_controls` such as stop token ids and stop token sequences,
+  which PARO c=1 native sampling checks after each selected token.
 - The capabilities manifest reports `sampling.speculative_mtp` with
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token

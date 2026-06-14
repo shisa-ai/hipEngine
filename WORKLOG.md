@@ -91136,3 +91136,17 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC native sampler stop controls
+
+Documented and advertised the distinction between native GPU sampler
+pre-selection processors and post-selection stop controls. Added a PARO c=1
+native sampler regression proving a request with `stop_token_sequences` stays on
+the `gpu_sample` route, stops after the matched selected token sequence, and
+reports stop finish details plus compact stop-suffix decode telemetry.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_env_routes_supported_c1_request_to_native_sampler tests/test_generation_qwen35_paro.py::test_qwen35_paro_native_sampler_honors_stop_sequence_after_selection tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `3 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_generation_qwen35_paro.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_generation_qwen35_paro.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

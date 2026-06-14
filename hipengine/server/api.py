@@ -3909,6 +3909,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "presence_penalty",
                         "frequency_penalty",
                     ],
+                    "post_selection_controls": [
+                        "stop_token_ids",
+                        "stop_token_sequences",
+                    ],
                     "unsupported": list(_NATIVE_GPU_SAMPLER_UNSUPPORTED),
                 },
                 "speculative_mtp": {
