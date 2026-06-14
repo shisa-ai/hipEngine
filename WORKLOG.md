@@ -90855,3 +90855,16 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_uses_host_sampler_for_non_greedy tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill tests/test_sampling.py::test_sampler_plan_uses_processed_argmax_for_active_processors tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy -q` -> `5 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `28 passed`.
 - `python3 -m py_compile tests/test_generation_qwen35_paro.py && python3 -m ruff check tests/test_generation_qwen35_paro.py && git diff --check -- tests/test_generation_qwen35_paro.py WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC scheduler lint cleanup
+
+Cleaned up the two whole-file `ruff` blockers in
+`tests/test_generation_batch_scheduler.py` that were noted during the
+scheduler/MTP AGENTIC coverage pass: profiler precondition tests now have
+unique names for missing-field versus missing-path cases, and the unused
+`gguf_c8_index` local was removed. This makes the full scheduler test module
+lintable for future AGENTIC scheduler and speculative-decoding work.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir_field tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir_path tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files_field -q && python3 -m ruff check tests/test_generation_batch_scheduler.py` -> `3 passed`, `All checks passed!`.
+- `python3 -m py_compile tests/test_generation_batch_scheduler.py && git diff --check -- tests/test_generation_batch_scheduler.py` -> passed / clean.

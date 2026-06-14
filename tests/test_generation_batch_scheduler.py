@@ -1167,7 +1167,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_blank_device_env(
     }
 
 
-def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir(tmp_path: Path) -> None:
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir_field(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
@@ -1374,7 +1374,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_non_directory_parent_trace_
     }
 
 
-def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir(tmp_path: Path) -> None:
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir_path(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
@@ -1447,7 +1447,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_file_trace_dir(tmp_path: Pa
     }
 
 
-def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_path: Path) -> None:
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files_field(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
@@ -11810,11 +11810,6 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
             c_sweep.validate_sweep_summary(tampered_int8_env)
 
-    gguf_c8_index = next(
-        index
-        for index, entry in enumerate(summary["commands"])
-        if entry["category"] == "gguf_native_diagnostic" and entry["batch_size"] == 8
-    )
     for flag, stale_value, expected_error in (
         ("--fixture", "tests/fixtures/gguf/other.json", r"commands\[\]\.argv GGUF --fixture must match the template fixture"),
         ("--backend", "cpu_reference", r"commands\[\]\.argv GGUF --backend must match the template backend"),
