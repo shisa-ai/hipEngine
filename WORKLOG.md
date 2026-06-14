@@ -88181,6 +88181,25 @@ Validation:
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
 - `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 
+## 2026-06-14 - Thinking budget host sampler bridge
+
+Filled the lower-loop P1.4 prerequisite by letting `RowSamplingState` bind an
+optional `ThinkingBudgetState`. Host `select_token()` now checks hard budget
+pressure before token selection, queues the lowered close sequence as ordinary
+forced tokens, and observes every accepted token back into the thinking-budget
+phase counters. This proves the forced-close path composes with normal
+logit-bias/sampling processors; server request-time lowering into the state
+remains future work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py tests/test_sampling.py`.
+- `python3 -m pytest tests/test_sampling.py -q` -> `30 passed`.
+- `python3 -m ruff check hipengine/generation/sampling.py tests/test_sampling.py` -> `All checks passed!`.
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/constraints.py tests/test_sampling.py tests/test_generation_constraints.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_constraints.py -q` -> `40 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_registry.py -q` -> `18 passed`.
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/generation/registry.py`.
+
 ## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
 
 Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).

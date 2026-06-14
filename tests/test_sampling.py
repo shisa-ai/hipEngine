@@ -11,6 +11,7 @@ from hipengine.generation.sampling import (
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     SamplingMode,
+    ThinkingBudgetState,
     derive_row_seed,
     normalize_logit_bias_pairs,
     normalize_stop_token_sequences,
@@ -283,6 +284,50 @@ def test_forced_token_queue_overrides_suppression() -> None:
     assert result.forced is True
     assert result.logprob is None
     assert result.active_processors == ("suppress_token_ids", "forced_tokens_pending")
+
+
+def test_thinking_budget_hard_close_queues_forced_tokens_before_selection() -> None:
+    state = RowSamplingState(
+        thinking_budget=ThinkingBudgetState(close_sequence=(2, 1), hard_token_cap=1),
+    )
+
+    natural = select_token(np.array([5.0, 1.0, 0.0], dtype=np.float32), _params(), state)
+    first_close = select_token(np.array([5.0, 1.0, 0.0], dtype=np.float32), _params(), state)
+    second_close = select_token(np.array([5.0, 1.0, 0.0], dtype=np.float32), _params(), state)
+
+    assert natural.token_id == 0
+    assert natural.forced is False
+    assert first_close.token_id == 2
+    assert first_close.forced is True
+    assert first_close.forced_reason == "thinking_hard_close"
+    assert first_close.active_processors == ("forced_tokens_pending",)
+    assert second_close.token_id == 1
+    assert second_close.forced is True
+    assert state.generated_tokens == [0, 2, 1]
+    assert state.forced_tokens == ()
+    assert state.thinking_budget is not None
+    assert state.thinking_budget.phase == "answer"
+    assert state.thinking_budget.reasoning_tokens == 3
+
+
+def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:
+    state = RowSamplingState(
+        seed=123,
+        thinking_budget=ThinkingBudgetState(close_sequence=(3,), hard_token_cap=0),
+    )
+
+    result = select_token(
+        np.array([10.0, 9.0, 8.0, 0.0], dtype=np.float32),
+        _params(temperature=0.8, seed=123, logit_bias={0: 100.0}),
+        state,
+    )
+
+    assert result.token_id == 3
+    assert result.mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert result.forced is True
+    assert result.forced_reason == "thinking_hard_close"
+    assert result.active_processors == ("logit_bias", "forced_tokens_pending")
+    assert result.fast_path_blockers == ("temperature", "logit_bias", "forced_tokens_pending")
 
 
 def test_forced_token_outside_vocab_does_not_consume_queue() -> None:

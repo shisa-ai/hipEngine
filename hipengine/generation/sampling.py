@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from hipengine.generation.constraints import ForcedTokenQueue
+from hipengine.generation.constraints import ForcedTokenQueue, ThinkingBudgetState
 
 _LOGIT_BIAS_EMPTY: tuple[tuple[int, float], ...] = ()
 _UINT64_MASK = (1 << 64) - 1
@@ -87,6 +87,7 @@ class RowSamplingState:
     step_index: int = 0
     forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
     forced_token_reason: str | None = None
+    thinking_budget: ThinkingBudgetState | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -103,6 +104,11 @@ class RowSamplingState:
                 self.forced_tokens_pending,
                 reason=self.forced_token_reason,
             )
+        if self.thinking_budget is not None:
+            budget_forced = self.thinking_budget.forced_tokens
+            if forced is not budget_forced and forced.pending_tokens:
+                budget_forced.extend(forced.pending_tokens, reason=forced.reason)
+            forced = budget_forced
         self.forced_tokens_pending = forced
         self.forced_token_reason = forced.reason
         if self.step_index < 0:
@@ -124,8 +130,11 @@ class RowSamplingState:
         return float(self._rng.random())
 
     def observe(self, token_id: int) -> None:
-        self.generated_tokens.append(int(token_id))
+        token = int(token_id)
+        self.generated_tokens.append(token)
         self.step_index += 1
+        if self.thinking_budget is not None:
+            self.thinking_budget.observe(token)
 
     @property
     def forced_tokens(self) -> tuple[int, ...]:
@@ -148,6 +157,13 @@ class RowSamplingState:
         if not self.forced_tokens_pending:
             self.forced_token_reason = None
         return token_id
+
+    def prepare_for_selection(self) -> None:
+        if self.thinking_budget is None:
+            return
+        self.thinking_budget.ensure_hard_close()
+        self.forced_tokens_pending = self.thinking_budget.forced_tokens
+        self.forced_token_reason = self.forced_tokens_pending.reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -474,6 +490,7 @@ def select_token(
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
+    row_state.prepare_for_selection()
     forced_token_id = row_state.peek_forced_token()
     if forced_token_id is not None:
         token_id = int(forced_token_id)

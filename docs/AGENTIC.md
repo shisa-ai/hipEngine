@@ -963,14 +963,18 @@ Current code reality:
 - Host `select_token()` consumes one pending forced token before argmax or
   sampling, records forced metadata on `SampleResult`, and updates row history
   so the token still goes through the normal decode/KV path.
+- `RowSamplingState` can now bind a `ThinkingBudgetState`; before each host
+  token selection, hard budget pressure queues the tokenizer-lowered close
+  sequence as forced tokens, and every selected token updates the
+  reasoning/answer phase counters.
 - Pending forced tokens participate in sampler planning as
   `forced_tokens_pending`, are rejected from the current native GPU sampler
   route, dynamically fall back to host token selection if they appear while a
   row is configured for native sampling, and block raw-argmax MTP verification.
 - Queue population from thinking close delimiters, JSON/tool repair, and grammar
-  processors remains future controller/generation-loop work, though the
-  `ThinkingBudgetState` primitive can now enqueue a tokenizer-lowered close
-  sequence when wired into a controller.
+  processors remains future server/controller work, though the host sampler now
+  consumes a wired `ThinkingBudgetState` close queue exactly like other forced
+  tokens.
 
 Implement:
 
@@ -1046,12 +1050,16 @@ Current code reality:
   budget pressure, enqueues a tokenizer-lowered close sequence through
   `ForcedTokenQueue`, and transitions to answer phase when the close DFA
   matches;
+- host `RowSamplingState` / `select_token()` can enforce a supplied
+  `ThinkingBudgetState` hard cap by forcing the close sequence before ordinary
+  argmax/sampling, with forced-token metadata and normal row-history updates;
 - chat token diagnostics can lower the configured hard close sequence (or the
   default `</think>` marker) into token ids and return an initialized
   `ThinkingBudgetState` payload for harness/debug verification;
-- not implemented: live generation request-time wiring into
-  `ThinkingBudgetState`, dynamic soft-close bias, hard/manual forced close, EOS
-  suppression, and backend-authored per-phase finish metadata.
+- not implemented: server/runtime request-time lowering into
+  `RowSamplingState.thinking_budget`, dynamic soft-close bias, manual forced
+  close from external controllers, EOS suppression, and backend-authored
+  per-phase finish metadata.
 
 Exit gates:
 
