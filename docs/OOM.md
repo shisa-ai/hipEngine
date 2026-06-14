@@ -166,6 +166,18 @@ This is only a modest net min-free improvement vs the prior `0.61 GiB` because
 full-attention scratch plus the BF16 int8 prefill oracle is now the high-water
 phase. That makes the BF16 oracle reduction the next memory target.
 
+BF16 oracle reduction analysis: an allocation-only shrink is not safe for exact
+prefill. In chunked full-attention prefill, chunk `[start, end)` must attend over
+K/V rows `[0, end)`, so the final chunk of each full-attention layer needs the
+entire prompt's K/V image. The current BF16 oracle is already one reused
+per-layer workspace slot, rounded only to the KV block size. The existing
+`int8_per_token_head` HIP attention route is decode-shaped (single query row),
+while the current row-batched split-K route would require `[rows, heads,
+splits, head_dim]` partials; at 256 rows and 262k context that partial buffer
+would exceed the oracle by far. A real oracle removal therefore needs a new
+streaming/row-batched INT8 prefill-attention kernel that reads retained INT8 K/V
+and reduces without materializing huge per-row split partials.
+
 ## Current measurements
 
 All measurements below are from 2026-06-14 on GPU1 with a clean GPU before

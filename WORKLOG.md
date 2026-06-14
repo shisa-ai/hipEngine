@@ -89146,3 +89146,27 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
 - `python3 -m ruff check tests/test_sampling.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_sampling.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - BF16 int8 prefill oracle reduction analysis
+
+Investigated the new 24GB high-water after compacting PARO linear tree scratch.
+The current `_prefill_int8_oracle_cache()` allocation is a reused per-layer BF16
+K/V image, not one allocation per full-attention layer. For chunked full-attn
+prefill, each query chunk `[start, end)` must attend over K/V rows `[0, end)`;
+the final chunk therefore needs the whole prompt's K/V image. The current oracle
+is already rounded only to the KV block size, so there is no safe allocation-only
+shrink that preserves the current BF16-prefill math.
+
+Checked the INT8 HIP attention options:
+- existing `qwen35_paged_attn_decode_int8_gqa_splitk_*_spans` wrappers are
+  decode-shaped/single-query; using them directly for prefill would require a
+  Python loop over every prompt row and is not viable.
+- existing row-batched BF16 split-K decode path uses `[rows, heads, splits,
+  head_dim]` partials; a direct INT8 batch copy would need enormous partials at
+  262k (e.g. 256 rows * 16 heads * ~1024 splits * 256 dims * fp32), much larger
+  than the 0.5 GiB BF16 oracle.
+
+Conclusion: exact/default BF16-oracle removal requires a new streaming or
+row-batched INT8 prefill-attention kernel that reads retained INT8 K/V and
+reduces per row without materializing huge split partials. Do not replace the
+oracle with the existing decode wrapper or a giant batched split-K partial route.
