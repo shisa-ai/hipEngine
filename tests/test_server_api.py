@@ -29,6 +29,9 @@ from hipengine.server.api import (
     ChatCompletionRequest,
     CompletionRequest,
     OpenAIHTTPError,
+    _AGENTIC_REPLAY_FAILURE_REASONS,
+    _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
+    _TOOL_RESULT_VALIDATION_FAILURE_REASONS,
     _await_with_request_control,
     _coerce_generation_output,
     _GenerationBatcher,
@@ -401,6 +404,16 @@ def test_models_endpoint_reports_lazy_model_not_loaded() -> None:
     assert model["hipengine"]["loaded"] is False
     assert model["hipengine"]["routing"] == {"loaded_model_count": 0, "multiple_models": False}
     assert model["hipengine"]["kv_capacity"]["estimate"] is None
+
+
+def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
+    advertised = frozenset(
+        (
+            *_TOOL_RESULT_VALIDATION_FAILURE_REASONS,
+            *_STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
+        )
+    )
+    assert _AGENTIC_REPLAY_FAILURE_REASONS == advertised
 
 
 def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:

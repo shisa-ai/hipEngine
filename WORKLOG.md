@@ -88966,3 +88966,17 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `21 passed`.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json tests/test_agentic_harness_traces.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC replay reason invariant
+
+Single-sourced replay artifact capture reasons from the same tool and
+structured-output result-validation reason tuples advertised in capabilities.
+Added a server invariant test so replay capture cannot drift from the manifest
+contract when new normal-response validation reasons are added.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_agentic_replay_failure_reasons_match_capability_contract tests/test_server_api.py::test_replay_artifact_captures_agentic_result_validation_failure tests/test_server_api.py::test_replay_artifact_captures_streaming_agentic_result_validation_failure -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py WORKLOG.md` -> clean.

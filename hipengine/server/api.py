@@ -107,12 +107,17 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "parallel_tool_calls",
     "thinking",
 )
+_TOOL_RESULT_VALIDATION_FAILURE_REASONS = (
+    "invalid_tool_call",
+    "tool_required_not_satisfied",
+    "schema_violation",
+)
+_STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS = ("schema_violation",)
 _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
-    {
-        "invalid_tool_call",
-        "schema_violation",
-        "tool_required_not_satisfied",
-    }
+    (
+        *_TOOL_RESULT_VALIDATION_FAILURE_REASONS,
+        *_STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
+    )
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
 _UNSUPPORTED_GRAMMAR_FIELDS = (
@@ -700,14 +705,6 @@ def _tool_schema_subset() -> list[str]:
         "number.exclusiveMinimum",
         "number.exclusiveMaximum",
     ]
-
-
-_TOOL_RESULT_VALIDATION_FAILURE_REASONS = (
-    "invalid_tool_call",
-    "tool_required_not_satisfied",
-    "schema_violation",
-)
-_STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS = ("schema_violation",)
 
 
 def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
