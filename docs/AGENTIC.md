@@ -1478,9 +1478,12 @@ Current code reality:
 - Patch/diff constrained decoding is not implemented, but `guided_patch` and
   `guided_diff` now provide fail-closed result validation for coding agents.
   The server accepts `true`, `"unified_diff"`, or an object with
-  `type`/`format="unified_diff"` and optional `fenced`. Chat rendering adds a
-  unified-diff prompt hint. Stop-finished outputs that are not raw unified diffs
-  or a single fenced `diff`/`patch` block return empty content with
+  `type`/`format="unified_diff"` and `fenced` policy. `fenced:"optional"` is
+  the default and accepts raw unified diffs or a single fenced `diff`/`patch`
+  block; `fenced:true` / `"required"` requires the fenced block, and
+  `fenced:false` / `"forbidden"` requires raw unified diff text. Chat rendering
+  adds a unified-diff prompt hint. Stop-finished outputs that do not satisfy the
+  selected policy return empty content with
   `finish_details.reason="schema_violation"`.
 - Length-finished partial guided patches keep their partial text, are classified
   as structured length finishes, and inherit patch validation across

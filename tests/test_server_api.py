@@ -3327,6 +3327,35 @@ def test_completions_guided_diff_validates_unified_diff_result() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+@pytest.mark.parametrize(
+    ("guided_diff", "generated", "expected_text"),
+    [
+        ({"type": "unified_diff", "fenced": False}, _unified_diff_text(), _unified_diff_text()),
+        ({"type": "unified_diff", "fenced": "forbidden"}, f"```diff\n{_unified_diff_text()}\n```", ""),
+        ({"type": "unified_diff", "fenced": True}, f"```patch\n{_unified_diff_text()}\n```", f"```patch\n{_unified_diff_text()}\n```"),
+        ({"type": "unified_diff", "fenced": "required"}, _unified_diff_text(), ""),
+        ({"type": "unified_diff", "fenced": "optional"}, f"```diff\n{_unified_diff_text()}\n```", f"```diff\n{_unified_diff_text()}\n```"),
+    ],
+)
+def test_completions_guided_diff_enforces_fenced_policy(guided_diff, generated, expected_text) -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=[generated]),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "patch", "guided_diff": guided_diff},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == expected_text
+    expected_reason = "stop" if expected_text else "schema_violation"
+    assert choice["finish_details"] == _stateless_finish_details(expected_reason)
+
+
 def test_streaming_completion_guided_diff_buffers_validation_failure() -> None:
     fake = FakeLLM(outputs=["not a diff"], stream_chunks=[_unified_diff_text()])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -7665,6 +7694,20 @@ def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, para
                 "response_format": {"type": "json_object"},
             },
             "guided_patch",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_patch": {"fenced": "sometimes"},
+            },
+            "guided_patch.fenced",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_patch": {"fenced": None},
+            },
+            "guided_patch.fenced",
             "invalid_request",
         ),
     ],

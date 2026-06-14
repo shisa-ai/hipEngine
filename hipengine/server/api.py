@@ -7029,14 +7029,29 @@ def _validate_guided_patch_request(request: CompletionRequest | ChatCompletionRe
             code="unsupported_parameter",
             param=f"{field}.type",
         )
-    fenced = value.get("fenced", "optional")
-    if isinstance(fenced, bool):
-        return
-    if str(fenced).strip().lower() in {"optional", "allow", "allowed"}:
-        return
+    _guided_patch_fenced_policy_from_value(value.get("fenced", "optional"), field=field)
+
+
+def _guided_patch_fenced_policy_from_value(value: Any, *, field: str) -> str:
+    if value is None:
+        raise OpenAIHTTPError(
+            400,
+            f"{field}.fenced must be one of optional, required, or forbidden",
+            code="invalid_request",
+            param=f"{field}.fenced",
+        )
+    if isinstance(value, bool):
+        return "required" if value else "forbidden"
+    text = str(value).strip().lower().replace("-", "_")
+    if text in {"", "optional", "allow", "allowed"}:
+        return "optional"
+    if text in {"required", "require", "only", "fenced"}:
+        return "required"
+    if text in {"forbidden", "forbid", "disallow", "disallowed", "none", "raw", "unfenced"}:
+        return "forbidden"
     raise OpenAIHTTPError(
         400,
-        f"{field}.fenced must be a boolean or 'optional'",
+        f"{field}.fenced must be one of optional, required, or forbidden",
         code="invalid_request",
         param=f"{field}.fenced",
     )
@@ -7066,6 +7081,19 @@ def _guided_patch_result_validation(request: CompletionRequest | ChatCompletionR
         getattr(request, "guided_patch", None),
         getattr(request, "guided_diff", None),
     ) is not None
+
+
+def _guided_patch_fenced_policy(request: CompletionRequest | ChatCompletionRequest) -> str:
+    field = _guided_patch_field(
+        getattr(request, "guided_patch", None),
+        getattr(request, "guided_diff", None),
+    )
+    if field is None:
+        return "optional"
+    value = getattr(request, field)
+    if isinstance(value, Mapping):
+        return _guided_patch_fenced_policy_from_value(value.get("fenced", "optional"), field=field)
+    return "optional"
 
 
 def _validate_tool_schema_requests(request: CompletionRequest | ChatCompletionRequest) -> None:
@@ -7424,27 +7452,36 @@ def _guided_patch_failure_reason(
         return None
     if str(finish_reason).strip().lower() == "length":
         return None
-    return None if _is_valid_guided_patch_text(text) else "schema_violation"
+    valid = _is_valid_guided_patch_text(
+        text,
+        fenced_policy=_guided_patch_fenced_policy(request),
+    )
+    return None if valid else "schema_violation"
 
 
-def _is_valid_guided_patch_text(text: str) -> bool:
-    patch = _extract_guided_patch_body(str(text))
-    if patch is None:
+def _is_valid_guided_patch_text(text: str, *, fenced_policy: str = "optional") -> bool:
+    extracted = _extract_guided_patch_body(str(text))
+    if extracted is None:
+        return False
+    patch, is_fenced = extracted
+    if fenced_policy == "required" and not is_fenced:
+        return False
+    if fenced_policy == "forbidden" and is_fenced:
         return False
     return _is_valid_unified_diff(patch)
 
 
-def _extract_guided_patch_body(text: str) -> str | None:
+def _extract_guided_patch_body(text: str) -> tuple[str, bool] | None:
     stripped = str(text).strip()
     if not stripped:
         return None
     match = _PATCH_FENCE_RE.match(stripped)
     if match is None:
-        return stripped
+        return stripped, False
     label = match.group("label").strip().lower()
     if label and label not in {"diff", "patch"}:
         return None
-    return match.group("body").strip()
+    return match.group("body").strip(), True
 
 
 def _is_valid_unified_diff(text: str) -> bool:

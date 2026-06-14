@@ -89904,3 +89904,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `221 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC guided patch fenced policy
+
+Implemented the `guided_patch` / `guided_diff` `fenced` result-validation
+policy instead of only accepting the request field. The default
+`fenced="optional"` still accepts raw unified diffs or one fenced `diff`/`patch`
+block; `fenced=true` / `"required"` now requires the fenced block, and
+`fenced=false` / `"forbidden"` requires raw unified diff text. Invalid and null
+`fenced` policy values fail before generation. Updated `docs/API.md` and
+`docs/AGENTIC.md` to describe the enforced policy.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_guided_diff_validates_unified_diff_result tests/test_server_api.py::test_completions_guided_diff_enforces_fenced_policy tests/test_server_api.py::test_chat_completion_guided_patch_validates_visible_unified_diff tests/test_server_api.py::test_guided_patch_request_validation_fails_before_generation -q` -> `12 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `227 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

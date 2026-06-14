@@ -412,9 +412,12 @@ validation, not grammar-constrained decoding.
 Patch/diff guidance is also result-validation only. `guided_patch` and
 `guided_diff` accept `true`, `"unified_diff"`, or an object such as
 `{"type":"unified_diff"}` / `{"format":"unified_diff","fenced":"optional"}`.
-Chat requests add a prompt hint that asks for a raw unified diff or one fenced
-`diff` / `patch` block. Stop-finished outputs that are not a unified diff return
-empty successful content and `finish_details.reason: "schema_violation"`;
+The default `fenced:"optional"` accepts raw unified diffs or one fenced
+`diff` / `patch` block; `fenced:true` / `"required"` requires the fenced block,
+and `fenced:false` / `"forbidden"` requires raw unified diff text. Chat requests
+add a prompt hint that asks for a raw unified diff or one fenced block.
+Stop-finished outputs that do not satisfy the selected policy return empty
+successful content and `finish_details.reason: "schema_violation"`;
 length-finished partial patches keep their partial text and can produce a
 continuation handle in deterministic buffered mode.
 
