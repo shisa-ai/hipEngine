@@ -20,8 +20,8 @@ PARO and GGUF while native GPU sampling remains incomplete:
   row seed derivation, and CPU/NumPy token selection.
 - `hipengine.server.api` accepts OpenAI-style `temperature`, `top_p`, `top_k`,
   `min_p`, penalties, `logit_bias`, `seed`, `stop`, `n`, non-streaming
-  `logprobs` / `top_logprobs`, and streaming `stream_options.include_usage`.
-  Tokenizable `stop` strings are lowered to
+  `logprobs` / `top_logprobs`, buffered streaming logprobs, and streaming
+  `stream_options.include_usage`. Tokenizable `stop` strings are lowered to
   runtime single-token stops or multi-token stop sequences; all stop strings
   still use response post-trimming. Unknown top-level request extras are rejected
   instead of silently ignored, and rejected/failed requests log `REQUEST_FAILED`
@@ -113,7 +113,8 @@ logits level and record the memory blocker instead of weakening the test.
 
 - Grammar / JSON-schema constrained decoding.
 - Beam search or `best_of` ranking.
-- Full OpenAI `logprobs` / `top_logprobs` response support.
+- Prompt-token scoring for completion `echo+logprobs`, live per-token streaming
+  logprobs without buffering, and native-GPU `top_logprobs` parity.
 - Speculative sampling / probability-ratio acceptance. That belongs with the
   relaxed/speculative documents because it changes the accept contract.
 - Matching another engine's exact random stream. hipEngine should define its own
@@ -170,17 +171,17 @@ conditional blockers such as `temperature > 0` from inert greedy filters like
 | `max_tokens` | `SamplingParams.max_tokens` | Chat `None` can still mean remaining context. |
 | `temperature` | `SamplingParams.temperature` | Validate finite and non-negative. `0` is greedy-equivalent unless processors are active. |
 | `top_p` | `SamplingParams.top_p` | Validate `0 <= top_p <= 1`. `0` should retain one token or be rejected consistently; prefer retain-one semantics inside sampler. |
-| `top_k` | `SamplingParams.top_k` | Add to request schemas and `_sampling_key`; `0` disables. |
-| `min_p` | `SamplingParams.min_p` | Add as optional/common extension; `0` disables. |
+| `top_k` | `SamplingParams.top_k` | Included in request schemas and `_sampling_key`; `0` disables. |
+| `min_p` | `SamplingParams.min_p` | Public hipEngine extension; `0` disables. |
 | `repetition_penalty` | `SamplingParams.repetition_penalty` | Default `1.0`; positive only. |
 | `presence_penalty` | `SamplingParams.presence_penalty` | Default `0.0`. |
 | `frequency_penalty` | `SamplingParams.frequency_penalty` | Default `0.0`. |
 | `logit_bias` | `SamplingParams.logit_bias` | Token-id keyed map initially; token-string aliases can be a later tokenizer feature. |
 | `seed` | `SamplingParams.seed` | Base seed for row derivation. |
-| `n` | prompt expansion + `row_seeds` | Existing server expands rows; make row seeds deterministic and sampler-state-aware. |
+| `n` | prompt expansion + `row_seeds` | Server expands rows and derives deterministic per-row seeds. |
 | `stop` | server trim + token lowering | Tokenizable stops lower to token IDs/sequences for early host-path termination and remain post-trimmed for response consistency. |
-| `logprobs` / `top_logprobs` | `SamplingParams.logprobs` / `.top_logprobs` | Completions use OpenAI `logprobs: N`; chat uses `logprobs: true` plus optional `top_logprobs: N`. Non-streaming responses include selected token logprobs and optional top candidates. |
-| unknown sampler extras | reject or explicitly ignore by allowlist | Current `extra="allow"` behavior should be paired with a validator to avoid silent drops. |
+| `logprobs` / `top_logprobs` | `SamplingParams.logprobs` / `.top_logprobs` | Completions use OpenAI `logprobs: N`; chat uses `logprobs: true` plus optional `top_logprobs: N`. Non-streaming and buffered streaming responses include selected token logprobs and optional top candidates. |
+| unknown sampler extras | reject explicitly | Pydantic still preserves extras for OpenAI compatibility, but `_validate_generation_request()` rejects them with `unsupported_parameter` before generation work. |
 
 ## Runtime architecture
 

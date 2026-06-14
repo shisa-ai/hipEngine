@@ -87710,3 +87710,16 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context -q` -> `2 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `93 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - SAMPLING doc logprobs reality pass
+
+Re-read the sampler/MTP compatibility surfaces after the AGENTIC updates and
+aligned `docs/SAMPLING.md` with implemented buffered streaming logprobs and the
+current unknown-extra validator. Kept the current MTP policy explicit:
+`logit_bias` is compatible with normal host/native PARO c=1 sampling, but raw
+MTP target verification remains greedy-fast only and must route biased requests
+to AR fallback.
+
+Validation:
+- Re-read changed `docs/SAMPLING.md` sections.
+- `git diff --check -- docs/SAMPLING.md WORKLOG.md`.
