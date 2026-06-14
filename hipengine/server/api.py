@@ -717,6 +717,7 @@ def _reasoning_control_fields() -> list[str]:
         "hard_close_sequence",
         "thinking_token_budget",
         "thinking.allow_unbounded",
+        "reasoning.allow_unbounded",
         "chat_template_kwargs",
         "thinking",
         "reasoning",
@@ -4418,11 +4419,15 @@ def _thinking_control_from_request(
 
     if isinstance(request.thinking, Mapping):
         thinking_type = str(request.thinking.get("type", "")).strip().lower()
+        requested_enabled = _maybe_bool(request.thinking.get("enabled"), enabled)
         if thinking_type in {"disabled", "disable", "off", "none"}:
+            enabled = False
+        elif requested_enabled is False:
             enabled = False
         elif thinking_type in {"enabled", "enable", "on"}:
             enabled = True
-        enabled = _maybe_bool(request.thinking.get("enabled"), enabled)
+        else:
+            enabled = requested_enabled
         allow_unbounded = bool(_maybe_bool(request.thinking.get("allow_unbounded"), allow_unbounded))
         effort = _maybe_effort(request.thinking.get("effort"), effort)
         budget_tokens = request.thinking.get("budget_tokens")
@@ -4474,13 +4479,61 @@ def _thinking_control_from_request(
             enabled = False
 
     if isinstance(request.reasoning, Mapping):
-        enabled = _maybe_bool(request.reasoning.get("enabled"), enabled)
         reasoning_type = str(request.reasoning.get("type", "")).strip().lower()
+        requested_enabled = _maybe_bool(request.reasoning.get("enabled"), enabled)
         if reasoning_type in {"disabled", "disable", "off", "none"}:
+            enabled = False
+        elif requested_enabled is False:
             enabled = False
         elif reasoning_type in {"enabled", "enable", "on"}:
             enabled = True
+        else:
+            enabled = requested_enabled
+        allow_unbounded = bool(_maybe_bool(request.reasoning.get("allow_unbounded"), allow_unbounded))
         effort = _maybe_effort(request.reasoning.get("effort"), effort)
+        budget_tokens = request.reasoning.get("budget_tokens")
+        budget_cap = _coerce_nonnegative_int(
+            budget_tokens,
+            param="reasoning.budget_tokens",
+            allow_text_alias=True,
+        )
+        if budget_cap is None:
+            effort = _maybe_effort(budget_tokens, effort)
+        else:
+            hard_think_cap = budget_cap
+        hard_think_cap = _maybe_nonnegative_int(
+            request.reasoning.get("max_tokens"),
+            hard_think_cap,
+            param="reasoning.max_tokens",
+        )
+        max_think_tokens = _maybe_nonnegative_int(
+            request.reasoning.get("max_think_tokens"),
+            max_think_tokens,
+            param="reasoning.max_think_tokens",
+        )
+        min_answer_tokens = _maybe_nonnegative_int(
+            request.reasoning.get("min_answer_tokens"),
+            min_answer_tokens,
+            param="reasoning.min_answer_tokens",
+        )
+        hard_think_cap = _maybe_nonnegative_int(
+            request.reasoning.get("hard_think_cap"),
+            hard_think_cap,
+            param="reasoning.hard_think_cap",
+        )
+        soft_close_window = _maybe_nonnegative_int(
+            request.reasoning.get("soft_close_window"),
+            soft_close_window,
+            param="reasoning.soft_close_window",
+        )
+        hard_close_message = _maybe_text(
+            request.reasoning.get("hard_close_message"),
+            hard_close_message,
+        )
+        hard_close_sequence = _maybe_text(
+            request.reasoning.get("hard_close_sequence"),
+            hard_close_sequence,
+        )
 
     if _effort_disables_thinking(effort):
         enabled = False

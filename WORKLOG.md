@@ -89406,3 +89406,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `45 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC nested reasoning budget overrides
+
+Extended nested `reasoning` request objects to match the documented precedence
+for agentic thinking controls. `reasoning.budget_tokens`, `reasoning.max_tokens`,
+explicit hard/min/soft budget fields, hard-close text fields, and
+`reasoning.allow_unbounded` now override top-level/template hints like nested
+`thinking` does. Disabled `thinking`/`reasoning` signals also win over
+conflicting `enabled=true` values, matching the roadmap rule that no/off/disabled
+controls are final.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_reasoning_object_budget_overrides_top_level_controls tests/test_server_api.py::test_chat_completion_reasoning_type_disabled_wins_over_enabled_true -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -k "thinking_budget or thinking or reasoning_controls or reasoning_object" -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `45 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

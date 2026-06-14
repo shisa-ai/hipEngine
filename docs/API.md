@@ -409,13 +409,14 @@ Chat requests accept common OpenAI/Qwen thinking controls:
   Numeric hard/min/soft hints are clamped to the same effective generation
   budget.
 - Nested `thinking` or `reasoning` objects with `type`, `enabled`, or `effort`
-  are accepted for OpenAI-compatible proxy variants; nested `thinking` also
-  accepts the budget fields above plus `allow_unbounded`.
-- `thinking.allow_unbounded=true` disables the effort-derived default hard
-  thinking cap when the request does not also set an explicit hard cap. Explicit
-  `thinking.max_tokens`, `thinking.budget_tokens`, `thinking.hard_think_cap`,
-  top-level `thinking_token_budget`, or top-level `hard_think_cap` still set a
-  hard cap and are enforced as usual.
+  are accepted for OpenAI-compatible proxy variants; nested `thinking` and
+  `reasoning` also accept the budget fields above plus `allow_unbounded`.
+- `thinking.allow_unbounded=true` or `reasoning.allow_unbounded=true` disables
+  the effort-derived default hard thinking cap when the request does not also
+  set an explicit hard cap. Explicit `thinking.max_tokens`,
+  `reasoning.max_tokens`, `*.budget_tokens`, `*.hard_think_cap`, top-level
+  `thinking_token_budget`, or top-level `hard_think_cap` still set a hard cap
+  and are enforced as usual.
 
 Budget fields are prompt hints plus host-sampler thinking-budget policy today. The
 server validates that any `hard_close_sequence` contains the parser-recognized

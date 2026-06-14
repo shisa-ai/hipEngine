@@ -647,13 +647,15 @@ answer-reserve, and soft-close-window table above, clamped to request
 `max_tokens`, the configured chat default when bounded, and remaining admitted
 context when tokenizer/context metadata is available. Numeric
 `thinking_token_budget`, `chat_template_kwargs.thinking_budget`,
-`thinking.budget_tokens`, and `thinking.max_tokens` aliases normalize to the
-effective hard-cap hint; string `thinking_budget`/`budget_tokens` values still
-act as effort aliases for compatibility. Explicit `max_think_tokens`,
-`min_answer_tokens`, `hard_think_cap`, `soft_close_window`,
-`hard_close_message`, and `hard_close_sequence` fields are accepted; numeric
-hard/min/soft hints are clamped to the same bounded generation budget, and
-`hard_close_sequence` is rejected unless it contains `</think>`. For chat
+`thinking.budget_tokens`, `thinking.max_tokens`, `reasoning.budget_tokens`, and
+`reasoning.max_tokens` aliases normalize to the effective hard-cap hint; string
+`thinking_budget`/`budget_tokens` values still act as effort aliases for
+compatibility. Explicit `max_think_tokens`, `min_answer_tokens`,
+`hard_think_cap`, `soft_close_window`, `hard_close_message`, and
+`hard_close_sequence` fields are accepted at top level and under nested
+`thinking` / `reasoning` objects; nested fields override top-level convenience
+fields. Numeric hard/min/soft hints are clamped to the same bounded generation
+budget, and `hard_close_sequence` is rejected unless it contains `</think>`. For chat
 requests with an effective `hard_think_cap`, the server tokenizes
 `hard_close_sequence` or the default `</think>` marker and passes
 `thinking_close_token_ids`, `thinking_hard_token_cap`, and
@@ -662,9 +664,12 @@ requests with an effective `hard_think_cap`, the server tokenizes
 `ThinkingBudgetState` per row and forces the close sequence when the hard cap is
 reached. If tokenization is unavailable, normal chat generation stays
 prompt-hint-only instead of failing.
-Nested `thinking.allow_unbounded=true` disables effort-derived default hard-cap
-injection when no explicit hard cap is present; explicit budget/cap fields still
-set the hard cap and lower into sampler params as usual.
+Nested `thinking.allow_unbounded=true` or `reasoning.allow_unbounded=true`
+disables effort-derived default hard-cap injection when no explicit hard cap is
+present; explicit budget/cap fields still set the hard cap and lower into
+sampler params as usual. Disabling signals (`enabled=false`,
+`type=none/off/disabled`, or disabling effort aliases) win over non-disabling
+signals.
 
 ### Hard-close sequence and overrides
 
