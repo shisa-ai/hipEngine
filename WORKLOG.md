@@ -87977,3 +87977,17 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_chat_completion_length_finish_details_include_phase tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json -q` -> `7 passed`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC replay sampler capability snapshot
+
+Expanded failed-request replay artifacts so their compact capability snapshot
+captures current sampler execution modes, speculative/MTP compatibility guards,
+and cache/session support. The replay sampling payload now preserves newer
+sampler and structured-output knobs such as `logit_bias`, `top_logprobs`, and
+`response_format`, making artifacts more useful for reproducing agent harness
+failures.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `1 passed`.
+- `git diff --check` -> clean.

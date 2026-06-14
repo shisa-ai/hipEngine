@@ -412,7 +412,8 @@ for failed HTTP requests. Artifacts use `schema: "hipengine.replay.v1"` and
 include the request method/path, redacted request JSON, prompt/tool-result
 hashes, served model id, requested sampler fields, seed fields, error metadata,
 finish details when available, token-count placeholders, and a compact
-capability snapshot.
+capability snapshot including sampler/MTP compatibility plus cache/session
+support.
 
 The default `--replay-redaction hash` replaces every string value in the request
 JSON with SHA-256 and length metadata. `--replay-redaction none` stores raw

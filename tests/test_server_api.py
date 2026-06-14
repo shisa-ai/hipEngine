@@ -2842,6 +2842,10 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "model": "fake-model",
             "prompt": "secret prompt",
             "max_tokens": 1,
+            "top_k": 8,
+            "logit_bias": {"12": -2.0},
+            "top_logprobs": 2,
+            "response_format": {"type": "json_object"},
             "seed": 123,
             "typical_p": 0.9,
         },
@@ -2866,11 +2870,55 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     ]
     assert artifact["model"]["id"] == "fake-model"
     assert artifact["sampling"]["max_tokens"] == 1
+    assert artifact["sampling"]["top_k"] == 8
+    assert artifact["sampling"]["logit_bias"] == {"12": -2.0}
+    assert artifact["sampling"]["top_logprobs"] == 2
+    assert artifact["sampling"]["response_format"] == {"type": "json_object"}
     assert artifact["seeds"] == {"seed": 123, "row_seeds": []}
     assert artifact["token_counts"]["available"] is False
     assert artifact["error"]["code"] == "unsupported_parameter"
     assert artifact["error"]["hipengine"]["code"] == "unsupported_parameter"
     assert artifact["capabilities"]["model"]["id"] == "fake-model"
+    assert artifact["capabilities"]["sampling"]["speculative_mtp"] == {
+        "serving_route": False,
+        "sampling_compatible": False,
+        "compatibility_guard": "supports_speculative_mtp_sampling",
+        "allowed_execution_modes": ["greedy_fast"],
+        "incompatible_fields": [
+            "temperature",
+            "logit_bias",
+            "repetition_penalty",
+            "presence_penalty",
+            "frequency_penalty",
+            "suppress_token_ids",
+            "min_tokens",
+            "stop_token_ids",
+            "stop_token_sequences",
+            "forced_tokens_pending",
+            "logprobs",
+            "top_logprobs",
+        ],
+        "incompatible_conditions": {
+            "temperature": "temperature > 0",
+            "logit_bias": "non-empty logit_bias",
+            "repetition_penalty": "repetition_penalty != 1.0",
+            "presence_penalty": "presence_penalty != 0.0",
+            "frequency_penalty": "frequency_penalty != 0.0",
+            "suppress_token_ids": "one or more suppressed token ids",
+            "min_tokens": "min_tokens > 0",
+            "stop_token_ids": "one or more token stop ids",
+            "stop_token_sequences": "one or more multi-token stop sequences",
+            "forced_tokens_pending": "one or more forced tokens pending",
+            "logprobs": "logprobs requested",
+            "top_logprobs": "top_logprobs > 0",
+        },
+        "processed_target_verification": False,
+    }
+    assert artifact["capabilities"]["sessions"] == {
+        "resident_context": True,
+        "commit_policy": False,
+        "continuations": False,
+    }
     assert "secret prompt" not in serialized
 
 
