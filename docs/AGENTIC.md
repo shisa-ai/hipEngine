@@ -45,8 +45,9 @@ Already available or recently added:
   post-accept token stops. It is not performance-promoted and does not cover
   c>N, GGUF, or `top_logprobs`.
 - Sampling parameters are plumbed through public/server/runtime layers:
-  temperature, top-p, top-k, min-p, penalties, logit bias, stop token ids,
-  stop token sequences, `seed`, and per-row seeds.
+  temperature, top-p, top-k, min-p, penalties, logit bias, suppress token ids,
+  min-token/EOS policy, stop token ids, stop token sequences, `seed`, and
+  per-row seeds.
 - Detailed logprob metadata is available through the host-logits metadata path:
   completions accept `logprobs: N`; chat accepts `logprobs: true` plus optional
   `top_logprobs: N`; completion `echo+logprobs` returns the echoed prompt as a
@@ -83,10 +84,11 @@ Known baseline limitations:
   `<tool_call>` JSON is treated as assistant text in compatibility mode and as
   `finish_details.reason="invalid_tool_call"` when strict result validation is
   active.
-- Thinking controls are prompt/template controls only; there is no token-level
-  thinking budget, dynamic logit processor, EOS suppression, or forced close
-  sequence yet. `hard_close_sequence` is validated to contain `</think>`, but it
-  is not forced during decode.
+- Thinking controls are prompt/template controls only. Generic
+  `suppress_token_ids` and `min_tokens`/`eos_token_id` sampling policies exist,
+  but there is no token-level thinking-budget controller, dynamic soft-close
+  processor, or forced close sequence yet. `hard_close_sequence` is validated to
+  contain `</think>`, but it is not forced during decode.
 - Server-side reasoning/tool parsing lives above generation. PARO/GGUF
   generation loops emit final decode-state telemetry snapshots, but they do not
   yet expose canonical live token-level phase state for reasoning, answer,
@@ -241,19 +243,20 @@ Current code reality:
 
 - `hipengine.generation.sampling.select_token()` already applies finite-logit
   cleanup, OpenAI-style token-id `logit_bias`, repetition/presence/frequency
-  penalties, top-k/top-p/min-p filtering, deterministic row seeds, and logprob
-  summaries on the host path.
+  penalties, suppress-token ids, min-token/EOS suppression, top-k/top-p/min-p
+  filtering, deterministic row seeds, and logprob summaries on the host path.
 - PARO/GGUF stop tokens and stop token sequences are checked after token
   selection in model-specific loops, then server post-trimming keeps OpenAI
   `stop` string responses consistent.
 - `PerRowSamplingParams` / `SamplerParamsBlock` already carry per-row
-  `logit_bias`, penalties, stops, seeds, and temperature fields for scheduler
-  integration.
+  `logit_bias`, penalties, suppress tokens, min-token/EOS policy, stops, seeds,
+  and temperature fields for scheduler integration.
 - Standalone GPU sampler-family kernels exist for logit bias, penalties,
   full-vocab temperature sampling, bounded `top_k <= 64`, and exact full-vocab
   `top_p`/`min_p`. Supported PARO c=1 sampled requests can opt into this route
-  with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`, and
-  performance promotion remain future work.
+  with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; suppress-token ids,
+  min-token/EOS policy, c>N, GGUF, `top_logprobs`, and performance promotion
+  remain future work for the native route.
 
 Required pre-selection processors, in order:
 
@@ -307,11 +310,14 @@ Current code reality:
   primitives, resident-runner verify helpers, and benchmark/profiling scripts.
   When that route is promoted into serving, it must gate on the same
   `plan_sampler()` decision used by PARO/GGUF AR generation.
-- Current `logit_bias` is compatible with normal sampling: it is normalized in
-  `SamplingParams` / `GenerationRequest`, participates in the sampler plan,
-  applies on host logits, flows through scheduler per-row sampler blocks, and is
-  covered by standalone native sampler tests. It is not compatible with MTP
-  verification yet because verify top-1 is raw argmax.
+- Current static processors are compatible with normal AR sampling:
+  `logit_bias`, suppress-token ids, and min-token/EOS policy are normalized in
+  `SamplingParams` / `GenerationRequest`, participate in the sampler plan, apply
+  on host logits, and flow through scheduler per-row sampler blocks. `logit_bias`
+  and penalty processors are also covered by standalone native sampler tests;
+  suppress-token ids and min-token/EOS policy make the native sampler route fall
+  back to host. None of these processors are compatible with MTP verification
+  yet because verify top-1 is raw argmax.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
@@ -919,10 +925,14 @@ Current code reality:
 - `DecodeState` serializes `active_processors` and
   `sampler_fast_path_blockers`, and PARO/GGUF final telemetry snapshots attach
   those fields for sampled / processed requests.
-- Suppress-token ids, min-token/EOS policy, dynamic thinking-budget processors,
-  and grammar masks remain future processor stack work. Live per-token backend
-  telemetry still needs to emit these fields before server stream metadata can
-  become authoritative.
+- Host suppress-token ids and min-token/EOS policy are implemented as
+  pre-selection processors after static bias/history penalties and before the
+  forced-token override. They are exposed through public/server request fields,
+  scheduler per-row blocks, planner metadata, fast-path blockers, capabilities,
+  and MTP blocker lists. The native GPU sampler route falls back to host when
+  either processor is active. Dynamic thinking-budget processors, grammar masks,
+  and live per-token backend telemetry still need to emit these fields before
+  server stream metadata can become authoritative.
 
 Implement:
 

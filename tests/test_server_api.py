@@ -349,6 +349,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "host_logits_sample",
         "gpu_sample",
     ]
+    assert "suppress_token_ids" in body["sampling"]["parameters"]
+    assert "min_tokens" in body["sampling"]["parameters"]
+    assert "eos_token_id" in body["sampling"]["parameters"]
     assert body["sampling"]["native_gpu"] == {
         "enabled": False,
         "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
@@ -368,6 +371,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "c_gt_1",
             "gguf",
             "top_logprobs",
+            "suppress_token_ids",
+            "min_tokens",
             "combined_top_k_with_top_p_or_min_p",
         ],
     }
@@ -382,6 +387,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "repetition_penalty",
             "presence_penalty",
             "frequency_penalty",
+            "suppress_token_ids",
+            "min_tokens",
             "stop_token_ids",
             "stop_token_sequences",
             "forced_tokens_pending",
@@ -394,6 +401,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "repetition_penalty": "repetition_penalty != 1.0",
             "presence_penalty": "presence_penalty != 0.0",
             "frequency_penalty": "frequency_penalty != 0.0",
+            "suppress_token_ids": "one or more suppressed token ids",
+            "min_tokens": "min_tokens > 0",
             "stop_token_ids": "one or more token stop ids",
             "stop_token_sequences": "one or more multi-token stop sequences",
             "forced_tokens_pending": "one or more forced tokens pending",
@@ -839,6 +848,9 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
             "temperature": 0.0,
             "top_p": 1.0,
             "stop": "<stop>",
+            "suppress_token_ids": [12, 13],
+            "min_tokens": 2,
+            "eos_token_id": 151645,
             "kv_storage": "int8_per_token_head",
             "kv_scale_dtype": "fp32",
         },
@@ -859,6 +871,9 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
                 max_tokens=3,
                 temperature=0.0,
                 top_p=1.0,
+                suppress_token_ids=(12, 13),
+                min_tokens=2,
+                eos_token_id=151645,
                 ignore_eos=False,
                 kv_storage="int8_per_token_head",
                 kv_scale_dtype="fp32",

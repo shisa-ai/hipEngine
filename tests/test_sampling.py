@@ -34,6 +34,9 @@ def _params(**overrides):
         "presence_penalty": 0.0,
         "frequency_penalty": 0.0,
         "logit_bias": (),
+        "suppress_token_ids": (),
+        "min_tokens": 0,
+        "eos_token_id": None,
         "seed": None,
         "row_seeds": (),
         "stop_token_ids": (),
@@ -87,6 +90,15 @@ def test_forced_tokens_are_active_processors() -> None:
     )
 
 
+def test_suppressions_and_min_tokens_are_active_processors() -> None:
+    params = _params(temperature=0.0, suppress_token_ids=(3,), min_tokens=2, eos_token_id=4)
+    plan = plan_sampler(params)
+
+    assert plan.mode is SamplingMode.PROCESSED_ARGMAX
+    assert plan.active_processors == ("suppress_token_ids", "min_tokens")
+    assert plan.fast_path_blockers == ("suppress_token_ids", "min_tokens")
+
+
 def test_sampler_plan_uses_host_logits_for_non_greedy_without_gpu_sampler() -> None:
     plan = plan_sampler(_params(temperature=0.7, top_p=0.9))
 
@@ -128,6 +140,8 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=65)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_p=0.9)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_logprobs=1)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, suppress_token_ids=(1,))) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, min_tokens=1, eos_token_id=2)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, forced_tokens_pending=(1,))) is False
     assert plan_sampler(_params(temperature=0.7, top_k=65), native_gpu_available=True).mode is SamplingMode.HOST_LOGITS_SAMPLE
     assert (
@@ -150,6 +164,12 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     )
     assert speculative_mtp_sampling_blockers(_params(presence_penalty=0.1)) == (
         "presence_penalty",
+    )
+    assert speculative_mtp_sampling_blockers(_params(suppress_token_ids=(7,))) == (
+        "suppress_token_ids",
+    )
+    assert speculative_mtp_sampling_blockers(_params(min_tokens=2, eos_token_id=9)) == (
+        "min_tokens",
     )
     assert speculative_mtp_sampling_blockers(_params(stop_token_sequences=((10, 11),))) == (
         "stop_token_sequences",
@@ -251,6 +271,20 @@ def test_forced_token_queue_overrides_sampling() -> None:
     assert forced.generated_tokens == [3]
 
 
+def test_forced_token_queue_overrides_suppression() -> None:
+    state = RowSamplingState(forced_tokens_pending=(1,), forced_token_reason="close")
+    result = select_token(
+        np.array([0.0, 10.0, 2.0], dtype=np.float32),
+        _params(temperature=0.0, suppress_token_ids=(1,)),
+        state,
+    )
+
+    assert result.token_id == 1
+    assert result.forced is True
+    assert result.logprob is None
+    assert result.active_processors == ("suppress_token_ids", "forced_tokens_pending")
+
+
 def test_forced_token_outside_vocab_does_not_consume_queue() -> None:
     state = RowSamplingState(forced_tokens_pending=(5,), forced_token_reason="bad")
 
@@ -259,6 +293,43 @@ def test_forced_token_outside_vocab_does_not_consume_queue() -> None:
 
     assert state.forced_tokens == (5,)
     assert state.generated_tokens == []
+
+
+def test_suppress_token_ids_apply_after_bias_before_argmax() -> None:
+    result = select_token(
+        np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        _params(temperature=0.0, logit_bias={1: 10.0}, suppress_token_ids=(1,)),
+    )
+
+    assert result.token_id == 2
+    assert result.active_processors == ("logit_bias", "suppress_token_ids")
+    assert result.fast_path_blockers == ("logit_bias", "suppress_token_ids")
+
+
+def test_min_tokens_suppresses_eos_until_step_threshold() -> None:
+    first = select_token(
+        np.array([0.0, 5.0, 4.0], dtype=np.float32),
+        _params(temperature=0.0, min_tokens=1, eos_token_id=1),
+        RowSamplingState(step_index=0),
+    )
+    second = select_token(
+        np.array([0.0, 5.0, 4.0], dtype=np.float32),
+        _params(temperature=0.0, min_tokens=1, eos_token_id=1),
+        RowSamplingState(step_index=1),
+    )
+
+    assert first.token_id == 2
+    assert first.active_processors == ("min_tokens",)
+    assert second.token_id == 1
+
+
+def test_suppressions_validate_vocab_and_cannot_remove_every_token() -> None:
+    with pytest.raises(ValueError, match="outside vocab"):
+        select_token(np.array([1.0, 2.0], dtype=np.float32), _params(suppress_token_ids=(2,)))
+    with pytest.raises(ValueError, match="no finite logits"):
+        select_token(np.array([1.0, 2.0], dtype=np.float32), _params(suppress_token_ids=(0, 1)))
+    with pytest.raises(ValueError, match="requires eos_token_id"):
+        select_token(np.array([1.0, 2.0], dtype=np.float32), _params(min_tokens=1))
 
 
 def test_logit_bias_and_penalties_apply_before_processed_argmax() -> None:

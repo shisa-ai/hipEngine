@@ -154,6 +154,9 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
             presence_penalty=0.2,
             frequency_penalty=0.3,
             logit_bias={"12": -1.5},
+            suppress_token_ids=(13,),
+            min_tokens=2,
+            eos_token_id=99,
             stop_token_ids=(99,),
             stop_token_sequences=((100, 101),),
             seed=123,
@@ -165,6 +168,9 @@ def test_llm_generate_plumbs_extended_sampling_params(monkeypatch) -> None:
     assert calls["request"].presence_penalty == 0.2
     assert calls["request"].frequency_penalty == 0.3
     assert calls["request"].logit_bias == ((12, -1.5),)
+    assert calls["request"].suppress_token_ids == (13,)
+    assert calls["request"].min_tokens == 2
+    assert calls["request"].eos_token_id == 99
     assert calls["request"].stop_token_ids == (99,)
     assert calls["request"].stop_token_sequences == ((100, 101),)
     assert calls["request"].seed == 123

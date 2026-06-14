@@ -25,6 +25,9 @@ class SamplingParams:
     presence_penalty: float = 0.0
     frequency_penalty: float = 0.0
     logit_bias: Any = ()
+    suppress_token_ids: tuple[int, ...] = ()
+    min_tokens: int = 0
+    eos_token_id: int | None = None
     stop_token_ids: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
     ignore_eos: bool = False
@@ -48,6 +51,9 @@ class SamplingParams:
         object.__setattr__(self, "presence_penalty", float(self.presence_penalty))
         object.__setattr__(self, "frequency_penalty", float(self.frequency_penalty))
         object.__setattr__(self, "logit_bias", normalize_logit_bias_pairs(self.logit_bias))
+        object.__setattr__(self, "suppress_token_ids", tuple(int(token) for token in self.suppress_token_ids))
+        object.__setattr__(self, "min_tokens", int(self.min_tokens))
+        object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
         object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
         object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
         object.__setattr__(self, "ignore_eos", bool(self.ignore_eos))
@@ -256,6 +262,9 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         presence_penalty=params.presence_penalty,
         frequency_penalty=params.frequency_penalty,
         logit_bias=params.logit_bias,
+        suppress_token_ids=params.suppress_token_ids,
+        min_tokens=params.min_tokens,
+        eos_token_id=params.eos_token_id,
         stop_token_ids=params.stop_token_ids,
         stop_token_sequences=params.stop_token_sequences,
         ignore_eos=params.ignore_eos,

@@ -28,6 +28,8 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "repetition_penalty",
     "presence_penalty",
     "frequency_penalty",
+    "suppress_token_ids",
+    "min_tokens",
     "stop_token_ids",
     "stop_token_sequences",
     "forced_tokens_pending",
@@ -40,6 +42,8 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "repetition_penalty": "repetition_penalty != 1.0",
     "presence_penalty": "presence_penalty != 0.0",
     "frequency_penalty": "frequency_penalty != 0.0",
+    "suppress_token_ids": "one or more suppressed token ids",
+    "min_tokens": "min_tokens > 0",
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
@@ -243,6 +247,17 @@ def validate_sampling_params(params: Any) -> None:
         value = float(getattr(params, name, 0.0))
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite")
+    for token_id in _suppress_token_ids(params):
+        if int(token_id) < 0:
+            raise ValueError("suppress_token_ids must be non-negative")
+    min_tokens = int(getattr(params, "min_tokens", 0))
+    if min_tokens < 0:
+        raise ValueError("min_tokens must be non-negative")
+    eos_token_id = getattr(params, "eos_token_id", None)
+    if eos_token_id is not None and int(eos_token_id) < 0:
+        raise ValueError("eos_token_id must be non-negative")
+    if min_tokens > 0 and eos_token_id is None:
+        raise ValueError("min_tokens requires eos_token_id")
     seed = getattr(params, "seed", None)
     if seed is not None and int(seed) < 0:
         raise ValueError("seed must be non-negative")
@@ -271,6 +286,10 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("presence_penalty")
     if float(getattr(params, "frequency_penalty", 0.0)) != 0.0:
         names.append("frequency_penalty")
+    if _suppress_token_ids(params):
+        names.append("suppress_token_ids")
+    if int(getattr(params, "min_tokens", 0)) > 0:
+        names.append("min_tokens")
     if _stop_token_ids(params):
         names.append("stop_token_ids")
     if normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)):
@@ -302,6 +321,13 @@ def _stop_token_ids(params: Any) -> tuple[int, ...]:
     return tuple(int(token) for token in raw_ids)
 
 
+def _suppress_token_ids(params: Any) -> tuple[int, ...]:
+    raw_ids = getattr(params, "suppress_token_ids", None)
+    if raw_ids is None:
+        raw_ids = getattr(params, "suppress_tokens", ())
+    return tuple(int(token) for token in raw_ids)
+
+
 def _forced_tokens_pending(params: Any) -> tuple[int, ...]:
     queue = getattr(params, "forced_tokens_pending", ())
     if isinstance(queue, ForcedTokenQueue):
@@ -323,6 +349,10 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     if float(getattr(params, "temperature", 0.0)) <= 0.0:
         return False
     if int(getattr(params, "top_logprobs", 0)) > 0:
+        return False
+    if _suppress_token_ids(params):
+        return False
+    if int(getattr(params, "min_tokens", 0)) > 0:
         return False
     if _forced_tokens_pending(params):
         return False
@@ -437,6 +467,7 @@ def select_token(
 
     _apply_logit_bias(processed, normalize_logit_bias_pairs(getattr(params, "logit_bias", None)))
     _apply_history_penalties(processed, params, row_state)
+    _apply_suppression_processors(processed, params, row_state)
 
     active_processors = active_processor_names(params)
     fast_path_blockers = sampler_fast_path_blockers(params)
@@ -553,6 +584,21 @@ def _apply_history_penalties(logits: np.ndarray, params: Any, state: RowSampling
             logits[token_id] -= presence_penalty
         if frequency_penalty != 0.0:
             logits[token_id] -= frequency_penalty * int(count)
+
+
+def _apply_suppression_processors(logits: np.ndarray, params: Any, state: RowSamplingState) -> None:
+    vocab = int(logits.size)
+    for token_id in _suppress_token_ids(params):
+        if token_id >= vocab:
+            raise ValueError(f"suppress_token_ids token id {token_id} is outside vocab size {vocab}")
+        logits[token_id] = -np.inf
+    min_tokens = int(getattr(params, "min_tokens", 0))
+    eos_token_id = getattr(params, "eos_token_id", None)
+    if min_tokens > 0 and eos_token_id is not None and int(state.step_index) < min_tokens:
+        token_id = int(eos_token_id)
+        if token_id >= vocab:
+            raise ValueError(f"eos_token_id {token_id} is outside vocab size {vocab}")
+        logits[token_id] = -np.inf
 
 
 def _argmax_lower_id(values: np.ndarray) -> int:

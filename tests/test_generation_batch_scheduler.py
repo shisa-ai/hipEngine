@@ -16133,6 +16133,9 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
             presence_penalty=0.2,
             frequency_penalty=0.3,
             logit_bias={"12": -1.5},
+            suppress_tokens=(14,),
+            min_tokens=2,
+            eos_token_id=99,
             seed=7,
             stop_token_sequences=((12, 13),),
         ),
@@ -16172,6 +16175,9 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.presence_penalties == (0.0, 0.2, -0.1)
     assert block.frequency_penalties == (0.0, 0.3, 0.4)
     assert block.logit_bias_rows == ((), ((12, -1.5),), ((7, 0.25),))
+    assert block.suppress_token_rows == ((), (14,), ())
+    assert block.min_tokens == (0, 2, 0)
+    assert block.eos_token_ids == (None, 99, None)
     assert block.stop_token_rows == ((99,), (), ())
     assert block.stop_token_sequence_rows == ((), ((12, 13),), ())
     assert block.seeds == again.seeds
@@ -16179,6 +16185,9 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r1).temperature == 0.7
     assert block.params_for(r1).min_p == 0.05
     assert block.params_for(r1).logit_bias == ((12, -1.5),)
+    assert block.params_for(r1).suppress_tokens == (14,)
+    assert block.params_for(r1).min_tokens == 2
+    assert block.params_for(r1).eos_token_id == 99
     assert block.params_for(r1).stop_token_sequences == ((12, 13),)
 
     scheduler.record_generated([GeneratedToken(r0, 100, finished=True)])
@@ -16704,7 +16713,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
 
 
 def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling() -> None:
-    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4)
     biased = scheduler.submit(
         [10],
         max_new_tokens=2,
@@ -16715,7 +16724,13 @@ def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampl
         max_new_tokens=2,
         sampling=PerRowSamplingParams(stop_tokens=(99,)),
     )
+    suppressed = scheduler.submit(
+        [30],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(suppress_tokens=(102,)),
+    )
     scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
     scheduler.next_prefill_work(chunk_size=8)
     scheduler.next_prefill_work(chunk_size=8)
 
@@ -16733,6 +16748,13 @@ def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampl
         draft_depths=(1,),
         row_to_request=(stopped,),
     )
+    suppressed_draft = DraftBatch(
+        request_ids=(suppressed,),
+        candidate_tokens=(102,),
+        parent_positions=(0,),
+        draft_depths=(1,),
+        row_to_request=(suppressed,),
+    )
 
     with pytest.raises(ValueError, match="incompatible fields: logit_bias"):
         scheduler.next_speculative_verify_work(
@@ -16744,6 +16766,12 @@ def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampl
         scheduler.next_speculative_verify_work(
             stopped_draft,
             root_tokens=(20,),
+            root_positions=(0,),
+        )
+    with pytest.raises(ValueError, match="incompatible fields: suppress_token_ids"):
+        scheduler.next_speculative_verify_work(
+            suppressed_draft,
+            root_tokens=(30,),
             root_positions=(0,),
         )
 

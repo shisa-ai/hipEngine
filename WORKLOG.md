@@ -87889,3 +87889,21 @@ Validation:
 - `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/__init__.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py`.
 - `python3 -m pytest tests/test_sampling.py tests/test_generation_registry.py -q` -> `27 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py::test_coerce_generation_output_preserves_telemetry -q` -> `19 passed`.
+
+## 2026-06-14 - AGENTIC suppress/min-token sampler processors
+
+Advanced P1.1 by adding canonical `suppress_token_ids`, `min_tokens`, and
+`eos_token_id` sampling fields across `SamplingParams`, `GenerationRequest`,
+OpenAI request models, replay/sampling keys, and PARO scheduler per-row sampler
+blocks. Host `select_token()` now applies suppress-token ids and min-token/EOS
+suppression after static bias/history penalties and before forced-token
+overrides. These processors are reported as active processors and fast-path
+blockers, reject raw-argmax MTP verification, and force the current native GPU
+sampler route to fall back to host token selection. Dynamic thinking-budget
+processors and grammar masks remain future work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/registry.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/llm.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_batch_scheduler.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_server_api.py -q` -> `132 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling -q` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `18 passed`.

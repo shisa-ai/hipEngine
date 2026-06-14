@@ -394,6 +394,9 @@ def _replay_sampling_payload(body_json: Any) -> dict[str, Any]:
         "repetition_penalty",
         "presence_penalty",
         "frequency_penalty",
+        "suppress_token_ids",
+        "min_tokens",
+        "eos_token_id",
         "n",
         "stream",
         "timeout_ms",
@@ -545,6 +548,9 @@ class CompletionRequest(_OpenAIBaseModel):
     presence_penalty: float | None = Field(default=0.0)
     frequency_penalty: float | None = Field(default=0.0)
     logit_bias: dict[str, float] | None = None
+    suppress_token_ids: list[int] | None = None
+    min_tokens: int | None = Field(default=0, ge=0)
+    eos_token_id: int | None = Field(default=None, ge=0)
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stream_options: dict[str, Any] | None = None
@@ -582,6 +588,9 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     presence_penalty: float | None = Field(default=0.0)
     frequency_penalty: float | None = Field(default=0.0)
     logit_bias: dict[str, float] | None = None
+    suppress_token_ids: list[int] | None = None
+    min_tokens: int | None = Field(default=0, ge=0)
+    eos_token_id: int | None = Field(default=None, ge=0)
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stream_options: dict[str, Any] | None = None
@@ -1442,6 +1451,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             presence_penalty=float(request.presence_penalty if request.presence_penalty is not None else 0.0),
             frequency_penalty=float(request.frequency_penalty if request.frequency_penalty is not None else 0.0),
             logit_bias=request.logit_bias or (),
+            suppress_token_ids=tuple(int(token) for token in (request.suppress_token_ids or ())),
+            min_tokens=int(request.min_tokens if request.min_tokens is not None else 0),
+            eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
             stop_token_ids=stop_token_ids,
             stop_token_sequences=stop_token_sequences,
             ignore_eos=bool(request.ignore_eos),
@@ -1887,6 +1899,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "presence_penalty",
                     "frequency_penalty",
                     "logit_bias",
+                    "suppress_token_ids",
+                    "min_tokens",
+                    "eos_token_id",
                     "seed",
                     "n",
                     "stop",
@@ -1910,6 +1925,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "c_gt_1",
                         "gguf",
                         "top_logprobs",
+                        "suppress_token_ids",
+                        "min_tokens",
                         "combined_top_k_with_top_p_or_min_p",
                     ],
                 },
@@ -4230,6 +4247,9 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         float(sampling.presence_penalty),
         float(sampling.frequency_penalty),
         tuple((int(token), float(bias)) for token, bias in sampling.logit_bias),
+        tuple(int(token) for token in sampling.suppress_token_ids),
+        int(sampling.min_tokens),
+        None if sampling.eos_token_id is None else int(sampling.eos_token_id),
         tuple(int(token) for token in sampling.stop_token_ids),
         tuple(tuple(int(token) for token in row) for row in sampling.stop_token_sequences),
         bool(sampling.ignore_eos),

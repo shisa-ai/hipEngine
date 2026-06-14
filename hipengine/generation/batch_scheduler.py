@@ -50,6 +50,9 @@ class PerRowSamplingParams:
     presence_penalty: float = 0.0
     frequency_penalty: float = 0.0
     logit_bias: tuple[tuple[int, float], ...] = ()
+    suppress_tokens: tuple[int, ...] = ()
+    min_tokens: int = 0
+    eos_token_id: int | None = None
     seed: int | None = None
     stop_tokens: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
@@ -71,6 +74,15 @@ class PerRowSamplingParams:
             raise ValueError("frequency_penalty must be finite")
         if self.seed is not None and self.seed < 0:
             raise ValueError("seed must be non-negative")
+        suppress_tokens = tuple(int(token) for token in self.suppress_tokens)
+        if any(token < 0 for token in suppress_tokens):
+            raise ValueError("suppress_tokens must be non-negative")
+        if int(self.min_tokens) < 0:
+            raise ValueError("min_tokens must be non-negative")
+        if self.eos_token_id is not None and int(self.eos_token_id) < 0:
+            raise ValueError("eos_token_id must be non-negative")
+        if int(self.min_tokens) > 0 and self.eos_token_id is None:
+            raise ValueError("min_tokens requires eos_token_id")
         stops = tuple(int(token) for token in self.stop_tokens)
         if any(token < 0 for token in stops):
             raise ValueError("stop_tokens must be non-negative")
@@ -84,6 +96,9 @@ class PerRowSamplingParams:
         object.__setattr__(self, "presence_penalty", float(self.presence_penalty))
         object.__setattr__(self, "frequency_penalty", float(self.frequency_penalty))
         object.__setattr__(self, "logit_bias", logit_bias)
+        object.__setattr__(self, "suppress_tokens", suppress_tokens)
+        object.__setattr__(self, "min_tokens", int(self.min_tokens))
+        object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "stop_tokens", stops)
         object.__setattr__(self, "stop_token_sequences", stop_sequences)
@@ -106,6 +121,9 @@ class SamplerParamsBlock:
     presence_penalties: tuple[float, ...]
     frequency_penalties: tuple[float, ...]
     logit_bias_rows: tuple[tuple[tuple[int, float], ...], ...]
+    suppress_token_rows: tuple[tuple[int, ...], ...]
+    min_tokens: tuple[int, ...]
+    eos_token_ids: tuple[int | None, ...]
     seeds: tuple[int, ...]
     stop_token_rows: tuple[tuple[int, ...], ...]
     stop_token_sequence_rows: tuple[tuple[tuple[int, ...], ...], ...]
@@ -122,6 +140,9 @@ class SamplerParamsBlock:
         _check_len("presence_penalties", self.presence_penalties, rows)
         _check_len("frequency_penalties", self.frequency_penalties, rows)
         _check_len("logit_bias_rows", self.logit_bias_rows, rows)
+        _check_len("suppress_token_rows", self.suppress_token_rows, rows)
+        _check_len("min_tokens", self.min_tokens, rows)
+        _check_len("eos_token_ids", self.eos_token_ids, rows)
         _check_len("seeds", self.seeds, rows)
         _check_len("stop_token_rows", self.stop_token_rows, rows)
         _check_len("stop_token_sequence_rows", self.stop_token_sequence_rows, rows)
@@ -130,6 +151,20 @@ class SamplerParamsBlock:
             "logit_bias_rows",
             tuple(normalize_logit_bias_pairs(row) for row in self.logit_bias_rows),
         )
+        suppress_rows = tuple(tuple(int(token) for token in row) for row in self.suppress_token_rows)
+        if any(token < 0 for row in suppress_rows for token in row):
+            raise ValueError("suppress_token_rows must contain non-negative token ids")
+        min_tokens = tuple(int(value) for value in self.min_tokens)
+        if any(value < 0 for value in min_tokens):
+            raise ValueError("min_tokens must be non-negative")
+        eos_token_ids = tuple(None if value is None else int(value) for value in self.eos_token_ids)
+        if any(value is not None and value < 0 for value in eos_token_ids):
+            raise ValueError("eos_token_ids must be non-negative")
+        if any(min_value > 0 and eos_value is None for min_value, eos_value in zip(min_tokens, eos_token_ids, strict=True)):
+            raise ValueError("min_tokens requires eos_token_ids")
+        object.__setattr__(self, "suppress_token_rows", suppress_rows)
+        object.__setattr__(self, "min_tokens", min_tokens)
+        object.__setattr__(self, "eos_token_ids", eos_token_ids)
         object.__setattr__(
             self,
             "stop_token_sequence_rows",
@@ -158,6 +193,9 @@ class SamplerParamsBlock:
             presence_penalties=tuple(row.presence_penalty for row in params),
             frequency_penalties=tuple(row.frequency_penalty for row in params),
             logit_bias_rows=tuple(row.logit_bias for row in params),
+            suppress_token_rows=tuple(row.suppress_tokens for row in params),
+            min_tokens=tuple(row.min_tokens for row in params),
+            eos_token_ids=tuple(row.eos_token_id for row in params),
             seeds=tuple(
                 int(seeds[request_id])
                 if seeds is not None and request_id in seeds
@@ -179,6 +217,9 @@ class SamplerParamsBlock:
             presence_penalty=self.presence_penalties[index],
             frequency_penalty=self.frequency_penalties[index],
             logit_bias=self.logit_bias_rows[index],
+            suppress_tokens=self.suppress_token_rows[index],
+            min_tokens=self.min_tokens[index],
+            eos_token_id=self.eos_token_ids[index],
             seed=self.seeds[index],
             stop_tokens=self.stop_token_rows[index],
             stop_token_sequences=self.stop_token_sequence_rows[index],

@@ -304,8 +304,10 @@ Chat requests accept common OpenAI/Qwen thinking controls:
 
 Budget fields are compatibility hints today. The server validates that any
 `hard_close_sequence` contains the parser-recognized `</think>` marker, but it
-does not yet enforce token-level thinking budgets, soft logit-bias ramps, EOS
-suppression, or forced close sequences during decode.
+does not yet enforce token-level thinking budgets, soft logit-bias ramps, or
+forced close sequences during decode. Generic sampler `min_tokens` /
+`eos_token_id` can suppress EOS for ordinary generation, but it is not wired to
+thinking-budget policy yet.
 
 For pi, prefer `compat.thinkingFormat: "qwen"` with `reasoning: true` if you want
 pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`
@@ -426,18 +428,21 @@ strings and should only be used in local, non-sensitive debugging sessions.
   admission, and scheduler fairness remain later runtime work.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
-  `seed`, and `n` through the host-logits compatibility path. Greedy-equivalent
-  requests stay on each engine's graph/argmax fast path. PARO c=1 also has a
-  default-off native GPU sampler route for supported sampled requests behind
-  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`, and
-  unsupported native filter combinations fall back to the host path.
+  `suppress_token_ids`, `min_tokens` / `eos_token_id`, `seed`, and `n` through
+  the host-logits compatibility path. Greedy-equivalent requests stay on each
+  engine's graph/argmax fast path. PARO c=1 also has a default-off native GPU
+  sampler route for supported sampled requests behind
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`,
+  suppress-token ids, min-token/EOS policy, and unsupported native filter
+  combinations fall back to the host path.
 - The capabilities manifest reports `sampling.speculative_mtp` with
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token
-  stops, pending forced-token queues, temperature sampling, and requested
-  logprobs require autoregressive fallback. The manifest also includes
-  `incompatible_conditions`, for example `temperature > 0`, so inert greedy
-  `top_p` / `top_k` / `min_p` settings are not mistaken for MTP blockers.
+  suppressions, min-token/EOS policy, token stops, pending forced-token queues,
+  temperature sampling, and requested logprobs require autoregressive fallback.
+  The manifest also includes `incompatible_conditions`, for example
+  `temperature > 0`, so inert greedy `top_p` / `top_k` / `min_p` settings are
+  not mistaken for MTP blockers.
 - Non-text chat content parts are rejected.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
   available, one-token stops lower to runtime `stop_token_ids` and multi-token
