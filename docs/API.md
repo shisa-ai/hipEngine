@@ -146,12 +146,17 @@ Set `"stream_options": {"include_hipengine": true}` to request hipEngine
 extension metadata on SSE payloads. Each payload gets a top-level `hipengine`
 object with `metadata_version`, `event`, and `timing.elapsed_ms`. Choice chunks
 also get `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, or
-`done`) when a phase is known. Final choice chunks include the same
-`finish_details` under `choices[].hipengine.finish_details`, and usage chunks
-mirror usage under `hipengine.usage`.
+`done`) when a phase is known. When the served engine exposes `count_tokens`,
+live stream deltas also include `choices[].hipengine.tokens` with
+`delta_tokens`, cumulative `streamed_tokens`, and phase counters such as
+`reasoning_tokens` / `answer_tokens`; final choice chunks include usage-derived
+`prompt_tokens`, `completion_tokens`, and `total_tokens` in the same object.
+Final choice chunks include the same `finish_details` under
+`choices[].hipengine.finish_details`, and usage chunks mirror usage under
+`hipengine.usage`.
 
-Cache, prefill/TTFT, decode-rate, budget-pressure, and exact per-phase token
-metadata are omitted until the runtime exposes those signals.
+Cache, prefill/TTFT, decode-rate, budget-pressure, and backend-authored
+per-phase token metadata are omitted until the runtime exposes those signals.
 
 ### Finish details
 

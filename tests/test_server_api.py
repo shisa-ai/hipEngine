@@ -2323,16 +2323,39 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
 
     reasoning = next(payload for payload in payloads if payload.get("choices") and "reasoning_content" in payload["choices"][0]["delta"])
     assert reasoning["hipengine"]["event"] == "delta"
-    assert reasoning["choices"][0]["hipengine"] == {"phase": "think"}
+    assert reasoning["choices"][0]["hipengine"] == {
+        "phase": "think",
+        "tokens": {
+            "streamed_tokens": 2,
+            "delta_tokens": 2,
+            "reasoning_tokens": 2,
+        },
+    }
 
     content = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content") == "streamed ")
-    assert content["choices"][0]["hipengine"] == {"phase": "answer"}
+    assert content["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "tokens": {
+            "streamed_tokens": 3,
+            "delta_tokens": 1,
+            "reasoning_tokens": 2,
+            "answer_tokens": 1,
+        },
+    }
 
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"] == "stop")
     assert done["hipengine"]["event"] == "done"
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
         "finish_details": {"reason": "stop"},
+        "tokens": {
+            "prompt_tokens": payloads[-1]["usage"]["prompt_tokens"],
+            "completion_tokens": payloads[-1]["usage"]["completion_tokens"],
+            "total_tokens": payloads[-1]["usage"]["total_tokens"],
+            "streamed_tokens": 4,
+            "reasoning_tokens": 2,
+            "answer_tokens": 2,
+        },
     }
     assert payloads[-1]["hipengine"]["event"] == "usage"
     assert payloads[-1]["hipengine"]["usage"] == payloads[-1]["usage"]
@@ -2385,11 +2408,25 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
     assert [payload["hipengine"]["event"] for payload in payloads] == ["delta", "delta", "done", "usage"]
-    assert payloads[0]["choices"][0]["hipengine"] == {"phase": "answer"}
+    assert payloads[0]["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "tokens": {
+            "streamed_tokens": 1,
+            "delta_tokens": 1,
+            "answer_tokens": 1,
+        },
+    }
     assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
     assert payloads[2]["choices"][0]["hipengine"] == {
         "phase": "done",
         "finish_details": {"reason": "stop"},
+        "tokens": {
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "total_tokens": 3,
+            "streamed_tokens": 2,
+            "answer_tokens": 2,
+        },
     }
     assert payloads[-1]["hipengine"]["usage"] == payloads[-1]["usage"]
 

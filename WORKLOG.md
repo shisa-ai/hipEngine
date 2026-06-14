@@ -87723,3 +87723,20 @@ to AR fallback.
 Validation:
 - Re-read changed `docs/SAMPLING.md` sections.
 - `git diff --check -- docs/SAMPLING.md WORKLOG.md`.
+
+## 2026-06-14 - AGENTIC streaming token metadata
+
+Advanced P0.3 streaming metadata. Opt-in
+`stream_options.include_hipengine` chunks now carry server-side token telemetry
+when the served engine exposes `count_tokens`: live deltas include
+`choices[].hipengine.tokens.delta_tokens`, cumulative `streamed_tokens`, and
+phase counters, while final done chunks include usage-derived
+prompt/completion/total token counts plus the streamed phase counters. Default
+OpenAI-compatible streams remain unchanged when `include_hipengine` is absent.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_returns_token_sse_and_usage tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_uses_engine_stream_and_usage tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_parallel_tool_call_indexes tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure -q` -> `7 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.

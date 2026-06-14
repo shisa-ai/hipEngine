@@ -779,11 +779,16 @@ Current code reality:
 - Opt-in SSE payloads include top-level `hipengine.metadata_version`,
   `hipengine.event`, and `hipengine.timing.elapsed_ms`; choice chunks include
   `choices[].hipengine.phase` for answer/reasoning/tool/done chunks.
+- When tokenizer/counting hooks are available, live completion/chat deltas also
+  include `choices[].hipengine.tokens` with per-chunk `delta_tokens`,
+  cumulative `streamed_tokens`, and best-effort server-side phase counters;
+  final choice chunks include usage-derived prompt/completion/total token counts
+  plus those streamed phase counters.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
   usage chunks mirror `usage` under top-level `hipengine.usage`.
 - Backend TTFT/prefill/decode-rate, cache hit/miss, KV-byte, budget-pressure,
-  and exact per-phase token counts are still omitted until generation/runtime
-  code emits those signals.
+  and backend-authored per-phase token counts are still omitted until
+  generation/runtime code emits those signals.
 
 Exit gates:
 
