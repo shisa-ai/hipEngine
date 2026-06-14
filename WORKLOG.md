@@ -89438,3 +89438,20 @@ Validation:
 - `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `23 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `46 passed`.
+
+## 2026-06-14 - AGENTIC replay nested control fields
+
+Extended replay artifacts' compact sampling payload to include nested
+agentic-control fields needed to reproduce thinking/tool failures:
+`chat_template_kwargs`, `thinking`, `reasoning`, `hard_close_message`,
+`tool_choice`, and `parallel_tool_calls`. The full request JSON remains governed
+by the artifact redaction mode.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_replay_artifact_counts_chat_prompt_when_engine_loaded -q` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -k replay -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `46 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

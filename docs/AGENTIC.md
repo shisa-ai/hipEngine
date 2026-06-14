@@ -2054,12 +2054,12 @@ Current code reality:
   `HIPENGINE_REPLAY_DIR`; no artifact is emitted by default.
 - Artifacts use `schema="hipengine.replay.v1"` and include method/path,
   redacted request JSON, prompt/tool-result hashes, served model id, requested
-  sampler fields, seed fields, error or agentic result-validation metadata,
-  finish details when present, completion/chat prompt token counts when an
-  already-loaded engine can count them safely, explicit unavailable reasons
-  otherwise, and a compact capability snapshot with current sampler/MTP
-  compatibility, tokenizer-dependent tool/reasoning controls, and cache/session
-  support.
+  sampler and agentic control fields, seed fields, error or agentic
+  result-validation metadata, finish details when present, completion/chat
+  prompt token counts when an already-loaded engine can count them safely,
+  explicit unavailable reasons otherwise, and a compact capability snapshot with
+  current sampler/MTP compatibility, tokenizer-dependent tool/reasoning
+  controls, and cache/session support.
 - Strict tool and structured-output result-validation failures that return
   normal HTTP 200 responses also write replay artifacts when replay is enabled;
   the artifact stores the failure `finish_details` and affected choice indexes,

@@ -5930,6 +5930,17 @@ def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None
         json={
             "model": "fake-model",
             "messages": [{"role": "user", "content": "secret chat prompt"}],
+            "chat_template_kwargs": {"thinking_budget": "low"},
+            "thinking": {"budget_tokens": 32},
+            "reasoning": {
+                "allow_unbounded": True,
+                "max_tokens": 12,
+                "min_answer_tokens": 4,
+                "hard_close_sequence": "closing</think>\n",
+            },
+            "hard_close_message": "closing",
+            "tool_choice": "auto",
+            "parallel_tool_calls": False,
             "top_logprobs": 1,
         },
     )
@@ -5953,6 +5964,17 @@ def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None
     assert artifact["token_counts"]["entries"][0]["path"] == "$.messages"
     assert artifact["token_counts"]["entries"][0]["token_count"] == artifact["token_counts"]["prompt_tokens"]
     assert artifact["token_counts"]["prompt_tokens"] > 0
+    assert artifact["sampling"]["chat_template_kwargs"] == {"thinking_budget": "low"}
+    assert artifact["sampling"]["thinking"] == {"budget_tokens": 32}
+    assert artifact["sampling"]["reasoning"] == {
+        "allow_unbounded": True,
+        "max_tokens": 12,
+        "min_answer_tokens": 4,
+        "hard_close_sequence": "closing</think>\n",
+    }
+    assert artifact["sampling"]["hard_close_message"] == "closing"
+    assert artifact["sampling"]["tool_choice"] == "auto"
+    assert artifact["sampling"]["parallel_tool_calls"] is False
     assert artifact["error"]["param"] == "top_logprobs"
     assert "secret chat prompt" not in serialized
 
