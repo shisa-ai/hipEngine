@@ -90113,3 +90113,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 239`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py` -> clean.
+
+## 2026-06-14 - AGENTIC server conformance session tool loop
+
+Added compact server-conformance coverage for the agent client pattern where a
+stateful visible-only chat session stores a parsed tool call, receives the tool
+result on the next turn, and replays only visible tool-call state without hidden
+reasoning in the prompt. Confirmed the pi/local-agent config validators already
+guard the Qwen thinking-format and raw `<tool_call>` smoke-response failures.
+
+Validation:
+- `python3 -m py_compile tests/test_agentic_server_conformance.py`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py -q` -> `6 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `24 passed`.
+- `python3 -m ruff check tests/test_agentic_server_conformance.py tests/test_local_agent_config.py scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py` -> `All checks passed!`.

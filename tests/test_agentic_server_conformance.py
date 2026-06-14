@@ -26,7 +26,11 @@ class AgenticFakeLLM:
         prompts = tuple(str(prompt) for prompt in prompts)
         self.calls.append((prompts, sampling_params))
         if self.outputs:
-            return [GenerationOutput(text=output) for output in self.outputs[: len(prompts)]]
+            if len(self.outputs) < len(prompts):
+                raise AssertionError("not enough fake generation output left")
+            outputs = self.outputs[: len(prompts)]
+            del self.outputs[: len(prompts)]
+            return [GenerationOutput(text=output) for output in outputs]
         return [GenerationOutput(text=f"generated:{prompt}") for prompt in prompts]
 
     def stream(self, prompt: str, sampling_params: SamplingParams):
@@ -168,6 +172,80 @@ def test_agentic_conformance_tool_result_replay_renders_once() -> None:
     assert prompt.count(rendered_call) == 1
     assert prompt.count("<tool_response>\nhello\n</tool_response>") == 1
     assert prompt.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
+
+
+def test_agentic_conformance_visible_session_replays_tool_loop_without_reasoning() -> None:
+    llm = AgenticFakeLLM(
+        outputs=[
+            (
+                "<think>need file</think>"
+                '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+            ),
+            "README says hello.",
+        ]
+    )
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=llm,
+    )
+    client = TestClient(app)
+    tools = [_read_tool()]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read README.md."}],
+            "tools": tools,
+            "session": {"id": "sess_agentic_tool", "commit": "append_visible_only"},
+            "max_tokens": 64,
+        },
+    )
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    assert first_choice["finish_reason"] == "tool_calls"
+    assert first_choice["finish_details"] == {
+        "reason": "tool_calls",
+        "cache_action": "append_visible_only",
+        "reasoning_tokens": 2,
+        "tool_call_tokens": 1,
+        "phase": "tool_call",
+    }
+    first_message = first_choice["message"]
+    assert first_message["reasoning_content"] == "need file"
+    tool_call = first_message["tool_calls"][0]
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": "hello",
+                }
+            ],
+            "tools": tools,
+            "session": {"id": "sess_agentic_tool", "commit": "append_none"},
+            "max_tokens": 64,
+        },
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["message"] == {"role": "assistant", "content": "README says hello."}
+    assert second_choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
+
+    rendered_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+    )
+    prompt = llm.calls[1][0][0]
+    assert prompt.count(rendered_call) == 1
+    assert prompt.count("<tool_response>\nhello\n</tool_response>") == 1
+    assert "need file" not in prompt
+    assert "<think>need file</think>" not in prompt
 
 
 def test_agentic_conformance_permissive_duplicated_tool_start_recovers_call() -> None:
