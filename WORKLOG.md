@@ -90974,3 +90974,19 @@ API/AGENTIC docs and added a readiness fixture for the parsed GPU list.
 Validation:
 - `python3 -m pytest tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_ready_reports_selected_visible_gpu_from_rocm_env tests/test_server_api.py::test_ready_reports_lazy_server_ready_without_loaded_model -q` -> `3 passed`.
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC logprob omission reasons
+
+Closed the partial-logprob server contract gap from AGENTIC P4.4. If a backend
+provides generated-token metadata for a logprobs request but omits a selected
+token score, completions/chat now keep the OpenAI-compatible score field as
+`null` and add `choices[].logprobs.hipengine.omitted_token_logprobs[]` with the
+token index, token id/text, and stable reason `backend_omitted_logprob`.
+`/v1/hipengine/capabilities` advertises that reason vocabulary under
+`features.logprobs.omission_reasons`. Missing token metadata still fails
+closed with HTTP 501 `unsupported_feature`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata tests/test_server_api.py::test_completion_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_streaming_completion_live_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_chat_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_streaming_chat_live_logprobs_omitted_selected_score_reports_reason -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

@@ -61,6 +61,7 @@ _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
+_LOGPROB_OMISSION_REASON = "backend_omitted_logprob"
 _CONTINUATION_TTL_SECONDS = 15 * 60
 _SESSION_COMMIT_MODES = (
     "append_none",
@@ -3802,6 +3803,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "live_chunk_metadata": stream_logprobs,
                     "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
                     "requires_backend_token_metadata": True,
+                    "omission_reasons": [_LOGPROB_OMISSION_REASON],
                     "missing_backend_metadata_error": {
                         "code": "unsupported_feature",
                         "status_code": 501,
@@ -8306,6 +8308,7 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
     token_logprobs: list[float | None] = []
     top_logprobs: list[dict[str, float] | None] = []
     offsets: list[int] = []
+    omitted: list[dict[str, Any]] = []
     cursor = 0
     if echo_text:
         response_tokens.append(echo_text)
@@ -8314,17 +8317,23 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
         offsets.append(0)
         cursor = len(echo_text)
     for token in tokens:
+        response_index = len(response_tokens)
         response_tokens.append(token.token_text)
         token_logprobs.append(token.logprob)
         top_logprobs.append(_completion_top_logprobs(token))
         offsets.append(cursor)
+        if token.logprob is None:
+            omitted.append(_logprob_omission(token, response_index))
         cursor += len(token.token_text)
-    return {
+    payload: dict[str, Any] = {
         "tokens": response_tokens,
         "token_logprobs": token_logprobs,
         "top_logprobs": top_logprobs,
         "text_offset": offsets,
     }
+    if omitted:
+        payload["hipengine"] = {"omitted_token_logprobs": omitted}
+    return payload
 
 
 def _completion_stream_logprobs(stream_chunk: GenerationStreamChunk) -> dict[str, Any]:
@@ -8343,20 +8352,34 @@ def _completion_top_logprobs(token: TokenLogprob) -> dict[str, float] | None:
 
 def _chat_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
     tokens = _trim_token_logprobs(detail.token_logprobs, text)
-    return {
-        "content": [
-            {
-                "token": token.token_text,
-                "logprob": token.logprob,
-                "bytes": None,
-                "top_logprobs": [
-                    {"token": top_text, "logprob": float(top_logprob), "bytes": None}
-                    for _top_id, top_text, top_logprob in token.top_logprobs
-                ],
-            }
-            for token in tokens
-        ],
+    content = [
+        {
+            "token": token.token_text,
+            "logprob": token.logprob,
+            "bytes": None,
+            "top_logprobs": [
+                {"token": top_text, "logprob": float(top_logprob), "bytes": None}
+                for _top_id, top_text, top_logprob in token.top_logprobs
+            ],
+        }
+        for token in tokens
+    ]
+    omitted = [_logprob_omission(token, index) for index, token in enumerate(tokens) if token.logprob is None]
+    payload: dict[str, Any] = {
+        "content": content,
         "refusal": None,
+    }
+    if omitted:
+        payload["hipengine"] = {"omitted_token_logprobs": omitted}
+    return payload
+
+
+def _logprob_omission(token: TokenLogprob, index: int) -> dict[str, Any]:
+    return {
+        "index": int(index),
+        "token": token.token_text,
+        "token_id": int(token.token_id),
+        "reason": _LOGPROB_OMISSION_REASON,
     }
 
 

@@ -846,6 +846,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "live_chunk_metadata": False,
         "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
         "requires_backend_token_metadata": True,
+        "omission_reasons": ["backend_omitted_logprob"],
         "missing_backend_metadata_error": {
             "code": "unsupported_feature",
             "status_code": 501,
@@ -1036,6 +1037,7 @@ def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_suppo
         "live_chunk_metadata": True,
         "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
         "requires_backend_token_metadata": True,
+        "omission_reasons": ["backend_omitted_logprob"],
         "missing_backend_metadata_error": {
             "code": "unsupported_feature",
             "status_code": 501,
@@ -4570,6 +4572,42 @@ def test_completions_endpoint_returns_openai_logprobs() -> None:
     assert fake.calls[0][1].top_logprobs == 2
 
 
+def test_completion_logprobs_omitted_selected_score_reports_reason() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="alpha beta",
+                token_logprobs=(
+                    TokenLogprob(token_id=1, token_text="alpha", logprob=None),
+                    TokenLogprob(token_id=3, token_text=" beta", logprob=-0.5),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 2, "logprobs": 1},
+    )
+
+    assert response.status_code == 200
+    logprobs = response.json()["choices"][0]["logprobs"]
+    assert logprobs["tokens"] == ["alpha", " beta"]
+    assert logprobs["token_logprobs"] == [None, -0.5]
+    assert logprobs["hipengine"] == {
+        "omitted_token_logprobs": [
+            {
+                "index": 0,
+                "token": "alpha",
+                "token_id": 1,
+                "reason": "backend_omitted_logprob",
+            }
+        ]
+    }
+
+
 def test_completion_logprobs_missing_backend_metadata_returns_unsupported_feature() -> None:
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model"),
@@ -4689,6 +4727,41 @@ def test_streaming_completion_returns_live_chunk_logprobs_when_backend_supports_
     }
     assert fake.stream_calls
     assert fake.calls[0][1].logprobs is True
+
+
+def test_streaming_completion_live_logprobs_omitted_selected_score_reports_reason() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                "alpha",
+                token_logprobs=(TokenLogprob(token_id=1, token_text="alpha", logprob=None),),
+            )
+        ],
+    )
+    fake.supports_stream_logprobs = True
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "max_tokens": 1, "stream": True, "logprobs": 1},
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    delta = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0].get("text"))
+    assert delta["choices"][0]["logprobs"]["token_logprobs"] == [None]
+    assert delta["choices"][0]["logprobs"]["hipengine"] == {
+        "omitted_token_logprobs": [
+            {
+                "index": 0,
+                "token": "alpha",
+                "token_id": 1,
+                "reason": "backend_omitted_logprob",
+            }
+        ]
+    }
 
 
 def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> None:
@@ -4957,6 +5030,46 @@ def test_chat_completion_returns_openai_logprobs() -> None:
     assert fake.calls[0][1].top_logprobs == 1
 
 
+def test_chat_logprobs_omitted_selected_score_reports_reason() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="assistant reply",
+                token_logprobs=(
+                    TokenLogprob(token_id=4, token_text="assistant", logprob=None),
+                    TokenLogprob(token_id=5, token_text=" reply", logprob=-0.2),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "logprobs": True,
+        },
+    )
+
+    assert response.status_code == 200
+    logprobs = response.json()["choices"][0]["logprobs"]
+    assert [entry["logprob"] for entry in logprobs["content"]] == [None, -0.2]
+    assert logprobs["hipengine"] == {
+        "omitted_token_logprobs": [
+            {
+                "index": 0,
+                "token": "assistant",
+                "token_id": 4,
+                "reason": "backend_omitted_logprob",
+            }
+        ]
+    }
+
+
 def test_chat_logprobs_missing_backend_metadata_returns_unsupported_feature() -> None:
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model"),
@@ -5076,6 +5189,49 @@ def test_streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supp
     assert fake.stream_calls
     assert fake.calls[0][1].logprobs is True
     assert fake.calls[0][1].top_logprobs == 1
+
+
+def test_streaming_chat_live_logprobs_omitted_selected_score_reports_reason() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                "assistant",
+                token_logprobs=(TokenLogprob(token_id=4, token_text="assistant", logprob=None),),
+            )
+        ],
+    )
+    fake.supports_stream_logprobs = True
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 1,
+            "stream": True,
+            "logprobs": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = next(
+        payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    )
+    assert content["choices"][0]["logprobs"]["content"][0]["logprob"] is None
+    assert content["choices"][0]["logprobs"]["hipengine"] == {
+        "omitted_token_logprobs": [
+            {
+                "index": 0,
+                "token": "assistant",
+                "token_id": 4,
+                "reason": "backend_omitted_logprob",
+            }
+        ]
+    }
 
 
 def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:

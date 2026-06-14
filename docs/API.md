@@ -146,7 +146,13 @@ response path cannot provide token metadata for a logprobs request, the server
 returns HTTP 501 `unsupported_feature` with `error.param="logprobs"`. The
 capabilities manifest reports this under
 `features.logprobs.requires_backend_token_metadata` and
-`features.logprobs.missing_backend_metadata_error`.
+`features.logprobs.missing_backend_metadata_error`. If token metadata is
+present but a generated token's selected score was not emitted, the standard
+OpenAI-compatible `logprob` / `token_logprobs` value remains `null` and the
+same `choices[].logprobs` object includes
+`hipengine.omitted_token_logprobs[]` with token index/id/text and reason
+`backend_omitted_logprob`; the capabilities manifest lists stable reason
+strings under `features.logprobs.omission_reasons`.
 
 ### Routing metadata
 

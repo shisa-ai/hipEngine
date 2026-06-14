@@ -58,7 +58,10 @@ Already available or recently added:
   use a buffered detailed-generation path by default, or live token/chunk
   streams when the engine explicitly advertises `supports_stream_logprobs` and
   yields per-chunk token metadata. PARO/GGUF c=1 host-sampled streams emit that
-  live token metadata for logprob requests.
+  live token metadata for logprob requests. If generated-token metadata exists
+  but the selected score is omitted, the OpenAI-compatible score field remains
+  `null` and `choices[].logprobs.hipengine.omitted_token_logprobs[]` reports
+  token index/id/text plus reason `backend_omitted_logprob`.
 - Tokenizable OpenAI `stop` strings lower to `stop_token_ids` or
   `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
   while responses still use post-trimming for consistency. PARO c=1 native
@@ -1908,10 +1911,16 @@ fallback under `features.logprobs.missing_backend_metadata_error`; it also
 advertises opt-in live stream support under
 `features.logprobs.live_chunk_metadata`. Server tests cover representative
 completion/chat logprob success, buffered streaming, live chunk streaming, and
-the missing-backend-metadata fallback. PARO c>N host-sampled final outputs
-preserve per-token selected logprob and top-logprob metadata from scheduler
-step results. Remaining work is true prompt-token logprobs, native c>N/GGUF
-GPU-path coverage, and broader performance promotion.
+the missing-backend-metadata fallback. When token metadata is present but a
+generated-token selected score is omitted, successful completion/chat responses
+keep the OpenAI-compatible score as `null` and add
+`choices[].logprobs.hipengine.omitted_token_logprobs[]` with reason
+`backend_omitted_logprob`; `/v1/hipengine/capabilities` advertises the stable
+reason vocabulary under `features.logprobs.omission_reasons`. PARO c>N
+host-sampled final outputs preserve per-token selected logprob and top-logprob
+metadata from scheduler step results. Remaining work is true prompt-token
+logprobs, native c>N/GGUF GPU-path coverage, and broader performance
+promotion.
 
 Implement:
 
@@ -1919,7 +1928,6 @@ Implement:
   those routes can provide token metadata incrementally;
 - completion `echo+logprobs` prompt-token metadata with real prompt-token
   logprobs when the model/session can score prompt tokens;
-- clear rejection/fallback policy for paths that cannot provide logprobs;
 - native/GPU sampler logprob output when those paths are promoted.
 
 Exit gates:
