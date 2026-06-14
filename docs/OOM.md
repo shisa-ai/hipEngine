@@ -40,6 +40,75 @@ actually serve production requests, or fail at startup with an actionable reason
   metadata, but most lazy scratch is represented only by a flat 512 MiB reserve.
   That reserve is probably too optimistic for a hard fail-fast server policy.
 
+## Full summary: how startup was tightened and 24GB full context was recovered
+
+We fixed this in layers, moving from "can allocate KV" to "can serve this
+context with the production path and measured transient scratch peak."
+
+1. **Defined the right guarantee.** Startup readiness now means more than weight
+   load and retained KV allocation. It must also prove a max admitted c=1 prompt
+   can allocate prefill scratch without decoding to the output limit, prove a
+   bounded chat-shaped request path, and expose/guard remaining GPU headroom.
+
+2. **Added a bounded startup gate.** Startup now keeps the legacy raw warmup but
+   also runs:
+   - `prepare_request_scratch(max_prompt_tokens=context-1, max_new_tokens=0)`;
+   - a bounded `hello` chat smoke through the generation batcher;
+   - optional `--startup-min-free-mib` / `HIPENGINE_STARTUP_MIN_FREE_MIB` guard;
+   - `/ready` startup checks and memory samples.
+
+3. **Made memory logging actionable.** Per-stage memory samples are retained in
+   `/ready` and debug logs, but normal startup emits one info-level summary:
+   final free/used, peak used, min-free stage, total memory, and sample count.
+   The scratch probe samples memory while transient scratch is still live, so the
+   peak is not hidden by post-probe cleanup.
+
+4. **Fixed probe correctness.** Two subtle issues made early probes misleading:
+   - A tiny raw warmup prompt had re-resolved PARO prefill config to the
+     small-prompt unchunked policy. The scratch probe now re-resolves prefill
+     config for the probed max prompt length.
+   - The first live-peak probe kept linear and full-attention workspaces live at
+     the same time. Real long-context prefill releases workspace when the layer
+     type changes, so the probe now mirrors that phase lifetime. This changed the
+     128k peak from a pessimistic `0.29 GiB` free to `1.35 GiB` free.
+
+5. **Found the true 24GB blocker.** With a phase-accurate probe, 262k still
+   failed under the existing 1024/4096 chunk profile in the linear-attention
+   phase at `linear_attn.tree_recurrent_state`. Manual probes showed:
+   - 512-token chunks could pass but with effectively zero free memory;
+   - 256-token chunks passed with about `0.61 GiB` free at peak;
+   - the peak was `linear_prefill_scratch_live`, not full-attention scratch;
+   - the int8 BF16 prefill oracle remains the next large transient after linear
+     scratch.
+
+6. **Recovered model-max startup on the 24GB card.** The auto prefill policy now
+   selects a conservative 256-token chunk profile for 24GB-class devices
+   (`<=26 GiB`) at model-max-ish contexts (`>=196608` tokens), while retaining
+   the faster 1024/4096 profile for mid-context and larger-memory GPUs. With
+   this policy, `--max-context-tokens 262144 --kv-storage int8_per_token_head`
+   reaches ready on GPU1.
+
+Current measured 262k/GPU1 state:
+
+```text
+STARTUP_MEMORY: final_stage=guard final_free=2.01 GiB final_used=21.98 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=23.38 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=0.61 GiB total=23.98 GiB samples=7
+```
+
+So the full 24GB use case is recovered, but it is still tight. This was not a
+blanket speed-policy change: mid-context prompts and larger-memory GPUs retain
+the existing 1024/4096 chunk profile. The 256-token profile is selected only for
+24GB-class, model-max-ish prompts where the faster profile cannot fit. That
+means broad speed regression is avoided, but near-max long-prompt prefill may be
+slower; we have not yet run a full long-prompt throughput benchmark to quantify
+that tradeoff. Startup timing itself stayed in the same class (`~27s` total,
+`scratch_probe_s~0.2s`) and the prior 262k profile failed before readiness, so
+there is no successful 24GB/262k baseline to compare against yet.
+
+The next optimization targets are to reduce linear prefill scratch, reduce or
+eliminate the temporary BF16 int8 prefill oracle, and compact persistent prefill
+metadata so 262k has a safer live-peak margin and can potentially return to
+larger/faster chunks.
+
 ## Current measurements
 
 All measurements below are from 2026-06-14 on GPU1 with a clean GPU before

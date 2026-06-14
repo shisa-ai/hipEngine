@@ -88529,3 +88529,10 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `126 passed`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py tests/test_sampling.py` -> `All checks passed!`.
+
+## 2026-06-14 - OOM summary narrative
+
+Expanded `docs/OOM.md` with a full narrative of the startup-memory tightening and 24GB full-context recovery: stronger readiness definition, bounded scratch/chat probes, concise peak-memory logging, probe correctness fixes, phase-accurate lifetime, low-memory 256-token chunk profile for 24GB/model-max contexts, and the speed caveat. Recorded that the change avoids broad speed regressions because mid-context/larger-GPU paths keep 1024/4096 chunks, but near-max long-prompt prefill speed has not yet been benchmarked and may trade throughput for fit.
+
+Validation:
+- `git diff --check` -> clean.
