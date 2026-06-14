@@ -140,10 +140,12 @@ default so SSE chunks can carry logprob metadata; ordinary streams without
 logprobs remain live token/chunk streams. Engines that explicitly advertise
 `supports_stream_logprobs` may instead return live completion/chat stream chunks
 with per-chunk token metadata, advertised as
-`features.logprobs.live_chunk_metadata=true`. If a backend response path cannot
-provide token metadata for a logprobs request, the server returns HTTP 501
-`unsupported_feature` with `error.param="logprobs"`. The capabilities manifest
-reports this under `features.logprobs.requires_backend_token_metadata` and
+`features.logprobs.live_chunk_metadata=true`; the bundled PARO/GGUF c=1
+host-sampled stream paths emit that metadata for logprob requests. If a backend
+response path cannot provide token metadata for a logprobs request, the server
+returns HTTP 501 `unsupported_feature` with `error.param="logprobs"`. The
+capabilities manifest reports this under
+`features.logprobs.requires_backend_token_metadata` and
 `features.logprobs.missing_backend_metadata_error`.
 
 ### Routing metadata

@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
@@ -61,6 +61,7 @@ class Qwen35ParoOneTokenGenerator:
     _session_kv_key: tuple[str, str, str, int] | None = field(default=None, init=False, repr=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
+    supports_stream_logprobs: ClassVar[bool] = True
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
@@ -1024,6 +1025,7 @@ class Qwen35ParoOneTokenGenerator:
             generated_token_ids.append(int(next_result.token_id))
             yield GenerationStreamChunk(
                 next_result.token_text,
+                token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, next_result, request),
                 telemetry=_telemetry_for_tokens(
                     prompt_ids,
                     generated_token_ids,
@@ -1059,6 +1061,7 @@ class Qwen35ParoOneTokenGenerator:
                 generated_token_ids.append(int(result.token_id))
                 yield GenerationStreamChunk(
                     result.token_text,
+                    token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, result, request),
                     telemetry=_telemetry_for_tokens(
                         prompt_ids,
                         generated_token_ids,
@@ -1228,23 +1231,34 @@ def _generation_output_from_steps(
     finish_details: FinishDetails,
     telemetry: GenerationTelemetry | None = None,
 ) -> GenerationOutput:
-    tokens = tuple(
-        TokenLogprob(
-            token_id=step.token_id,
-            token_text=step.token_text,
-            logprob=step.logprob,
-            top_logprobs=tuple(
-                (token_id, _decode_token_cached(tokenizer, token_id), logprob)
-                for token_id, logprob in step.top_logprobs
-            ),
-        )
-        for step in steps
-    )
+    tokens = tuple(_token_logprob_from_step(tokenizer, step) for step in steps)
     return GenerationOutput(
         text="".join(step.token_text for step in steps),
         token_logprobs=tokens,
         finish_details=finish_details,
         telemetry=telemetry,
+    )
+
+
+def _stream_token_logprobs_from_step(
+    tokenizer: Any,
+    step: Qwen35ParoAutoregressiveStepResult,
+    request: GenerationRequest,
+) -> tuple[TokenLogprob, ...]:
+    if not request.logprobs and int(request.top_logprobs) <= 0:
+        return ()
+    return (_token_logprob_from_step(tokenizer, step),)
+
+
+def _token_logprob_from_step(tokenizer: Any, step: Qwen35ParoAutoregressiveStepResult) -> TokenLogprob:
+    return TokenLogprob(
+        token_id=step.token_id,
+        token_text=step.token_text,
+        logprob=step.logprob,
+        top_logprobs=tuple(
+            (token_id, _decode_token_cached(tokenizer, token_id), logprob)
+            for token_id, logprob in step.top_logprobs
+        ),
     )
 
 

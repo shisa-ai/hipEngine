@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, ClassVar, Iterator
 
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -41,6 +41,7 @@ class Qwen35GGUFBringupGenerator:
     model_plugin: Any
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
+    supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
@@ -307,6 +308,7 @@ class Qwen35GGUFBringupGenerator:
         generated_ids.append(int(sample.token_id))
         yield GenerationStreamChunk(
             self.tokenizer.decode([generated_ids[-1]]),
+            token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
             telemetry=_gguf_telemetry(
                 prompt_ids,
                 generated_ids,
@@ -330,6 +332,7 @@ class Qwen35GGUFBringupGenerator:
             generated_ids.append(int(sample.token_id))
             yield GenerationStreamChunk(
                 self.tokenizer.decode([generated_ids[-1]]),
+                token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
                 telemetry=_gguf_telemetry(
                     prompt_ids,
                     generated_ids,
@@ -418,23 +421,34 @@ def _gguf_generation_output(
     finish_details: FinishDetails,
     telemetry: GenerationTelemetry | None = None,
 ) -> GenerationOutput:
-    token_logprobs = tuple(
-        TokenLogprob(
-            token_id=sample.token_id,
-            token_text=tokenizer.decode([int(sample.token_id)]),
-            logprob=sample.logprob,
-            top_logprobs=tuple(
-                (token_id, tokenizer.decode([int(token_id)]), logprob)
-                for token_id, logprob in sample.top_logprobs
-            ),
-        )
-        for sample in samples
-    )
+    token_logprobs = tuple(_gguf_token_logprob(tokenizer, sample) for sample in samples)
     return GenerationOutput(
         text="".join(token.token_text for token in token_logprobs),
         token_logprobs=token_logprobs,
         finish_details=finish_details,
         telemetry=telemetry,
+    )
+
+
+def _gguf_stream_token_logprobs(
+    tokenizer: Qwen35GGUFTokenizer,
+    sample: Any,
+    request: GenerationRequest,
+) -> tuple[TokenLogprob, ...]:
+    if not request.logprobs and int(request.top_logprobs) <= 0:
+        return ()
+    return (_gguf_token_logprob(tokenizer, sample),)
+
+
+def _gguf_token_logprob(tokenizer: Qwen35GGUFTokenizer, sample: Any) -> TokenLogprob:
+    return TokenLogprob(
+        token_id=sample.token_id,
+        token_text=tokenizer.decode([int(sample.token_id)]),
+        logprob=sample.logprob,
+        top_logprobs=tuple(
+            (token_id, tokenizer.decode([int(token_id)]), logprob)
+            for token_id, logprob in sample.top_logprobs
+        ),
     )
 
 

@@ -57,7 +57,8 @@ Already available or recently added:
   prefix entry with `null` prompt logprob; streaming completion/chat logprobs
   use a buffered detailed-generation path by default, or live token/chunk
   streams when the engine explicitly advertises `supports_stream_logprobs` and
-  yields per-chunk token metadata.
+  yields per-chunk token metadata. PARO/GGUF c=1 host-sampled streams emit that
+  live token metadata for logprob requests.
 - Tokenizable OpenAI `stop` strings lower to `stop_token_ids` or
   `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
   while responses still use post-trimming for consistency. PARO c=1 native
@@ -131,9 +132,10 @@ Known baseline limitations:
   coverage.
 - Streaming logprobs are buffered detailed responses unless the engine
   advertises live stream logprob support and each emitted chunk carries token
-  metadata. Completion `echo+logprobs` does not compute real prompt-token
-  logprobs yet; the echoed prompt is represented as a prefix entry with `null`
-  logprob.
+  metadata. PARO/GGUF c=1 host-sampled streams now satisfy that contract for
+  live logprob requests. Completion `echo+logprobs` does not compute real
+  prompt-token logprobs yet; the echoed prompt is represented as a prefix entry
+  with `null` logprob.
 - Streaming supports opt-in `stream_options.include_hipengine` metadata with
   server-measured elapsed time, TTFT, decode-rate timing, final finish details,
   and best-effort token accounting. When a backend yields
@@ -1896,22 +1898,25 @@ Current state: host-logits logprobs are implemented for non-streaming
 completions/chat, buffered streaming completions/chat, live streaming
 completion/chat chunks from engines that advertise `supports_stream_logprobs`,
 and completion `echo+logprobs` with the echoed prompt represented as one prefix
-entry with `null` prompt logprob. Backend paths that cannot provide token
-metadata for a logprobs request return stable HTTP 501 `unsupported_feature`
-with `error.param="logprobs"`, and the capabilities manifest advertises that
+entry with `null` prompt logprob. PARO/GGUF c=1 host-sampled `stream_detailed()`
+chunks emit per-token selected logprob and top-logprob metadata for logprob
+requests, so the OpenAI server can expose live logprob deltas without buffering
+on those paths. Backend paths that cannot provide token metadata for a logprobs
+request return stable HTTP 501 `unsupported_feature` with
+`error.param="logprobs"`, and the capabilities manifest advertises that
 fallback under `features.logprobs.missing_backend_metadata_error`; it also
 advertises opt-in live stream support under
 `features.logprobs.live_chunk_metadata`. Server tests cover representative
 completion/chat logprob success, buffered streaming, live chunk streaming, and
 the missing-backend-metadata fallback. PARO c>N host-sampled final outputs
 preserve per-token selected logprob and top-logprob metadata from scheduler
-step results. Remaining work is true prompt-token logprobs, native-path
-coverage, and lower-loop live token-stream parity for real PARO/GGUF engines.
+step results. Remaining work is true prompt-token logprobs, native c>N/GGUF
+GPU-path coverage, and broader performance promotion.
 
 Implement:
 
-- lower-loop PARO/GGUF live streaming `logprobs` / `top_logprobs` chunks from
-  real generation engines, using the server's opt-in chunk metadata contract;
+- native c>N/GGUF GPU live streaming `logprobs` / `top_logprobs` chunks once
+  those routes can provide token metadata incrementally;
 - completion `echo+logprobs` prompt-token metadata with real prompt-token
   logprobs when the model/session can score prompt tokens;
 - clear rejection/fallback policy for paths that cannot provide logprobs;

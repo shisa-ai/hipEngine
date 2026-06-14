@@ -12,6 +12,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    TokenLogprob,
 )
 from hipengine.generation.sampling import select_token
 from hipengine.runtime.qwen35_paro_runner import (
@@ -641,6 +642,63 @@ def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -
         ("step", 100, 2, True),
         ("configure_host_sampler", None, None, None),
     ]
+
+
+def test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
+    class FakeSession:
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: None,
+            decode=lambda ids: {100: "A", 101: "B", 200: "X"}[int(ids[0])],
+        )
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def configure_host_sampler(self, params, state):
+            pass
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            return (
+                _result(100, "A", logprob=-0.1, top_logprobs=((100, -0.1), (200, -1.5)))
+                if sample
+                else None
+            )
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            return _result(101, "B", logprob=-0.2, top_logprobs=((101, -0.2),)) if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    chunks = list(
+        generator.stream_detailed(
+            _request(max_tokens=2, temperature=0.7, logprobs=True, top_logprobs=2, seed=5)
+        )
+    )
+
+    assert [chunk.text for chunk in chunks] == ["A", "B"]
+    assert chunks[0].token_logprobs == (
+        TokenLogprob(
+            token_id=100,
+            token_text="A",
+            logprob=-0.1,
+            top_logprobs=((100, "A", -0.1), (200, "X", -1.5)),
+        ),
+    )
+    assert chunks[1].token_logprobs == (
+        TokenLogprob(
+            token_id=101,
+            token_text="B",
+            logprob=-0.2,
+            top_logprobs=((101, "B", -0.2),),
+        ),
+    )
 
 
 def test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:

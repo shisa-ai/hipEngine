@@ -12,6 +12,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    TokenLogprob,
 )
 
 
@@ -513,6 +514,57 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(
         ("step", 1, True),
         ("exit", True),
     ]
+
+
+def test_gguf_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 1.0, 5.0]], dtype=np.float32),
+            )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    chunks = list(
+        generator.stream_detailed(
+            _request(temperature=0.7, top_k=1, logprobs=True, top_logprobs=1, seed=5)
+        )
+    )
+
+    assert [chunk.text for chunk in chunks] == ["B", "C"]
+    assert chunks[0].token_logprobs == (
+        TokenLogprob(
+            token_id=1,
+            token_text="B",
+            logprob=0.0,
+            top_logprobs=((1, "B", 0.0),),
+        ),
+    )
+    assert chunks[1].token_logprobs == (
+        TokenLogprob(
+            token_id=2,
+            token_text="C",
+            logprob=0.0,
+            top_logprobs=((2, "C", 0.0),),
+        ),
+    )
 
 
 def test_gguf_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:

@@ -90945,3 +90945,19 @@ Validation:
 - `python3 -m pytest tests/test_generation_registry.py tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_completion_returns_live_chunk_logprobs_when_backend_supports_metadata tests/test_server_api.py::test_streaming_completion_logprobs_missing_backend_metadata_returns_unsupported_feature tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata -q` -> `14 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `260 passed`.
 - `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py && python3 -m ruff check hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py && git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC PARO/GGUF live stream logprobs
+
+Promoted the live stream logprob contract into the bundled PARO/GGUF c=1
+host-sampled generation paths. Both generators now advertise
+`supports_stream_logprobs` and populate `GenerationStreamChunk.token_logprobs`
+from their selected step/sample results when `logprobs` or `top_logprobs` is
+requested, reusing the same token-logprob conversion helpers as final
+`GenerationOutput`. Updated AGENTIC/API docs so remaining P4.4 work is true
+prompt scoring and broader native c>N/GGUF GPU metadata parity rather than the
+host-sampled live stream path.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry -q` -> `5 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `49 passed`.
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py && python3 -m ruff check hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py && git diff --check -- hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/API.md docs/AGENTIC.md` -> `All checks passed!` / clean.
