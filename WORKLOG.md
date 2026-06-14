@@ -88296,3 +88296,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `58 passed`.
 - `python3 -m ruff check hipengine/generation/deadline.py hipengine/generation/__init__.py hipengine/llm.py hipengine/generation/registry.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_local_agent_config.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC server conformance trace expansion
+
+Expanded the CPU-only agentic golden trace harness so it can assert multiple
+OpenAI tool calls, SSE tool-call indexes, error params, and prompt exclusions.
+Added trace rows for streaming parallel tool calls, explicit `reasoning`
+low-effort prompt budget hints, and unsupported `continuation_id` rejection.
+This keeps the main agent adapter contract in one fast test path alongside the
+existing server primitive and local/pi config tests.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `16 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_local_agent_config.py -q` -> `12 passed`.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.

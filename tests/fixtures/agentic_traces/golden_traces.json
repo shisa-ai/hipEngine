@@ -209,6 +209,46 @@
       }
     },
     {
+      "name": "parallel_tool_calls_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_stream_chunks": [
+        "<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call><tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"WORKLOG.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read both files."}],
+        "stream": true,
+        "parallel_tool_calls": true,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "finish_details": {"reason": "tool_calls"},
+        "tool_calls": [
+          {"index": 0, "name": "read", "arguments": {"path": "README.md"}},
+          {"index": 1, "name": "read", "arguments": {"path": "WORKLOG.md"}}
+        ],
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
       "name": "reasoning_split_non_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
@@ -238,6 +278,29 @@
         "status_code": 200,
         "message_content": "direct answer",
         "prompt_endswith": "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "reasoning_effort_low_prompt_budget",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["direct answer"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Think only if needed."}],
+        "reasoning": {"enabled": true, "effort": "low"},
+        "max_tokens": 2048
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "message_content": "direct answer",
+        "prompt_contains": [
+          "close </think> before exceeding 512 hidden reasoning tokens",
+          "reserve at least 512 tokens for the final answer or tool call",
+          "begin closing during the final 128 hidden reasoning tokens"
+        ],
+        "prompt_excludes": ["<tools>"]
       }
     },
     {
@@ -325,6 +388,22 @@
         "error_code": "deadline_exceeded",
         "hipengine_error_code": "deadline_exceeded",
         "finish_details": {"reason": "deadline_exceeded", "deadline_exceeded": true}
+      }
+    },
+    {
+      "name": "unsupported_continuation_id_chat",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Continue previous work."}],
+        "continuation_id": "gen_123"
+      },
+      "expected": {
+        "status_code": 400,
+        "error_code": "unsupported_parameter",
+        "error_param": "continuation_id",
+        "hipengine_error_code": "unsupported_parameter"
       }
     },
     {

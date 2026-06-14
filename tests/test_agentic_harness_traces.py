@@ -103,9 +103,11 @@ def _assert_chat_response(payload: dict[str, Any], expected: dict[str, Any]) -> 
         assert "tool_calls" not in message
     if "tool_call" in expected:
         tool_call = message["tool_calls"][0]
-        assert tool_call["type"] == "function"
-        assert tool_call["function"]["name"] == expected["tool_call"]["name"]
-        assert json.loads(tool_call["function"]["arguments"]) == expected["tool_call"]["arguments"]
+        _assert_tool_call(tool_call, expected["tool_call"])
+    if "tool_calls" in expected:
+        assert len(message["tool_calls"]) == len(expected["tool_calls"])
+        for actual, expected_call in zip(message["tool_calls"], expected["tool_calls"], strict=True):
+            _assert_tool_call(actual, expected_call)
 
 
 def _assert_completion_response(payload: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -133,15 +135,26 @@ def _assert_stream_response(text: str, expected: dict[str, Any]) -> None:
             payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls")
         )
         tool_call = tool_delta["choices"][0]["delta"]["tool_calls"][0]
-        assert tool_call["function"]["name"] == expected["tool_call"]["name"]
-        assert json.loads(tool_call["function"]["arguments"]) == expected["tool_call"]["arguments"]
+        _assert_tool_call(tool_call, expected["tool_call"])
+    if "tool_calls" in expected:
+        actual_calls = [
+            call
+            for payload in payloads
+            for call in payload["choices"][0]["delta"].get("tool_calls", ())
+        ]
+        assert len(actual_calls) == len(expected["tool_calls"])
+        for actual, expected_call in zip(actual_calls, expected["tool_calls"], strict=True):
+            _assert_tool_call(actual, expected_call)
 
 
 def _assert_error_response(payload: dict[str, Any], expected: dict[str, Any]) -> None:
     error = payload["error"]
     assert error["code"] == expected["error_code"]
+    if "error_param" in expected:
+        assert error["param"] == expected["error_param"]
     assert error["hipengine"]["code"] == expected["hipengine_error_code"]
-    assert error["finish_details"] == expected["finish_details"]
+    if "finish_details" in expected:
+        assert error["finish_details"] == expected["finish_details"]
 
 
 def _assert_response_exclusions(text: str, expected: dict[str, Any]) -> None:
@@ -155,8 +168,18 @@ def _assert_prompt_expectations(fake: TraceLLM, expected: dict[str, Any]) -> Non
     prompt = fake.calls[0][0][0]
     for needle in expected.get("prompt_contains", ()):
         assert str(needle) in prompt
+    for needle in expected.get("prompt_excludes", ()):
+        assert str(needle) not in prompt
     if "prompt_endswith" in expected:
         assert prompt.endswith(str(expected["prompt_endswith"]))
+
+
+def _assert_tool_call(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    if "index" in expected:
+        assert actual["index"] == expected["index"]
+    assert actual["type"] == "function"
+    assert actual["function"]["name"] == expected["name"]
+    assert json.loads(actual["function"]["arguments"]) == expected["arguments"]
 
 
 def _assert_request_control_cancelled(trace: dict[str, Any]) -> None:
