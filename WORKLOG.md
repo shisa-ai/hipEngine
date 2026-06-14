@@ -91409,3 +91409,21 @@ Validation:
 - `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> passed.
 - `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/constraints.py hipengine/generation/sampling.py tests/test_sampling.py docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON object length-finish guard
+
+Wired `JsonObjectConstraintState` into structured-output length handling for
+`response_format={"type":"json_object"}` and `guided_json` object mode.
+Length-finished prefixes that are still structurally repairable keep the
+existing partial-text continuation behavior. Prefixes that are already
+structurally invalid, such as mismatched close delimiters, now keep the coarse
+`finish_reason="length"` and visible partial text but report
+`finish_details.reason="schema_violation"` with
+`continuation_eligible=false`, avoiding unusable continuation handles.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completions_response_format_length_rejects_invalid_json_continuation tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json tests/test_server_api.py::test_chat_completion_response_format_length_rejects_invalid_json_continuation -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_completions_response_format_json_object_validates_result tests/test_server_api.py::test_completions_guided_json_true_validates_object_result tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json tests/test_server_api.py::test_chat_completion_response_format_length_rejects_invalid_json_continuation tests/test_server_api.py::test_chat_completion_response_format_length_marks_complete_json_structured tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_json_and_inherits_validation -q` -> `8 passed`.
+- `python3 -m py_compile hipengine/server/api.py hipengine/generation/__init__.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py hipengine/generation/__init__.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py hipengine/generation/__init__.py tests/test_server_api.py` -> clean.

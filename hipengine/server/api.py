@@ -53,6 +53,7 @@ from hipengine.generation import (
     TokenLogprob,
     derive_row_seed,
 )
+from hipengine.generation.constraints import JsonObjectConstraintState
 from hipengine.kvcache import resolve_prefix_cache_mode
 
 
@@ -4182,6 +4183,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if structured_failure is not None:
                 finish_reason = "stop"
                 text = ""
+            structured_length_failure = _structured_length_failure_reason(
+                request,
+                generated_text,
+                finish_reason,
+            )
             final_texts.append(text)
             choice = {
                 "text": text,
@@ -4195,10 +4201,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "finish_details": _finish_details_payload(
                     detail,
                     finish_reason,
-                    reason_override=structured_failure or ("stop" if server_stop else None),
+                    reason_override=structured_failure
+                    or structured_length_failure
+                    or ("stop" if server_stop else None),
                     cache_action=cache_action,
                 ),
             }
+            _mark_structured_length_failure(request, structured_length_failure, choice["finish_details"])
             _mark_continuation_unavailable(choice["finish_details"])
             if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
                 base_prompt = prompt if continuation is None else continuation.prompts[index]
@@ -4386,10 +4395,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if structured_failure is not None:
                     finish_reason = "stop"
                     message = {"role": "assistant", "content": ""}
+                structured_length_failure = _structured_length_failure_reason(
+                    request,
+                    _chat_response_format_text(message),
+                    finish_reason,
+                )
                 if tool_validation.failed:
                     finish_reason_override = tool_validation.failure_reason
                 elif structured_failure is not None:
                     finish_reason_override = structured_failure
+                elif structured_length_failure is not None:
+                    finish_reason_override = structured_length_failure
                 elif parsed.tool_calls:
                     finish_reason_override = "tool_calls"
                 elif server_stop:
@@ -4410,6 +4426,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                     ),
                 }
+                _mark_structured_length_failure(request, structured_length_failure, choice["finish_details"])
                 _mark_structured_length_phase(request, choice["finish_details"])
                 effective_cache_action = _effective_session_cache_action(
                     requested_cache_action,
@@ -4527,10 +4544,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if structured_failure is not None:
                     finish_reason = "stop"
                     parsed = _ParsedChatOutput(text="", tool_calls=())
+                structured_length_failure = _structured_length_failure_reason(
+                    request,
+                    _chat_response_format_text_from_parsed(parsed),
+                    finish_reason,
+                )
                 if tool_validation.failed:
                     finish_reason_override = tool_validation.failure_reason
                 elif structured_failure is not None:
                     finish_reason_override = structured_failure
+                elif structured_length_failure is not None:
+                    finish_reason_override = structured_length_failure
                 elif parsed.tool_calls:
                     finish_reason_override = "tool_calls"
                 elif server_stop:
@@ -4546,6 +4570,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     parsed=parsed,
                     token_counter=getattr(getattr(app.state, "hipengine_llm", None), "count_tokens", None),
                 )
+                _mark_structured_length_failure(request, structured_length_failure, finish_details)
                 _mark_structured_length_phase(request, finish_details)
                 await _maybe_write_agentic_result_replay_artifact(
                     config,
@@ -7427,6 +7452,8 @@ def _continuation_can_create(
     finish_reason: str,
     finish_details: Mapping[str, Any],
 ) -> bool:
+    if str(finish_details.get("reason") or "") in (_SESSION_UNSAFE_VISIBLE_REASONS - {"length"}):
+        return False
     if not _is_length_finish(finish_reason, finish_details):
         return False
     if _session_id(request) is not None:
@@ -7506,6 +7533,18 @@ def _mark_structured_length_phase(
         return
     if finish_details.get("phase") in (None, "", "answer"):
         finish_details["phase"] = "structured"
+
+
+def _mark_structured_length_failure(
+    request: CompletionRequest | ChatCompletionRequest,
+    structured_length_failure: str | None,
+    finish_details: dict[str, Any],
+) -> None:
+    if structured_length_failure is None:
+        return
+    if _structured_result_validation(request):
+        finish_details.setdefault("phase", "structured")
+    finish_details["continuation_eligible"] = False
 
 
 def _attach_continuation_metadata(
@@ -8654,6 +8693,21 @@ def _structured_output_failure_reason(
     if guided_choice_failure is not None:
         return guided_choice_failure
     return _guided_patch_failure_reason(request, text, finish_reason)
+
+
+def _structured_length_failure_reason(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+    finish_reason: str,
+) -> str | None:
+    if str(finish_reason).strip().lower() != "length":
+        return None
+    if _response_format_mode(request) != "json_object" and _guided_json_mode_from_value(
+        getattr(request, "guided_json", None), validate=False
+    ) != "json_object":
+        return None
+    state = JsonObjectConstraintState().observe_text(text)
+    return "schema_violation" if state.invalid else None
 
 
 def _guided_json_failure_reason(

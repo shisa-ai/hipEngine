@@ -464,9 +464,12 @@ Completion and chat requests accept `response_format: {"type": "json_object"}`,
 validate the completed visible output after generation. Valid JSON is returned
 normally; invalid stop-finished outputs return a normal response with empty
 successful content and `finish_details.reason: "schema_violation"`. Length
-finishes keep their length finish metadata because the partial JSON may be
-resumable once continuation handles exist. The capabilities manifest reports
-this normal-response failure reason under
+finishes keep their visible partial text. Structurally repairable partial
+JSON-object prefixes can produce deterministic continuation handles; prefixes
+that are already structurally invalid, such as mismatched close delimiters,
+report `finish_details.reason: "schema_violation"` and
+`continuation_eligible: false` while keeping coarse `finish_reason: "length"`.
+The capabilities manifest reports this normal-response failure reason under
 `features.structured_outputs.result_validation_failure_reasons`.
 
 JSON-schema result validation uses the same supported subset as strict tool
@@ -481,8 +484,8 @@ validation, not grammar-constrained decoding.
 accepts `true` for JSON-object validation, a JSON Schema object, a
 `{"schema": ...}` wrapper, or a string containing a JSON Schema object. It uses
 the same prompt hints, schema subset, buffered streaming behavior, length-finish
-continuation behavior, and `schema_violation` failure reason as
-`response_format`.
+continuation behavior, JSON-object structural invalidation, and
+`schema_violation` failure reason as `response_format`.
 
 Regex guidance is also result-validation only. `guided_regex` accepts a
 non-empty Python regular-expression string. Chat requests add a prompt hint that

@@ -4209,6 +4209,43 @@ def test_completions_response_format_json_object_validates_result() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_length_rejects_invalid_json_continuation() -> None:
+    client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(
+                detailed_outputs=[
+                    GenerationOutput(
+                        text='{"ok": [1}',
+                        finish_details=FinishDetails(reason="length", length_limit=9),
+                    )
+                ]
+            ),
+        )
+    )
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == '{"ok": [1}'
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == _stateless_finish_details(
+        "schema_violation",
+        length_limit=9,
+        phase="structured",
+        continuation_eligible=False,
+    )
+    assert "continuation_id" not in choice
+
+
 def _response_json_schema() -> dict[str, Any]:
     return {
         "name": "agent_result",
@@ -6700,6 +6737,40 @@ def test_chat_completion_response_format_length_keeps_partial_json() -> None:
         continuation_eligible=True,
         continuation_id=continuation_id,
     )
+
+
+def test_chat_completion_response_format_length_rejects_invalid_json_continuation() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text='{"ok": [1}',
+                finish_details=FinishDetails(reason="length", length_limit=9),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["message"] == {"role": "assistant", "content": '{"ok": [1}'}
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == _stateless_finish_details(
+        "schema_violation",
+        length_limit=9,
+        phase="structured",
+        continuation_eligible=False,
+    )
+    assert "continuation_id" not in choice
 
 
 def test_chat_completion_response_format_length_marks_complete_json_structured() -> None:

@@ -21,6 +21,7 @@ from hipengine.generation.batch_scheduler import (
 )
 from hipengine.generation.constraints import (
     ForcedTokenQueue,
+    JsonObjectConstraintState,
     ThinkingBudgetState,
     TokenSequenceDFAState,
     normalize_token_sequences,
@@ -130,6 +131,7 @@ __all__ = [
     "GraphBucketStats",
     "GenerationRequest",
     "GenerationStreamChunk",
+    "JsonObjectConstraintState",
     "MissingGeneratorError",
     "PREFILL_DECODE_POLICIES",
     "PerRowSamplingParams",
