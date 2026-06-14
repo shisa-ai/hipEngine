@@ -90901,3 +90901,16 @@ Validation:
 - `python3 -m py_compile hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> passed.
 - `python3 -m ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py && git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md` -> `All checks passed!` / clean.
 - `python3 -m ruff check hipengine/runtime/qwen35_paro_runner.py` remains blocked by pre-existing unrelated `F401` unused embedding imports and `F841` unused `row_chunk_auto_batch_gemv_full_attention_output`.
+
+## 2026-06-15 - AGENTIC forced-token server telemetry coverage
+
+Pinned server-boundary pass-through for the new forced-token decode metadata.
+Non-streaming completion choice telemetry, buffered streaming completion `done`
+metadata, and live completion/chat stream chunk metadata now all assert that
+backend-authored `DecodeState` fields for selected forced-token id, reason, and
+remaining count survive serialization under `choices[].hipengine.decode_state`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_decode_state tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_decode_state -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `259 passed`.
+- `python3 -m py_compile tests/test_server_api.py && python3 -m ruff check tests/test_server_api.py && git diff --check -- tests/test_server_api.py` -> `All checks passed!` / clean.
