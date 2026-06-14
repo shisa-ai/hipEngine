@@ -6947,6 +6947,11 @@ def test_server_rejects_requests_beyond_preallocated_context() -> None:
         "status_code": 400,
         "legacy_code": "context_length_exceeded",
         "retryable": False,
+        "routing": {
+            **_routing_metadata(),
+            "matched": True,
+            "reason": "context_overflow",
+        },
     }
     assert error["fit_context"] == {
         "prompt_tokens": 4,
@@ -6969,6 +6974,66 @@ def test_server_rejects_requests_beyond_preallocated_context() -> None:
     fit_body = fit.json()
     for key, value in error["fit_context"].items():
         assert fit_body[key] == value
+    assert fake.calls == []
+
+
+def test_streaming_completion_context_overflow_preserves_error_diagnostics() -> None:
+    fake = FakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=5,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "one two three four",
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert len(payloads) == 1
+    payload = payloads[0]
+    assert payload["choices"][0]["finish_reason"] == "error"
+    assert payload["error"]["code"] == "context_length_exceeded"
+    assert payload["error"]["hipengine"] == {
+        "code": "context_overflow",
+        "status_code": 400,
+        "legacy_code": "context_length_exceeded",
+        "retryable": False,
+        "routing": {
+            **_routing_metadata(),
+            "matched": True,
+            "reason": "context_overflow",
+        },
+    }
+    assert payload["error"]["fit_context"] == {
+        "prompt_tokens": 4,
+        "max_context_tokens": 5,
+        "effective_max_tokens": 2,
+        "max_allowed_max_tokens": 0,
+        "recommended_max_tokens": 0,
+        "required_context_tokens": 7,
+        "overflow_tokens": 2,
+        "fits": False,
+        "clear_policy": "reject",
+        "would_truncate": False,
+        "would_drop": [],
+    }
+    assert payload["hipengine"]["event"] == "error"
+    assert payload["hipengine"]["routing"] == _routing_metadata()
+    assert "data: [DONE]" in response.text
     assert fake.calls == []
 
 

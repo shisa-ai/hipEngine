@@ -1092,6 +1092,24 @@ def _routing_failure_metadata(
     }
 
 
+def _routing_rejection_metadata(
+    config: ServerConfig,
+    *,
+    requested_model: str | None,
+    reason: str,
+    engine: Any | None,
+) -> dict[str, Any]:
+    return {
+        **_routing_response_metadata(
+            config,
+            requested_model=requested_model,
+            engine=engine,
+        ),
+        "matched": True,
+        "reason": str(reason),
+    }
+
+
 def _choice_telemetry_capability() -> dict[str, Any]:
     return {
         "non_streaming": True,
@@ -2632,7 +2650,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         sampling,
                         row_seeds=_row_seeds_for_request(request.seed, len(prompts)),
                     )
-                _validate_context_budget(effective_max_context_tokens(engine), engine, prompts, sampling)
+                _validate_context_budget(
+                    effective_max_context_tokens(engine),
+                    engine,
+                    prompts,
+                    sampling,
+                    error_extra={
+                        "hipengine": {
+                            "routing": _routing_rejection_metadata(
+                                config,
+                                requested_model=request.model,
+                                reason="context_overflow",
+                                engine=engine,
+                            )
+                        }
+                    },
+                )
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
             else:
@@ -2732,7 +2765,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
                     )
-                    _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
+                    _validate_context_budget(
+                        effective_max_context_tokens(engine),
+                        engine,
+                        (prompt,),
+                        sampling,
+                        error_extra={
+                            "hipengine": {
+                                "routing": _routing_rejection_metadata(
+                                    config,
+                                    requested_model=request.model,
+                                    reason="context_overflow",
+                                    engine=engine,
+                                )
+                            }
+                        },
+                    )
                     return engine, sampling
 
             engine, sampling = await _await_with_request_control(prepare_stream(), control)
@@ -2830,6 +2878,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                extra=exc.extra,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -3869,6 +3918,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                extra=exc.extra,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -3936,6 +3986,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                extra=exc.extra,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -3958,7 +4009,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
                     )
-                    _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
+                    _validate_context_budget(
+                        effective_max_context_tokens(engine),
+                        engine,
+                        (prompt,),
+                        sampling,
+                        error_extra={
+                            "hipengine": {
+                                "routing": _routing_rejection_metadata(
+                                    config,
+                                    requested_model=request.model,
+                                    reason="context_overflow",
+                                    engine=engine,
+                                )
+                            }
+                        },
+                    )
                     return engine, sampling
 
             engine, sampling = await _await_with_request_control(prepare_stream(), control)
@@ -4088,6 +4154,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 param=exc.param,
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
+                extra=exc.extra,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -5731,6 +5798,8 @@ def _validate_context_budget(
     engine: Any,
     prompts: Sequence[str],
     sampling: SamplingParams,
+    *,
+    error_extra: Mapping[str, Any] | None = None,
 ) -> None:
     if max_context_tokens is None:
         return
@@ -5745,6 +5814,9 @@ def _validate_context_budget(
                 max_context_tokens=max_context,
                 max_tokens=max_tokens,
             )
+            extra = {"fit_context": fit_context}
+            if error_extra is not None:
+                extra.update(dict(error_extra))
             raise OpenAIHTTPError(
                 400,
                 f"request requires {required} context tokens (prompt {prompt_tokens} + "
@@ -5752,7 +5824,7 @@ def _validate_context_budget(
                 f"preallocated max_context_tokens={max_context}",
                 code="context_length_exceeded",
                 param=f"prompts[{index}].max_tokens" if len(prompts) > 1 else "max_tokens",
-                extra={"fit_context": fit_context},
+                extra=extra,
             )
 
 
@@ -8060,6 +8132,7 @@ def _completion_stream_error(
     param: str | None = None,
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -8077,6 +8150,7 @@ def _completion_stream_error(
         param=param,
         status_code=status_code,
         finish_details=finish_details,
+        extra=extra,
     )
     if finish_details is not None:
         details = dict(finish_details)
@@ -8468,6 +8542,7 @@ def _chat_stream_error(
     param: str | None = None,
     error_type: str = "server_error",
     finish_details: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -8484,6 +8559,7 @@ def _chat_stream_error(
         param=param,
         status_code=status_code,
         finish_details=finish_details,
+        extra=extra,
     )
     if finish_details is not None:
         details = dict(finish_details)

@@ -2131,6 +2131,10 @@ Current code reality:
   include `error.hipengine.routing` metadata for the failed single-model match:
   requested model, configured model, no served model, exact-match policy,
   loaded-model count, `matched=false`, and `reason="model_unavailable"`.
+- Context-overflow requests that match the served model include matched
+  `error.hipengine.routing` metadata with `reason="context_overflow"` alongside
+  the existing `error.fit_context` diagnostics; live SSE context-overflow errors
+  preserve the same nested error diagnostics.
 - Multiple resident models, per-model VRAM admission, unload/eviction, and
   cross-model request targeting remain future routing work.
 
@@ -2156,8 +2160,10 @@ Current code reality:
   `/v1/completions` and `/v1/chat/completions` reject mismatched model ids
   before generation with `model_unavailable`, and the error extension includes
   the failed exact-match route metadata.
-- Unsupported grammar, context overflow, and overload requests fail through
-  their own stable pre-generation errors. They are not capability-routed across
+- Context-overflow routing is covered after the current single-model route
+  matches: buffered and live SSE errors keep `error.fit_context` plus matched
+  route metadata. Unsupported grammar and overload requests fail through their
+  own stable pre-generation errors. They are not capability-routed across
   alternate models yet because multi-model routing does not exist.
 
 #### P6.3 Tensor parallelism / multi-GPU plan

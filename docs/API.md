@@ -149,6 +149,9 @@ single-model server it reports the requested model, served model,
 Wrong-model requests fail before generation with `model_unavailable` and include
 the same single-model route policy under `error.hipengine.routing`, plus
 `matched: false`, `configured_model`, and `reason: "model_unavailable"`.
+Context-overflow errors include `error.fit_context` and, after the requested
+model has matched, `error.hipengine.routing` with `matched: true` and
+`reason: "context_overflow"`.
 
 ### Streaming usage and hipEngine metadata
 
@@ -589,7 +592,7 @@ strict tool result-validation emits it as a normal chat
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
-| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context` with max allowed/recommended `max_tokens` and overflow tokens. |
+| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context` with max allowed/recommended `max_tokens`, overflow tokens, and matched-route diagnostics under `error.hipengine.routing`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation. |

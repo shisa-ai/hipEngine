@@ -89760,3 +89760,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC context-overflow routing diagnostics
+
+Added matched-route metadata to context overflow errors. Buffered and live SSE
+context-overflow failures now preserve `error.fit_context` and include
+`error.hipengine.routing` with the current single-model exact route,
+`matched=true`, and `reason="context_overflow"` after the requested model has
+matched but before generation starts.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_server_rejects_requests_beyond_preallocated_context tests/test_server_api.py::test_streaming_completion_context_overflow_preserves_error_diagnostics -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
