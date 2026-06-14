@@ -150,6 +150,11 @@ class SequentialFakeLLM(FakeLLM):
         return outputs
 
 
+class NoTokenizerFakeLLM:
+    def generate(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        return [GenerationOutput(text=str(prompt)) for prompt in prompts]
+
+
 class DetailedGenerateFakeLLM(FakeLLM):
     def generate(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         return self.generate_detailed(prompts, sampling_params)
@@ -689,6 +694,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     errors_by_code = {item["code"]: item for item in body["errors"]["codes"]}
     for code in (
         "unsupported_parameter",
+        "unsupported_feature",
         "invalid_tool_call",
         "schema_violation",
         "invalid_continuation",
@@ -703,6 +709,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         assert code in errors_by_code
     assert errors_by_code["engine_busy"]["emitted"] is True
     assert errors_by_code["engine_busy"]["status_code"] == 429
+    assert errors_by_code["unsupported_feature"]["status_code"] == 501
     assert errors_by_code["invalid_tool_call"]["emitted"] is True
     assert "finish_details.reason" in errors_by_code["invalid_tool_call"]["description"]
     assert "response_format result" in errors_by_code["schema_violation"]["description"]
@@ -1024,6 +1031,47 @@ def test_token_diagnostics_use_session_prefix_for_chat() -> None:
     assert fit_body["overflow_tokens"] == 0
     assert fit_body["session"] == count_body["session"]
     assert fake.calls[1][0][0] == count_body["text"]
+
+
+def test_token_diagnostics_report_unsupported_model_hooks() -> None:
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=NoTokenizerFakeLLM(),
+    )
+    client = TestClient(app)
+
+    capabilities = client.get("/v1/hipengine/capabilities")
+    tokenize = client.post("/v1/hipengine/tokenize", json={"text": "hello"})
+    detokenize = client.post("/v1/hipengine/detokenize", json={"token_ids": [1, 2]})
+    count = client.post("/v1/hipengine/count_tokens", json={"text": "hello"})
+    fit = client.post("/v1/hipengine/fit_context", json={"text": "hello"})
+
+    assert capabilities.status_code == 200
+    tokenizer = capabilities.json()["tokenizer"]
+    assert tokenizer["tokenize"] is False
+    assert tokenizer["detokenize"] is False
+    assert tokenizer["count_tokens"] is False
+    assert capabilities.json()["features"]["token_diagnostics"] == {
+        "tokenize": False,
+        "detokenize": False,
+        "count_tokens": False,
+        "fit_context": False,
+        "session_aware_chat": False,
+    }
+    for response, param in (
+        (tokenize, "text"),
+        (detokenize, "token_ids"),
+        (count, "text"),
+        (fit, "text"),
+    ):
+        assert response.status_code == 501
+        assert response.json()["error"]["code"] == "unsupported_feature"
+        assert response.json()["error"]["param"] == param
+        assert response.json()["error"]["hipengine"] == {
+            "code": "unsupported_feature",
+            "status_code": 501,
+            "retryable": False,
+        }
 
 
 def test_token_diagnostics_reject_ambiguous_inputs() -> None:

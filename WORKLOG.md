@@ -89355,3 +89355,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `22 passed`.
 - `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `26 passed`.
+
+## 2026-06-14 - AGENTIC unsupported-feature diagnostics
+
+Marked token-diagnostic hook absence as a first-class AGENTIC error taxonomy
+case. The capabilities manifest now advertises `unsupported_feature`, docs/API
+and docs/AGENTIC list it explicitly, and server tests cover models without
+tokenizer/counting hooks across `/tokenize`, `/detokenize`, `/count_tokens`,
+and `/fit_context`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_token_diagnostics_report_unsupported_model_hooks -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `45 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

@@ -252,6 +252,12 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "emitted": True,
         "description": "A request field or value is not supported by this server.",
     },
+    "unsupported_feature": {
+        "status_code": 501,
+        "retryable": False,
+        "emitted": True,
+        "description": "The served model lacks a requested optional runtime feature.",
+    },
     "invalid_tool_call": {
         "status_code": 400,
         "retryable": False,

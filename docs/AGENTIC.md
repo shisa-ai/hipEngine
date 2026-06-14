@@ -1947,6 +1947,7 @@ Exit gates:
 Implement stable errors for:
 
 - `unsupported_parameter`;
+- `unsupported_feature`;
 - `invalid_tool_call`;
 - `schema_violation`;
 - `context_overflow`;
@@ -1969,9 +1970,9 @@ Current code reality:
 - `/v1/hipengine/capabilities` advertises
   `errors.schema="hipengine.error_taxonomy.v1"`, canonical code metadata, and
   legacy aliases. Currently emitted canonical codes include
-  `unsupported_parameter`, `invalid_tool_call`, `schema_violation`,
-  `context_overflow`, `deadline_exceeded`, `cancelled`, `engine_busy`, and
-  `model_unavailable`.
+  `unsupported_parameter`, `unsupported_feature`, `invalid_tool_call`,
+  `schema_violation`, `context_overflow`, `deadline_exceeded`, `cancelled`,
+  `engine_busy`, and `model_unavailable`.
 - `invalid_tool_call` is currently emitted as a normal chat
   `finish_details.reason` for strict tool result-validation failures, not as an
   HTTP error payload. `schema_violation` can likewise be a request-body error or
