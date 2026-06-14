@@ -838,7 +838,8 @@
           "length_limit": 1,
           "cache_action": "append_none",
           "continuation_eligible": false
-        }
+        },
+        "sampling": {"logit_bias": [[12, -1.0]]}
       }
     },
     {

@@ -340,7 +340,17 @@ def _assert_prompt_expectations(fake: TraceLLM, expected: dict[str, Any], *, cal
     if "sampling" in expected:
         sampling = fake.calls[call_index][1]
         for field, value in expected["sampling"].items():
-            assert getattr(sampling, field) == value
+            actual = getattr(sampling, field)
+            assert actual == _expected_sampling_value(actual, value)
+
+
+def _expected_sampling_value(actual: Any, value: Any) -> Any:
+    if isinstance(actual, tuple) and isinstance(value, list):
+        return tuple(
+            _expected_sampling_value(item_actual, item_value)
+            for item_actual, item_value in zip(actual, value, strict=True)
+        )
+    return value
 
 
 def _assert_tool_call(actual: dict[str, Any], expected: dict[str, Any]) -> None:

@@ -90286,3 +90286,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC golden logit-bias sampling assertion
+
+Tightened the deterministic golden trace runner so expected sampling fields can
+assert normalized tuple-valued request state. The existing
+`length_finish_completion` trace now verifies OpenAI `logit_bias` reaches the
+fake generation layer as `((12, -1.0),)`, complementing the lower-level
+sampler/MTP compatibility tests that keep logit bias on AR processed sampling
+and off raw-argmax MTP verification.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_trace[length_finish_completion] -q` -> `1 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `45 passed`.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json WORKLOG.md docs/AGENTIC.md` -> clean.
