@@ -38,7 +38,6 @@
       "top_logprobs",
       "grammar",
       "guided_json",
-      "guided_regex",
       "guided_grammar",
       "guided_decoding_backend"
     ]

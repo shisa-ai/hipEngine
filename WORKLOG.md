@@ -91170,3 +91170,23 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC guided-regex result validation
+
+Implemented `guided_regex` as result-validation-only structured output support
+for completions and chat. The server now accepts non-empty Python regex strings,
+rejects invalid regex syntax before generation, adds a chat prompt hint, accepts
+stop-finished visible output when `re.fullmatch()` succeeds after stripping
+surrounding whitespace, suppresses invalid stop-finished content with
+`finish_details.reason="schema_violation"`, buffers streaming structured
+responses before validation, inherits the control across deterministic
+continuation handles, and advertises it under `features.structured_outputs` plus
+`features.grammars.result_validation_only` instead of unsupported fields. The
+local-agent example no longer blocklists the field.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_guided_regex_validates_result tests/test_server_api.py::test_streaming_completion_guided_regex_buffers_validation_failure tests/test_server_api.py::test_chat_completion_guided_regex_validates_visible_content tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_regex_and_inherits_validation tests/test_server_api.py::test_server_rejects_known_unsupported_agentic_fields tests/test_server_api.py::test_capabilities_advertised_unsupported_fields_are_rejected_before_generation tests/test_server_api.py::test_guided_output_request_validation_fails_before_generation -q` -> `29 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_local_agent_config.py -q` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md docs/examples/local-agent/openai-compatible.json WORKLOG.md` -> clean.

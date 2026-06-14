@@ -389,6 +389,7 @@ def _continuation_capability() -> dict[str, Any]:
             "tool_choice",
             "parallel_tool_calls",
             "response_format",
+            "guided_regex",
             "guided_choice",
             "guided_patch",
             "guided_diff",
@@ -719,6 +720,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "response_format": True,
         "json_object": True,
         "json_schema": True,
+        "guided_regex": True,
+        "guided_regex_match": "fullmatch_after_strip",
         "guided_choice": True,
         "guided_patch": True,
         "guided_diff": True,
@@ -769,13 +772,13 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "unsupported_fields": [
             "grammar",
             "guided_json",
-            "guided_regex",
             "guided_grammar",
             "guided_decoding_backend",
         ],
         "result_validation_only": [
             "json_object",
             "json_schema",
+            "guided_regex",
             "guided_choice",
             "guided_patch",
             "guided_diff",
@@ -4261,6 +4264,38 @@ def test_completions_guided_choice_validates_result() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_guided_regex_validates_result() -> None:
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=["AB-12"]),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=["AB"]),
+        )
+    )
+    payload = {
+        "model": "fake-model",
+        "prompt": "return an id",
+        "guided_regex": r"[A-Z]{2}-\d{2}",
+    }
+
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == "AB-12"
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_guided_diff_validates_unified_diff_result() -> None:
     diff_text = _unified_diff_text()
     valid_client = TestClient(
@@ -4362,6 +4397,34 @@ def test_streaming_completion_guided_choice_buffers_validation_failure() -> None
             "model": "fake-model",
             "prompt": "answer yes or no",
             "guided_choice": ["yes", "no"],
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
+    assert done["choices"][0]["hipengine"] == {
+        "phase": "structured",
+        "finish_details": _stateless_finish_details("schema_violation"),
+    }
+    assert fake.stream_calls == []
+
+
+def test_streaming_completion_guided_regex_buffers_validation_failure() -> None:
+    fake = FakeLLM(outputs=["AB"], stream_chunks=["AB-12"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "return an id",
+            "guided_regex": r"[A-Z]{2}-\d{2}",
             "stream": True,
             "stream_options": {"include_hipengine": True},
         },
@@ -6263,6 +6326,40 @@ def test_chat_completion_guided_choice_validates_visible_content() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_chat_completion_guided_regex_validates_visible_content() -> None:
+    valid_fake = FakeLLM(outputs=["<think>format</think>AB-12"])
+    invalid_fake = FakeLLM(outputs=["<think>format</think>AB"])
+    valid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=valid_fake)
+    )
+    invalid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=invalid_fake)
+    )
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "return an id"}],
+        "guided_regex": r"[A-Z]{2}-\d{2}",
+    }
+
+    valid = valid_client.post("/v1/chat/completions", json=payload)
+    invalid = invalid_client.post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["message"]["content"] == "AB-12"
+    assert valid_choice["message"]["reasoning_content"] == "format"
+    assert valid_choice["finish_details"] == _stateless_finish_details("stop")
+    assert (
+        'Return text that fully matches this regular expression and no other text: "[A-Z]{2}-\\\\d{2}"'
+        in valid_fake.calls[0][0][0]
+    )
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["message"] == {"role": "assistant", "content": ""}
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_chat_completion_guided_patch_validates_visible_unified_diff() -> None:
     diff_text = _unified_diff_text()
     fenced_diff = f"<think>patch</think>```diff\n{diff_text}\n```"
@@ -6460,6 +6557,54 @@ def test_chat_continuation_resumes_partial_json_and_inherits_response_format() -
     assert second_choice["finish_reason"] == "stop"
     assert second_choice["finish_details"] == _stateless_finish_details("eos", eos_token_id=151645)
     assert fake.calls[1][0][0].endswith('{"ok":')
+
+
+def test_chat_continuation_resumes_partial_guided_regex_and_inherits_validation() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="AB-",
+                finish_details=FinishDetails(reason="length", length_limit=3),
+            ),
+            GenerationOutput(text="12", finish_details=FinishDetails(reason="stop")),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return an id"}],
+            "guided_regex": r"[A-Z]{2}-\d{2}",
+            "max_tokens": 3,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert first_choice["message"] == {"role": "assistant", "content": "AB-"}
+    assert first_choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=3,
+        phase="structured",
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 2},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["message"] == {"role": "assistant", "content": "AB-12"}
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["finish_details"] == _stateless_finish_details("stop")
 
 
 def test_chat_continuation_resume_rejects_explicit_response_format_override() -> None:
@@ -9838,15 +9983,6 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
             {
                 "model": "fake-model",
                 "messages": [{"role": "user", "content": "hello"}],
-                "guided_regex": "[a-z]+",
-            },
-            "guided_regex",
-        ),
-        (
-            "/v1/chat/completions",
-            {
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "hello"}],
                 "guided_grammar": "root ::= 'ok'",
             },
             "guided_grammar",
@@ -9887,7 +10023,6 @@ def test_capabilities_advertised_unsupported_fields_are_rejected_before_generati
     field_values = {
         "grammar": {"type": "json"},
         "guided_json": {"type": "object"},
-        "guided_regex": "[a-z]+",
         "guided_grammar": "root ::= 'ok'",
         "guided_decoding_backend": "outlines",
     }
@@ -9914,6 +10049,51 @@ def test_capabilities_advertised_unsupported_fields_are_rejected_before_generati
 @pytest.mark.parametrize(
     ("payload", "param", "code"),
     [
+        (
+            {
+                "guided_regex": "",
+            },
+            "guided_regex",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_regex": ["[a-z]+"],
+            },
+            "guided_regex",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_regex": "[",
+            },
+            "guided_regex",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_regex": "[a-z]+",
+                "response_format": {"type": "json_object"},
+            },
+            "guided_regex",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_regex": "[a-z]+",
+                "guided_choice": ["yes", "no"],
+            },
+            "guided_regex",
+            "invalid_request",
+        ),
+        (
+            {
+                "guided_regex": "[a-z]+",
+                "guided_patch": True,
+            },
+            "guided_regex",
+            "invalid_request",
+        ),
         (
             {
                 "guided_choice": [],
