@@ -77,6 +77,36 @@ _SESSION_UNSAFE_VISIBLE_REASONS = frozenset(
         "tool_required_not_satisfied",
     }
 )
+_CONTINUATION_INELIGIBLE_WHEN = (
+    "non_length_finish",
+    "length_phase_not_answer_or_structured",
+    "stream",
+    "n_not_1",
+    "logprobs",
+    "completion_echo",
+    "non_deterministic_sampling",
+    "logit_processors",
+    "chat_tools",
+    "thinking_budget_controls",
+    "session_id",
+)
+_CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
+    "stream",
+    "n",
+    "logprobs",
+    "echo",
+    "temperature",
+    "logit_bias",
+    "suppress_token_ids",
+    "min_tokens",
+    "repetition_penalty",
+    "presence_penalty",
+    "frequency_penalty",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
+    "thinking",
+)
 _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     {
         "invalid_tool_call",
@@ -854,6 +884,8 @@ def _session_continuation_capability() -> dict[str, Any]:
         "supported_finishes": ["length"],
         "supported_streaming": False,
         "supported_sampling": "deterministic_buffered_only",
+        "ineligible_when": list(_CONTINUATION_INELIGIBLE_WHEN),
+        "unsupported_resume_fields": list(_CONTINUATION_UNSUPPORTED_RESUME_FIELDS),
     }
 
 

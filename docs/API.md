@@ -241,6 +241,9 @@ text instead of reusing resident KV state, and the capabilities manifest reports
 Unsupported resume combinations fail before generation: `stream=true`,
 `n != 1`, logprobs, completion `echo=true`, non-deterministic sampling/logit
 processors, chat tools, `parallel_tool_calls`, and thinking-budget controls.
+The capabilities manifest exposes the same contract under
+`sessions.continuations.ineligible_when` and
+`sessions.continuations.unsupported_resume_fields`.
 Unknown or already consumed handles return HTTP 400
 `error.code="invalid_continuation"`; expired handles return HTTP 410
 `error.code="continuation_expired"`.

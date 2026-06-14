@@ -88900,3 +88900,19 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `17 passed`.
 - `python3 -m ruff check scripts/validate_local_agent_config.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- scripts/validate_local_agent_config.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC continuation blocker capabilities
+
+Exposed continuation-handle creation/resume blockers in
+`sessions.continuations.ineligible_when` and
+`sessions.continuations.unsupported_resume_fields` so agent clients can avoid
+unsupported continuation combinations before sending a request. The lists match
+the existing deterministic buffered continuation implementation and rejection
+paths.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

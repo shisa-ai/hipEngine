@@ -1252,7 +1252,10 @@ Current code reality:
   decode state, tokenizer id, auth principal, RNG state, or resident KV;
 - streaming, logprobs, completion `echo`, `n != 1`, non-deterministic
   sampling/logit processors, chat tools, and thinking-budget controls are
-  rejected on resume and are not eligible for new handles.
+  rejected on resume and are not eligible for new handles. The capabilities
+  manifest exposes these creation/resume blockers under
+  `sessions.continuations.ineligible_when` and
+  `sessions.continuations.unsupported_resume_fields`.
 
 Exit gates:
 
