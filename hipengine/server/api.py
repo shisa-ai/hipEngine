@@ -3365,6 +3365,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if include_hipengine and token_accounting is not None
             else None
         )
+        final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
         yield _completion_stream_done(
             response_id,
             created,
@@ -3379,6 +3380,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing_metadata,
+            kv_pool=final_kv_pool,
         )
         if _stream_include_usage(request):
             yield _completion_stream_usage(
@@ -3389,6 +3391,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
+                kv_pool=final_kv_pool,
             )
         yield "data: [DONE]\n\n"
 
@@ -3741,6 +3744,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
                     "choice_decode_state": tokenizer_caps["count_tokens"],
                     "routing": "stream_options.include_hipengine",
+                    "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
                 },
                 "choice_telemetry": _choice_telemetry_capability(),
                 "structured_outputs": _structured_outputs_capability(),
@@ -4091,6 +4095,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     )
                     if include_hipengine
                     else None,
+                    kv_pool=(
+                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                        if include_hipengine
+                        else None
+                    ),
                 ),
                 media_type="text/event-stream",
             )
@@ -4390,6 +4399,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
+                    kv_pool=(
+                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                        if include_hipengine
+                        else None
+                    ),
                 ):
                     yield event
             if _stream_include_usage(request):
@@ -4401,6 +4415,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
+                    kv_pool=(
+                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                        if include_hipengine
+                        else None
+                    ),
                 )
         except OpenAIHTTPError as exc:
             _log_stream_failure(
@@ -4840,6 +4859,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if include_hipengine and token_accounting is not None
             else None
         )
+        final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
         if buffer_tool_output:
             parsed = _parse_chat_tool_calls(text)
             tool_validation = _validate_chat_tool_result(request, parsed, text)
@@ -4880,6 +4900,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
+                kv_pool=final_kv_pool,
             ):
                 yield event
         else:
@@ -4897,6 +4918,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
+                kv_pool=final_kv_pool,
             )
         if _stream_include_usage(request):
             yield _chat_stream_usage(
@@ -4907,6 +4929,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
+                kv_pool=final_kv_pool,
             )
         yield "data: [DONE]\n\n"
 
@@ -5039,23 +5062,42 @@ def _render_prometheus_metrics(
     return "\n".join(lines) + "\n"
 
 
+_KV_POOL_STATS_ATTRS = ("kv_pool", "kv_cache_pool", "pool", "kv_pool_stats")
+_KV_POOL_METRIC_DEFAULTS = {
+    "current_bytes": 0.0,
+    "high_water_observed_bytes": 0.0,
+    "grow_events": 0.0,
+    "grow_failures": 0.0,
+    "shrink_events": 0.0,
+    "free_pages": 0.0,
+    "refcounted_pages": 0.0,
+}
+
+
 def _pool_metric_values(engine: Any | None) -> dict[str, float]:
-    values = {
-        "current_bytes": 0.0,
-        "high_water_observed_bytes": 0.0,
-        "grow_events": 0.0,
-        "grow_failures": 0.0,
-        "shrink_events": 0.0,
-        "free_pages": 0.0,
-        "refcounted_pages": 0.0,
-    }
-    stats = _first_stats_object(engine, ("kv_pool", "kv_cache_pool", "pool", "kv_pool_stats"))
+    stats = _kv_pool_stats_object(engine)
     if stats is None:
-        return values
+        return dict(_KV_POOL_METRIC_DEFAULTS)
+    return _kv_pool_metric_values_from_stats(stats)
+
+
+def _kv_pool_stats_object(engine: Any | None) -> Any | None:
+    return _first_stats_object(engine, _KV_POOL_STATS_ATTRS)
+
+
+def _kv_pool_metric_values_from_stats(stats: Any) -> dict[str, float]:
+    values = dict(_KV_POOL_METRIC_DEFAULTS)
     data = _stats_to_mapping(stats)
     for key in values:
         values[key] = _non_negative_metric_value(data.get(key))
     return values
+
+
+def _kv_pool_stream_payload(engine: Any | None) -> dict[str, float] | None:
+    stats = _kv_pool_stats_object(engine)
+    if stats is None:
+        return None
+    return _kv_pool_metric_values_from_stats(stats)
 
 
 def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
@@ -8897,6 +8939,7 @@ def _stream_hipengine_payload(
     tokens: Mapping[str, int] | None = None,
     token_event: bool = False,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"metadata_version": 1, "event": str(event)}
     if stream_started_at is not None:
@@ -8915,6 +8958,8 @@ def _stream_hipengine_payload(
         payload["usage"] = dict(usage)
     if routing is not None:
         payload["routing"] = dict(routing)
+    if kv_pool is not None:
+        payload["kv_pool"] = dict(kv_pool)
     return payload
 
 
@@ -8975,6 +9020,7 @@ def _attach_stream_hipengine(
     tokens: Mapping[str, int] | None = None,
     token_event: bool = False,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     if include_hipengine:
         payload["hipengine"] = _stream_hipengine_payload(
@@ -8984,6 +9030,7 @@ def _attach_stream_hipengine(
             tokens=tokens,
             token_event=token_event,
             routing=routing,
+            kv_pool=kv_pool,
         )
     return payload
 
@@ -9042,6 +9089,7 @@ def _completion_stream_done(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -9072,6 +9120,7 @@ def _completion_stream_done(
             stream_started_at=stream_started_at,
             tokens=tokens,
             routing=routing,
+            kv_pool=kv_pool,
         )
     )
 
@@ -9085,6 +9134,7 @@ def _completion_stream_usage(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -9101,6 +9151,7 @@ def _completion_stream_usage(
             stream_started_at=stream_started_at,
             usage=usage,
             routing=routing,
+            kv_pool=kv_pool,
         )
     )
 
@@ -9174,6 +9225,7 @@ def _completion_stream(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
@@ -9212,6 +9264,7 @@ def _completion_stream(
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
+            kv_pool=kv_pool,
         )
     if usage is not None:
         yield _completion_stream_usage(
@@ -9222,6 +9275,7 @@ def _completion_stream(
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
+            kv_pool=kv_pool,
         )
     yield "data: [DONE]\n\n"
 
@@ -9395,6 +9449,7 @@ def _chat_stream_parsed(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
@@ -9450,6 +9505,7 @@ def _chat_stream_parsed(
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
+        kv_pool=kv_pool,
     )
 
 
@@ -9466,6 +9522,7 @@ def _chat_stream_done(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> str:
     finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
     choice = {
@@ -9495,6 +9552,7 @@ def _chat_stream_done(
             stream_started_at=stream_started_at,
             tokens=tokens,
             routing=routing,
+            kv_pool=kv_pool,
         )
     )
 
@@ -9508,6 +9566,7 @@ def _chat_stream_usage(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
 ) -> str:
     return _sse(
         _attach_stream_hipengine(
@@ -9524,6 +9583,7 @@ def _chat_stream_usage(
             stream_started_at=stream_started_at,
             usage=usage,
             routing=routing,
+            kv_pool=kv_pool,
         )
     )
 

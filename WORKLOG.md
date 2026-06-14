@@ -90664,3 +90664,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_completion_continuation_resumes_buffered_length_finish_once tests/test_server_api.py::test_completions_expose_backend_generation_telemetry tests/test_server_api.py::test_completion_length_finish_marks_sampled_continuation_ineligible tests/test_server_api.py::test_chat_continuation_resumes_partial_json_and_inherits_response_format -q` -> `4 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC streaming KV pool metadata
+
+Opt-in `stream_options.include_hipengine=true` final SSE metadata now includes
+sanitized server-observed KV pool stats when the served engine exposes
+`kv_pool`, `kv_cache_pool`, `pool`, or `kv_pool_stats`. Completion and chat
+final `done`/`usage` chunks carry top-level `hipengine.kv_pool`; token deltas
+remain unchanged, and default OpenAI-compatible streams still omit the
+extension. The payload reuses the same non-negative finite scalar filtering as
+Prometheus pool metrics, so malformed pool counters do not leak into JSON.
+Updated API/AGENTIC docs and the capabilities manifest to advertise the
+done/usage scope while leaving cache-hit, prefill timing, per-request KV-byte
+deltas, budget pressure, and backend-authored phase counters as runtime gaps.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_streaming_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_completion_can_include_kv_pool_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_hipengine_metadata tests/test_server_api.py::test_streaming_chat_completion_can_include_kv_pool_metadata tests/test_server_api.py::test_metrics_endpoint_filters_malformed_kv_pool_scalars -q` -> `6 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

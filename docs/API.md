@@ -201,17 +201,22 @@ preserve backend `GenerationOutput.telemetry` on the final choice `done` chunk
 when it is present.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
-`hipengine.usage`. Streaming error chunks use top-level
-`hipengine.event: "error"` and include `choices[].hipengine.finish_details` when
-structured finish details are available.
+`hipengine.usage`. When the served engine exposes KV pool stats, final
+done/usage chunks also include top-level `hipengine.kv_pool` with sanitized
+server-observed `current_bytes`, `high_water_observed_bytes`, grow/shrink
+event counters, `grow_failures`, `free_pages`, and `refcounted_pages`.
+Streaming error chunks use top-level `hipengine.event: "error"` and include
+`choices[].hipengine.finish_details` when structured finish details are
+available.
 
 The `/v1/hipengine/capabilities` manifest reports the same extension under
 `features.stream_metadata`, including metadata version, event names, timing
 field names, and whether the server can attach token-accounting-backed
 `decode_state` payloads for the loaded engine.
 
-Cache, backend prefill timing, budget-pressure, KV-byte, and backend-authored
-per-phase token metadata are omitted until the runtime exposes those signals.
+Cache hit/miss, backend prefill timing, budget pressure, per-request KV-byte
+deltas, and backend-authored per-phase token metadata are omitted until the
+runtime exposes those signals.
 
 ### Choice telemetry
 

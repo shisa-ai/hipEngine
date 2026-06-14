@@ -134,8 +134,10 @@ Known baseline limitations:
   and best-effort token accounting. When a backend yields
   `GenerationStreamChunk.telemetry`, the server preserves that decode-state
   snapshot in the choice payload and adds only server-derived token counters.
-  Exact backend-authored per-phase counts, prefill timing, cache state, KV
-  bytes, and budget pressure still need broader runtime signals.
+  Final done/usage chunks also include sanitized server-observed KV pool stats
+  when the served engine exposes them. Exact backend-authored per-phase counts,
+  prefill timing, cache hit/miss state, per-request KV-byte deltas, and budget
+  pressure still need broader runtime signals.
 - Public agent/runtime capability discovery is exposed through
   `/v1/hipengine/capabilities`. Limited deterministic buffered continuation
   handles exist, but they re-prefill stored rendered prompt plus generated text;
@@ -965,12 +967,14 @@ Current code reality:
   canonical `choices[].hipengine.decode_state` snapshot.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
   usage chunks mirror `usage` under top-level `hipengine.usage`.
+- Final done/usage chunks include top-level `hipengine.kv_pool` with sanitized
+  server-observed KV pool stats when the served engine exposes them.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
-- Backend-authored prefill timing, cache hit/miss, KV-byte, budget-pressure, and
-  authoritative per-phase token counts are still omitted until
-  generation/runtime code emits those signals.
+- Backend-authored prefill timing, cache hit/miss, per-request KV-byte deltas,
+  budget-pressure, and authoritative per-phase token counts are still omitted
+  until generation/runtime code emits those signals.
 
 Exit gates:
 

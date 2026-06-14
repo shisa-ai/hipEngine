@@ -321,6 +321,30 @@ def _routing_metadata(
     }
 
 
+def _fake_kv_pool_stats() -> SimpleNamespace:
+    return SimpleNamespace(
+        current_bytes=4096,
+        high_water_observed_bytes=8192,
+        grow_events=2,
+        grow_failures=1,
+        shrink_events=3,
+        free_pages=4,
+        refcounted_pages=5,
+    )
+
+
+def _fake_kv_pool_metadata() -> dict[str, float]:
+    return {
+        "current_bytes": 4096.0,
+        "high_water_observed_bytes": 8192.0,
+        "grow_events": 2.0,
+        "grow_failures": 1.0,
+        "shrink_events": 3.0,
+        "free_pages": 4.0,
+        "refcounted_pages": 5.0,
+    }
+
+
 def _continuation_capability() -> dict[str, Any]:
     return {
         "supported": True,
@@ -644,6 +668,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "choice_token_accounting": True,
         "choice_decode_state": True,
         "routing": "stream_options.include_hipengine",
+        "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
     }
     assert body["features"]["choice_telemetry"] == {
         "non_streaming": True,
@@ -7368,6 +7393,31 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
 
 
+def test_streaming_chat_completion_can_include_kv_pool_metadata() -> None:
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["streamed reply"])
+    fake.kv_pool_stats = _fake_kv_pool_stats()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert "kv_pool" not in payloads[0]["hipengine"]
+    done = next(payload for payload in payloads if payload["hipengine"]["event"] == "done")
+    usage = next(payload for payload in payloads if payload["hipengine"]["event"] == "usage")
+    assert done["hipengine"]["kv_pool"] == _fake_kv_pool_metadata()
+    assert usage["hipengine"]["kv_pool"] == _fake_kv_pool_metadata()
+
+
 def test_streaming_chat_completion_prefers_backend_chunk_decode_state() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],
@@ -7519,6 +7569,32 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
     assert isinstance(payloads[-1]["hipengine"]["timing"]["ttft_ms"], float)
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_elapsed_ms"], float)
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
+
+
+def test_streaming_completion_can_include_kv_pool_metadata() -> None:
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["alpha", " beta"])
+    fake.kv_pool_stats = _fake_kv_pool_stats()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert "kv_pool" not in payloads[0]["hipengine"]
+    done = next(payload for payload in payloads if payload["hipengine"]["event"] == "done")
+    usage = next(payload for payload in payloads if payload["hipengine"]["event"] == "usage")
+    assert done["hipengine"]["kv_pool"] == _fake_kv_pool_metadata()
+    assert usage["hipengine"]["kv_pool"] == _fake_kv_pool_metadata()
 
 
 def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
