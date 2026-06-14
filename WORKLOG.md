@@ -89988,3 +89988,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 230`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC duplicated tool-call golden trace
+
+Added a deterministic golden trace for the Qwen duplicated `<tool_call>` start
+marker compatibility path. The fixture now proves the strict malformed doubled
+marker case still fails closed, while non-strict auto-tool parsing recovers the
+same model shape into OpenAI `tool_calls` when the inner JSON is valid. Updated
+`docs/AGENTIC.md` P5.3 coverage notes to include duplicated-start recovery and
+permissive malformed-JSON compatibility.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `30 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py --collect-only -q` -> `tests/test_agentic_harness_traces.py: 30`.
+- `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.

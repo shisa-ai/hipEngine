@@ -1975,7 +1975,8 @@ Current code reality:
   deterministic traces for a two-turn assistant -> tool call -> tool result ->
   final-answer loop, streaming tool-call deltas, reasoning extraction next to
   tool calls, strict malformed/missing/wrong/no-tool/parallel-call tool
-  rejection, JSON-schema result-validation failure, stateless
+  rejection, duplicated-start compatibility recovery, JSON-schema
+  result-validation failure, stateless
   `session.commit="append_none"` finish metadata, no-thinking prompt rendering,
   session-backed reasoning/tool-call retention that strips hidden reasoning
   from the next prompt, completion length finish metadata, chat reasoning/
@@ -1993,9 +1994,10 @@ Current code reality:
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
   rendering exactly once, `enable_thinking=false` pre-close rendering,
-  permissive malformed-tool compatibility, `session.commit="append_none"`
-  finish metadata, app-local `session.id` visible-only transcript retention, and
-  streaming tool-call parity without raw `<tool_call>` leakage.
+  duplicated-start tool-call recovery, permissive malformed-JSON compatibility,
+  `session.commit="append_none"` finish metadata, app-local `session.id`
+  visible-only transcript retention, and streaming tool-call parity without raw
+  `<tool_call>` leakage.
 
 Exit gates:
 

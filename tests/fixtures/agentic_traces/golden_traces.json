@@ -150,6 +150,41 @@
       }
     },
     {
+      "name": "duplicated_tool_call_start_compat_non_streaming",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": [
+        "<tool_call>\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"README.md\"}}</tool_call>"
+      ],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Read compatibly."}],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "read",
+              "description": "Read a file",
+              "parameters": {"type": "object"}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "tool_calls",
+        "finish_details": {
+          "reason": "tool_calls",
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "tool_call_tokens": 2
+        },
+        "message_content": "",
+        "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+        "response_excludes": ["<tool_call>"]
+      }
+    },
+    {
       "name": "required_tool_missing_non_streaming",
       "kind": "http",
       "endpoint": "/v1/chat/completions",
