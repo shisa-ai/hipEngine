@@ -123,6 +123,8 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_GENERATION_BATCH_WINDOW_MS` | OpenAI-compatible server | `0` | Opt-in cold-path coalescing delay for compatible HTTP requests. Default `0` adds no intentional delay; same-event-loop-turn requests may still share the batcher worker, while positive values are for explicit coalescer experiments. |
 | `HIPENGINE_METRICS` | OpenAI-compatible server | `off` | Metrics endpoint mode used by `hipengine serve --metrics`: `off` or `prometheus`. When `prometheus`, `/metrics` exposes additive request counters plus KV-pool and graph-bucket counters. |
 | `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `off` | Prefix-cache mode used by `hipengine serve --prefix-cache`: `off` or `radix`. `radix` enables the token-id trie scaffold for block-aligned shared-prefix admission; default remains `off` until C5 acceptance is broader. |
+| `HIPENGINE_REPLAY_DIR` | OpenAI-compatible server diagnostics | unset | Opt-in directory for finite JSON failed-request replay artifacts. Disabled by default for sensitive deployments; equivalent CLI flag is `--replay-dir`. |
+| `HIPENGINE_REPLAY_REDACTION` | OpenAI-compatible server diagnostics | `hash` | Replay artifact string redaction mode: `hash` replaces strings with SHA-256/length metadata, while `none` stores raw strings for explicit local debugging only. Equivalent CLI flag is `--replay-redaction`. |
 
 Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 `HIPENGINE_AOTRITON_RUNTIME_ROOT`) are no longer read by the runtime.

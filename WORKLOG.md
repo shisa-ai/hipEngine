@@ -87351,3 +87351,24 @@ Validation:
 - `python3 -m py_compile tests/test_agentic_harness_traces.py`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `git diff --check -- docs/AGENTIC.md tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json`.
+
+## 2026-06-14 - AGENTIC replay bundle artifacts
+
+Added opt-in failed-request replay artifacts for the OpenAI-compatible server.
+`--replay-dir` / `HIPENGINE_REPLAY_DIR` enables finite JSON artifacts with
+schema `hipengine.replay.v1`; default behavior emits nothing. Artifacts capture
+method/path, redacted request JSON, prompt/tool-result hashes, served model
+metadata, requested sampler fields, seeds, error metadata, finish details when
+present, token-count placeholders, and a compact capability snapshot.
+
+Added `--replay-redaction` / `HIPENGINE_REPLAY_REDACTION` controls. The default
+`hash` mode replaces request strings with SHA-256/length metadata; explicit
+`none` mode is available for local non-sensitive debugging only. Tests cover
+default-off behavior, stable schema, and prompt redaction.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults tests/test_server_api.py::test_replay_artifacts_are_default_off tests/test_server_api.py::test_replay_artifact_redacts_failed_request -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `54 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `git diff --check -- hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py docs/API.md docs/AGENTIC.md docs/ENVS.md`.

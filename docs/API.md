@@ -319,6 +319,18 @@ HIPENGINE_DEBUG=1 hipengine serve --model /path/to/model
 Debug payload logs include prompts and generated text; do not enable them for
 shared or sensitive deployments.
 
+Failed-request replay artifacts are separately opt-in. Pass `--replay-dir
+/path/to/replays` or set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts
+for failed HTTP requests. Artifacts use `schema: "hipengine.replay.v1"` and
+include the request method/path, redacted request JSON, prompt/tool-result
+hashes, served model id, requested sampler fields, seed fields, error metadata,
+finish details when available, token-count placeholders, and a compact
+capability snapshot.
+
+The default `--replay-redaction hash` replaces every string value in the request
+JSON with SHA-256 and length metadata. `--replay-redaction none` stores raw
+strings and should only be used in local, non-sensitive debugging sessions.
+
 ## Current limitations
 
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;

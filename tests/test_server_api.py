@@ -1465,11 +1465,15 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)
     monkeypatch.delenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", raising=False)
     monkeypatch.delenv("HIPENGINE_REQUEST_TIMEOUT_MS", raising=False)
+    monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
+    monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
     assert default_args.chat_default_max_tokens == 4096
     assert default_args.request_timeout_ms is None
+    assert default_args.replay_dir is None
+    assert default_args.replay_redaction == "hash"
 
     monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
     monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", "radix")
@@ -1477,6 +1481,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_DEBUG", "1")
     monkeypatch.setenv("HIPENGINE_CHAT_DEFAULT_MAX_TOKENS", "auto")
     monkeypatch.setenv("HIPENGINE_REQUEST_TIMEOUT_MS", "250.5")
+    monkeypatch.setenv("HIPENGINE_REPLAY_DIR", "/tmp/hipengine-replay")
+    monkeypatch.setenv("HIPENGINE_REPLAY_REDACTION", "none")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
@@ -1484,6 +1490,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert env_args.debug is True
     assert env_args.chat_default_max_tokens is None
     assert env_args.request_timeout_ms == 250.5
+    assert env_args.replay_dir == "/tmp/hipengine-replay"
+    assert env_args.replay_redaction == "none"
 
     cli_args = build_parser().parse_args(
         [
@@ -1499,6 +1507,10 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "123.5",
             "--chat-default-max-tokens",
             "123",
+            "--replay-dir",
+            "/tmp/hipengine-cli-replay",
+            "--replay-redaction",
+            "hash",
             "--no-debug",
         ]
     )
@@ -1507,10 +1519,81 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert cli_args.generation_batch_window_ms == 0.0
     assert cli_args.request_timeout_ms == 123.5
     assert cli_args.chat_default_max_tokens == 123
+    assert cli_args.replay_dir == "/tmp/hipengine-cli-replay"
+    assert cli_args.replay_redaction == "hash"
     assert cli_args.debug is False
 
     app = create_app(ServerConfig(model="fake-path", eager_load=False, prefix_cache="radix"), llm=FakeLLM())
     assert app.state.hipengine_prefix_cache_mode == "radix"
+
+
+def test_replay_artifacts_are_default_off(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "secret prompt", "typical_p": 0.9},
+    )
+
+    assert response.status_code == 400
+    assert not replay_dir.exists()
+
+
+def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            replay_dir=str(replay_dir),
+            replay_redaction="hash",
+        ),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "secret prompt",
+            "max_tokens": 1,
+            "seed": 123,
+            "typical_p": 0.9,
+        },
+    )
+
+    assert response.status_code == 400
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True)
+    assert artifact["schema"] == "hipengine.replay.v1"
+    assert artifact["redaction"] == {"mode": "hash", "hash": "sha256"}
+    assert artifact["request"]["method"] == "POST"
+    assert artifact["request"]["path"] == "/v1/completions"
+    assert artifact["request"]["json"]["prompt"]["redacted"] == "sha256"
+    assert artifact["request"]["prompt_hashes"] == [
+        {
+            "path": "$.prompt",
+            "sha256": artifact["request"]["json"]["prompt"]["sha256"],
+            "length": len("secret prompt"),
+        }
+    ]
+    assert artifact["model"]["id"] == "fake-model"
+    assert artifact["sampling"]["max_tokens"] == 1
+    assert artifact["seeds"] == {"seed": 123, "row_seeds": []}
+    assert artifact["token_counts"]["available"] is False
+    assert artifact["error"]["code"] == "unsupported_parameter"
+    assert artifact["error"]["hipengine"]["code"] == "unsupported_parameter"
+    assert artifact["capabilities"]["model"]["id"] == "fake-model"
+    assert "secret prompt" not in serialized
 
 
 def test_debug_mode_logs_full_request_and_response_payloads(caplog) -> None:

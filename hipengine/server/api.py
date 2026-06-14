@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+import hashlib
 import json
 import logging
 import math
@@ -66,6 +67,8 @@ class ServerConfig:
     metrics: str = "off"
     prefix_cache: str = "off"
     debug: bool = False
+    replay_dir: str | None = None
+    replay_redaction: str = "hash"
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -224,6 +227,192 @@ def _error_payload(
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
     return payload
+
+
+async def _maybe_write_replay_artifact(
+    config: ServerConfig,
+    request: Request,
+    error_payload: Mapping[str, Any],
+) -> None:
+    if not config.replay_dir:
+        return
+    try:
+        body_bytes = await request.body()
+        artifact = _build_replay_artifact(config, request, error_payload, body_bytes)
+        _write_replay_artifact(Path(config.replay_dir), artifact)
+    except Exception as exc:  # pragma: no cover - best-effort diagnostic path
+        _LOGGER.warning("failed to write replay artifact: %s", exc)
+
+
+def _build_replay_artifact(
+    config: ServerConfig,
+    request: Request,
+    error_payload: Mapping[str, Any],
+    body_bytes: bytes,
+) -> dict[str, Any]:
+    body_json = _decode_replay_body(body_bytes)
+    redaction = _replay_redaction_mode(config.replay_redaction)
+    return {
+        "schema": "hipengine.replay.v1",
+        "created": int(time.time()),
+        "redaction": {
+            "mode": redaction,
+            "hash": "sha256" if redaction == "hash" else None,
+        },
+        "request": {
+            "method": request.method,
+            "path": _request_target(request),
+            "body_sha256": _sha256_text(body_bytes.decode("utf-8", errors="replace")),
+            "json": _redact_replay_value(body_json, redaction=redaction),
+            "prompt_hashes": _collect_prompt_hashes(body_json),
+        },
+        "model": {
+            "id": config.model_id,
+            "backend": config.backend,
+            "quant": config.quant,
+        },
+        "sampling": _replay_sampling_payload(body_json),
+        "seeds": _replay_seed_payload(body_json),
+        "token_counts": {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+            "available": False,
+        },
+        "finish_details": error_payload.get("finish_details"),
+        "error": {
+            "type": error_payload.get("type"),
+            "code": error_payload.get("code"),
+            "param": error_payload.get("param"),
+            "hipengine": error_payload.get("hipengine"),
+        },
+        "capabilities": _replay_capability_snapshot(config),
+    }
+
+
+def _write_replay_artifact(directory: Path, artifact: Mapping[str, Any]) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{int(time.time() * 1000)}-{uuid.uuid4().hex}.json"
+    destination = directory / filename
+    payload = json.dumps(artifact, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+    temporary = destination.with_suffix(".tmp")
+    temporary.write_text(payload + "\n", encoding="utf-8")
+    temporary.replace(destination)
+    return destination
+
+
+def _decode_replay_body(body: bytes) -> Any:
+    if not body:
+        return None
+    try:
+        return json.loads(body.decode("utf-8"))
+    except Exception:
+        return {"_non_json_body_sha256": _sha256_text(body.decode("utf-8", errors="replace"))}
+
+
+def _replay_redaction_mode(raw: str | None) -> str:
+    mode = "hash" if raw is None or str(raw).strip() == "" else str(raw).strip().lower()
+    if mode not in {"hash", "none"}:
+        raise ValueError("replay_redaction must be one of: hash, none")
+    return mode
+
+
+def _redact_replay_value(value: Any, *, redaction: str) -> Any:
+    if isinstance(value, str):
+        if redaction == "none":
+            return value
+        return {"redacted": "sha256", "sha256": _sha256_text(value), "length": len(value)}
+    if isinstance(value, list):
+        return [_redact_replay_value(item, redaction=redaction) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _redact_replay_value(item, redaction=redaction)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _collect_prompt_hashes(value: Any, path: str = "$") -> list[dict[str, Any]]:
+    hashes: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child_path = f"{path}.{key}"
+            if key in {"prompt", "content", "arguments"} and isinstance(item, str):
+                hashes.append(_prompt_hash(child_path, item))
+            hashes.extend(_collect_prompt_hashes(item, child_path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            hashes.extend(_collect_prompt_hashes(item, f"{path}[{index}]"))
+    elif path.startswith("$.prompt[") and isinstance(value, str):
+        hashes.append(_prompt_hash(path, value))
+    return hashes
+
+
+def _prompt_hash(path: str, text: str) -> dict[str, Any]:
+    return {
+        "path": path,
+        "sha256": _sha256_text(text),
+        "length": len(text),
+    }
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _replay_sampling_payload(body_json: Any) -> dict[str, Any]:
+    if not isinstance(body_json, dict):
+        return {}
+    keys = (
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "repetition_penalty",
+        "presence_penalty",
+        "frequency_penalty",
+        "n",
+        "stream",
+        "timeout_ms",
+        "stop",
+        "ignore_eos",
+    )
+    return {key: body_json[key] for key in keys if key in body_json}
+
+
+def _replay_seed_payload(body_json: Any) -> dict[str, Any]:
+    if not isinstance(body_json, dict):
+        return {"seed": None, "row_seeds": []}
+    return {"seed": body_json.get("seed"), "row_seeds": []}
+
+
+def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
+    return {
+        "model": {
+            "id": config.model_id,
+            "backend": config.backend,
+            "quant": config.quant,
+        },
+        "context": {
+            "configured_max_context_tokens": config.max_context_tokens,
+            "chat_default_max_tokens": config.chat_default_max_tokens,
+            "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
+        },
+        "features": {
+            "chat_completions": True,
+            "completions": True,
+            "streaming": True,
+            "tools": {"enabled": True, "strict_decoding": False},
+            "request_timeouts": {"timeout_ms": True},
+        },
+        "unsupported_fields": [
+            "continuation_id",
+            "session.commit",
+            "response_format",
+            "parallel_tool_calls",
+        ],
+    }
 
 
 if ConfigDict is not None:
@@ -1004,6 +1193,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             status_code=exc.status_code,
             finish_details=exc.finish_details,
         )
+        await _maybe_write_replay_artifact(config, request, error_payload)
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": error_payload},
@@ -1023,17 +1213,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             param=None,
             message=message,
         )
+        error_payload = _error_payload(
+            message=message,
+            error_type="invalid_request_error",
+            param=None,
+            code="validation_error",
+            status_code=422,
+        )
+        await _maybe_write_replay_artifact(config, request, error_payload)
         return JSONResponse(
             status_code=422,
-            content={
-                "error": _error_payload(
-                    message=message,
-                    error_type="invalid_request_error",
-                    param=None,
-                    code="validation_error",
-                    status_code=422,
-                )
-            },
+            content={"error": error_payload},
         )
 
     def sampling_params(

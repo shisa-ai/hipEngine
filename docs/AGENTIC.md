@@ -1437,6 +1437,18 @@ Implement:
   snapshot, and redacted prompt hashes;
 - clear redaction controls for prompts/tool results.
 
+Current code reality:
+
+- Failed-request replay artifacts are opt-in through `--replay-dir` or
+  `HIPENGINE_REPLAY_DIR`; no artifact is emitted by default.
+- Artifacts use `schema="hipengine.replay.v1"` and include method/path,
+  redacted request JSON, prompt/tool-result hashes, served model id, requested
+  sampler fields, seed fields, error metadata, finish details when present,
+  token-count placeholders, and a compact capability snapshot.
+- `--replay-redaction hash` / `HIPENGINE_REPLAY_REDACTION=hash` is the default
+  and replaces request strings with SHA-256/length metadata. The explicit
+  `none` mode stores raw strings for local debugging only.
+
 Exit gates:
 
 - replay artifacts are finite JSON;
