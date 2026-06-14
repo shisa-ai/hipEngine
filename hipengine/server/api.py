@@ -763,6 +763,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "resident_context": True,
             "commit_policy": _session_commit_policy_capability(),
             "continuations": _session_continuation_capability(),
+            "metadata": _session_metadata_capability(),
         },
         "unsupported_fields": [],
     }
@@ -794,6 +795,17 @@ def _session_continuation_capability() -> dict[str, Any]:
         "supported_finishes": ["length"],
         "supported_streaming": False,
         "supported_sampling": "deterministic_buffered_only",
+    }
+
+
+def _session_metadata_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "includes_transcript": False,
+        "list_endpoint": "/v1/hipengine/sessions",
+        "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
     }
 
 
@@ -1481,6 +1493,29 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     chat_session_lock = asyncio.Lock()
     chat_sessions: dict[str, _ChatSessionRecord] = {}
     app.state.hipengine_chat_sessions = chat_sessions
+
+    def chat_session_metadata(record: _ChatSessionRecord) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+            "message_count": len(record.messages),
+            "created": int(record.created),
+            "updated": int(record.updated),
+        }
+
+    def chat_session_summary() -> dict[str, Any]:
+        return {
+            "resident_context": True,
+            "active": len(chat_sessions),
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+            "total_messages": sum(len(record.messages) for record in chat_sessions.values()),
+            "continuations": {
+                "active": len(continuations),
+                "ttl_seconds": _CONTINUATION_TTL_SECONDS,
+            },
+        }
 
     def cleanup_expired_continuations(now: float | None = None) -> None:
         current = time.time() if now is None else float(now)
@@ -2505,10 +2540,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "worker_active": generation_batcher.active(),
                 "batch_window_ms": float(config.generation_batch_window_ms),
             },
-            "sessions": {
-                "resident_context": True,
-                "active": len(chat_sessions),
-            },
+            "sessions": chat_session_summary(),
         }
 
     @app.get("/health")
@@ -2523,6 +2555,44 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def ready() -> JSONResponse:
         payload = readiness_payload()
         return JSONResponse(status_code=200 if payload["ready"] else 503, content=payload)
+
+    @app.get("/v1/hipengine/sessions")
+    async def list_sessions(_auth: None = Depends(require_auth)) -> dict[str, Any]:
+        async with chat_session_lock:
+            session_payloads = [
+                chat_session_metadata(record)
+                for record in sorted(
+                    chat_sessions.values(),
+                    key=lambda item: (-item.updated, item.id),
+                )
+            ]
+        async with continuation_lock:
+            cleanup_expired_continuations()
+            active_continuations = len(continuations)
+        return {
+            "object": "hipengine.sessions",
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+            "includes_transcript": False,
+            "active": len(session_payloads),
+            "sessions": session_payloads,
+            "continuations": {
+                "active": active_continuations,
+                "ttl_seconds": _CONTINUATION_TTL_SECONDS,
+            },
+        }
+
+    @app.delete("/v1/hipengine/sessions/{session_id}")
+    async def delete_session(session_id: str, _auth: None = Depends(require_auth)) -> dict[str, Any]:
+        async with chat_session_lock:
+            deleted = chat_sessions.pop(session_id, None) is not None
+        return {
+            "object": "hipengine.session.deleted",
+            "id": session_id,
+            "deleted": deleted,
+            "storage": "app_local_transcript",
+            "resident_state_reuse": False,
+        }
 
     if metrics_mode == "prometheus":
 
@@ -2760,6 +2830,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "resident_context": True,
                 "commit_policy": _session_commit_policy_capability(),
                 "continuations": _session_continuation_capability(),
+                "metadata": _session_metadata_capability(),
             },
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,

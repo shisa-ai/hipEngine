@@ -274,6 +274,17 @@ def _session_commit_policy_capability() -> dict[str, Any]:
     }
 
 
+def _session_metadata_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "includes_transcript": False,
+        "list_endpoint": "/v1/hipengine/sessions",
+        "delete_endpoint": "/v1/hipengine/sessions/{session_id}",
+    }
+
+
 def test_coerce_generation_output_preserves_telemetry() -> None:
     raw = SimpleNamespace(
         text="answer",
@@ -616,6 +627,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "resident_context": True,
         "commit_policy": _session_commit_policy_capability(),
         "continuations": _continuation_capability(),
+        "metadata": _session_metadata_capability(),
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
     assert "session.id" not in body["unsupported_fields"]
@@ -1001,10 +1013,115 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["graph_cache"]["entries"] == 0.0
     assert body["queue"]["depth"] == 0
     assert body["queue"]["max_depth"] is None
-    assert body["sessions"] == {"resident_context": True, "active": 0}
+    assert body["sessions"] == {
+        "resident_context": True,
+        "active": 0,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "total_messages": 0,
+        "continuations": {"active": 0, "ttl_seconds": 900},
+    }
     serialized = json.dumps(body)
     assert "private startup prompt" not in serialized
     assert "private warmup output" not in serialized
+
+
+def test_ready_reports_chat_session_counts_without_payload_text() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret session prompt"}],
+            "session": {"id": "sess_ready"},
+            "max_tokens": 4,
+        },
+    )
+    ready = client.get("/ready")
+
+    assert response.status_code == 200
+    assert ready.status_code == 200
+    body = ready.json()
+    assert body["sessions"] == {
+        "resident_context": True,
+        "active": 1,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "total_messages": 2,
+        "continuations": {"active": 0, "ttl_seconds": 900},
+    }
+    serialized = json.dumps(body)
+    assert "secret session prompt" not in serialized
+    assert "stored answer" not in serialized
+
+
+def test_session_metadata_list_and_delete_are_authenticated() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    unauthorized = client.get("/v1/hipengine/sessions")
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "secret list prompt"}],
+            "session": {"id": "sess_list"},
+            "max_tokens": 4,
+        },
+    )
+    listed = client.get("/v1/hipengine/sessions", headers=headers)
+    deleted = client.delete("/v1/hipengine/sessions/sess_list", headers=headers)
+    deleted_again = client.delete("/v1/hipengine/sessions/sess_list", headers=headers)
+    listed_after_delete = client.get("/v1/hipengine/sessions", headers=headers)
+
+    assert unauthorized.status_code == 401
+    assert created.status_code == 200
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["object"] == "hipengine.sessions"
+    assert body["storage"] == "app_local_transcript"
+    assert body["resident_state_reuse"] is False
+    assert body["includes_transcript"] is False
+    assert body["active"] == 1
+    assert body["continuations"] == {"active": 0, "ttl_seconds": 900}
+    assert len(body["sessions"]) == 1
+    metadata = body["sessions"][0]
+    assert metadata["id"] == "sess_list"
+    assert metadata["storage"] == "app_local_transcript"
+    assert metadata["resident_state_reuse"] is False
+    assert metadata["message_count"] == 2
+    assert isinstance(metadata["created"], int)
+    assert isinstance(metadata["updated"], int)
+    serialized = json.dumps(body)
+    assert "secret list prompt" not in serialized
+    assert "stored answer" not in serialized
+    assert deleted.json() == {
+        "object": "hipengine.session.deleted",
+        "id": "sess_list",
+        "deleted": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+    }
+    assert deleted_again.json()["deleted"] is False
+    assert listed_after_delete.json()["active"] == 0
+    assert listed_after_delete.json()["sessions"] == []
 
 
 def test_ready_reports_lazy_server_ready_without_loaded_model() -> None:
@@ -4580,6 +4697,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         "resident_context": True,
         "commit_policy": _session_commit_policy_capability(),
         "continuations": _continuation_capability(),
+        "metadata": _session_metadata_capability(),
     }
     assert "secret prompt" not in serialized
 

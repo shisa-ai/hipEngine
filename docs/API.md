@@ -84,6 +84,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, context defaults, KV policy/estimate, routing count, and capabilities URL. |
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
+| `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
+| `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
@@ -449,6 +451,12 @@ field. `continuation_id` is intentionally kept in the example config's
 `do_not_send` list so local agents do not invent handles; a handle returned by
 the server can be sent back on the supported resume path described above.
 
+Authenticated `GET /v1/hipengine/sessions` returns metadata only: active session
+count, storage type, `resident_state_reuse=false`, per-session id/message-count
+timestamps, and active continuation-handle count. It does not return transcript,
+prompt, generated, or tool-result text. `DELETE /v1/hipengine/sessions/{session_id}`
+removes one app-local transcript session and returns `deleted: true` or `false`.
+
 Validate the config against a running server with:
 
 ```bash
@@ -505,8 +513,9 @@ returns HTTP 200 with `ready=true` after startup is ready, or HTTP 503 with
 diagnostics for model loaded state, eager warmup completion, last startup timing,
 configured/effective context, KV policy/capacity estimate, KV pool counters,
 graph cache counters, selected backend/device environment, generation queue
-depth/max-depth, active worker state, and session counts. It intentionally omits
-prompts, generated text, and raw request/response payloads.
+depth/max-depth, active worker state, app-local session counts, stored message
+counts, and continuation-handle counts. It intentionally omits prompts,
+generated text, tool results, and raw request/response payloads.
 
 ## Diagnostics
 

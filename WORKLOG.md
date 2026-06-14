@@ -88701,3 +88701,22 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC app-local session metadata
+
+Exposed authenticated metadata-only session observability for app-local chat
+transcript sessions. `/ready` now reports session storage, resident-reuse status,
+stored message count, and continuation-handle count without prompt/generated
+payload text. `GET /v1/hipengine/sessions` lists session ids, message counts,
+timestamps, and continuation counts; `DELETE /v1/hipengine/sessions/{session_id}`
+removes one app-local transcript session. Capabilities and API/AGENTIC docs now
+advertise this as metadata-only app-local transcript state, not resident KV
+reuse or forkable cache handles.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_ready_reports_chat_session_counts_without_payload_text tests/test_server_api.py::test_session_metadata_list_and_delete_are_authenticated tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

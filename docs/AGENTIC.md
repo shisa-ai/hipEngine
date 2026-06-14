@@ -1490,6 +1490,11 @@ Current code reality:
   reports the effective action.
 - Session requests do not mint continuation handles, and resume requests cannot
   combine `session.id` with `continuation_id`.
+- Authenticated `GET /v1/hipengine/sessions` lists metadata for app-local
+  transcript sessions and active continuation-handle counts without transcript,
+  prompt, generated, or tool-result text. Authenticated
+  `DELETE /v1/hipengine/sessions/{session_id}` removes one app-local transcript
+  session.
 - There is no resident KV commit or visible-only KV re-prefill yet; transcript
   sessions re-render/re-prefill through the normal prompt path.
 
@@ -1523,6 +1528,15 @@ Exit gates:
   turns;
 - rollback restores deterministic continuation state;
 - eviction decisions are observable and deterministic under fixed inputs.
+
+Current code reality:
+
+- App-local chat transcript sessions can be listed and deleted through
+  authenticated metadata-only endpoints, and `/ready` reports active session,
+  stored-message, and continuation-handle counts without exposing transcript
+  text.
+- Forkable pinned prefixes, rollback, resident KV cache handles, and prefix-vs-
+  turn-history eviction policy remain future work.
 
 #### P3.4 Context fitting and auto-clear policy
 
@@ -1892,13 +1906,14 @@ Current code reality:
   ready. The payload reports model loaded state, eager-load/warmup completion,
   last startup timings, configured/effective context, KV policy and capacity
   estimate, KV pool metrics, graph cache metrics, backend/device environment,
-  generation queue depth/worker state, active session count, and loaded-model
-  count.
+  generation queue depth/worker state, active session count, stored-message
+  count, continuation-handle count, and loaded-model count.
 - Readiness is `false` for eager-load servers until startup preparation and
   warmup complete. Lazy-load servers report ready after startup with
   `model.loaded=false` until the first lazy model load.
 - Tests assert the readiness payload does not expose warmup prompt text or
-  generated warmup output.
+  generated warmup output, and session observability tests assert prompt and
+  generated text stay out of readiness/session metadata payloads.
 
 Exit gates:
 
