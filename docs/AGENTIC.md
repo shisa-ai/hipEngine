@@ -1288,7 +1288,9 @@ Current state:
   `finish_reason="stop"` except when the backend ended by generation length. In
   length-exhausted strict tool failures, `finish_reason` remains `"length"` and
   `finish_details` keeps the length limit, classified phase, and
-  `continuation_eligible=false`.
+  `continuation_eligible=false`. These normal-response failure reasons are
+  advertised under
+  `features.tools.result_validation_failure_reasons`.
 - For `tool_choice="none"`, chat sampling suppresses the first token of the
   Qwen `<tool_call>` start marker when tokenization is available. This keeps
   no-tool requests on the existing processor path while preserving result
@@ -1315,7 +1317,8 @@ Current state:
   `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
   accepted for completion and chat requests as post-generation result
   validation. Valid visible JSON is returned normally; invalid stop-finished
-  outputs return `finish_details.reason="schema_violation"`.
+  outputs return `finish_details.reason="schema_violation"`, advertised under
+  `features.structured_outputs.result_validation_failure_reasons`.
 - Auto-mode constraints, full argument/schema grammar forcing, and
   grammar-constrained JSON/tool generation remain future work.
 
@@ -1758,6 +1761,7 @@ Current code reality:
   `hard_close_token_forcing`, tokenizer-dependent `soft_close_bias`, and
   tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
   sampler scope, speculative/MTP sampling compatibility,
+  tool/structured-output result-validation failure reason sets,
   request-timeout/client-disconnect support, backend-authored choice telemetry,
   grammar-support status, queue/active-request/chat-session admission caps,
   scheduler fairness policy, cache/session settings, loaded-model count, and

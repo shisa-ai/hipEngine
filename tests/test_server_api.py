@@ -474,6 +474,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "json_schema": True,
         "strict_decoding": False,
         "strict_result_validation": True,
+        "result_validation_failure_reasons": ["schema_violation"],
     }
     assert body["features"]["grammars"] == {
         "enabled": False,
@@ -500,6 +501,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "enabled": True,
         "strict_decoding": False,
         "strict_result_validation": True,
+        "result_validation_failure_reasons": [
+            "invalid_tool_call",
+            "tool_required_not_satisfied",
+            "schema_violation",
+        ],
         "schema_validation": "function_strict",
         "schema_subset": [
             "type",
@@ -4869,6 +4875,14 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["error"]["param"] == "top_logprobs"
     assert artifact["error"]["hipengine"]["code"] == "unsupported_parameter"
     assert artifact["capabilities"]["model"]["id"] == "fake-model"
+    assert artifact["capabilities"]["features"]["structured_outputs"][
+        "result_validation_failure_reasons"
+    ] == ["schema_violation"]
+    assert artifact["capabilities"]["features"]["tools"]["result_validation_failure_reasons"] == [
+        "invalid_tool_call",
+        "tool_required_not_satisfied",
+        "schema_violation",
+    ]
     assert artifact["capabilities"]["features"]["tools"]["no_tool_start_suppression"] is True
     assert artifact["capabilities"]["features"]["tools"]["required_tool_start_forcing"] is True
     assert artifact["capabilities"]["features"]["tools"]["required_tool_start_forcing_scope"] == (

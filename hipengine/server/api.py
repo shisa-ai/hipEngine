@@ -702,6 +702,34 @@ def _tool_schema_subset() -> list[str]:
     ]
 
 
+_TOOL_RESULT_VALIDATION_FAILURE_REASONS = (
+    "invalid_tool_call",
+    "tool_required_not_satisfied",
+    "schema_violation",
+)
+_STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS = ("schema_violation",)
+
+
+def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "strict_decoding": False,
+        "strict_result_validation": True,
+        "result_validation_failure_reasons": list(_TOOL_RESULT_VALIDATION_FAILURE_REASONS),
+        "schema_validation": "function_strict",
+        "schema_subset": _tool_schema_subset(),
+        "format": "qwen_tool_call_json",
+        "parallel_tool_calls": True,
+        "no_tool_start_suppression": tokenizer_backed,
+        "required_tool_start_forcing": tokenizer_backed,
+        "required_tool_start_forcing_scope": (
+            "initial_or_after_tokenized_thinking_close" if tokenizer_backed else "none"
+        ),
+        "specific_tool_name_prefix_forcing": tokenizer_backed,
+        "tool_call_close_repair": tokenizer_backed,
+    }
+
+
 def _structured_outputs_capability() -> dict[str, Any]:
     return {
         "response_format": True,
@@ -709,6 +737,9 @@ def _structured_outputs_capability() -> dict[str, Any]:
         "json_schema": True,
         "strict_decoding": False,
         "strict_result_validation": True,
+        "result_validation_failure_reasons": list(
+            _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS
+        ),
     }
 
 
@@ -775,20 +806,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
             "choice_telemetry": _choice_telemetry_capability(),
             "structured_outputs": _structured_outputs_capability(),
             "grammars": _grammar_capability(),
-            "tools": {
-                "enabled": True,
-                "strict_decoding": False,
-                "strict_result_validation": True,
-                "schema_validation": "function_strict",
-                "schema_subset": _tool_schema_subset(),
-                "no_tool_start_suppression": tokenizer_backed,
-                "required_tool_start_forcing": tokenizer_backed,
-                "required_tool_start_forcing_scope": (
-                    "initial_or_after_tokenized_thinking_close" if tokenizer_backed else "none"
-                ),
-                "specific_tool_name_prefix_forcing": tokenizer_backed,
-                "tool_call_close_repair": tokenizer_backed,
-            },
+            "tools": _tools_capability(tokenizer_backed=tokenizer_backed),
             "reasoning_controls": {
                 "enabled": True,
                 "fields": _reasoning_control_fields(),
@@ -2890,20 +2908,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "fit_context": tokenizer_caps["count_tokens"],
                     "session_aware_chat": tokenizer_caps["count_tokens"],
                 },
-                "tools": {
-                    "enabled": True,
-                    "strict_decoding": False,
-                    "strict_result_validation": True,
-                    "schema_validation": "function_strict",
-                    "schema_subset": _tool_schema_subset(),
-                    "format": "qwen_tool_call_json",
-                    "parallel_tool_calls": True,
-                    "no_tool_start_suppression": tokenizer_caps["tokenize"],
-                    "required_tool_start_forcing": tokenizer_caps["tokenize"],
-                    "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
-                    "specific_tool_name_prefix_forcing": tokenizer_caps["tokenize"],
-                    "tool_call_close_repair": tokenizer_caps["tokenize"],
-                },
+                "tools": _tools_capability(tokenizer_backed=tokenizer_caps["tokenize"]),
                 "reasoning_controls": {
                     "enabled": True,
                     "fields": _reasoning_control_fields(),

@@ -321,7 +321,9 @@ normal chat response with no successful `tool_calls`, and
 `tool_required_not_satisfied`, or `schema_violation`. The coarse
 `finish_reason` is usually `"stop"`, but remains `"length"` when the backend
 ended because the generation budget was exhausted; in that case
-`finish_details` also includes length-limit phase metadata. When
+`finish_details` also includes length-limit phase metadata.
+`/v1/hipengine/capabilities` reports these normal-response failure reasons under
+`features.tools.result_validation_failure_reasons`. When
 `tool_choice="none"` and tokenization is available, the sampler also suppresses
 the first token of the Qwen `<tool_call>` start marker; this is a no-tool
 guard, not full grammar-constrained tool decoding. When
@@ -356,7 +358,9 @@ validate the completed visible output after generation. Valid JSON is returned
 normally; invalid stop-finished outputs return a normal response with empty
 successful content and `finish_details.reason: "schema_violation"`. Length
 finishes keep their length finish metadata because the partial JSON may be
-resumable once continuation handles exist.
+resumable once continuation handles exist. The capabilities manifest reports
+this normal-response failure reason under
+`features.structured_outputs.result_validation_failure_reasons`.
 
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` / `required` /
