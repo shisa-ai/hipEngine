@@ -270,8 +270,14 @@ class Qwen35GGUFBringupGenerator:
         result = session.prefill(prompt_ids, return_logits=False)
         raise_if_generation_deadline_expired(request)
         generated_ids.append(int(result.token_id))
+        finished = _gguf_finished(generated_ids, self.tokenizer, request)
         yield GenerationStreamChunk(
             self.tokenizer.decode([generated_ids[-1]]),
+            finish_details=(
+                _gguf_finish_details(generated_ids, self.tokenizer, request)
+                if finished or len(generated_ids) >= request.max_tokens
+                else None
+            ),
             telemetry=_gguf_telemetry(
                 prompt_ids,
                 generated_ids,
@@ -280,15 +286,21 @@ class Qwen35GGUFBringupGenerator:
                 phase="answer",
             ),
         )
-        if _gguf_finished(generated_ids, self.tokenizer, request):
+        if finished:
             return
         for _ in range(request.max_tokens - 1):
             raise_if_generation_deadline_expired(request)
             step = session.step(generated_ids[-1], return_logits=False)
             raise_if_generation_deadline_expired(request)
             generated_ids.append(int(step.token_id))
+            finished = _gguf_finished(generated_ids, self.tokenizer, request)
             yield GenerationStreamChunk(
                 self.tokenizer.decode([generated_ids[-1]]),
+                finish_details=(
+                    _gguf_finish_details(generated_ids, self.tokenizer, request)
+                    if finished or len(generated_ids) >= request.max_tokens
+                    else None
+                ),
                 telemetry=_gguf_telemetry(
                     prompt_ids,
                     generated_ids,
@@ -297,7 +309,7 @@ class Qwen35GGUFBringupGenerator:
                     phase="answer",
                 ),
             )
-            if _gguf_finished(generated_ids, self.tokenizer, request):
+            if finished:
                 return
 
     def _stream_sampled(
@@ -324,9 +336,15 @@ class Qwen35GGUFBringupGenerator:
             _gguf_token_text(self.tokenizer, sample),
             remaining_tokens=request.max_tokens - len(generated_ids),
         )
+        finished = _gguf_finished(generated_ids, self.tokenizer, sampling_request)
         yield GenerationStreamChunk(
             self.tokenizer.decode([generated_ids[-1]]),
             token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
+            finish_details=(
+                _gguf_finish_details(generated_ids, self.tokenizer, sampling_request, state)
+                if finished or len(generated_ids) >= sampling_request.max_tokens
+                else None
+            ),
             telemetry=_gguf_telemetry(
                 prompt_ids,
                 generated_ids,
@@ -339,7 +357,7 @@ class Qwen35GGUFBringupGenerator:
                 logits_d2h_bytes=logits_d2h_bytes,
             ),
         )
-        if _gguf_finished(generated_ids, self.tokenizer, request):
+        if finished:
             return
         for _ in range(request.max_tokens - 1):
             raise_if_generation_deadline_expired(request)
@@ -354,9 +372,15 @@ class Qwen35GGUFBringupGenerator:
                 _gguf_token_text(self.tokenizer, sample),
                 remaining_tokens=request.max_tokens - len(generated_ids),
             )
+            finished = _gguf_finished(generated_ids, self.tokenizer, sampling_request)
             yield GenerationStreamChunk(
                 self.tokenizer.decode([generated_ids[-1]]),
                 token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
+                finish_details=(
+                    _gguf_finish_details(generated_ids, self.tokenizer, sampling_request, state)
+                    if finished or len(generated_ids) >= sampling_request.max_tokens
+                    else None
+                ),
                 telemetry=_gguf_telemetry(
                     prompt_ids,
                     generated_ids,
@@ -369,7 +393,7 @@ class Qwen35GGUFBringupGenerator:
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
-            if _gguf_finished(generated_ids, self.tokenizer, request):
+            if finished:
                 return
 
 

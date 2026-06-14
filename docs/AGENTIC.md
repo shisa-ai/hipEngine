@@ -966,6 +966,10 @@ Current code reality:
 - PARO and GGUF c=1 true streaming emit live per-token
   `GenerationStreamChunk` telemetry for greedy and sampled answer tokens,
   including host-sampled budget-pressure metadata when row state is available.
+  The final live chunk also carries backend-authored `finish_details` for
+  EOS/token-stop/sequence-stop/length plus sampler mode, so SSE final choices
+  can preserve backend finish reasons when server post-processing does not
+  override them.
   PARO c=1 native-GPU sampled streams also mark `sampler_mode="gpu_sample"`
   with `full_vocab_logits_d2h=false` / `logits_d2h_bytes=0`, matching the
   non-streaming native route diagnostics.

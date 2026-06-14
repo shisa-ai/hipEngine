@@ -666,6 +666,10 @@ def test_qwen35_paro_stream_detailed_emits_live_greedy_telemetry(monkeypatch) ->
             "sampler_mode": "greedy_fast",
         },
     ]
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "greedy_fast"},
+    ]
     assert calls == [
         ("init", runner, 4096),
         ("prefill_native", (10, 11), True),
@@ -761,6 +765,10 @@ def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -
             "sampler_mode": "host_logits_sample",
         },
     ]
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "host_logits_sample"},
+    ]
     assert calls[0][0] == "configure_host_sampler"
     assert calls[0][1] == 0.7
     assert isinstance(calls[0][2], int)
@@ -841,6 +849,10 @@ def test_qwen35_paro_stream_detailed_reports_native_sampler_route(monkeypatch) -
             "logits_d2h_bytes": 0,
         },
     ]
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "gpu_sample"},
+    ]
     assert calls[0][0] == "configure_native_sampler"
     assert calls[0][1] == 0.7
     assert calls[0][3] == (10, 11)
@@ -906,6 +918,10 @@ def test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs(monkeypatch) ->
             top_logprobs=((101, "B", -0.2),),
         ),
     )
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "host_logits_sample"},
+    ]
 
 
 def test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:

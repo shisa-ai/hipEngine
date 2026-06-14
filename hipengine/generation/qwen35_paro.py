@@ -1000,8 +1000,22 @@ class Qwen35ParoOneTokenGenerator:
         if next_result is None:
             raise RuntimeError("native prefill did not produce next-token logits")
         generated_token_ids = [int(next_result.token_id)]
+        finished = not ignore_eos and _is_eos(session.tokenizer, next_result.token_id)
         yield GenerationStreamChunk(
             next_result.token_text,
+            finish_details=(
+                _finish_details_for_tokens(
+                    session.tokenizer,
+                    generated_token_ids,
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=(),
+                    stop_token_sequences=(),
+                    max_tokens=max_tokens,
+                    sampler_mode=SamplingMode.GREEDY_FAST.value,
+                )
+                if finished or len(generated_token_ids) >= max_tokens
+                else None
+            ),
             telemetry=_telemetry_for_tokens(
                 prompt_ids,
                 generated_token_ids,
@@ -1011,7 +1025,7 @@ class Qwen35ParoOneTokenGenerator:
                 stop_token_sequences=(),
             ),
         )
-        if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
+        if finished:
             return
 
         current_token_id = next_result.token_id
@@ -1022,8 +1036,22 @@ class Qwen35ParoOneTokenGenerator:
             if result is None:
                 raise RuntimeError("decode step did not produce next-token logits")
             generated_token_ids.append(int(result.token_id))
+            finished = not ignore_eos and _is_eos(session.tokenizer, result.token_id)
             yield GenerationStreamChunk(
                 result.token_text,
+                finish_details=(
+                    _finish_details_for_tokens(
+                        session.tokenizer,
+                        generated_token_ids,
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=(),
+                        stop_token_sequences=(),
+                        max_tokens=max_tokens,
+                        sampler_mode=SamplingMode.GREEDY_FAST.value,
+                    )
+                    if finished or len(generated_token_ids) >= max_tokens
+                    else None
+                ),
                 telemetry=_telemetry_for_tokens(
                     prompt_ids,
                     generated_token_ids,
@@ -1034,7 +1062,7 @@ class Qwen35ParoOneTokenGenerator:
                 ),
             )
             current_token_id = result.token_id
-            if not ignore_eos and _is_eos(session.tokenizer, result.token_id):
+            if finished:
                 return
 
     def _stream_one_sampled(
@@ -1083,15 +1111,36 @@ class Qwen35ParoOneTokenGenerator:
                 next_result.token_text,
                 remaining_tokens=max_tokens - len(generated_token_ids),
             )
+            finished = _is_finished(
+                session.tokenizer,
+                generated_token_ids,
+                ignore_eos=ignore_eos,
+                stop_token_ids=sampling_request.stop_token_ids,
+                stop_token_sequences=sampling_request.stop_token_sequences,
+            )
             yield GenerationStreamChunk(
                 next_result.token_text,
-                token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, next_result, request),
+                token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, next_result, sampling_request),
+                finish_details=(
+                    _finish_details_for_tokens(
+                        session.tokenizer,
+                        generated_token_ids,
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=sampling_request.stop_token_ids,
+                        stop_token_sequences=sampling_request.stop_token_sequences,
+                        max_tokens=max_tokens,
+                        sampler_mode=plan.mode.value,
+                        sampling_state=state,
+                    )
+                    if finished or len(generated_token_ids) >= max_tokens
+                    else None
+                ),
                 telemetry=_telemetry_for_tokens(
                     prompt_ids,
                     generated_token_ids,
                     row_index=row_index,
                     sampler_mode=plan.mode.value,
-                    stop_token_sequences=request.stop_token_sequences,
+                    stop_token_sequences=sampling_request.stop_token_sequences,
                     phase=live_phase,
                     active_processors=plan.active_processors,
                     sampler_fast_path_blockers=plan.fast_path_blockers,
@@ -1102,13 +1151,7 @@ class Qwen35ParoOneTokenGenerator:
                     logits_d2h_bytes=logits_d2h_bytes,
                 ),
             )
-            if _is_finished(
-                session.tokenizer,
-                generated_token_ids,
-                ignore_eos=ignore_eos,
-                stop_token_ids=request.stop_token_ids,
-                stop_token_sequences=request.stop_token_sequences,
-            ):
+            if finished:
                 return
 
             current_token_id = int(next_result.token_id)
@@ -1125,15 +1168,36 @@ class Qwen35ParoOneTokenGenerator:
                     result.token_text,
                     remaining_tokens=max_tokens - len(generated_token_ids),
                 )
+                finished = _is_finished(
+                    session.tokenizer,
+                    generated_token_ids,
+                    ignore_eos=ignore_eos,
+                    stop_token_ids=sampling_request.stop_token_ids,
+                    stop_token_sequences=sampling_request.stop_token_sequences,
+                )
                 yield GenerationStreamChunk(
                     result.token_text,
-                    token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, result, request),
+                    token_logprobs=_stream_token_logprobs_from_step(session.tokenizer, result, sampling_request),
+                    finish_details=(
+                        _finish_details_for_tokens(
+                            session.tokenizer,
+                            generated_token_ids,
+                            ignore_eos=ignore_eos,
+                            stop_token_ids=sampling_request.stop_token_ids,
+                            stop_token_sequences=sampling_request.stop_token_sequences,
+                            max_tokens=max_tokens,
+                            sampler_mode=plan.mode.value,
+                            sampling_state=state,
+                        )
+                        if finished or len(generated_token_ids) >= max_tokens
+                        else None
+                    ),
                     telemetry=_telemetry_for_tokens(
                         prompt_ids,
                         generated_token_ids,
                         row_index=row_index,
                         sampler_mode=plan.mode.value,
-                        stop_token_sequences=request.stop_token_sequences,
+                        stop_token_sequences=sampling_request.stop_token_sequences,
                         phase=live_phase,
                         active_processors=plan.active_processors,
                         sampler_fast_path_blockers=plan.fast_path_blockers,
@@ -1145,13 +1209,7 @@ class Qwen35ParoOneTokenGenerator:
                     ),
                 )
                 current_token_id = int(result.token_id)
-                if _is_finished(
-                    session.tokenizer,
-                    generated_token_ids,
-                    ignore_eos=ignore_eos,
-                    stop_token_ids=request.stop_token_ids,
-                    stop_token_sequences=request.stop_token_sequences,
-                ):
+                if finished:
                     return
         finally:
             _configure_sampled_session(session, None, None, plan=plan)

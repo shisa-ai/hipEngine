@@ -467,6 +467,10 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
             "sampler_mode": "greedy_fast",
         },
     ]
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "greedy_fast"},
+    ]
     assert calls == [
         ("init", "/tmp/fake.gguf"),
         ("enter",),
@@ -577,6 +581,10 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(
             "logits_d2h_bytes": 12,
         },
     ]
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "host_logits_sample"},
+    ]
     assert calls == [
         ("enter",),
         ("prefill", (10, 11), True),
@@ -634,6 +642,10 @@ def test_gguf_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
             top_logprobs=((2, "C", 0.0),),
         ),
     )
+    assert [None if chunk.finish_details is None else chunk.finish_details.to_json_dict() for chunk in chunks] == [
+        None,
+        {"reason": "length", "length_limit": 2, "sampler_mode": "host_logits_sample"},
+    ]
 
 
 def test_gguf_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:

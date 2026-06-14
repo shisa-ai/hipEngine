@@ -91618,3 +91618,18 @@ Validation:
 - `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC PARO/GGUF stream finish details
+
+PARO/GGUF c=1 true streaming now attaches backend-authored `finish_details` to
+the final `GenerationStreamChunk` for greedy, host-sampled, and PARO native-GPU
+sampled streams. Intermediate chunks remain metadata-only. This lets the
+OpenAI server surface backend length/EOS/stop/sampler finish details on live
+SSE done chunks through the stream finish-detail contract.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_native_sampler_route tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_logprobs -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_finish_details tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_finish_details -q` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_native_sampler_route tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_greedy_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_logprobs tests/test_server_api.py::test_streaming_chat_completion_prefers_backend_chunk_finish_details tests/test_server_api.py::test_streaming_completion_prefers_backend_chunk_finish_details -q` -> `10 passed`.
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> passed.
+- `python3 -m ruff check hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
