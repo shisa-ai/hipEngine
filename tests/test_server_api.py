@@ -509,7 +509,36 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     assert count_text.json()["input_type"] == "text"
 
     chat_payload = {
-        "messages": [{"role": "user", "content": "hello"}],
+        "messages": [
+            {"role": "user", "content": "hello"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": '{"query":"hello"}'},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "tool result"},
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "lookup",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        ],
+        "tool_choice": {"type": "function", "function": {"name": "lookup"}},
         "reasoning_effort": "low",
         "hard_close_sequence": "closing now</think>\n",
         "soft_close_window": 4,
@@ -520,6 +549,9 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     chat_body = count_chat.json()
     assert chat_body["input_type"] == "chat"
     assert "<|im_start|>user\nhello<|im_end|>" in chat_body["text"]
+    assert "<tools>" in chat_body["text"]
+    assert '<tool_call>{"name":"lookup","arguments":{"query":"hello"}}</tool_call>' in chat_body["text"]
+    assert "<tool_response>\ntool result\n</tool_response>" in chat_body["text"]
     assert "use 'closing now</think>\\n' as the close sequence" in chat_body["text"]
     assert chat_body["token_count"] == fake.count_tokens(chat_body["text"])
     assert chat_body["thinking_budget"]["close_text"] == "closing now</think>\n"
