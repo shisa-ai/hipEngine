@@ -979,6 +979,11 @@ Current code reality:
   usage chunks mirror `usage` under top-level `hipengine.usage`.
 - Final done/usage chunks include top-level `hipengine.kv_pool` with sanitized
   server-observed KV pool stats when the served engine exposes them.
+- `/v1/hipengine/capabilities` advertises the stream metadata scopes separately:
+  token-accounting/decode-state scopes cover `live_delta`, `buffered_delta`, and
+  `final_choice` when tokenizer counting is available, while backend telemetry
+  scopes cover `live_chunk` and `buffered_done` when generation telemetry is
+  emitted.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.

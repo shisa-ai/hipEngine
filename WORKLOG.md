@@ -90810,3 +90810,16 @@ Validation:
 - `python3 -m ruff check tests/test_generation_batch_scheduler.py` is not clean
   before this slice: existing unrelated `F811` duplicate test name and `F841`
   unused `gguf_c8_index` remain outside the MTP blocker test.
+
+## 2026-06-15 - AGENTIC stream metadata capability scopes
+
+`/v1/hipengine/capabilities` now makes the buffered stream metadata contract
+discoverable instead of relying on prose: `features.stream_metadata` includes
+token-accounting and decode-state scopes for `live_delta`, `buffered_delta`, and
+`final_choice` when tokenizer counting is available, plus backend telemetry
+scopes for `live_chunk` and `buffered_done` when generation telemetry is emitted.
+Updated API/AGENTIC docs and the exact manifest test expectation.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

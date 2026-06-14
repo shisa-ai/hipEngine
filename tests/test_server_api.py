@@ -666,7 +666,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "choice_phase": True,
         "choice_finish_details": True,
         "choice_token_accounting": True,
+        "choice_token_accounting_scopes": ["live_delta", "buffered_delta", "final_choice"],
         "choice_decode_state": True,
+        "choice_decode_state_scopes": ["live_delta", "buffered_delta", "final_choice"],
+        "backend_telemetry_scopes": ["live_chunk", "buffered_done"],
         "routing": "stream_options.include_hipengine",
         "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
     }

@@ -215,8 +215,10 @@ available.
 
 The `/v1/hipengine/capabilities` manifest reports the same extension under
 `features.stream_metadata`, including metadata version, event names, timing
-field names, and whether the server can attach token-accounting-backed
-`decode_state` payloads for the loaded engine.
+field names, token-accounting/decode-state scopes (`live_delta`,
+`buffered_delta`, and `final_choice` when tokenizer counting is available), and
+backend telemetry scopes (`live_chunk` and `buffered_done`) for engines that
+emit `GenerationStreamChunk` or `GenerationOutput` telemetry.
 
 Cache hit/miss, backend prefill timing, budget pressure, per-request KV-byte
 deltas, and backend-authored per-phase token metadata are omitted until the

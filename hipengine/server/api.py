@@ -3744,7 +3744,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "choice_phase": True,
                     "choice_finish_details": True,
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
+                    "choice_token_accounting_scopes": (
+                        ["live_delta", "buffered_delta", "final_choice"]
+                        if tokenizer_caps["count_tokens"]
+                        else []
+                    ),
                     "choice_decode_state": tokenizer_caps["count_tokens"],
+                    "choice_decode_state_scopes": (
+                        ["live_delta", "buffered_delta", "final_choice"]
+                        if tokenizer_caps["count_tokens"]
+                        else []
+                    ),
+                    "backend_telemetry_scopes": ["live_chunk", "buffered_done"],
                     "routing": "stream_options.include_hipengine",
                     "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
                 },
