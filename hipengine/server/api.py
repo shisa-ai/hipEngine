@@ -76,6 +76,8 @@ class ServerConfig:
     debug: bool = False
     replay_dir: str | None = None
     replay_redaction: str = "hash"
+    max_queued_requests: int | None = None
+    queue_retry_after_seconds: int = 1
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -102,6 +104,7 @@ class OpenAIHTTPError(Exception):
         code: str | None = None,
         param: str | None = None,
         finish_details: Mapping[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
     ):
         self.status_code = status_code
         self.message = message
@@ -109,6 +112,7 @@ class OpenAIHTTPError(Exception):
         self.code = code
         self.param = param
         self.finish_details = None if finish_details is None else dict(finish_details)
+        self.headers = {} if headers is None else dict(headers)
         super().__init__(message)
 
 
@@ -150,10 +154,10 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "description": "The client disconnected or the queued request was cancelled.",
     },
     "engine_busy": {
-        "status_code": 503,
+        "status_code": 429,
         "retryable": True,
-        "emitted": False,
-        "description": "Reserved for future admission/backpressure rejection.",
+        "emitted": True,
+        "description": "The server admission queue is full.",
     },
     "model_unavailable": {
         "status_code": 404,
@@ -540,6 +544,7 @@ class _ServerMetrics:
     request_total: int = 0
     request_completed_total: int = 0
     request_failed_total: int = 0
+    request_rejected_total: int = 0
     prompt_tokens_total: int = 0
     completion_tokens_total: int = 0
 
@@ -552,6 +557,18 @@ class _ServerMetrics:
     def record_failure(self) -> None:
         self.request_total += 1
         self.request_failed_total += 1
+
+    def record_rejected(self) -> None:
+        self.request_total += 1
+        self.request_failed_total += 1
+        self.request_rejected_total += 1
+
+
+def _record_openai_error(metrics: _ServerMetrics, exc: OpenAIHTTPError) -> None:
+    if exc.code == "engine_busy":
+        metrics.record_rejected()
+    else:
+        metrics.record_failure()
 
 
 @dataclass(frozen=True)
@@ -727,22 +744,45 @@ class _GenerationBatcher:
         *,
         engine_factory: Callable[[], Any],
         batch_window_seconds: float,
+        max_queue_size: int | None = None,
+        retry_after_seconds: int = 1,
     ) -> None:
         self._engine_factory = engine_factory
         self._batch_window_seconds = max(0.0, float(batch_window_seconds))
+        self._max_queue_size = None if max_queue_size is None else int(max_queue_size)
+        if self._max_queue_size is not None and self._max_queue_size < 1:
+            raise ValueError("max_queue_size must be positive when set")
+        self._retry_after_seconds = max(1, int(retry_after_seconds))
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
 
     def queue_depth(self) -> int:
         return len(self._queue)
 
+    def max_queue_size(self) -> int | None:
+        return self._max_queue_size
+
     def active(self) -> bool:
         return self._worker is not None and not self._worker.done()
+
+    def _raise_if_full(self) -> None:
+        if self._max_queue_size is None:
+            return
+        if len(self._queue) < self._max_queue_size:
+            return
+        raise OpenAIHTTPError(
+            429,
+            "generation queue is full",
+            error_type="rate_limit_error",
+            code="engine_busy",
+            headers={"Retry-After": str(self._retry_after_seconds)},
+        )
 
     async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[Any]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[list[Any]] = loop.create_future()
+        self._raise_if_full()
         self._queue.append(
             _QueuedGeneration(
                 prompts=prompt_tuple,
@@ -760,6 +800,7 @@ class _GenerationBatcher:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
+        self._raise_if_full()
         item = _QueuedGeneration(
             prompts=prompt_tuple,
             sampling=sampling,
@@ -980,6 +1021,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     generation_batcher = _GenerationBatcher(
         engine_factory=get_llm,
         batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
+        max_queue_size=config.max_queued_requests,
+        retry_after_seconds=config.queue_retry_after_seconds,
     )
     app.state.hipengine_generation_batcher = generation_batcher
 
@@ -1191,7 +1234,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             param=exc.param,
             message=exc.message,
         )
-        headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+        headers = dict(exc.headers)
+        if exc.status_code == 401:
+            headers.setdefault("WWW-Authenticate", "Bearer")
         error_payload = _error_payload(
             message=exc.message,
             error_type=exc.error_type,
@@ -1204,7 +1249,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": error_payload},
-            headers=headers,
+            headers=headers or None,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -1286,8 +1331,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
             else:
                 raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
-        except OpenAIHTTPError:
-            app.state.hipengine_server_metrics.record_failure()
+        except OpenAIHTTPError as exc:
+            _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
         except NotImplementedError as exc:
             app.state.hipengine_server_metrics.record_failure()
@@ -1371,7 +1416,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_started_at=stream_started_at,
                 )
         except OpenAIHTTPError as exc:
-            app.state.hipengine_server_metrics.record_failure()
+            _record_openai_error(app.state.hipengine_server_metrics, exc)
             _log_stream_failure(
                 "POST /v1/completions stream",
                 status_code=exc.status_code,
@@ -1528,6 +1573,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "device": _selected_device_payload(config),
             "queue": {
                 "depth": generation_batcher.queue_depth(),
+                "max_depth": generation_batcher.max_queue_size(),
                 "worker_active": generation_batcher.active(),
                 "batch_window_ms": float(config.generation_batch_window_ms),
             },
@@ -2040,7 +2086,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         try:
             _validate_generation_request(config, request)
         except OpenAIHTTPError as exc:
-            app.state.hipengine_server_metrics.record_failure()
+            _record_openai_error(app.state.hipengine_server_metrics, exc)
             response_id = f"chatcmpl-{uuid.uuid4().hex}"
             created = int(time.time())
             _log_stream_failure(
@@ -2117,7 +2163,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                     )
         except OpenAIHTTPError as exc:
-            app.state.hipengine_server_metrics.record_failure()
+            _record_openai_error(app.state.hipengine_server_metrics, exc)
             _log_stream_failure(
                 "POST /v1/chat/completions stream",
                 status_code=exc.status_code,
@@ -2259,6 +2305,7 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_requests_total": metrics.request_total,
         "hipengine_request_completed_total": metrics.request_completed_total,
         "hipengine_request_failed_total": metrics.request_failed_total,
+        "hipengine_request_rejected_total": metrics.request_rejected_total,
         "hipengine_prompt_tokens_total": metrics.prompt_tokens_total,
         "hipengine_completion_tokens_total": metrics.completion_tokens_total,
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
@@ -2277,6 +2324,7 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_requests_total": "Total generation requests observed by the server.",
         "hipengine_request_completed_total": "Generation requests that completed successfully.",
         "hipengine_request_failed_total": "Generation requests that failed after reaching generation validation.",
+        "hipengine_request_rejected_total": "Generation requests rejected by admission/backpressure.",
         "hipengine_prompt_tokens_total": "Prompt tokens counted for successful requests.",
         "hipengine_completion_tokens_total": "Completion tokens counted for successful requests.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
@@ -2295,6 +2343,7 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_requests_total",
         "hipengine_request_completed_total",
         "hipengine_request_failed_total",
+        "hipengine_request_rejected_total",
         "hipengine_prompt_tokens_total",
         "hipengine_completion_tokens_total",
         "hipengine_kv_pool_grow_events_total",

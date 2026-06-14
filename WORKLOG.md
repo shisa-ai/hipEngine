@@ -87394,3 +87394,23 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q` -> `1 passed`.
 - `python3 -m pytest tests/test_server_api.py -q` -> `54 passed`.
 - `git diff --check -- hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py docs/AGENTIC.md docs/SAMPLING.md docs/API.md`.
+
+## 2026-06-14 - AGENTIC server queue cap
+
+Added an opt-in OpenAI server generation queue cap via
+`--max-queued-requests` / `HIPENGINE_MAX_QUEUED_REQUESTS`. Default behavior
+remains unlimited queueing. When configured and the batcher queue is full, new
+requests are rejected before enqueue with HTTP 429, canonical `engine_busy`,
+and `Retry-After: 1`, so they do not allocate KV/session state.
+
+Readiness now reports queue `max_depth`, Prometheus metrics expose
+`hipengine_request_rejected_total`, and the error taxonomy marks `engine_busy`
+as emitted. `docs/AGENTIC.md`, `docs/API.md`, and `docs/ENVS.md` were updated
+with the current scope and remaining P4.5 work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_generation_batcher_rejects_when_queue_cap_is_full tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `55 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `git diff --check -- hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py docs/AGENTIC.md docs/API.md docs/ENVS.md`.

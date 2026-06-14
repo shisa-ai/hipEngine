@@ -1249,10 +1249,22 @@ Exit gates:
 
 #### P4.5 Admission/backpressure policy
 
+Current state:
+
+- The OpenAI server batcher has an opt-in queue cap via
+  `--max-queued-requests` / `HIPENGINE_MAX_QUEUED_REQUESTS`. When the queued
+  request count is already at the configured cap, the request is rejected before
+  enqueue with HTTP 429, canonical `engine_busy`, and `Retry-After: 1`.
+- `/ready` reports queue depth and configured max depth. Prometheus metrics
+  include `hipengine_request_rejected_total` in addition to completed/failed
+  request counters.
+- Default behavior remains unlimited server queueing until a cap is configured.
+  Max active sessions and a scheduler fairness policy remain future runtime
+  work.
+
 Implement:
 
-- queue depth limits, max active requests, and max active sessions;
-- `429` / Retry-After behavior for overload;
+- max active requests and max active sessions;
 - scheduler fairness policy visible in metrics.
 
 Exit gates:
@@ -1389,10 +1401,12 @@ Current code reality:
   `errors.schema="hipengine.error_taxonomy.v1"`, canonical code metadata, and
   legacy aliases. Currently emitted canonical codes include
   `unsupported_parameter`, `schema_violation`, `context_overflow`,
-  `deadline_exceeded`, `cancelled`, and `model_unavailable`.
-- `invalid_tool_call`, `engine_busy`, and `routing_failed` are reserved in the
-  manifest but marked `emitted=false` until strict tool-call decoding,
-  admission/backpressure rejection, and multi-model routing exist.
+  `deadline_exceeded`, `cancelled`, `engine_busy`, and `model_unavailable`.
+- `engine_busy` currently means the opt-in OpenAI server queue cap rejected a
+  request before enqueue with HTTP 429 and `Retry-After: 1`.
+- `invalid_tool_call` and `routing_failed` are reserved in the manifest but
+  marked `emitted=false` until strict tool-call decoding and multi-model routing
+  exist.
 
 Exit gates:
 

@@ -206,6 +206,11 @@ boundaries. Detected disconnects cancel queued work and use structured
 `{"reason": "cancelled", "cancelled": true}` finish details when cancellation
 can still be surfaced as an error payload.
 
+Set `HIPENGINE_MAX_QUEUED_REQUESTS` or `--max-queued-requests` to enable an
+OpenAI-server generation queue cap. When the batcher queue is full, new
+generation requests fail before enqueue with HTTP 429 `engine_busy` and
+`Retry-After: 1`; rejected requests do not allocate KV/session state.
+
 ### Tool calling
 
 `POST /v1/chat/completions` accepts OpenAI-style `tools` and `tool_choice` for
@@ -283,7 +288,7 @@ Clients should handle these canonical codes from `error.hipengine.code`:
 | `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
-| `engine_busy` | 503 | yes | Reserved for future admission/backpressure rejection. |
+| `engine_busy` | 429 | yes | Generation queue cap rejected the request before enqueue. |
 | `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`. |
 | `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
 
@@ -301,8 +306,8 @@ returns HTTP 200 with `ready=true` after startup is ready, or HTTP 503 with
 diagnostics for model loaded state, eager warmup completion, last startup timing,
 configured/effective context, KV policy/capacity estimate, KV pool counters,
 graph cache counters, selected backend/device environment, generation queue
-depth, active worker state, and session counts. It intentionally omits prompts,
-generated text, and raw request/response payloads.
+depth/max-depth, active worker state, and session counts. It intentionally omits
+prompts, generated text, and raw request/response payloads.
 
 ## Diagnostics
 
