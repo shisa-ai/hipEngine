@@ -90209,3 +90209,23 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py scripts/validate_pi_agent_models.py scripts/validate_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC golden error taxonomy traces
+
+Expanded the deterministic golden trace bundle with common pre-generation error
+contracts that agent harnesses need to branch on: context overflow with
+`fit_context` data, wrong-model routing, unsupported request parameters,
+request schema validation, unsupported tokenizer diagnostics, and app-local
+chat-session cap `engine_busy`. The trace runner now accepts per-trace
+`ServerConfig` overrides so tiny context-window and session-cap cases are
+deterministic. Updated `docs/AGENTIC.md` P5.3 current-reality text to name the
+expanded error trace coverage.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py::test_agentic_golden_trace[context_overflow_completion_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[model_unavailable_completion_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[unsupported_parameter_completion_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[schema_violation_missing_prompt_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[unsupported_feature_tokenize_error] tests/test_agentic_harness_traces.py::test_agentic_golden_trace[engine_busy_chat_session_cap_sequence] -q` -> `6 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `38 passed`.
+- `python3 -m pytest tests/test_server_api.py tests/test_agentic_harness_traces.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.

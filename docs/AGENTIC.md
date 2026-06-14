@@ -2003,8 +2003,10 @@ Current code reality:
   closing-think/answer/structured/tool-call length phase metadata,
   continuation-eligible answer and structured length stops, a multi-request
   continuation-resume sequence, guided patch/diff validation success and
-  fail-closed rejection paths, deadline error metadata, and request-control
-  cancellation.
+  fail-closed rejection paths, context-overflow fit data, wrong-model routing
+  errors, unsupported parameter/feature errors, request schema-validation
+  errors, chat-session-cap `engine_busy`, deadline error metadata, and
+  request-control cancellation.
 - `tests/test_agentic_harness_traces.py` runs those traces against the
   OpenAI-compatible server with deterministic fake generation and strips only
   dynamic IDs/timestamps from assertions. The runner asserts visible transcript,

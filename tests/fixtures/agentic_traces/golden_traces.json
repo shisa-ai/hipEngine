@@ -1036,6 +1036,130 @@
       }
     },
     {
+      "name": "context_overflow_completion_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "server_config": {"max_context_tokens": 5},
+      "request": {
+        "model": "fake-model",
+        "prompt": "one two three four",
+        "max_tokens": 2
+      },
+      "expected": {
+        "status_code": 400,
+        "error_code": "context_length_exceeded",
+        "error_param": "max_tokens",
+        "hipengine_error_code": "context_overflow",
+        "fit_context": {
+          "prompt_tokens": 4,
+          "max_context_tokens": 5,
+          "effective_max_tokens": 2,
+          "max_allowed_max_tokens": 0,
+          "recommended_max_tokens": 0,
+          "required_context_tokens": 7,
+          "overflow_tokens": 2,
+          "fits": false,
+          "clear_policy": "reject",
+          "would_truncate": false,
+          "would_drop": []
+        }
+      }
+    },
+    {
+      "name": "model_unavailable_completion_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "other-model",
+        "prompt": "hello"
+      },
+      "expected": {
+        "status_code": 404,
+        "error_code": "model_not_found",
+        "error_param": "model",
+        "hipengine_error_code": "model_unavailable"
+      }
+    },
+    {
+      "name": "unsupported_parameter_completion_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "fake-model",
+        "prompt": "hello",
+        "typical_p": 0.9
+      },
+      "expected": {
+        "status_code": 400,
+        "error_code": "unsupported_parameter",
+        "error_param": "typical_p",
+        "hipengine_error_code": "unsupported_parameter"
+      }
+    },
+    {
+      "name": "schema_violation_missing_prompt_error",
+      "kind": "http",
+      "endpoint": "/v1/completions",
+      "request": {
+        "model": "fake-model",
+        "max_tokens": 1
+      },
+      "expected": {
+        "status_code": 400,
+        "error_code": "invalid_request",
+        "error_param": "prompt",
+        "hipengine_error_code": "schema_violation"
+      }
+    },
+    {
+      "name": "unsupported_feature_tokenize_error",
+      "kind": "http",
+      "endpoint": "/v1/hipengine/tokenize",
+      "request": {
+        "text": "hello"
+      },
+      "expected": {
+        "status_code": 501,
+        "error_code": "unsupported_feature",
+        "error_param": "text",
+        "hipengine_error_code": "unsupported_feature"
+      }
+    },
+    {
+      "name": "engine_busy_chat_session_cap_sequence",
+      "kind": "http_sequence",
+      "endpoint": "/v1/chat/completions",
+      "server_config": {"max_chat_sessions": 1},
+      "fake_outputs": ["stored answer"],
+      "steps": [
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "open first session"}],
+            "session": {"id": "sess_busy_one"}
+          },
+          "expected": {
+            "status_code": 200,
+            "finish_reason": "stop",
+            "message_content": "stored answer",
+            "finish_details": {"reason": "stop", "cache_action": "append_visible_only"}
+          }
+        },
+        {
+          "request": {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "open second session"}],
+            "session": {"id": "sess_busy_two"}
+          },
+          "expected": {
+            "status_code": 429,
+            "error_code": "engine_busy",
+            "hipengine_error_code": "engine_busy"
+          }
+        }
+      ]
+    },
+    {
       "name": "deadline_error_completion",
       "kind": "http",
       "endpoint": "/v1/completions",

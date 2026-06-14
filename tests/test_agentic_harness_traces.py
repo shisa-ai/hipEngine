@@ -78,10 +78,7 @@ def test_agentic_golden_trace(trace: dict[str, Any]) -> None:
         return
     assert trace["kind"] == "http"
     fake = TraceLLM(trace)
-    app = create_app(
-        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
-        llm=fake,
-    )
+    app = create_app(_server_config(trace), llm=fake)
     _assert_http_exchange(
         TestClient(app),
         fake,
@@ -93,10 +90,7 @@ def test_agentic_golden_trace(trace: dict[str, Any]) -> None:
 
 def _assert_http_sequence_trace(trace: dict[str, Any]) -> None:
     fake = TraceLLM(trace)
-    app = create_app(
-        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
-        llm=fake,
-    )
+    app = create_app(_server_config(trace), llm=fake)
     client = TestClient(app)
     context: dict[str, Any] = {}
     for step in trace["steps"]:
@@ -113,6 +107,16 @@ def _assert_http_sequence_trace(trace: dict[str, Any]) -> None:
             expected=expected,
         )
         _capture_trace_values(payload, expected=expected, context=context)
+
+
+def _server_config(trace: dict[str, Any]) -> ServerConfig:
+    options = {
+        "model": "fake-path",
+        "served_model_name": "fake-model",
+        "eager_load": False,
+    }
+    options.update(dict(trace.get("server_config") or {}))
+    return ServerConfig(**options)
 
 
 def _assert_http_exchange(
@@ -270,6 +274,8 @@ def _assert_error_response(payload: dict[str, Any], expected: dict[str, Any]) ->
     if "error_param" in expected:
         assert error["param"] == expected["error_param"]
     assert error["hipengine"]["code"] == expected["hipengine_error_code"]
+    if "fit_context" in expected:
+        assert error["fit_context"] == expected["fit_context"]
     if "finish_details" in expected:
         assert error["finish_details"] == expected["finish_details"]
 
