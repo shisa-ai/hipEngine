@@ -91334,3 +91334,19 @@ Validation:
 - `python3 -m py_compile hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` -> passed.
 - `python3 -m ruff check hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC PARO c>N sampler plan diagnostics
+
+Wired the scheduler-owned sampler plans into PARO c>N sampled generation.
+`_generate_batch_sampled()` now captures the active `SamplerParamsBlock` before
+rows complete, stores row-aligned `sampler_plan_metadata` in
+`last_batch_generation`, and builds final per-choice telemetry from those row
+plans rather than recomputing one request-level plan after the scheduler has
+reclaimed row state. This makes native-sampler request fallback and logit
+processor blockers observable from the actual scheduler batch path.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_sampling.py::test_speculative_mtp_sampling_allows_only_greedy_fast_policy tests/test_sampling.py::test_speculative_mtp_incompatible_fields_match_blocker_policy -q` -> `6 passed`.
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> passed.
+- `python3 -m ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py docs/AGENTIC.md WORKLOG.md` -> clean.

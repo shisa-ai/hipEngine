@@ -750,6 +750,18 @@ class Qwen35ParoOneTokenGenerator:
         admitted = scheduler.admit_pending()
         if admitted != request_ids:
             raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
+        native_sampler_requested = _native_gpu_sampler_requested()
+        sampler_block = scheduler.sampler_params_block(request_ids)
+        sampler_plans = dict(
+            zip(
+                request_ids,
+                sampler_block.sampler_plans(native_gpu_requested=native_sampler_requested),
+                strict=True,
+            )
+        )
+        sampler_plan_metadata = sampler_block.sampler_plan_metadata(
+            native_gpu_requested=native_sampler_requested
+        )
 
         output_steps: dict[int, list[Qwen35ParoAutoregressiveStepResult]] = {request_id: [] for request_id in request_ids}
         generated_ids: dict[int, list[int]] = {request_id: [] for request_id in request_ids}
@@ -881,49 +893,52 @@ class Qwen35ParoOneTokenGenerator:
             "native_compact_prefill": bool(getattr(batch_execution, "native_compact_prefill", False)),
             "native_caware_decode": False,
             "throughput_claim_eligible": False,
+            "sampler_plan_metadata": [dict(row) for row in sampler_plan_metadata],
         }
-        plan = plan_sampler(request, native_gpu_requested=_native_gpu_sampler_requested())
-        sampler_mode = plan.mode.value
-        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
-            plan,
-            vocab_size=getattr(session, "vocab_size", None),
-        )
-        return [
-            _generation_output_from_steps(
-                session.tokenizer,
-                output_steps[request_id],
-                finish_details=_finish_details_for_tokens(
-                    session.tokenizer,
-                    generated_ids[request_id],
-                    ignore_eos=ignore_eos,
-                    stop_token_ids=request.stop_token_ids,
-                    stop_token_sequences=request.stop_token_sequences,
-                    max_tokens=request.max_tokens,
-                    sampler_mode=sampler_mode,
-                    sampling_state=sampling_state_snapshots.get(request_id),
-                ),
-                telemetry=_telemetry_for_tokens(
-                    prompt_rows_by_request[request_id],
-                    generated_ids[request_id],
-                    row_index=request_id,
-                    request_id=str(request_id),
-                    sampler_mode=sampler_mode,
-                    stop_token_sequences=request.stop_token_sequences,
-                    active_processors=plan.active_processors,
-                    sampler_fast_path_blockers=plan.fast_path_blockers,
-                    sampler_fallback_reason=plan.fallback_reason,
-                    sampling_state=sampling_state_snapshots.get(request_id),
-                    forced_sample=output_steps[request_id][-1] if output_steps[request_id] else None,
-                    full_vocab_logits_d2h=full_vocab_logits_d2h,
-                    logits_d2h_bytes=logits_d2h_bytes,
-                    execution_path=self.last_batch_generation["path"],
-                    native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
-                    native_caware_decode=self.last_batch_generation["native_caware_decode"],
-                    serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
-                ),
+        outputs: list[GenerationOutput] = []
+        for request_id in request_ids:
+            plan = sampler_plans[request_id]
+            sampler_mode = plan.mode.value
+            full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
+                plan,
+                vocab_size=getattr(session, "vocab_size", None),
             )
-            for request_id in request_ids
-        ]
+            outputs.append(
+                _generation_output_from_steps(
+                    session.tokenizer,
+                    output_steps[request_id],
+                    finish_details=_finish_details_for_tokens(
+                        session.tokenizer,
+                        generated_ids[request_id],
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=request.stop_token_ids,
+                        stop_token_sequences=request.stop_token_sequences,
+                        max_tokens=request.max_tokens,
+                        sampler_mode=sampler_mode,
+                        sampling_state=sampling_state_snapshots.get(request_id),
+                    ),
+                    telemetry=_telemetry_for_tokens(
+                        prompt_rows_by_request[request_id],
+                        generated_ids[request_id],
+                        row_index=request_id,
+                        request_id=str(request_id),
+                        sampler_mode=sampler_mode,
+                        stop_token_sequences=request.stop_token_sequences,
+                        active_processors=plan.active_processors,
+                        sampler_fast_path_blockers=plan.fast_path_blockers,
+                        sampler_fallback_reason=plan.fallback_reason,
+                        sampling_state=sampling_state_snapshots.get(request_id),
+                        forced_sample=output_steps[request_id][-1] if output_steps[request_id] else None,
+                        full_vocab_logits_d2h=full_vocab_logits_d2h,
+                        logits_d2h_bytes=logits_d2h_bytes,
+                        execution_path=self.last_batch_generation["path"],
+                        native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
+                        native_caware_decode=self.last_batch_generation["native_caware_decode"],
+                        serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+                    ),
+                )
+            )
+        return outputs
 
     def _stream_one(
         self,

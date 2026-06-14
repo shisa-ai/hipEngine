@@ -1633,6 +1633,26 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     ]
     assert generator.last_batch_generation["path"] == "scheduler_native_packed_prefill_serial_host_sampler_decode"
     assert generator.last_batch_generation["native_compact_prefill"] is True
+    assert generator.last_batch_generation["sampler_plan_metadata"] == [
+        {
+            "request_id": 0,
+            "mode": "host_logits_sample",
+            "active_processors": ["logit_bias"],
+            "sampler_fast_path_blockers": ["temperature", "logit_bias"],
+            "native_gpu_available": False,
+            "uses_host_logits": True,
+            "sampler_fallback_reason": expected_fallback,
+        },
+        {
+            "request_id": 1,
+            "mode": "host_logits_sample",
+            "active_processors": ["logit_bias"],
+            "sampler_fast_path_blockers": ["temperature", "logit_bias"],
+            "native_gpu_available": False,
+            "uses_host_logits": True,
+            "sampler_fallback_reason": expected_fallback,
+        },
+    ]
     assert [_decode_state(output)["row_index"] for output in generator.last_generation_outputs] == [0, 1]
     assert [_decode_state(output)["sampler_mode"] for output in generator.last_generation_outputs] == [
         "host_logits_sample",

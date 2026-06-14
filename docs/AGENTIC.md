@@ -1946,6 +1946,10 @@ Current code reality:
   active processors, fast-path blockers, host-logits use, native availability,
   and fallback reason. This gives native/scheduler decode callers a single
   policy source for controlled-decoding fallback/rejection decisions.
+- PARO c>N sampled generation records that row-aligned metadata under
+  `last_batch_generation.sampler_plan_metadata` and builds final per-choice
+  telemetry from the scheduler-owned row plans, so native-sampler request
+  fallback and processor blockers are observable from the actual batch path.
 - True batched sampled decode is still not native-promoted: PARO c>N sampled
   batches use native packed prefill plus serial host-sampler decode, while GGUF
   sampled requests stay on host sampling.
@@ -2605,10 +2609,11 @@ golden harness traces are now implemented. Good next logical units, in order:
    `GenerationStreamChunk` snapshots instead of relying on server post-parse
    inference. PARO/GGUF c=1 true streaming already emits greedy/sampled
    answer-token snapshots.
-2. **Native/scheduler controlled-decoding parity:** scheduler row blocks now
-   expose per-row planner metadata for native fallback/rejection decisions, but
-   c>N/GGUF/native GPU sampler paths still need emitted chunk/final metadata and
-   logprob semantics to match host AR sampling everywhere.
+2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
+   per-row planner metadata for native fallback/rejection decisions, and PARO
+   c>N sampled batches record it in runtime diagnostics. c>N/GGUF/native GPU
+   sampler paths still need emitted chunk/final metadata and logprob semantics
+   to match host AR sampling everywhere.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier applies the same
    logit bias, penalties, suppressions, forced-token, thinking-budget, and
