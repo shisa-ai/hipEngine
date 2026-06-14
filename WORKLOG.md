@@ -88684,3 +88684,20 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC session-aware token diagnostics
+
+Made chat token diagnostics and context preflight honor app-local `session.id`
+transcripts. `/v1/hipengine/count_tokens` and `/v1/hipengine/fit_context` now
+prepend the stored transcript before rendering chat diagnostics, report
+session-prefix/request/rendered message counts, and advertise
+`features.token_diagnostics.session_aware_chat` when token counting is
+available. Raw text diagnostics reject `session` instead of silently ignoring it.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_token_diagnostics_endpoints_handle_text_and_chat tests/test_server_api.py::test_token_diagnostics_use_session_prefix_for_chat tests/test_server_api.py::test_token_diagnostics_reject_ambiguous_inputs tests/test_server_api.py::test_token_diagnostics_reject_session_for_raw_text tests/test_local_agent_config.py -q` -> `14 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

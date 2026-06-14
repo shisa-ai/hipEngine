@@ -108,6 +108,7 @@ def _capabilities(**overrides):
                 "detokenize": True,
                 "count_tokens": True,
                 "fit_context": True,
+                "session_aware_chat": True,
             },
         },
         "unsupported_fields": [],

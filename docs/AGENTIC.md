@@ -922,11 +922,13 @@ Current code reality:
   endpoints.
 - Raw text diagnostics use the served tokenizer/counting hooks. Chat diagnostics
   render the same Qwen-style prompt as generation, including tool markup and
-  thinking controls, before counting. Chat count/fit diagnostics also expose
-  lowered thinking-budget close tokens and the initialized
-  `ThinkingBudgetState` payload when tokenization is available; capability
-  metadata advertises that diagnostic lowering/state support separately from
-  live token-budget enforcement.
+  thinking controls, before counting. When a chat diagnostic request includes
+  `session.id`, the stored app-local transcript is prepended before rendering,
+  and the response reports session prefix/request/rendered message counts plus
+  `resident_state_reuse=false`. Chat count/fit diagnostics also expose lowered
+  thinking-budget close tokens and the initialized `ThinkingBudgetState` payload
+  when tokenization is available; capability metadata advertises that diagnostic
+  lowering/state support separately from live token-budget enforcement.
 - `/fit_context` uses the same context arithmetic and chat default max-token
   policy as generation admission, and reports the current clear policy as
   `reject` with no automatic truncation/dropping.
@@ -1538,7 +1540,10 @@ Current code reality:
   truncate, auto-clear, or drop request content.
 - `/fit_context` reports prompt tokens, effective max tokens, required context,
   `fits`, `clear_policy="reject"`, `would_truncate=false`, and an empty
-  `would_drop` list using the same helper as generation admission.
+  `would_drop` list using the same helper as generation admission. Chat
+  preflight with `session.id` includes the app-local stored transcript prefix
+  before computing prompt tokens and reports the same session-prefix metadata as
+  `/count_tokens`.
 - Generation `context_overflow` errors include `error.fit_context` with the same
   actionable shape, so clients can retry with a smaller `max_tokens` or run the
   preflight endpoint without reverse-engineering the error message.

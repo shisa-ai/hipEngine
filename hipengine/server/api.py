@@ -931,6 +931,7 @@ class TokenDiagnosticRequest(_OpenAIBaseModel):
     chat_template_kwargs: dict[str, Any] | None = None
     thinking: str | dict[str, Any] | None = None
     reasoning: dict[str, Any] | None = None
+    session: Any | None = None
 
 
 class FitContextRequest(TokenDiagnosticRequest):
@@ -1607,6 +1608,57 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 created=created,
                 updated=now,
             )
+
+    async def diagnostic_render_for_request(
+        request: TokenDiagnosticRequest,
+        engine: Any,
+    ) -> dict[str, Any]:
+        has_text = request.text is not None
+        has_messages = request.messages is not None
+        if has_text == has_messages:
+            raise OpenAIHTTPError(
+                400,
+                "provide exactly one of text or messages",
+                code="invalid_request",
+                param="text",
+            )
+        if has_text:
+            if request.session is not None:
+                raise OpenAIHTTPError(
+                    400,
+                    "session diagnostics are only supported for chat messages",
+                    code="unsupported_parameter",
+                    param="session",
+                )
+            return {
+                "text": str(request.text),
+                "input_type": "text",
+                "chat_request": None,
+                "session": None,
+            }
+        chat_request = _chat_request_from_diagnostic(config, request)
+        _validate_session_request(chat_request)
+        unsupported_param = _unsupported_agentic_request_param(chat_request)
+        if unsupported_param is not None:
+            raise OpenAIHTTPError(
+                400,
+                f"{unsupported_param} is not supported by this server",
+                code="unsupported_parameter",
+                param=unsupported_param,
+            )
+        prefix_messages = await chat_session_prefix_messages(chat_request)
+        render_request = chat_request
+        if prefix_messages:
+            render_request = _chat_request_with_messages(
+                chat_request,
+                (*prefix_messages, *chat_request.messages),
+            )
+        return {
+            "text": chat_prompt_for_request(render_request, engine),
+            "input_type": "chat",
+            "chat_request": render_request,
+            "session": _diagnostic_session_payload(chat_request, prefix_messages),
+        }
 
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
@@ -2592,6 +2644,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "detokenize": tokenizer_caps["detokenize"],
                     "count_tokens": tokenizer_caps["count_tokens"],
                     "fit_context": tokenizer_caps["count_tokens"],
+                    "session_aware_chat": tokenizer_caps["count_tokens"],
                 },
                 "tools": {
                     "enabled": True,
@@ -2742,12 +2795,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def count_tokens(request: TokenDiagnosticRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = get_llm()
         max_context = effective_max_context_tokens(engine)
-        text, input_type = _diagnostic_text_from_request(
-            config,
-            request,
-            engine=engine,
-            max_context_tokens=max_context,
-        )
+        rendered = await diagnostic_render_for_request(request, engine)
+        text = str(rendered["text"])
+        input_type = str(rendered["input_type"])
         token_count = await run_in_threadpool(_count_tokens_strict, engine, text)
         response = {
             "object": "hipengine.count_tokens",
@@ -2755,11 +2805,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "text": text,
             "token_count": token_count,
         }
+        if rendered["session"] is not None:
+            response["session"] = rendered["session"]
         thinking_budget = _diagnostic_thinking_budget_payload(
             config,
             request,
             engine=engine,
             max_context_tokens=max_context,
+            chat_request=rendered["chat_request"],
         )
         if thinking_budget is not None:
             response["thinking_budget"] = thinking_budget
@@ -2769,19 +2822,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def fit_context(request: FitContextRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = get_llm()
         max_context = effective_max_context_tokens(engine)
-        text, input_type = _diagnostic_text_from_request(
-            config,
-            request,
-            engine=engine,
-            max_context_tokens=max_context,
-        )
+        rendered = await diagnostic_render_for_request(request, engine)
+        text = str(rendered["text"])
+        input_type = str(rendered["input_type"])
         prompt_tokens = await run_in_threadpool(_count_tokens_strict, engine, text)
         if request.max_tokens is not None:
             effective_max_tokens = max(0, int(request.max_tokens))
         elif input_type == "chat":
-            chat_request = _chat_request_from_diagnostic(config, request)
             effective_max_tokens = _request_max_tokens(
-                chat_request,
+                rendered["chat_request"],
                 (text,),
                 engine,
                 max_context,
@@ -2803,11 +2852,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "chat_default_max_tokens": config.chat_default_max_tokens if input_type == "chat" else None,
             "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
         }
+        if rendered["session"] is not None:
+            response["session"] = rendered["session"]
         thinking_budget = _diagnostic_thinking_budget_payload(
             config,
             request,
             engine=engine,
             max_context_tokens=max_context,
+            chat_request=rendered["chat_request"],
         )
         if thinking_budget is not None:
             response["thinking_budget"] = thinking_budget
@@ -5072,6 +5124,7 @@ def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnostic
         thinking=request.thinking,
         reasoning=request.reasoning,
         max_tokens=getattr(request, "max_tokens", None),
+        session=request.session,
     )
 
 
@@ -5109,10 +5162,12 @@ def _diagnostic_thinking_budget_payload(
     *,
     engine: Any,
     max_context_tokens: int | None,
+    chat_request: ChatCompletionRequest | None = None,
 ) -> dict[str, Any] | None:
-    if request.messages is None:
+    if request.messages is None and chat_request is None:
         return None
-    chat_request = _chat_request_from_diagnostic(config, request)
+    if chat_request is None:
+        chat_request = _chat_request_from_diagnostic(config, request)
     _prompt, thinking = _render_chat_prompt_for_request(
         chat_request,
         chat_default_max_tokens=config.chat_default_max_tokens,
@@ -5162,6 +5217,27 @@ def _diagnostic_thinking_budget_payload(
         }
     )
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def _diagnostic_session_payload(
+    request: ChatCompletionRequest,
+    prefix_messages: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    session_id = _session_id(request)
+    if session_id is None:
+        return None
+    prefix_count = len(prefix_messages)
+    request_count = len(request.messages)
+    return {
+        "id": session_id,
+        "stateful": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "prefix_message_count": prefix_count,
+        "request_message_count": request_count,
+        "rendered_message_count": prefix_count + request_count,
+        "cache_action": _session_cache_action(request),
+    }
 
 
 def _thinking_budget_sampling_kwargs(

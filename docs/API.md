@@ -86,8 +86,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, and unsupported fields. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
-| `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, and thinking controls. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
-| `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, required context, and reject/truncation policy using the same admission arithmetic as generation. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
+| `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
+| `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, required context, and reject/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
@@ -397,10 +397,11 @@ unavailable, generation remains prompt-hint-only rather than failing. Native GPU
 sampler parity and speculative/MTP parity are not implemented yet. Generic
 sampler `min_tokens` / `eos_token_id` still suppresses EOS for ordinary
 generation independent of thinking-budget phase policy. Chat `count_tokens` and
-`fit_context` diagnostics also lower the configured close sequence into token
-ids and return an initial thinking-budget state for harness/debug verification
-when tokenization is available. The capabilities manifest exposes enforcement
-under `features.reasoning_controls.token_budget_enforced`,
+`fit_context` diagnostics also honor app-local `session.id` transcript prefixes,
+lower the configured close sequence into token ids, and return an initial
+thinking-budget state for harness/debug verification when tokenization is
+available. The capabilities manifest exposes enforcement under
+`features.reasoning_controls.token_budget_enforced`,
 `hard_close_token_forcing`, `soft_close_bias`, `eos_suppression`,
 `diagnostic_close_token_lowering`, and `diagnostic_initial_state`.
 

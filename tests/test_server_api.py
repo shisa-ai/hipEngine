@@ -435,6 +435,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "detokenize": True,
         "count_tokens": True,
         "fit_context": True,
+        "session_aware_chat": True,
     }
     assert body["features"]["tools"] == {
         "enabled": True,
@@ -763,6 +764,74 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     assert fit_body["thinking_budget"]["close_token_ids"] == [42, 43, 44]
 
 
+def test_token_diagnostics_use_session_prefix_for_chat() -> None:
+    fake = SequentialFakeLLM(["stored answer", "follow-up answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=512,
+            chat_default_max_tokens=9,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "remember alpha"}],
+            "max_tokens": 2,
+            "session": {"id": "diag_session"},
+        },
+    )
+    diagnostic_payload = {
+        "messages": [{"role": "user", "content": "now beta"}],
+        "session": {"id": "diag_session"},
+    }
+    count = client.post("/v1/hipengine/count_tokens", json=diagnostic_payload)
+    fit = client.post("/v1/hipengine/fit_context", json=diagnostic_payload)
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "now beta"}],
+            "max_tokens": 2,
+            "session": {"id": "diag_session", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert count.status_code == 200
+    assert fit.status_code == 200
+    assert second.status_code == 200
+    count_body = count.json()
+    assert count_body["input_type"] == "chat"
+    assert "remember alpha" in count_body["text"]
+    assert "stored answer" in count_body["text"]
+    assert "now beta" in count_body["text"]
+    assert count_body["session"] == {
+        "id": "diag_session",
+        "stateful": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "prefix_message_count": 2,
+        "request_message_count": 1,
+        "rendered_message_count": 3,
+        "cache_action": "append_visible_only",
+    }
+    assert count_body["token_count"] == fake.count_tokens(count_body["text"])
+
+    fit_body = fit.json()
+    assert fit_body["prompt_tokens"] == count_body["token_count"]
+    assert fit_body["effective_max_tokens"] == 9
+    assert fit_body["required_context_tokens"] == count_body["token_count"] + 9 + 1
+    assert fit_body["session"] == count_body["session"]
+    assert fake.calls[1][0][0] == count_body["text"]
+
+
 def test_token_diagnostics_reject_ambiguous_inputs() -> None:
     fake = FakeLLM()
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False), llm=fake)
@@ -775,6 +844,21 @@ def test_token_diagnostics_reject_ambiguous_inputs() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_request"
+
+
+def test_token_diagnostics_reject_session_for_raw_text() -> None:
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/hipengine/count_tokens",
+        json={"text": "hello", "session": {"id": "diag_session"}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_parameter"
+    assert response.json()["error"]["param"] == "session"
 
 
 def test_server_eager_loads_model_on_startup(caplog) -> None:
