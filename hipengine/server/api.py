@@ -2037,6 +2037,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 _render_prometheus_metrics(
                     app.state.hipengine_server_metrics,
                     engine=getattr(app.state, "hipengine_llm", None),
+                    generation_batcher=getattr(app.state, "hipengine_generation_batcher", None),
                 ),
                 media_type="text/plain; version=0.0.4; charset=utf-8",
             )
@@ -2881,9 +2882,15 @@ def _metrics_mode(raw: str | None) -> str:
     return value
 
 
-def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -> str:
+def _render_prometheus_metrics(
+    metrics: _ServerMetrics,
+    *,
+    engine: Any | None,
+    generation_batcher: Any | None = None,
+) -> str:
     pool = _pool_metric_values(engine)
     graph = _graph_bucket_metric_values(engine)
+    queue = _generation_queue_metric_values(generation_batcher)
     values = {
         "hipengine_requests_total": metrics.request_total,
         "hipengine_request_completed_total": metrics.request_completed_total,
@@ -2902,6 +2909,9 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_graph_bucket_hits_total": graph["hits"],
         "hipengine_graph_bucket_misses_total": graph["misses"],
         "hipengine_graph_bucket_replay_hit_rate": graph["replay_hit_rate"],
+        "hipengine_generation_queue_depth": queue["depth"],
+        "hipengine_generation_queue_max_depth": queue["max_depth"],
+        "hipengine_generation_worker_active": queue["worker_active"],
     }
     help_text = {
         "hipengine_requests_total": "Total generation requests observed by the server.",
@@ -2921,6 +2931,9 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
         "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
         "hipengine_graph_bucket_replay_hit_rate": "Graph bucket replay hit rate, or 0 when unavailable.",
+        "hipengine_generation_queue_depth": "Current generation-batcher queue depth.",
+        "hipengine_generation_queue_max_depth": "Configured generation-batcher queue cap, or 0 when unset.",
+        "hipengine_generation_worker_active": "Whether the generation-batcher worker is active, as 0 or 1.",
     }
     counter_names = {
         "hipengine_requests_total",
@@ -2974,6 +2987,25 @@ def _pool_metric_values(engine: Any | None) -> dict[str, float]:
     for key in values:
         values[key] = _non_negative_metric_value(data.get(key))
     return values
+
+
+def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
+    if generation_batcher is None:
+        return {"depth": 0.0, "max_depth": 0.0, "worker_active": 0.0}
+    depth = _non_negative_metric_value(_call_metric_getter(generation_batcher, "queue_depth"))
+    max_depth_raw = _call_metric_getter(generation_batcher, "max_queue_size")
+    max_depth = 0.0 if max_depth_raw is None else _non_negative_metric_value(max_depth_raw)
+    active = _call_metric_getter(generation_batcher, "active")
+    return {
+        "depth": depth,
+        "max_depth": max_depth,
+        "worker_active": 1.0 if bool(active) else 0.0,
+    }
+
+
+def _call_metric_getter(owner: Any, name: str) -> Any:
+    value = getattr(owner, name, None)
+    return value() if callable(value) else value
 
 
 def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:

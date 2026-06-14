@@ -88125,6 +88125,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifact_counts_chat_prompt_when_engine_loaded tests/test_server_api.py::test_replay_artifacts_are_default_off -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 
+## 2026-06-14 - AGENTIC queue metrics gauges
+
+Filled a P4.5 admission/backpressure observability gap by exposing generation
+batcher queue gauges in Prometheus mode: current queue depth, configured queue
+cap, and worker-active state. These mirror the readiness queue fields in a
+scrapeable form so agent supervisors can distinguish an idle server from a
+queued or actively decoding one.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive tests/test_server_api.py::test_metrics_endpoint_filters_malformed_graph_bucket_scalars tests/test_server_api.py::test_generation_batcher_rejects_when_queue_cap_is_full -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
 ## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
 
 Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).

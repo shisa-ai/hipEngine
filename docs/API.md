@@ -446,6 +446,9 @@ strings and should only be used in local, non-sensitive debugging sessions.
   Compatible queued prompts can coalesce into one prompt-list engine call, but
   true continuous decode, concurrent backend execution, max-active-session
   admission, and scheduler fairness remain later runtime work.
+  Prometheus mode exposes `hipengine_generation_queue_depth`,
+  `hipengine_generation_queue_max_depth`, and
+  `hipengine_generation_worker_active` gauges for backpressure monitors.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `suppress_token_ids`, `min_tokens` / `eos_token_id`, `seed`, and `n` through

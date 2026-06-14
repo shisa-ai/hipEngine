@@ -3450,7 +3450,13 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         },
     )
     app = create_app(
-        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, metrics="prometheus"),
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            metrics="prometheus",
+            max_queued_requests=3,
+        ),
         llm=fake,
     )
     client = TestClient(app)
@@ -3458,6 +3464,9 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     before = client.get("/metrics")
     assert before.status_code == 200
     assert _metric_value(before.text, "hipengine_requests_total") == 0
+    assert _metric_value(before.text, "hipengine_generation_queue_depth") == 0
+    assert _metric_value(before.text, "hipengine_generation_queue_max_depth") == 3
+    assert _metric_value(before.text, "hipengine_generation_worker_active") == 0
 
     for prompt in ["one", "two three"]:
         response = client.post(
@@ -3473,6 +3482,9 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_request_completed_total") == 2
     assert _metric_value(metrics.text, "hipengine_request_failed_total") == 0
     assert _metric_value(metrics.text, "hipengine_request_rejected_total") == 0
+    assert _metric_value(metrics.text, "hipengine_generation_queue_depth") == 0
+    assert _metric_value(metrics.text, "hipengine_generation_queue_max_depth") == 3
+    assert _metric_value(metrics.text, "hipengine_generation_worker_active") == 0
     assert _metric_value(metrics.text, "hipengine_prompt_tokens_total") == 3
     assert _metric_value(metrics.text, "hipengine_completion_tokens_total") == 4
     assert _metric_value(metrics.text, "hipengine_kv_pool_current_bytes") == 4096

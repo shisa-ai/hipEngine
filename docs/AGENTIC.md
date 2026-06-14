@@ -1471,8 +1471,8 @@ Current state:
   request count is already at the configured cap, the request is rejected before
   enqueue with HTTP 429, canonical `engine_busy`, and `Retry-After: 1`.
 - `/ready` reports queue depth and configured max depth. Prometheus metrics
-  include `hipengine_request_rejected_total` in addition to completed/failed
-  request counters.
+  include `hipengine_request_rejected_total`, queue depth, configured queue cap,
+  and worker-active gauges in addition to completed/failed request counters.
 - Default behavior remains unlimited server queueing until a cap is configured.
   Max active sessions and a scheduler fairness policy remain future runtime
   work.
