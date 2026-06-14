@@ -63,6 +63,10 @@ Already available or recently added:
   SSE error chunk with the same detail and then `[DONE]`.
 - OpenAI-style chat `tools` / `tool_choice` prompt injection and output parsing
   for Qwen-style `<tool_call>{...}</tool_call>` blocks.
+- Strict tool result validation for `tool_choice="none"`, `"required"`,
+  specific function choices, functions with `"strict": true`, and explicit
+  `parallel_tool_calls`; failures return normal chat responses with no
+  successful `tool_calls` and stable `finish_details.reason`.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
   `reasoning_effort`, `chat_template_kwargs`, and nested `thinking`/`reasoning`
   request objects.
@@ -70,8 +74,10 @@ Already available or recently added:
 
 Known baseline limitations:
 
-- Tool calling is prompt-and-parse, not constrained decoding; malformed
-  `<tool_call>` JSON is treated as assistant text.
+- Tool calling is prompt-and-parse, not constrained decoding. Malformed
+  `<tool_call>` JSON is treated as assistant text in compatibility mode and as
+  `finish_details.reason="invalid_tool_call"` when strict result validation is
+  active.
 - Thinking controls are prompt/template controls only; there is no token-level
   thinking budget, dynamic logit processor, or forced close sequence yet.
 - Server-side reasoning/tool parsing lives above generation; the generation loop
@@ -975,23 +981,38 @@ Exit gates:
 The current tool-call support is enough for local smoke tests; harness-grade tool
 use needs decoding constraints and better protocol coverage.
 
+Current state:
+
+- Chat requests accept OpenAI-style `tools`, `tool_choice`, and
+  `parallel_tool_calls`.
+- Tool output remains prompt-and-parse: Qwen-style `<tool_call>{...}</tool_call>`
+  blocks are parsed after generation and converted to OpenAI `tool_calls`.
+- Strict result validation now runs when `tool_choice` is `none`, `required`, or
+  a specific function, when any tool function declares `"strict": true`, or when
+  `parallel_tool_calls` is explicitly supplied. It validates selected tool
+  names, one-call-vs-parallel policy, malformed tool-call blocks, and a minimal
+  function `parameters` JSON schema subset.
+- Strict failures return normal chat responses with no successful `tool_calls`,
+  coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
+  `invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
+- Decode-time suppression/forcing and grammar-constrained JSON/tool generation
+  remain future work.
+
 #### P2.1 Strict tool-call mode
 
 Implement:
 
 - decode-time enforcement for `tool_choice="none"`, `"auto"`, `"required"`, and
   a specific function name;
-- default strict-agent policy: at most one tool call per assistant turn;
-  `tool_choice="required"` requires exactly one valid call, a specific function
-  choice requires exactly one valid call to that function, and `auto` may return
-  zero or one valid call;
-- multi-call output is allowed only when the request explicitly sets
-  `parallel_tool_calls=true` or a future `tool_policy.max_calls > 1`;
+- decode-state suppression for no-tool mode and forced/repaired close sequences
+  for required/specific tool modes;
 - structured refusal/error when a required call cannot be produced under budget.
 
 Exit gates:
 
-- server fixtures cover `none`, `auto`, `required`, and specific function choice;
+- server result-validation fixtures cover `none`, `required`, and specific
+  function choice; decode-time fixtures still need to cover `auto` and
+  constrained no-tool/required behavior;
 - no-tool mode suppresses `<tool_call>` starts;
 - required-tool mode does not return ordinary prose as success.
 
@@ -999,21 +1020,16 @@ Exit gates:
 
 Implement:
 
-- parse generated tool call JSON into `{name, arguments}`;
-- validate tool name and arguments against request-provided JSON schema;
-- compatibility mode keeps today's behavior: malformed `<tool_call>` JSON is
-  ordinary assistant text;
-- strict mode returns a normal HTTP response with no successful `tool_calls` and
-  `finish_details.reason` set to `invalid_tool_call`,
-  `tool_required_not_satisfied`, or `schema_violation`; transport-level HTTP
-  errors are reserved for invalid request schemas, unsupported parameters, and
-  server failures;
+- extend the current post-generation validation into decode-time constraints for
+  tool names and JSON schema when grammar support exists;
+- broaden the current minimal schema subset only when tests and compatibility
+  fixtures require it;
 - retry/repair is a later explicit policy, not the default.
 
 Exit gates:
 
-- malformed JSON, unknown tool name, missing required arg, wrong type, and extra
-  disallowed arg each have stable finish details;
+- malformed JSON, unknown tool name, missing required arg, wrong type, extra
+  disallowed arg, and multi-call-without-opt-in each have stable finish details;
 - streaming and non-streaming paths agree on parsed calls/errors;
 - prior assistant tool calls and `role: "tool"` results still replay correctly.
 
@@ -1294,9 +1310,10 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
-  parameters and execution modes, the default-off PARO c=1 native GPU sampler
-  scope, speculative/MTP sampling compatibility, request-timeout/client-disconnect
-  support, cache/session settings, loaded-model count, and unsupported fields.
+  parameters and execution modes, strict tool result-validation support, the
+  default-off PARO c=1 native GPU sampler scope, speculative/MTP sampling
+  compatibility, request-timeout/client-disconnect support, cache/session
+  settings, loaded-model count, and unsupported fields.
 - Continuations, `session.commit`, multi-model routing, and strict tool decoding
   are advertised as unsupported until their runtime paths exist. Request
   timeouts and client-disconnect cancellation are advertised as supported with

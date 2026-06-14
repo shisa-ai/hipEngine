@@ -213,9 +213,10 @@ generation requests fail before enqueue with HTTP 429 `engine_busy` and
 
 ### Tool calling
 
-`POST /v1/chat/completions` accepts OpenAI-style `tools` and `tool_choice` for
-local-agent clients such as pi. hipEngine injects a Qwen-style tool block into
-the rendered chat prompt and expects the model to emit tool calls as:
+`POST /v1/chat/completions` accepts OpenAI-style `tools`, `tool_choice`, and
+`parallel_tool_calls` for local-agent clients such as pi. hipEngine injects a
+Qwen-style tool block into the rendered chat prompt and expects the model to
+emit tool calls as:
 
 ```text
 <tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>
@@ -226,6 +227,16 @@ non-streaming responses or `delta.tool_calls` chunks in streaming responses, wit
 `finish_reason: "tool_calls"`. Prior assistant `tool_calls` and `role: "tool"`
 messages are also replayed into the prompt as `<tool_call>` and
 `<tool_response>` blocks so multi-turn tool loops can continue.
+
+Tool decoding is still prompt-and-parse, not grammar-constrained. The server now
+does strict result validation when `tool_choice` is `none`, `required`, or a
+specific function, when any tool function declares `"strict": true`, or when
+`parallel_tool_calls` is explicitly supplied. Strict validation checks selected
+tool names, one-call-vs-parallel policy, malformed tool-call blocks, and the
+declared function `parameters` JSON schema subset. Strict failures return a
+normal chat response with no successful `tool_calls`, `finish_reason: "stop"`,
+and `finish_details.reason` set to `invalid_tool_call`,
+`tool_required_not_satisfied`, or `schema_violation`.
 
 ### Thinking / no-think controls
 
@@ -254,7 +265,8 @@ A minimal OpenAI-compatible local-agent config is checked in at
 model id from `/v1/hipengine/capabilities`, uses deterministic Qwen-friendly
 defaults (`temperature=0`, `reasoning_effort=none`), enables SSE usage and
 hipEngine extension metadata, sets `timeout_ms`, sends tool schemas per request,
-and keeps unsupported/session/structured-output fields in `do_not_send`.
+and keeps unsupported/session/structured-output fields plus intentionally unused
+tool-policy fields in `do_not_send`.
 
 Validate the config against a running server with:
 

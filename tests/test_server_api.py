@@ -218,6 +218,14 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "count_tokens": True,
         "fit_context": True,
     }
+    assert body["features"]["tools"] == {
+        "enabled": True,
+        "strict_decoding": False,
+        "strict_result_validation": True,
+        "schema_validation": "function_strict",
+        "format": "qwen_tool_call_json",
+        "parallel_tool_calls": True,
+    }
     assert body["features"]["logprobs"]["streaming"] == "buffered"
     assert body["features"]["request_timeouts"] == {
         "timeout_ms": True,
@@ -298,6 +306,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     }
     assert body["routing"] == {"loaded_model_count": 1, "multiple_models": False}
     assert "timeout_ms" not in body["unsupported_fields"]
+    assert "parallel_tool_calls" not in body["unsupported_fields"]
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -1321,6 +1330,208 @@ def test_chat_completion_returns_openai_tool_calls() -> None:
     assert "<tools>" in fake.calls[0][0][0]
 
 
+def test_chat_completion_required_tool_reports_missing_call() -> None:
+    fake = FakeLLM(outputs=["ordinary answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": "required",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_specific_tool_rejects_wrong_function() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+                {"type": "function", "function": {"name": "write", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "invalid_tool_call"}
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_tool_choice_none_rejects_tool_call() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "answer without tools"}],
+            "tool_choice": "none",
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "invalid_tool_call"}
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":123,"mode":"raw"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"path": {"type": "string"}},
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "schema_violation"}
+    assert "tool_calls" not in choice["message"]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {},
+        {"path": "README.md", "mode": "raw"},
+    ],
+)
+def test_chat_completion_strict_tool_schema_rejects_missing_and_extra_arguments(arguments) -> None:
+    fake = FakeLLM(outputs=[f'<tool_call>{{"name":"read","arguments":{json.dumps(arguments)}}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"path": {"type": "string"}},
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+
+
+def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
+    output = (
+        '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+        '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md"}}</tool_call>'
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    rejected = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=[output]),
+    )
+    accepted = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=[output]),
+    )
+
+    rejected_response = TestClient(rejected).post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "read files"}], "tools": tools},
+    )
+    accepted_response = TestClient(accepted).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read files"}],
+            "tools": tools,
+            "parallel_tool_calls": True,
+        },
+    )
+
+    assert rejected_response.json()["choices"][0]["finish_details"] == {"reason": "invalid_tool_call"}
+    accepted_choice = accepted_response.json()["choices"][0]
+    assert accepted_choice["finish_reason"] == "tool_calls"
+    assert len(accepted_choice["message"]["tool_calls"]) == 2
+
+
 def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],
@@ -1359,6 +1570,45 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
     assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
+
+
+def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=['<tool_call>{"name":"bash","arguments":{"command":7}}</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"command": {"type": "string"}},
+                            "required": ["command"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
+    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "schema_violation"}
 
 
 def test_streaming_chat_completion_returns_token_sse_and_usage() -> None:

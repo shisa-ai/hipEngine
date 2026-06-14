@@ -414,14 +414,18 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
             "chat_completions": True,
             "completions": True,
             "streaming": True,
-            "tools": {"enabled": True, "strict_decoding": False},
+            "tools": {
+                "enabled": True,
+                "strict_decoding": False,
+                "strict_result_validation": True,
+                "schema_validation": "function_strict",
+            },
             "request_timeouts": {"timeout_ms": True},
         },
         "unsupported_fields": [
             "continuation_id",
             "session.commit",
             "response_format",
-            "parallel_tool_calls",
         ],
     }
 
@@ -490,6 +494,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     timeout_ms: float | None = Field(default=None, gt=0.0)
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
+    parallel_tool_calls: bool | None = None
     reasoning_effort: str | None = None
     enable_thinking: bool | None = None
     chat_template_kwargs: dict[str, Any] | None = None
@@ -959,6 +964,16 @@ class _ParsedToolCall:
 class _ParsedChatOutput:
     text: str
     tool_calls: tuple[_ParsedToolCall, ...]
+
+
+@dataclass(frozen=True)
+class _ToolValidationResult:
+    parsed: _ParsedChatOutput
+    failure_reason: str | None = None
+
+    @property
+    def failed(self) -> bool:
+        return self.failure_reason is not None
 
 
 @dataclass(frozen=True)
@@ -1672,7 +1687,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "tools": {
                     "enabled": True,
                     "strict_decoding": False,
+                    "strict_result_validation": True,
+                    "schema_validation": "function_strict",
                     "format": "qwen_tool_call_json",
+                    "parallel_tool_calls": True,
                 },
                 "reasoning_controls": {
                     "enabled": True,
@@ -1770,7 +1788,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "continuation_id",
                 "session.commit",
                 "response_format",
-                "parallel_tool_calls",
             ],
         }
 
@@ -1949,13 +1966,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             text, finish_reason = _apply_stop(output, request.stop)
             server_stop = text != output
             parsed = _parse_chat_tool_calls(text)
+            tool_validation = _validate_chat_tool_result(request, parsed, text)
+            parsed = tool_validation.parsed
             message, parsed_finish_reason = _chat_message_from_parsed(parsed)
-            finish_reason = _finish_reason_for_output(
-                detail,
-                parsed_finish_reason if parsed.tool_calls else finish_reason,
-                server_stop=server_stop,
-                tool_calls=bool(parsed.tool_calls),
-            )
+            if tool_validation.failed:
+                finish_reason = "stop"
+            else:
+                finish_reason = _finish_reason_for_output(
+                    detail,
+                    parsed_finish_reason if parsed.tool_calls else finish_reason,
+                    server_stop=server_stop,
+                    tool_calls=bool(parsed.tool_calls),
+                )
             choice = {
                 "index": index,
                 "message": message,
@@ -1963,7 +1985,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "finish_details": _finish_details_payload(
                     detail,
                     finish_reason,
-                    reason_override="tool_calls" if parsed.tool_calls else "stop" if server_stop else None,
+                    reason_override=(
+                        tool_validation.failure_reason
+                        if tool_validation.failed
+                        else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
+                    ),
                 ),
             }
             if request.logprobs:
@@ -1997,13 +2023,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
                 parsed = _parse_chat_tool_calls(text)
+                tool_validation = _validate_chat_tool_result(request, parsed, text)
+                parsed = tool_validation.parsed
                 detail = batch.details[index]
-                finish_reason = _finish_reason_for_output(
-                    detail,
-                    finish_reason,
-                    server_stop=server_stop,
-                    tool_calls=bool(parsed.tool_calls),
-                )
+                if tool_validation.failed:
+                    finish_reason = "stop"
+                else:
+                    finish_reason = _finish_reason_for_output(
+                        detail,
+                        finish_reason,
+                        server_stop=server_stop,
+                        tool_calls=bool(parsed.tool_calls),
+                    )
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
                 yield _chat_stream_role(
                     response_id,
@@ -2024,7 +2055,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     finish_details=_finish_details_payload(
                         detail,
                         finish_reason,
-                        reason_override="tool_calls" if parsed.tool_calls else "stop" if server_stop else None,
+                        reason_override=(
+                            tool_validation.failure_reason
+                            if tool_validation.failed
+                            else "tool_calls" if parsed.tool_calls else "stop" if server_stop else None
+                        ),
                     ),
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
@@ -2257,13 +2292,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         app.state.hipengine_server_metrics.record_success(usage)
         if buffer_tool_output:
             parsed = _parse_chat_tool_calls(text)
+            tool_validation = _validate_chat_tool_result(request, parsed, text)
+            parsed = tool_validation.parsed
+            stream_finish_reason = "stop" if tool_validation.failed else "tool_calls" if parsed.tool_calls else finish_reason
             for event in _chat_stream_parsed(
                 response_id,
                 created,
                 config.model_id,
                 parsed,
-                "tool_calls" if parsed.tool_calls else finish_reason,
-                finish_details=_finish_details_payload(None, "tool_calls" if parsed.tool_calls else finish_reason),
+                stream_finish_reason,
+                finish_details=_finish_details_payload(
+                    None,
+                    stream_finish_reason,
+                    reason_override=tool_validation.failure_reason if tool_validation.failed else None,
+                ),
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
             ):
@@ -3670,6 +3712,191 @@ def _chat_message_from_parsed(parsed: _ParsedChatOutput) -> tuple[dict[str, Any]
         message["tool_calls"] = [_openai_tool_call(call) for call in parsed.tool_calls]
         return message, "tool_calls"
     return message, "stop"
+
+
+def _validate_chat_tool_result(
+    request: ChatCompletionRequest,
+    parsed: _ParsedChatOutput,
+    raw_text: str,
+) -> _ToolValidationResult:
+    if not request.tools:
+        return _ToolValidationResult(parsed)
+    strict = _strict_tool_validation_enabled(request)
+    if not strict:
+        return _ToolValidationResult(parsed)
+    mode, required_name = _tool_choice_mode(request.tool_choice)
+    malformed_blocks = _malformed_tool_call_blocks(raw_text)
+    if mode == "none":
+        if parsed.tool_calls or malformed_blocks:
+            return _tool_validation_failure("invalid_tool_call")
+        return _ToolValidationResult(parsed)
+    if malformed_blocks:
+        return _tool_validation_failure("invalid_tool_call")
+    if not parsed.tool_calls:
+        if mode in {"required", "function"}:
+            return _tool_validation_failure("tool_required_not_satisfied")
+        return _ToolValidationResult(parsed)
+    if len(parsed.tool_calls) > 1 and not bool(request.parallel_tool_calls):
+        return _tool_validation_failure("invalid_tool_call")
+
+    tools_by_name = _tool_map_by_name(request.tools)
+    for call in parsed.tool_calls:
+        if mode == "function" and required_name is not None and call.name != required_name:
+            return _tool_validation_failure("invalid_tool_call")
+        tool = tools_by_name.get(call.name)
+        if tool is None:
+            return _tool_validation_failure("invalid_tool_call")
+        schema = _tool_parameters_schema(tool)
+        if schema is not None:
+            schema_error = _validate_json_schema_value(_tool_call_arguments_value(call), schema, path=f"{call.name}.arguments")
+            if schema_error is not None:
+                return _tool_validation_failure("schema_violation")
+    if mode == "function" and required_name is not None and not any(call.name == required_name for call in parsed.tool_calls):
+        return _tool_validation_failure("tool_required_not_satisfied")
+    return _ToolValidationResult(parsed)
+
+
+def _tool_validation_failure(reason: str) -> _ToolValidationResult:
+    return _ToolValidationResult(_ParsedChatOutput(text="", tool_calls=()), str(reason))
+
+
+def _strict_tool_validation_enabled(request: ChatCompletionRequest) -> bool:
+    if not request.tools:
+        return False
+    mode, _name = _tool_choice_mode(request.tool_choice)
+    if mode in {"none", "required", "function"}:
+        return True
+    if request.parallel_tool_calls is not None:
+        return True
+    return any(_tool_function(tool).get("strict") is True for tool in request.tools)
+
+
+def _tool_choice_mode(tool_choice: str | Mapping[str, Any] | None) -> tuple[str, str | None]:
+    if tool_choice is None:
+        return "auto", None
+    if isinstance(tool_choice, str):
+        value = tool_choice.strip().lower()
+        if value in {"none", "auto", "required"}:
+            return value, None
+        return "function", tool_choice.strip()
+    if isinstance(tool_choice, Mapping):
+        choice_type = str(tool_choice.get("type", "")).strip().lower()
+        function = tool_choice.get("function")
+        if choice_type == "function" and isinstance(function, Mapping):
+            name = function.get("name")
+            if isinstance(name, str) and name:
+                return "function", name
+    return "auto", None
+
+
+def _tool_map_by_name(tools: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
+    mapped: dict[str, Mapping[str, Any]] = {}
+    for tool in tools:
+        function = _tool_function(tool)
+        name = function.get("name")
+        if isinstance(name, str) and name:
+            mapped[name] = tool
+    return mapped
+
+
+def _tool_function(tool: Mapping[str, Any]) -> Mapping[str, Any]:
+    function = tool.get("function")
+    return function if isinstance(function, Mapping) else {}
+
+
+def _tool_parameters_schema(tool: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    function = _tool_function(tool)
+    parameters = function.get("parameters")
+    return parameters if isinstance(parameters, Mapping) else None
+
+
+def _tool_call_arguments_value(call: _ParsedToolCall) -> Any:
+    try:
+        return json.loads(call.arguments)
+    except Exception:
+        return call.arguments
+
+
+def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
+    malformed: list[str] = []
+    for match in _TOOL_CALL_BLOCK_RE.finditer(text):
+        if _parsed_tool_call_from_json(match.group(1).strip()) is None:
+            malformed.append(match.group(0))
+    return tuple(malformed)
+
+
+def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> str | None:
+    enum = schema.get("enum")
+    if isinstance(enum, Sequence) and not isinstance(enum, (str, bytes)) and value not in enum:
+        return f"{path} is not one of the allowed enum values"
+    expected = schema.get("type")
+    if expected is not None and not _json_schema_type_matches(value, expected):
+        return f"{path} does not match schema type {expected!r}"
+    schema_type = _primary_json_schema_type(expected, value)
+    if schema_type == "object":
+        if not isinstance(value, Mapping):
+            return f"{path} must be an object"
+        required = schema.get("required", ())
+        if isinstance(required, Sequence) and not isinstance(required, (str, bytes)):
+            for key in required:
+                if isinstance(key, str) and key not in value:
+                    return f"{path}.{key} is required"
+        properties = schema.get("properties")
+        property_map = properties if isinstance(properties, Mapping) else {}
+        for key, subschema in property_map.items():
+            if key in value and isinstance(key, str) and isinstance(subschema, Mapping):
+                error = _validate_json_schema_value(value[key], subschema, path=f"{path}.{key}")
+                if error is not None:
+                    return error
+        if schema.get("additionalProperties") is False:
+            allowed = {str(key) for key in property_map}
+            extra = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+            if extra:
+                return f"{path}.{extra[0]} is not allowed"
+    elif schema_type == "array":
+        if not isinstance(value, list):
+            return f"{path} must be an array"
+        items = schema.get("items")
+        if isinstance(items, Mapping):
+            for index, item in enumerate(value):
+                error = _validate_json_schema_value(item, items, path=f"{path}[{index}]")
+                if error is not None:
+                    return error
+    return None
+
+
+def _json_schema_type_matches(value: Any, expected: Any) -> bool:
+    if isinstance(expected, Sequence) and not isinstance(expected, (str, bytes)):
+        return any(_json_schema_type_matches(value, item) for item in expected)
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "object":
+        return isinstance(value, Mapping)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "null":
+        return value is None
+    return True
+
+
+def _primary_json_schema_type(expected: Any, value: Any) -> str | None:
+    if isinstance(expected, str):
+        return expected
+    if isinstance(expected, Sequence) and not isinstance(expected, (str, bytes)):
+        for item in expected:
+            if _json_schema_type_matches(value, item):
+                return str(item)
+    if isinstance(value, Mapping):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    return None
 
 
 def _openai_tool_call(call: _ParsedToolCall) -> dict[str, Any]:

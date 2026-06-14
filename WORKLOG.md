@@ -87414,3 +87414,26 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `55 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `git diff --check -- hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py docs/AGENTIC.md docs/API.md docs/ENVS.md`.
+
+## 2026-06-14 - AGENTIC strict tool result validation
+
+Added post-generation strict tool result validation for the OpenAI-compatible
+chat endpoint. `tool_choice="none"`, `tool_choice="required"`, specific
+function choices, functions declaring `"strict": true`, and explicit
+`parallel_tool_calls` now trigger validation of parsed Qwen-style tool blocks.
+Validation covers malformed tool blocks, unknown/wrong tool names,
+one-call-vs-parallel policy, and a minimal function `parameters` JSON schema
+subset.
+
+Strict failures return normal chat responses with no successful `tool_calls`,
+coarse `finish_reason="stop"`, and stable `finish_details.reason` values:
+`invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`.
+Decode-time grammar enforcement remains future work and is documented as such.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_chat_completion_returns_openai_tool_calls tests/test_server_api.py::test_chat_completion_required_tool_reports_missing_call tests/test_server_api.py::test_chat_completion_specific_tool_rejects_wrong_function tests/test_server_api.py::test_chat_completion_tool_choice_none_rejects_tool_call tests/test_server_api.py::test_chat_completion_strict_tool_schema_reports_schema_violation tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_missing_and_extra_arguments tests/test_server_api.py::test_chat_completion_parallel_tool_calls_require_explicit_opt_in tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure -q` -> `11 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `63 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.
