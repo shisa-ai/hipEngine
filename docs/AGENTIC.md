@@ -67,6 +67,9 @@ Already available or recently added:
   prefill, decode, host-sampled steps, and graph replay boundaries.
 - OpenAI-style chat `tools` / `tool_choice` prompt injection and output parsing
   for Qwen-style `<tool_call>{...}</tool_call>` blocks.
+- Parsed tool calls are always checked against the request's declared tool
+  names, and multiple parsed calls are rejected unless the request explicitly
+  opts in with `parallel_tool_calls=true`.
 - Strict tool result validation for `tool_choice="none"`, `"required"`,
   specific function choices, functions with `"strict": true`, and explicit
   `parallel_tool_calls`; failures return normal chat responses with no
@@ -1299,23 +1302,25 @@ Current state:
   `<tool_call><tool_call>{...}</tool_call>` duplicated-start wrapper when the
   inner JSON is valid; strict validation still rejects that original malformed
   block.
+- Once a tool block parses, the server always rejects undeclared tool names and
+  multiple parsed calls without `parallel_tool_calls=true`, including in
+  compatibility auto-tool mode.
 - Strict result validation now runs when `tool_choice` is `none`, `required`, or
   a specific function, when any tool function declares `"strict": true`, or when
   `parallel_tool_calls` is explicitly supplied. It validates selected tool
-  names, one-call-vs-parallel policy, malformed tool-call blocks, and a minimal
-  function `parameters` JSON schema subset: scalar types, `enum`, `const`,
-  object `properties` / `required` / `additionalProperties=false`, array
-  `items` / `minItems` / `maxItems`, string `minLength` / `maxLength`, and
-  numeric min/max bounds. Unsupported validation keywords are rejected before
-  generation when strict validation would use the schema; annotation keys such
-  as `title`, `description`, and `default` are accepted but ignored by
-  validation.
-- Strict failures return normal chat responses with no successful `tool_calls`,
-  stable `finish_details.reason` values (`invalid_tool_call`,
-  `tool_required_not_satisfied`, or `schema_violation`), and coarse
-  `finish_reason="stop"` except when the backend ended by generation length. In
-  length-exhausted strict tool failures, `finish_reason` remains `"length"` and
-  `finish_details` keeps the length limit, classified phase, and
+  names, malformed tool-call blocks, and a minimal function `parameters` JSON
+  schema subset: scalar types, `enum`, `const`, object `properties` /
+  `required` / `additionalProperties=false`, array `items` / `minItems` /
+  `maxItems`, string `minLength` / `maxLength`, and numeric min/max bounds.
+  Unsupported validation keywords are rejected before generation when strict
+  validation would use the schema; annotation keys such as `title`,
+  `description`, and `default` are accepted but ignored by validation.
+- Tool-policy and strict-validation failures return normal chat responses with
+  no successful `tool_calls`, stable `finish_details.reason` values
+  (`invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`),
+  and coarse `finish_reason="stop"` except when the backend ended by generation
+  length. In length-exhausted strict tool failures, `finish_reason` remains
+  `"length"` and `finish_details` keeps the length limit, classified phase, and
   `continuation_eligible=false`. These normal-response failure reasons are
   advertised under
   `features.tools.result_validation_failure_reasons`.
@@ -1852,8 +1857,9 @@ Current code reality:
   the stream metadata extension version/event/timing fields, no-tool
   start-marker suppression, required/specific tool start-marker forcing plus
   its initial-or-post-thinking scope, Qwen tool-call compatibility parser
-  repairs and malformed-JSON strict/permissive policy, sampling parameters and
-  execution modes, strict tool result-validation support,
+  repairs, declared-tool-name validation, parallel-tool opt-in enforcement, and
+  malformed-JSON strict/permissive policy, sampling parameters and execution
+  modes, strict tool result-validation support,
   JSON-object and JSON-schema structured-output result validation, the
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
@@ -2043,10 +2049,10 @@ Current code reality:
   `context_overflow`, `deadline_exceeded`, `cancelled`, `engine_busy`, and
   `model_unavailable`.
 - `invalid_tool_call` is currently emitted as a normal chat
-  `finish_details.reason` for strict tool result-validation failures, not as an
-  HTTP error payload. `schema_violation` can likewise be a request-body error or
-  a normal `finish_details.reason` for invalid `response_format` / strict tool
-  schema results.
+  `finish_details.reason` for parsed tool-policy failures and strict tool
+  result-validation failures, not as an HTTP error payload. `schema_violation`
+  can likewise be a request-body error or a normal `finish_details.reason` for
+  invalid `response_format` / strict tool schema results.
 - `engine_busy` currently means the opt-in OpenAI server queue cap or app-local
   chat-session cap rejected a request before generation with HTTP 429 and
   `Retry-After: 1`. The active backend request cap limits coalesced backend

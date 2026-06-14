@@ -825,6 +825,8 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "compatibility_parser_repairs": ["duplicated_tool_call_start"],
         "malformed_json_compatibility": "assistant_text_when_not_strict",
         "strict_malformed_blocks_rejected": True,
+        "declared_tool_name_validation": True,
+        "parallel_tool_calls_requires_opt_in": True,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": _TOOL_CALL_ARGUMENT_STREAM_CHARS,
@@ -7940,19 +7942,18 @@ def _validate_chat_tool_result(
 ) -> _ToolValidationResult:
     if not request.tools:
         return _ToolValidationResult(parsed)
-    strict = _strict_tool_validation_enabled(request)
-    if not strict:
-        return _ToolValidationResult(parsed)
     mode, required_name = _tool_choice_mode(request.tool_choice)
-    malformed_blocks = _malformed_tool_call_blocks(raw_text)
-    if mode == "none":
-        if parsed.tool_calls or malformed_blocks:
+    strict = _strict_tool_validation_enabled(request)
+    malformed_blocks = _malformed_tool_call_blocks(raw_text) if strict else ()
+    if strict:
+        if mode == "none":
+            if parsed.tool_calls or malformed_blocks:
+                return _tool_validation_failure("invalid_tool_call")
+            return _ToolValidationResult(parsed)
+        if malformed_blocks:
             return _tool_validation_failure("invalid_tool_call")
-        return _ToolValidationResult(parsed)
-    if malformed_blocks:
-        return _tool_validation_failure("invalid_tool_call")
     if not parsed.tool_calls:
-        if mode in {"required", "function"}:
+        if strict and mode in {"required", "function"}:
             return _tool_validation_failure("tool_required_not_satisfied")
         return _ToolValidationResult(parsed)
     if len(parsed.tool_calls) > 1 and not bool(request.parallel_tool_calls):
@@ -7965,12 +7966,22 @@ def _validate_chat_tool_result(
         tool = tools_by_name.get(call.name)
         if tool is None:
             return _tool_validation_failure("invalid_tool_call")
-        schema = _tool_parameters_schema(tool)
-        if schema is not None:
-            schema_error = _validate_json_schema_value(_tool_call_arguments_value(call), schema, path=f"{call.name}.arguments")
-            if schema_error is not None:
-                return _tool_validation_failure("schema_violation")
-    if mode == "function" and required_name is not None and not any(call.name == required_name for call in parsed.tool_calls):
+        if strict:
+            schema = _tool_parameters_schema(tool)
+            if schema is not None:
+                schema_error = _validate_json_schema_value(
+                    _tool_call_arguments_value(call),
+                    schema,
+                    path=f"{call.name}.arguments",
+                )
+                if schema_error is not None:
+                    return _tool_validation_failure("schema_violation")
+    if (
+        strict
+        and mode == "function"
+        and required_name is not None
+        and not any(call.name == required_name for call in parsed.tool_calls)
+    ):
         return _tool_validation_failure("tool_required_not_satisfied")
     return _ToolValidationResult(parsed)
 

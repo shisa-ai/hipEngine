@@ -345,13 +345,16 @@ or a specific function choice requires at least one `tools` entry, and a
 specific function choice must use a valid object shape and name a declared
 tool.
 
-Tool decoding is still prompt-and-parse, not grammar-constrained. The server now
-does strict result validation when `tool_choice` is `none`, `required`, or a
-specific function, when any tool function declares `"strict": true`, or when
-`parallel_tool_calls` is explicitly supplied. Strict validation checks selected
-tool names, one-call-vs-parallel policy, malformed tool-call blocks, and the
-declared function `parameters` JSON schema subset. Strict failures return a
-normal chat response with no successful `tool_calls`, and
+Tool decoding is still prompt-and-parse, not grammar-constrained. Once a tool
+block parses successfully, the server always rejects undeclared tool names and
+multiple parsed tool calls unless `parallel_tool_calls=true` is explicitly
+supplied. It additionally does strict result validation when `tool_choice` is
+`none`, `required`, or a specific function, when any tool function declares
+`"strict": true`, or when `parallel_tool_calls` is explicitly supplied. Strict
+validation checks selected tool names, malformed tool-call blocks, and the
+declared function `parameters` JSON schema subset. Tool-policy and strict
+validation failures return a normal chat response with no successful
+`tool_calls`, and
 `finish_details.reason` set to `invalid_tool_call`,
 `tool_required_not_satisfied`, or `schema_violation`. The coarse
 `finish_reason` is usually `"stop"`, but remains `"length"` when the backend
@@ -612,14 +615,15 @@ reported by FastAPI/Pydantic when available, for example `prompt` or
 
 Clients should handle these canonical codes from `error.hipengine.code` on
 error payloads. The same manifest also advertises `invalid_tool_call` because
-strict tool result-validation emits it as a normal chat
-`finish_details.reason`; it is not currently returned as an HTTP error payload.
+parsed tool-policy checks and strict tool result validation emit it as a normal
+chat `finish_details.reason`; it is not currently returned as an HTTP error
+payload.
 
 | Code | Status | Retry | Current emission |
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for strict tool result-validation failures; malformed tool JSON remains assistant text when strict validation is inactive. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, and strict tool result-validation failures; malformed tool JSON remains assistant text when strict validation is inactive. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |

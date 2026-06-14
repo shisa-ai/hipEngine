@@ -90003,3 +90003,25 @@ Validation:
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `30 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py --collect-only -q` -> `tests/test_agentic_harness_traces.py: 30`.
 - `git diff --check -- tests/fixtures/agentic_traces/golden_traces.json docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC undeclared auto-tool guard
+
+Closed a permissive auto-tool gap where a parsed Qwen tool-call block could
+surface a function name that was not declared by the request when strict result
+validation was otherwise inactive. Parsed tool calls are now always checked
+against the declared tool map, and multiple parsed calls require explicit
+`parallel_tool_calls=true`; strict mode still owns malformed-block and argument
+schema validation. The capabilities manifest advertises the declared-name guard
+and parallel-tool opt-in policy. Added non-streaming, streaming, and golden
+trace coverage, and updated `docs/API.md` plus `docs/AGENTIC.md` to match.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_chat_completion_auto_tool_rejects_undeclared_function tests/test_server_api.py::test_streaming_chat_completion_rejects_undeclared_auto_tool_name tests/test_server_api.py::test_chat_completion_auto_tool_recovers_duplicated_start_marker tests/test_server_api.py::test_streaming_chat_completion_recovers_duplicated_tool_start_marker -q` -> `6 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `31 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `232` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 232`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py --collect-only -q` -> `tests/test_agentic_harness_traces.py: 31`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

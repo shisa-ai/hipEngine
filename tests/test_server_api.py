@@ -675,6 +675,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "compatibility_parser_repairs": ["duplicated_tool_call_start"],
         "malformed_json_compatibility": "assistant_text_when_not_strict",
         "strict_malformed_blocks_rejected": True,
+        "declared_tool_name_validation": True,
+        "parallel_tool_calls_requires_opt_in": True,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": 128,
@@ -5088,6 +5090,40 @@ def test_chat_completion_auto_tool_recovers_duplicated_start_marker() -> None:
     assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
 
 
+def test_chat_completion_auto_tool_rejects_undeclared_function() -> None:
+    fake = FakeLLM(
+        outputs=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>']
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    assert "write" not in response.text
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
 def test_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:
     fake = FakeLLM(
         outputs=['<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
@@ -5957,6 +5993,43 @@ def test_streaming_chat_completion_recovers_duplicated_tool_start_marker() -> No
     )
 
 
+def test_streaming_chat_completion_rejects_undeclared_auto_tool_name() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    assert "write" not in response.text
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+
+
 def test_streaming_chat_completion_chunks_long_tool_call_arguments() -> None:
     command = "x" * 300
     fake = FakeLLM(
@@ -6699,6 +6772,8 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         == "assistant_text_when_not_strict"
     )
     assert artifact["capabilities"]["features"]["tools"]["strict_malformed_blocks_rejected"] is True
+    assert artifact["capabilities"]["features"]["tools"]["declared_tool_name_validation"] is True
+    assert artifact["capabilities"]["features"]["tools"]["parallel_tool_calls_requires_opt_in"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunks"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunk_chars"] == 128
     assert artifact["capabilities"]["features"]["reasoning_controls"]["token_budget_enforced"] is True
