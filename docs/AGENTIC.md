@@ -1262,6 +1262,9 @@ Current code reality:
 - final PARO/GGUF `GenerationTelemetry.decode_state` snapshots now inherit
   sampled thinking-budget phase, reasoning/answer token counts, budget pressure,
   and pending forced-token state from `RowSamplingState` where available;
+- PARO/GGUF c=1 host-sampled `stream_detailed()` chunks also expose live
+  thinking-budget phase, reasoning-token, budget-pressure, processor, fallback,
+  and logits-readback metadata on the chunk `GenerationTelemetry`;
 - `SamplingParams`, `GenerationRequest`, and `PerRowSamplingParams` carry the
   lowered `thinking_close_token_ids`, `thinking_hard_token_cap`, and
   `thinking_soft_close_window` fields; PARO/GGUF host-sampled rows and

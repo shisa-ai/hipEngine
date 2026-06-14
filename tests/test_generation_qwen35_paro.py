@@ -566,6 +566,70 @@ def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -
     ]
 
 
+def test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure(monkeypatch) -> None:
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+        vocab_size = 3
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            self.params = None
+            self.state = None
+
+        def configure_host_sampler(self, params, state):
+            self.params = params
+            self.state = state
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            assert self.params is not None
+            assert self.state is not None
+            sample_result = select_token(
+                np.array([0.0, 5.0, 1.0], dtype=np.float32),
+                self.params,
+                self.state,
+            )
+            return _result(sample_result.token_id, "C")
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover - max_tokens=1
+            raise AssertionError("hard-close stream fixture should finish after prefill")
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    chunks = list(
+        generator.stream_detailed(
+            _request(
+                max_tokens=1,
+                thinking_close_token_ids=(2,),
+                thinking_hard_token_cap=0,
+            )
+        )
+    )
+
+    assert [chunk.text for chunk in chunks] == ["C"]
+    assert _decode_state(chunks[0]) == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "reasoning_tokens": 1,
+        "active_processors": ["thinking_budget"],
+        "sampler_fast_path_blockers": ["thinking_budget"],
+        "sampler_fallback_reason": "processed_logits_required",
+        "budget_pressure": "hard_close",
+        "sampler_mode": "processed_argmax",
+        "full_vocab_logits_d2h": True,
+        "logits_d2h_bytes": 12,
+    }
+
+
 def test_qwen35_paro_generator_checks_deadline_after_prefill(monkeypatch) -> None:
     calls = []
 

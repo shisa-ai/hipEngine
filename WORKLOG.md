@@ -90868,3 +90868,17 @@ lintable for future AGENTIC scheduler and speculative-decoding work.
 Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir_field tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir_path tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files_field -q && python3 -m ruff check tests/test_generation_batch_scheduler.py` -> `3 passed`, `All checks passed!`.
 - `python3 -m py_compile tests/test_generation_batch_scheduler.py && git diff --check -- tests/test_generation_batch_scheduler.py` -> passed / clean.
+
+## 2026-06-15 - AGENTIC PARO live thinking telemetry
+
+Added PARO parity coverage for GGUF's host-sampled live thinking-budget stream
+telemetry. The new `stream_detailed()` fixture forces a hard thinking close
+through the shared host sampler and asserts the emitted chunk carries answer
+phase, reasoning-token count, hard-close budget pressure, processor/blocker
+metadata, fallback reason, and host logits D2H metadata. Updated AGENTIC to
+state that PARO/GGUF c=1 host-sampled streams expose this live budget metadata,
+while c>N/native/MTP lower-loop parity remains future work.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_stream_detailed_reports_thinking_budget_pressure tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_reports_thinking_budget_pressure -q && python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `2 passed`, `29 passed`.
+- `python3 -m py_compile tests/test_generation_qwen35_paro.py && python3 -m ruff check tests/test_generation_qwen35_paro.py && git diff --check -- tests/test_generation_qwen35_paro.py docs/AGENTIC.md` -> `All checks passed!` / clean.
