@@ -91504,3 +91504,15 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC cooperative deadline baseline sync
+
+Synced the high-level AGENTIC baseline with the current cancellation/deadline
+implementation. The roadmap no longer lists backend deadline/cancel
+generation-loop coverage as missing; it now distinguishes implemented
+cooperative PARO/GGUF/server handling from still-future mid-kernel or mid-graph
+preemption and broader cache/KV runtime telemetry.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_backend_deadline_exception_maps_to_completion_408 tests/test_server_api.py::test_streaming_completion_backend_cancelled_exception_emits_error_and_done tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_checks_deadline_after_prefill tests/test_generation_qwen35_paro.py::test_qwen35_paro_generator_checks_cancellation_after_prefill tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_deadline_after_step tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_cancellation_after_step -q` -> `7 passed`.
+- `git diff --check -- docs/AGENTIC.md WORKLOG.md` -> clean.

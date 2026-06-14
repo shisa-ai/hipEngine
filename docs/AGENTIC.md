@@ -133,10 +133,12 @@ Known baseline limitations:
   phases still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
-  phase/counts, and host-sampled thinking-budget forced close. Backend
-  cancellation/deadline, cache behavior, canonical live per-phase token counts,
-  and broader budget-pressure/cache/KV runtime signals still need generation-loop
-  coverage.
+  phase/counts, and host-sampled thinking-budget forced close. Cooperative
+  backend deadline/cancellation checks are wired through server HTTP/SSE error
+  contracts and PARO/GGUF generation-loop boundaries, including scheduler-owned
+  PARO c>N reclaim. True mid-kernel or mid-graph preemption, cache behavior,
+  canonical live per-phase token counts, and broader budget-pressure/cache/KV
+  runtime signals still need lower-loop coverage.
 - Streaming logprobs are buffered detailed responses unless the engine
   advertises live stream logprob support and each emitted chunk carries token
   metadata. PARO/GGUF c=1 host-sampled streams now satisfy that contract for
