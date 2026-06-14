@@ -3470,6 +3470,7 @@ class Qwen35ParoResidentSession:
         linear_chunk_rows = 0
         full_chunk_rows = 0
         int8_oracle_bytes = 0
+        probe_memory: dict[str, int | float] | None = None
         decode_scratch_released = self._should_minimize_prefill_workspace_overlap(prompt_rows)
         try:
             if decode_scratch_released:
@@ -3511,6 +3512,19 @@ class Qwen35ParoResidentSession:
                         key.numel * key.dtype.itemsize + value.numel * value.dtype.itemsize
                     )
             self.runtime.device_synchronize()
+            try:
+                free_bytes, total_bytes = self.runtime.mem_get_info()
+                free = int(free_bytes)
+                total = int(total_bytes)
+                probe_memory = {
+                    "free_bytes": free,
+                    "total_bytes": total,
+                    "used_bytes": max(0, total - free),
+                    "free_gib": round(free / 1024**3, 6),
+                    "used_gib": round(max(0, total - free) / 1024**3, 6),
+                }
+            except Exception:
+                probe_memory = None
             return {
                 "max_prompt_tokens": prompt_rows,
                 "max_new_tokens": new_tokens,
@@ -3521,6 +3535,7 @@ class Qwen35ParoResidentSession:
                 "int8_oracle_bytes": int(int8_oracle_bytes),
                 "decode_scratch_released_for_probe": bool(decode_scratch_released),
                 "prefill_chunk_tuning": dict(getattr(self, "prefill_chunk_tuning", {}) or {}),
+                "live_memory": probe_memory,
                 "release_after_probe": bool(release_after_probe),
             }
         finally:

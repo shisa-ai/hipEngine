@@ -88057,3 +88057,15 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_object_validates_result tests/test_server_api.py::test_completions_response_format_json_schema_validates_result tests/test_server_api.py::test_completions_response_format_rejects_unsupported_modes tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_chat_completion_response_format_json_object_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_json_schema_validates_visible_content tests/test_server_api.py::test_chat_completion_response_format_length_keeps_partial_json tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_json_schema_buffers_validation tests/test_local_agent_config.py -q` -> `17 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - Startup memory summary logging
+
+Refined startup memory observability for the 24GB/GPU1 target: per-stage `STARTUP_MEMORY_SAMPLE` lines are now debug-level, while startup emits one info-level `STARTUP_MEMORY` summary with final free/used, peak used, min-free stage, total memory, and sample count. The PARO max-prompt scratch probe now records a `live_memory` sample before releasing transient prefill scratch, so the summary includes the actual probe peak instead of only post-release snapshots.
+
+Real GPU1 check (`HIP_VISIBLE_DEVICES=1 hipengine serve --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed --kv-storage int8_per_token_head --host 127.0.0.1 --port 18000 --max-context-tokens 128000`, terminated after readiness by timeout): startup logs no per-stage info memory spam and reports `STARTUP_MEMORY: final_stage=guard final_free=4.17 GiB final_used=19.81 GiB peak_stage=scratch_probe_live peak_used=23.69 GiB min_free_stage=scratch_probe_live min_free=0.29 GiB total=23.98 GiB samples=7`. This confirms 128k is admitted but transient scratch is already within ~0.29 GiB of the 24GB card limit during the probe.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py hipengine/runtime/qwen35_paro_runner.py tests/test_server_api.py` -> passed.
+- `uv run pytest -q tests/test_server_api.py::test_startup_memory_summary_counts_live_scratch_probe_peak tests/test_server_api.py::test_server_eager_loads_model_on_startup tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics` -> `3 passed`.
+- `uv run pytest -q tests/test_server_api.py` -> passed.
+- `rocm-smi --showmeminfo vram --showpidgpus` after the real startup smoke showed no KFD PIDs and GPU1 idle.

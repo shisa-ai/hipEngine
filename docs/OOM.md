@@ -74,10 +74,18 @@ before allocating; otherwise it incorrectly reuses the tiny-prompt unchunked
 policy and overstates OOM risk. The current probe does this and reports
 `prefill_chunk_tuning` in `/ready`.
 
-Conclusion: **128k is currently admitted by the strong startup gate; 262k is not**
-on the 24GB GPU with the current scratch layout. Restoring 256k requires reducing
-or streaming the transient linear/full prefill workspaces, not just proving KV
-allocation.
+A real `hipengine serve --max-context-tokens 128000` startup after adding the
+single-line memory summary logged:
+
+```text
+STARTUP_MEMORY: final_stage=guard final_free=4.17 GiB final_used=19.81 GiB peak_stage=scratch_probe_live peak_used=23.69 GiB min_free_stage=scratch_probe_live min_free=0.29 GiB total=23.98 GiB samples=7
+```
+
+Conclusion: **128k is currently admitted by the strong startup gate, but its
+transient live scratch peak is already close to the 24GB limit; 262k is not
+admitted** on the 24GB GPU with the current scratch layout. Restoring 256k
+requires reducing or streaming the transient linear/full prefill workspaces, not
+just proving KV allocation.
 
 ### Legacy exact full-context server startup
 

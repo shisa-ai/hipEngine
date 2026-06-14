@@ -1502,6 +1502,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         guard_memory = _device_memory_snapshot()
         if guard_memory is not None:
             startup_memory["guard"] = guard_memory
+        _log_startup_memory_summary(startup_memory, startup_checks)
         _startup_free_memory_guard(memory=guard_memory, min_free_mib=config.startup_min_free_mib)
         startup_total_s = time.perf_counter() - startup_started
         readiness.ready = True
@@ -3747,14 +3748,75 @@ def _record_startup_memory_snapshot(target: dict[str, Any], stage: str) -> dict[
     snapshot = _device_memory_snapshot()
     if snapshot is not None:
         target[str(stage)] = snapshot
-        _LOGGER.info(
-            "STARTUP_MEMORY: stage=%s free=%s used=%s total=%s",
+        _LOGGER.debug(
+            "STARTUP_MEMORY_SAMPLE: stage=%s free=%s used=%s total=%s",
             stage,
             _format_bytes(int(snapshot["free_bytes"])),
             _format_bytes(int(snapshot["used_bytes"])),
             _format_bytes(int(snapshot["total_bytes"])),
         )
     return snapshot
+
+
+def _startup_memory_samples(
+    memory: Mapping[str, Any],
+    checks: Mapping[str, Any],
+) -> list[tuple[str, Mapping[str, Any]]]:
+    samples: list[tuple[str, Mapping[str, Any]]] = []
+    for stage, snapshot in memory.items():
+        if isinstance(snapshot, Mapping) and "free_bytes" in snapshot and "used_bytes" in snapshot:
+            samples.append((str(stage), snapshot))
+    scratch = checks.get("scratch_probe")
+    if isinstance(scratch, Mapping):
+        result = scratch.get("result")
+        if isinstance(result, Mapping):
+            live_memory = result.get("live_memory")
+            if isinstance(live_memory, Mapping) and "free_bytes" in live_memory and "used_bytes" in live_memory:
+                samples.append(("scratch_probe_live", live_memory))
+    return samples
+
+
+def _startup_memory_summary(
+    memory: Mapping[str, Any],
+    checks: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    memory_samples = _startup_memory_samples(memory, {})
+    samples = _startup_memory_samples(memory, checks)
+    if not samples:
+        return None
+    final_stage, final_snapshot = (memory_samples[-1] if memory_samples else samples[-1])
+    peak_stage, peak_snapshot = max(samples, key=lambda item: int(item[1].get("used_bytes", 0) or 0))
+    min_free_stage, min_free_snapshot = min(samples, key=lambda item: int(item[1].get("free_bytes", 0) or 0))
+    total_bytes = int(final_snapshot.get("total_bytes", 0) or peak_snapshot.get("total_bytes", 0) or 0)
+    return {
+        "sample_count": len(samples),
+        "final_stage": final_stage,
+        "final_free_bytes": int(final_snapshot.get("free_bytes", 0) or 0),
+        "final_used_bytes": int(final_snapshot.get("used_bytes", 0) or 0),
+        "peak_stage": peak_stage,
+        "peak_used_bytes": int(peak_snapshot.get("used_bytes", 0) or 0),
+        "min_free_stage": min_free_stage,
+        "min_free_bytes": int(min_free_snapshot.get("free_bytes", 0) or 0),
+        "total_bytes": total_bytes,
+    }
+
+
+def _log_startup_memory_summary(memory: Mapping[str, Any], checks: Mapping[str, Any]) -> None:
+    summary = _startup_memory_summary(memory, checks)
+    if summary is None:
+        return
+    _LOGGER.info(
+        "STARTUP_MEMORY: final_stage=%s final_free=%s final_used=%s peak_stage=%s peak_used=%s min_free_stage=%s min_free=%s total=%s samples=%d",
+        summary["final_stage"],
+        _format_bytes(int(summary["final_free_bytes"])),
+        _format_bytes(int(summary["final_used_bytes"])),
+        summary["peak_stage"],
+        _format_bytes(int(summary["peak_used_bytes"])),
+        summary["min_free_stage"],
+        _format_bytes(int(summary["min_free_bytes"])),
+        _format_bytes(int(summary["total_bytes"])),
+        int(summary["sample_count"]),
+    )
 
 
 def _startup_free_memory_guard(

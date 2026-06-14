@@ -29,6 +29,7 @@ from hipengine.server.api import (
     _coerce_generation_output,
     _GenerationBatcher,
     _request_control,
+    _startup_memory_summary,
 )
 
 
@@ -663,6 +664,36 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
             SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0),
         ),
     ]
+
+
+def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
+    summary = _startup_memory_summary(
+        {
+            "startup_begin": {"free_bytes": 900, "used_bytes": 100, "total_bytes": 1000},
+            "after_raw_warmup": {"free_bytes": 500, "used_bytes": 500, "total_bytes": 1000},
+            "guard": {"free_bytes": 600, "used_bytes": 400, "total_bytes": 1000},
+        },
+        {
+            "scratch_probe": {
+                "status": "passed",
+                "result": {
+                    "live_memory": {"free_bytes": 250, "used_bytes": 750, "total_bytes": 1000},
+                },
+            },
+        },
+    )
+
+    assert summary == {
+        "sample_count": 4,
+        "final_stage": "guard",
+        "final_free_bytes": 600,
+        "final_used_bytes": 400,
+        "peak_stage": "scratch_probe_live",
+        "peak_used_bytes": 750,
+        "min_free_stage": "scratch_probe_live",
+        "min_free_bytes": 250,
+        "total_bytes": 1000,
+    }
 
 
 def test_health_and_ready_report_eager_startup_diagnostics() -> None:
