@@ -1070,6 +1070,8 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         seed=request.seed,
         stop_tokens=request.stop_token_ids,
         stop_token_sequences=request.stop_token_sequences,
+        forced_tokens_pending=request.forced_tokens_pending,
+        forced_token_reason=request.forced_token_reason,
         thinking_close_token_ids=request.thinking_close_token_ids,
         thinking_hard_token_cap=request.thinking_hard_token_cap,
         thinking_soft_close_window=request.thinking_soft_close_window,
@@ -1179,6 +1181,8 @@ def _row_sampling_state(
         prompt_tokens=tuple(int(token) for token in prompt_ids),
         seed=row_seed_for_index(request, row_index),
         row_index=row_index,
+        forced_tokens_pending=request.forced_tokens_pending,
+        forced_token_reason=request.forced_token_reason,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 

@@ -1201,31 +1201,41 @@ Current state:
   Qwen `<tool_call>` start marker when tokenization is available. This keeps
   no-tool requests on the existing processor path while preserving result
   validation as the final guard.
+- For `tool_choice="required"` and specific function choices, chat sampling
+  forces the tokenized Qwen `<tool_call>` start marker when tokenization is
+  available and no tokenized thinking budget is active. This uses the same host
+  forced-token queue as thinking hard-close, so it routes through processed AR
+  sampling and blocks current raw-argmax MTP verification. Requests that combine
+  required tool choice with tokenized thinking budgets keep the reasoning-budget
+  controls and rely on post-generation strict validation until phase-aware tool
+  forcing exists.
 - `response_format={"type":"json_object"}` and
   `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
   accepted for completion and chat requests as post-generation result
   validation. Valid visible JSON is returned normally; invalid stop-finished
   outputs return `finish_details.reason="schema_violation"`.
-- Required/specific-tool forcing, auto-mode constraints, and
-  grammar-constrained JSON/tool generation remain future work.
+- Auto-mode constraints, full required/specific function-name and argument
+  grammar forcing, and grammar-constrained JSON/tool generation remain future
+  work.
 
 #### P2.1 Strict tool-call mode
 
 Implement:
 
-- decode-time enforcement for `tool_choice="none"`, `"auto"`, `"required"`, and
-  a specific function name;
-- decode-state suppression for no-tool mode and forced/repaired close sequences
-  for required/specific tool modes;
+- phase-aware post-reasoning forcing for required/specific tool modes and
+  decode-time enforcement for `tool_choice="auto"` and stronger
+  required/specific function-name and argument constraints;
+- decode-state repair close sequences for required/specific tool modes;
 - structured refusal/error when a required call cannot be produced under budget.
 
 Exit gates:
 
-- server result-validation fixtures cover `none`, `required`, and specific
-  function choice; decode-time fixtures still need to cover `auto` and
-  constrained required behavior;
+- server result-validation and decode-time fixtures cover `none`, `required`,
+  and specific function choice;
 - no-tool mode suppresses `<tool_call>` starts;
-- required-tool mode does not return ordinary prose as success.
+- required/specific-tool modes force `<tool_call>` starts when tokenization is
+  available and no tokenized thinking budget is active, and still do not return
+  ordinary prose as success.
 
 #### P2.2 Tool JSON schema validation
 
@@ -1576,8 +1586,9 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support,
-  no-tool start-marker suppression, sampling parameters and execution modes,
-  strict tool result-validation support,
+  no-tool start-marker suppression, required/specific tool start-marker
+  forcing plus its no-tokenized-thinking-budget scope, sampling parameters and
+  execution modes, strict tool result-validation support,
   JSON-object and JSON-schema structured-output result validation, the
   reasoning-control field list with
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,

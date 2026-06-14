@@ -16156,6 +16156,8 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
             frequency_penalty=0.4,
             logit_bias=((7, 0.25),),
             seed=99,
+            forced_tokens_pending=(55, 56),
+            forced_token_reason="tool_choice_required",
         ),
     )
     scheduler.admit_pending()
@@ -16183,6 +16185,8 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.eos_token_ids == (None, 99, None)
     assert block.stop_token_rows == ((99,), (), ())
     assert block.stop_token_sequence_rows == ((), ((12, 13),), ())
+    assert block.forced_token_rows == ((), (), (55, 56))
+    assert block.forced_token_reasons == (None, None, "tool_choice_required")
     assert block.thinking_close_token_rows == ((), (42, 43), ())
     assert block.thinking_hard_token_caps == (None, 8, None)
     assert block.thinking_soft_close_windows == (0, 2, 0)
@@ -16198,8 +16202,12 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r1).thinking_close_token_ids == (42, 43)
     assert block.params_for(r1).thinking_hard_token_cap == 8
     assert block.params_for(r1).thinking_soft_close_window == 2
+    assert block.params_for(r2).forced_tokens_pending == (55, 56)
+    assert block.params_for(r2).forced_token_reason == "tool_choice_required"
     assert scheduler.sampler_state(r1).thinking_budget is not None
     assert scheduler.sampler_state(r1).thinking_budget.close_sequence == (42, 43)
+    assert scheduler.sampler_state(r2).forced_tokens == (55, 56)
+    assert scheduler.sampler_state(r2).forced_token_reason == "tool_choice_required"
 
     scheduler.record_generated([GeneratedToken(r0, 100, finished=True)])
     with pytest.raises(KeyError, match="sampler params"):

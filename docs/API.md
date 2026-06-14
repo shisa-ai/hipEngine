@@ -262,7 +262,14 @@ and `finish_details.reason` set to `invalid_tool_call`,
 `tool_required_not_satisfied`, or `schema_violation`. When `tool_choice="none"`
 and tokenization is available, the sampler also suppresses the first token of
 the Qwen `<tool_call>` start marker; this is a no-tool guard, not full
-grammar-constrained tool decoding.
+grammar-constrained tool decoding. When `tool_choice="required"` or a specific
+function is requested, tokenization is available, and no tokenized thinking
+budget is active, the sampler forces the tokenized `<tool_call>` start marker
+before ordinary token selection. This prevents ordinary prose from being
+selected as the first visible token, but it does not yet constrain the function
+name, arguments JSON, or closing tag. Requests that combine required tool choice
+with tokenized thinking budgets keep the reasoning budget controls and rely on
+post-generation strict validation until phase-aware tool forcing exists.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 object `properties` / `required` / `additionalProperties: false`, array `items`
@@ -479,10 +486,11 @@ strings and should only be used in local, non-sensitive debugging sessions.
   `hipengine_generation_worker_active` gauges for backpressure monitors.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
-  `suppress_token_ids`, `min_tokens` / `eos_token_id`, `seed`, and `n` through
-  the host-logits compatibility path. Greedy-equivalent requests stay on each
-  engine's graph/argmax fast path. PARO c=1 also has a default-off native GPU
-  sampler route for supported sampled requests behind
+  `suppress_token_ids`, forced-token queues, `min_tokens` / `eos_token_id`,
+  `seed`, and `n` through the host-logits compatibility path.
+  Greedy-equivalent requests stay on each engine's graph/argmax fast path. PARO
+  c=1 also has a default-off native GPU sampler route for supported sampled
+  requests behind
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`,
   suppress-token ids, min-token/EOS policy, and unsupported native filter
   combinations fall back to the host path.

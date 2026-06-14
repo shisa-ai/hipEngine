@@ -580,6 +580,8 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "schema_validation": "function_strict",
                 "schema_subset": _tool_schema_subset(),
                 "no_tool_start_suppression": False,
+                "required_tool_start_forcing": False,
+                "required_tool_start_forcing_scope": "none",
             },
             "reasoning_controls": {
                 "enabled": True,
@@ -1711,6 +1713,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest)
             else ()
         )
+        forced_tool_token_ids = (
+            _required_tool_sampling_forced_token_ids(request, engine)
+            if isinstance(request, ChatCompletionRequest) and not thinking_budget
+            else ()
+        )
         suppress_token_ids = tuple(
             dict.fromkeys(
                 (
@@ -1742,6 +1749,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
             stop_token_ids=stop_token_ids,
             stop_token_sequences=stop_token_sequences,
+            forced_tokens_pending=forced_tool_token_ids,
+            forced_token_reason="tool_choice_required" if forced_tool_token_ids else None,
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -2263,6 +2272,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "format": "qwen_tool_call_json",
                     "parallel_tool_calls": True,
                     "no_tool_start_suppression": tokenizer_caps["tokenize"],
+                    "required_tool_start_forcing": tokenizer_caps["tokenize"],
+                    "required_tool_start_forcing_scope": "no_tokenized_thinking_budget",
                 },
                 "reasoning_controls": {
                     "enabled": True,
@@ -4747,6 +4758,22 @@ def _no_tool_sampling_suppress_token_ids(
     if not token_ids:
         return ()
     return (int(token_ids[0]),)
+
+
+def _required_tool_sampling_forced_token_ids(
+    request: ChatCompletionRequest,
+    engine: Any,
+) -> tuple[int, ...]:
+    if not request.tools:
+        return ()
+    mode, _name = _tool_choice_mode(request.tool_choice)
+    if mode not in {"required", "function"}:
+        return ()
+    try:
+        token_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
+    except OpenAIHTTPError:
+        return ()
+    return tuple(int(token_id) for token_id in token_ids)
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

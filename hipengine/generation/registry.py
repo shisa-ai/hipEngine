@@ -39,6 +39,8 @@ class GenerationRequest:
     eos_token_id: int | None = None
     stop_token_ids: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
+    forced_tokens_pending: tuple[int, ...] = ()
+    forced_token_reason: str | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -71,6 +73,8 @@ class GenerationRequest:
         object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
         object.__setattr__(self, "stop_token_ids", tuple(int(token) for token in self.stop_token_ids))
         object.__setattr__(self, "stop_token_sequences", normalize_stop_token_sequences(self.stop_token_sequences))
+        object.__setattr__(self, "forced_tokens_pending", _pending_token_tuple(self.forced_tokens_pending))
+        object.__setattr__(self, "forced_token_reason", None if self.forced_token_reason is None else str(self.forced_token_reason))
         object.__setattr__(
             self,
             "thinking_close_token_ids",

@@ -373,6 +373,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
         "no_tool_start_suppression": True,
+        "required_tool_start_forcing": True,
+        "required_tool_start_forcing_scope": "no_tokenized_thinking_budget",
     }
     assert body["features"]["reasoning_controls"] == {
         "enabled": True,
@@ -2706,6 +2708,69 @@ def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> 
     assert fake.tokenize_calls == ["<tool_call>"]
     assert fake.calls[-1][1].suppress_token_ids == (13, 77)
     assert response.json()["choices"][0]["message"]["content"] == "plain answer"
+
+
+@pytest.mark.parametrize(
+    "tool_choice",
+    [
+        "required",
+        {"type": "function", "function": {"name": "read"}},
+    ],
+)
+def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool_choice) -> None:
+    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": tool_choice,
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["<tool_call>"]
+    assert fake.calls[-1][1].forced_tokens_pending == (77, 78)
+    assert fake.calls[-1][1].forced_token_reason == "tool_choice_required"
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
+def test_chat_completion_required_tool_choice_does_not_force_inside_thinking_budget() -> None:
+    fake = FakeLLM(outputs=["ordinary answer"], token_map={"</think>": [91, 92], "<tool_call>": [77, 78]})
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "reasoning": {"enabled": True, "effort": "low"},
+            "max_tokens": 2048,
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == ["</think>"]
+    params = fake.calls[-1][1]
+    assert params.forced_tokens_pending == ()
+    assert params.thinking_close_token_ids == (91, 92)
+    assert params.thinking_hard_token_cap == 512
+    choice = response.json()["choices"][0]
+    assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
 
 
 def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:

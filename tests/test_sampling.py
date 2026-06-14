@@ -44,6 +44,8 @@ def _params(**overrides):
         "row_seeds": (),
         "stop_token_ids": (),
         "stop_token_sequences": (),
+        "forced_tokens_pending": (),
+        "forced_token_reason": None,
         "thinking_close_token_ids": (),
         "thinking_hard_token_cap": None,
         "thinking_soft_close_window": 0,
@@ -275,6 +277,19 @@ def test_forced_token_queue_overrides_argmax_and_updates_history() -> None:
     assert state.forced_tokens == ()
 
 
+def test_request_forced_tokens_seed_default_row_state() -> None:
+    result = select_token(
+        np.array([10.0, 9.0, 1.0], dtype=np.float32),
+        _params(forced_tokens_pending=(2,), forced_token_reason="tool_choice_required"),
+    )
+
+    assert result.token_id == 2
+    assert result.forced is True
+    assert result.forced_reason == "tool_choice_required"
+    assert result.active_processors == ("forced_tokens_pending",)
+    assert result.fast_path_blockers == ("forced_tokens_pending",)
+
+
 def test_forced_token_queue_overrides_sampling() -> None:
     forced = RowSamplingState(seed=123, forced_tokens_pending=(3,), forced_token_reason="grammar")
     forced_result = select_token(
@@ -443,6 +458,8 @@ def test_suppressions_validate_vocab_and_cannot_remove_every_token() -> None:
         select_token(np.array([1.0, 2.0], dtype=np.float32), _params(suppress_token_ids=(0, 1)))
     with pytest.raises(ValueError, match="requires eos_token_id"):
         select_token(np.array([1.0, 2.0], dtype=np.float32), _params(min_tokens=1))
+    with pytest.raises(ValueError, match="forced_tokens_pending"):
+        select_token(np.array([1.0, 2.0], dtype=np.float32), _params(forced_tokens_pending=(-1,)))
 
 
 def test_logit_bias_and_penalties_apply_before_processed_argmax() -> None:

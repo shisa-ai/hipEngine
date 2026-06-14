@@ -60,6 +60,8 @@ def _capabilities(**overrides):
                 "strict_result_validation": True,
                 "parallel_tool_calls": True,
                 "no_tool_start_suppression": True,
+                "required_tool_start_forcing": True,
+                "required_tool_start_forcing_scope": "no_tokenized_thinking_budget",
             },
             "reasoning_controls": {
                 "enabled": True,

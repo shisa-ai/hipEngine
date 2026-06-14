@@ -88406,3 +88406,27 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC required tool start forcing
+
+Plumbed request-level forced-token queues through `SamplingParams`,
+`GenerationRequest`, per-row scheduler params, PARO row state, and GGUF sampled
+decode. Chat requests with `tool_choice="required"` or a specific function now
+best-effort tokenize and force the Qwen `<tool_call>` start marker when
+tokenization is available and no tokenized thinking budget is active. The mixed
+reasoning/tool case intentionally keeps thinking-budget controls and relies on
+strict post-generation validation until phase-aware tool forcing exists, because
+forcing `<tool_call>` at token zero would currently be counted as reasoning.
+The capabilities manifest now reports `required_tool_start_forcing` and its
+`no_tokenized_thinking_budget` scope.
+
+Validation:
+- `python3 -m py_compile hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_tool_call_start_tokens tests/test_server_api.py::test_chat_completion_required_tool_choice_does_not_force_inside_thinking_budget tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_local_agent_config.py::test_local_agent_config_matches_capabilities tests/test_local_agent_config.py::test_local_agent_config_matches_server_capabilities_manifest -q` -> `6 passed`.
+- `python3 -m pytest tests/test_sampling.py::test_request_forced_tokens_seed_default_row_state tests/test_llm_generate.py::test_llm_generate_plumbs_extended_sampling_params tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_qwen35_paro.py::test_qwen35_paro_row_sampling_state_binds_request_forced_tokens tests/test_generation_qwen35_gguf_sampling.py::test_gguf_sampled_request_forced_token_overrides_logits -q` -> `5 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py -q` -> `70 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `124 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 -m ruff check tests/test_generation_batch_scheduler.py --ignore F811,F841` -> `All checks passed!` (full-file ruff still has pre-existing F811/F841 outside this change).
+- `git diff --check` -> clean.

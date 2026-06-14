@@ -268,6 +268,9 @@ def validate_sampling_params(params: Any) -> None:
     for token_id in _suppress_token_ids(params):
         if int(token_id) < 0:
             raise ValueError("suppress_token_ids must be non-negative")
+    for token_id in _forced_tokens_pending(params):
+        if int(token_id) < 0:
+            raise ValueError("forced_tokens_pending must be non-negative")
     min_tokens = int(getattr(params, "min_tokens", 0))
     if min_tokens < 0:
         raise ValueError("min_tokens must be non-negative")
@@ -531,7 +534,15 @@ def select_token(
     """Select one token from a single logits row using the documented order."""
 
     validate_sampling_params(params)
-    row_state = state if state is not None else RowSamplingState(seed=derive_row_seed(getattr(params, "seed", None), 0))
+    row_state = (
+        state
+        if state is not None
+        else RowSamplingState(
+            seed=derive_row_seed(getattr(params, "seed", None), 0),
+            forced_tokens_pending=_forced_tokens_pending(params),
+            forced_token_reason=getattr(params, "forced_token_reason", None),
+        )
+    )
     source = np.asarray(logits, dtype=np.float32)
     if source.ndim != 1:
         raise ValueError("logits must be a one-dimensional row")

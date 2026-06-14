@@ -57,6 +57,8 @@ class PerRowSamplingParams:
     seed: int | None = None
     stop_tokens: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
+    forced_tokens_pending: tuple[int, ...] = ()
+    forced_token_reason: str | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -91,6 +93,9 @@ class PerRowSamplingParams:
         if any(token < 0 for token in stops):
             raise ValueError("stop_tokens must be non-negative")
         stop_sequences = normalize_stop_token_sequences(self.stop_token_sequences)
+        forced_tokens = tuple(int(token) for token in self.forced_tokens_pending)
+        if any(token < 0 for token in forced_tokens):
+            raise ValueError("forced_tokens_pending must be non-negative")
         close_token_ids = tuple(int(token) for token in self.thinking_close_token_ids)
         if any(token < 0 for token in close_token_ids):
             raise ValueError("thinking_close_token_ids must be non-negative")
@@ -115,6 +120,12 @@ class PerRowSamplingParams:
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "stop_tokens", stops)
         object.__setattr__(self, "stop_token_sequences", stop_sequences)
+        object.__setattr__(self, "forced_tokens_pending", forced_tokens)
+        object.__setattr__(
+            self,
+            "forced_token_reason",
+            None if self.forced_token_reason is None else str(self.forced_token_reason),
+        )
         object.__setattr__(self, "thinking_close_token_ids", close_token_ids)
         object.__setattr__(
             self,
@@ -147,6 +158,8 @@ class SamplerParamsBlock:
     seeds: tuple[int, ...]
     stop_token_rows: tuple[tuple[int, ...], ...]
     stop_token_sequence_rows: tuple[tuple[tuple[int, ...], ...], ...]
+    forced_token_rows: tuple[tuple[int, ...], ...] = ()
+    forced_token_reasons: tuple[str | None, ...] = ()
     thinking_close_token_rows: tuple[tuple[int, ...], ...] = ()
     thinking_hard_token_caps: tuple[int | None, ...] = ()
     thinking_soft_close_windows: tuple[int, ...] = ()
@@ -169,6 +182,14 @@ class SamplerParamsBlock:
         _check_len("seeds", self.seeds, rows)
         _check_len("stop_token_rows", self.stop_token_rows, rows)
         _check_len("stop_token_sequence_rows", self.stop_token_sequence_rows, rows)
+        if self.forced_token_rows:
+            _check_len("forced_token_rows", self.forced_token_rows, rows)
+        else:
+            object.__setattr__(self, "forced_token_rows", tuple(() for _ in range(rows)))
+        if self.forced_token_reasons:
+            _check_len("forced_token_reasons", self.forced_token_reasons, rows)
+        else:
+            object.__setattr__(self, "forced_token_reasons", tuple(None for _ in range(rows)))
         if self.thinking_close_token_rows:
             _check_len("thinking_close_token_rows", self.thinking_close_token_rows, rows)
         else:
@@ -204,6 +225,15 @@ class SamplerParamsBlock:
             self,
             "stop_token_sequence_rows",
             tuple(normalize_stop_token_sequences(row) for row in self.stop_token_sequence_rows),
+        )
+        forced_rows = tuple(tuple(int(token) for token in row) for row in self.forced_token_rows)
+        if any(token < 0 for row in forced_rows for token in row):
+            raise ValueError("forced_token_rows must contain non-negative token ids")
+        object.__setattr__(self, "forced_token_rows", forced_rows)
+        object.__setattr__(
+            self,
+            "forced_token_reasons",
+            tuple(None if reason is None else str(reason) for reason in self.forced_token_reasons),
         )
         close_token_rows = tuple(tuple(int(token) for token in row) for row in self.thinking_close_token_rows)
         if any(token < 0 for row in close_token_rows for token in row):
@@ -253,6 +283,8 @@ class SamplerParamsBlock:
             ),
             stop_token_rows=tuple(row.stop_tokens for row in params),
             stop_token_sequence_rows=tuple(row.stop_token_sequences for row in params),
+            forced_token_rows=tuple(row.forced_tokens_pending for row in params),
+            forced_token_reasons=tuple(row.forced_token_reason for row in params),
             thinking_close_token_rows=tuple(row.thinking_close_token_ids for row in params),
             thinking_hard_token_caps=tuple(row.thinking_hard_token_cap for row in params),
             thinking_soft_close_windows=tuple(row.thinking_soft_close_window for row in params),
@@ -275,6 +307,8 @@ class SamplerParamsBlock:
             seed=self.seeds[index],
             stop_tokens=self.stop_token_rows[index],
             stop_token_sequences=self.stop_token_sequence_rows[index],
+            forced_tokens_pending=self.forced_token_rows[index],
+            forced_token_reason=self.forced_token_reasons[index],
             thinking_close_token_ids=self.thinking_close_token_rows[index],
             thinking_hard_token_cap=self.thinking_hard_token_caps[index],
             thinking_soft_close_window=self.thinking_soft_close_windows[index],
@@ -729,6 +763,8 @@ class ResidentBatchScheduler:
             seed=sampling_params.resolved_seed(request_id=rid, row_index=row_index),
             request_id=rid,
             row_index=row_index,
+            forced_tokens_pending=sampling_params.forced_tokens_pending,
+            forced_token_reason=sampling_params.forced_token_reason,
             thinking_budget=thinking_budget_state_from_params(sampling_params),
         )
         self._observability[rid] = _RequestObservabilityState(

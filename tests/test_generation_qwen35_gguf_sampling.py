@@ -87,6 +87,40 @@ def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> N
     assert outputs[0].finish_details.reason == "length"
 
 
+def test_gguf_sampled_request_forced_token_overrides_logits(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            return SimpleNamespace(token_id=1, logits=np.array([[0.0, 10.0, 1.0]], dtype=np.float32))
+
+        def step(self, token_id: int, *, return_logits=True):  # pragma: no cover - max_tokens=1
+            raise AssertionError("forced-token fixture should finish after prefill")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(
+        _request(
+            max_tokens=1,
+            forced_tokens_pending=(2,),
+            forced_token_reason="tool_choice_required",
+        )
+    )
+
+    assert outputs[0].text == "C"
+    assert outputs[0].finish_details is not None
+    assert outputs[0].finish_details.to_json_dict()["sampler_mode"] == "processed_argmax"
+    assert _decode_state(outputs[0])["active_processors"] == ["forced_tokens_pending"]
+
+
 def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
     calls = []
 

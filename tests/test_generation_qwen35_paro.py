@@ -61,6 +61,18 @@ def test_qwen35_paro_row_sampling_state_binds_thinking_budget() -> None:
     assert cloned.forced_token_reason == "thinking_hard_close"
 
 
+def test_qwen35_paro_row_sampling_state_binds_request_forced_tokens() -> None:
+    request = _request(
+        forced_tokens_pending=(77, 78),
+        forced_token_reason="tool_choice_required",
+    )
+
+    state = qwen35._row_sampling_state(request, [1, 2], row_index=0)
+
+    assert state.forced_tokens == (77, 78)
+    assert state.forced_token_reason == "tool_choice_required"
+
+
 def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(monkeypatch) -> None:
     calls = []
 
