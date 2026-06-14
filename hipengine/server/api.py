@@ -4079,6 +4079,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if request.stream:
             include_hipengine = _stream_include_hipengine(request)
             stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+            engine = getattr(app.state, "hipengine_llm", None)
+            token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
             return StreamingResponse(
                 _completion_stream(
                     response_id,
@@ -4088,17 +4090,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     choices,
                     details=batch.details,
                     usage=batch.usage if _stream_include_usage(request) else None,
+                    token_accounting=token_accounting,
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
                     routing=_routing_response_metadata(
                         config,
                         requested_model=request.model,
-                        engine=getattr(app.state, "hipengine_llm", None),
+                        engine=engine,
                     )
                     if include_hipengine
                     else None,
                     kv_pool=(
-                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                        _kv_pool_stream_payload(engine)
                         if include_hipengine
                         else None
                     ),
@@ -4380,6 +4383,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=getattr(app.state, "hipengine_llm", None),
                 )
                 logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
+                token_accounting = (
+                    _StreamTokenAccounting.for_engine(getattr(app.state, "hipengine_llm", None))
+                    if include_hipengine
+                    else None
+                )
                 yield _chat_stream_role(
                     response_id,
                     created,
@@ -4398,6 +4406,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     index=index,
                     logprobs=logprobs,
                     finish_details=finish_details,
+                    token_accounting=token_accounting,
                     stream_chunk=_stream_chunk_from_detail("", detail),
                     include_hipengine=include_hipengine,
                     stream_started_at=stream_started_at,
@@ -4905,6 +4914,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_finish_reason,
                 finish_details=finish_details,
                 done_tokens=final_tokens,
+                token_accounting=token_accounting,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -8834,6 +8844,7 @@ class _StreamTokenAccounting:
     reasoning_tokens: int = 0
     answer_tokens: int = 0
     tool_call_tokens: int = 0
+    structured_tokens: int = 0
 
     @classmethod
     def for_engine(cls, engine: Any) -> "_StreamTokenAccounting | None":
@@ -8848,6 +8859,8 @@ class _StreamTokenAccounting:
             self.reasoning_tokens += delta_tokens
         elif phase_name == "tool_call":
             self.tool_call_tokens += delta_tokens
+        elif phase_name == "structured":
+            self.structured_tokens += delta_tokens
         else:
             self.answer_tokens += delta_tokens
         return self.snapshot(delta_tokens=delta_tokens)
@@ -8862,6 +8875,8 @@ class _StreamTokenAccounting:
             payload["answer_tokens"] = self.answer_tokens
         if self.tool_call_tokens:
             payload["tool_call_tokens"] = self.tool_call_tokens
+        if self.structured_tokens:
+            payload["structured_tokens"] = self.structured_tokens
         return payload
 
 
@@ -9056,6 +9071,7 @@ def _completion_stream_delta(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    phase: str = "answer",
 ) -> str:
     choice = {
         "text": text,
@@ -9064,7 +9080,7 @@ def _completion_stream_delta(
         "finish_reason": None,
     }
     if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload("answer", tokens=tokens, stream_chunk=stream_chunk)
+        choice["hipengine"] = _choice_hipengine_payload(phase, tokens=tokens, stream_chunk=stream_chunk)
     return _sse(
         _attach_stream_hipengine(
             {
@@ -9231,6 +9247,7 @@ def _completion_stream(
     *,
     details: Sequence[GenerationOutput] | None = None,
     usage: Mapping[str, int] | None = None,
+    token_accounting: _StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -9245,6 +9262,12 @@ def _completion_stream(
     )
     for index, text in enumerate(texts):
         choice = choices_by_index.get(index, {})
+        phase = "structured" if done_phase == "structured" else "answer"
+        token_payload = (
+            token_accounting.observe(phase, text)
+            if include_hipengine and token_accounting is not None and len(choices) == 1
+            else None
+        )
         yield _completion_stream_delta(
             response_id,
             created,
@@ -9252,12 +9275,14 @@ def _completion_stream(
             text,
             index=index,
             logprobs=choice.get("logprobs"),
+            tokens=token_payload,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
+            phase=phase,
         )
     final_tokens = (
-        _stream_usage_token_payload(usage, None)
+        _stream_usage_token_payload(usage, token_accounting)
         if include_hipengine and usage is not None and len(choices) == 1
         else None
     )
@@ -9355,13 +9380,14 @@ def _chat_stream_delta(
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
+    phase: str | None = None,
 ) -> str:
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
         choice["logprobs"] = dict(logprobs)
     if include_hipengine:
-        phase = "think" if field == "reasoning_content" else "answer"
-        choice["hipengine"] = _choice_hipengine_payload(phase, tokens=tokens, stream_chunk=stream_chunk)
+        choice_phase = phase if phase is not None else "think" if field == "reasoning_content" else "answer"
+        choice["hipengine"] = _choice_hipengine_payload(choice_phase, tokens=tokens, stream_chunk=stream_chunk)
     return _sse(
         _attach_stream_hipengine(
             {
@@ -9456,6 +9482,7 @@ def _chat_stream_parsed(
     logprobs: Mapping[str, Any] | None = None,
     finish_details: Mapping[str, Any] | None = None,
     done_tokens: Mapping[str, int] | None = None,
+    token_accounting: _StreamTokenAccounting | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
@@ -9465,6 +9492,11 @@ def _chat_stream_parsed(
 ) -> Iterator[str]:
     split = _split_reasoning(parsed.text)
     if split.reasoning_content:
+        token_payload = (
+            token_accounting.observe("think", split.reasoning_content)
+            if token_accounting is not None
+            else None
+        )
         yield _chat_stream_delta(
             response_id,
             created,
@@ -9472,11 +9504,18 @@ def _chat_stream_parsed(
             "reasoning_content",
             split.reasoning_content,
             index=index,
+            tokens=token_payload,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
         )
     if split.content:
+        content_phase = "structured" if done_phase == "structured" and not parsed.tool_calls else "answer"
+        token_payload = (
+            token_accounting.observe(content_phase, split.content)
+            if token_accounting is not None
+            else None
+        )
         yield _chat_stream_delta(
             response_id,
             created,
@@ -9485,12 +9524,19 @@ def _chat_stream_parsed(
             split.content,
             index=index,
             logprobs=logprobs,
+            tokens=token_payload,
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
             routing=routing,
+            phase=content_phase,
         )
     for tool_index, call in enumerate(parsed.tool_calls):
         for chunk_index, argument_chunk in enumerate(_tool_call_argument_stream_chunks(call.arguments)):
+            token_payload = (
+                token_accounting.observe("tool_call", argument_chunk)
+                if token_accounting is not None
+                else None
+            )
             yield _chat_stream_tool_call(
                 response_id,
                 created,
@@ -9500,10 +9546,18 @@ def _chat_stream_parsed(
                 tool_index=tool_index,
                 argument_chunk=argument_chunk,
                 include_name=chunk_index == 0,
+                tokens=token_payload,
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing,
             )
+    final_tokens = done_tokens
+    if token_accounting is not None and token_accounting.streamed_tokens > 0:
+        accounting_snapshot = token_accounting.snapshot()
+        if final_tokens is None:
+            final_tokens = accounting_snapshot
+        else:
+            final_tokens = {**dict(final_tokens), **accounting_snapshot}
     done_reason = "tool_calls" if parsed.tool_calls else finish_reason
     yield _chat_stream_done(
         response_id,
@@ -9512,7 +9566,7 @@ def _chat_stream_parsed(
         done_reason,
         index=index,
         finish_details=finish_details,
-        tokens=done_tokens,
+        tokens=final_tokens,
         stream_chunk=stream_chunk,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,

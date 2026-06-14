@@ -90767,3 +90767,25 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py::test_gguf_non_greedy_request_uses_host_logits_sampler tests/test_generation_qwen35_gguf_sampling.py::test_gguf_stream_detailed_emits_live_sampled_telemetry -q` -> `4 passed`.
 - `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_gpu_sampler_kernel.py -q` -> `93 passed`.
 - `python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py && python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth -q && python3 -m ruff check hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py && git diff --check -- hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py docs/AGENTIC.md docs/SAMPLING.md WORKLOG.md` -> `1 passed`, `All checks passed!`, clean.
+
+## 2026-06-15 - AGENTIC buffered stream token metadata tests
+
+Buffered completion/chat streams now reuse the server stream token-accounting
+helper when `stream_options.include_hipengine=true` and the served engine
+exposes `count_tokens`. Completion `echo`/logprob/result-validation streams,
+chat `n>1` buffered streams, and buffered parsed reasoning/tool-call streams can
+now attach server-derived per-delta `tokens` and canonical decode-state payloads
+without changing default OpenAI-compatible SSE output. Final buffered chunks keep
+backend-authored `GenerationOutput.telemetry` when present and merge observed
+server phase counts only after at least one parsed delta has been emitted, so
+empty structured-validation failure streams do not grow zero-token snapshots.
+Updated AGENTIC/API docs to distinguish this parsed-stream accounting from
+future backend-authored buffered per-token phase telemetry.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_chat_completion_preserves_reasoning_with_tool_call -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_buffered_streaming_completion_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_buffered_streaming_chat_preserves_backend_done_decode_state tests/test_server_api.py::test_streaming_chat_completion_preserves_reasoning_with_tool_call -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_response_format_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_response_format_json_schema_buffers_validation tests/test_server_api.py::test_streaming_chat_completion_preserves_reasoning_with_tool_call -q` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `53 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `257 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m ruff check hipengine/server/api.py tests/test_server_api.py && git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

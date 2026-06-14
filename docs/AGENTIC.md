@@ -116,9 +116,11 @@ Known baseline limitations:
   c=1 true streaming also emit live `GenerationStreamChunk` snapshots for
   greedy and sampled answer tokens, including sampler mode and
   fallback/blocker metadata. Buffered streaming preserves final backend
-  telemetry on choice `done` chunks, but buffered per-token snapshots and
-  canonical live reasoning/tool-call/structured phases still need lower-loop
-  signals.
+  telemetry on choice `done` chunks and, when tokenizer/counting hooks are
+  available, emits server-derived per-delta token/decode-state snapshots for
+  parsed answer/reasoning/tool/structured chunks. Backend-authored buffered
+  per-token snapshots and canonical live reasoning/tool-call/structured phases
+  still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
   phase/counts, and host-sampled thinking-budget forced close. Backend
@@ -887,9 +889,12 @@ Current code reality:
 - PARO and GGUF c=1 true streaming emit live per-token
   `GenerationStreamChunk` telemetry for greedy and sampled answer tokens,
   including host-sampled budget-pressure metadata when row state is available.
-  Buffered streaming preserves backend final telemetry on choice `done` chunks.
-  Buffered per-token snapshots, c>N/scheduler paths, canonical tool/structured
-  phases, and real continuation eligibility remain future lower-loop work.
+  Buffered streaming preserves backend final telemetry on choice `done` chunks
+  and now emits server-derived token/decode-state snapshots for opt-in buffered
+  answer/reasoning/tool/structured deltas when tokenizer counting is available.
+  Backend-authored buffered per-token snapshots, c>N/scheduler paths, canonical
+  tool/structured phases, and real continuation eligibility remain future
+  lower-loop work.
 
 Exit gates:
 
@@ -961,12 +966,15 @@ Current code reality:
   chunks, and buffered structured-output result-validation streams report a
   final `structured` choice phase. Top-level opt-in SSE metadata also includes
   `hipengine.routing` for the current single-model exact route.
-- When tokenizer/counting hooks are available, live completion/chat deltas also
-  include `choices[].hipengine.tokens` with per-chunk `delta_tokens`,
-  cumulative `streamed_tokens`, and best-effort server-side phase counters;
-  final choice chunks include usage-derived prompt/completion/total token counts
+- When tokenizer/counting hooks are available, live and buffered
+  completion/chat deltas also include `choices[].hipengine.tokens` with
+  per-chunk `delta_tokens`, cumulative `streamed_tokens`, and best-effort
+  server-side phase counters. Buffered tool/reasoning/structured deltas count
+  the parsed chunks the server emits, not lower-loop decode-time grammar state.
+  Final choice chunks include usage-derived prompt/completion/total token counts
   plus those streamed phase counters. Token-bearing chunks also include a
-  canonical `choices[].hipengine.decode_state` snapshot.
+  canonical `choices[].hipengine.decode_state` snapshot unless backend
+  telemetry supplies an authoritative decode-state snapshot.
 - Final choice chunks mirror `finish_details` under `choices[].hipengine`, and
   usage chunks mirror `usage` under top-level `hipengine.usage`.
 - Final done/usage chunks include top-level `hipengine.kv_pool` with sanitized

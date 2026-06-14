@@ -4628,6 +4628,23 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
     assert payloads[0]["choices"][0]["text"] == "helloalpha"
+    assert payloads[0]["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "tokens": {
+            "streamed_tokens": 1,
+            "delta_tokens": 1,
+            "answer_tokens": 1,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 0,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "answer_tokens": 1,
+        },
+    }
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
@@ -4883,6 +4900,46 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
 
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
+    content_payloads = [
+        payload
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    ]
+    assert [payload["choices"][0]["index"] for payload in content_payloads] == [0, 1]
+    assert content_payloads[0]["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "tokens": {
+            "streamed_tokens": 1,
+            "delta_tokens": 1,
+            "answer_tokens": 1,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 0,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "answer_tokens": 1,
+        },
+    }
+    assert content_payloads[1]["choices"][0]["hipengine"] == {
+        "phase": "answer",
+        "tokens": {
+            "streamed_tokens": 1,
+            "delta_tokens": 1,
+            "answer_tokens": 1,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 1,
+            "prompt_tokens": 0,
+            "generated_tokens": 1,
+            "phase": "answer",
+            "continuation_eligible": False,
+            "answer_tokens": 1,
+        },
+    }
     done_payloads = [
         payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"]
     ]
@@ -4901,6 +4958,10 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_mode": "processed_argmax",
         },
         "finish_details": _stateless_finish_details("stop"),
+        "tokens": {
+            "streamed_tokens": 1,
+            "answer_tokens": 1,
+        },
     }
     assert done_payloads[1]["choices"][0]["hipengine"] == {
         "phase": "done",
@@ -4916,6 +4977,10 @@ def test_buffered_streaming_chat_preserves_backend_done_decode_state() -> None:
             "sampler_mode": "host_logits_sample",
         },
         "finish_details": _stateless_finish_details("stop"),
+        "tokens": {
+            "streamed_tokens": 1,
+            "answer_tokens": 1,
+        },
     }
     assert fake.stream_calls == []
 
@@ -7057,6 +7122,7 @@ def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
             "model": "fake-model",
             "messages": [{"role": "user", "content": "run pwd"}],
             "stream": True,
+            "stream_options": {"include_hipengine": True},
             "tools": [
                 {
                     "type": "function",
@@ -7075,10 +7141,46 @@ def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
     payloads = _sse_payloads(response.text)
     reasoning = next(payload for payload in payloads if payload["choices"][0]["delta"].get("reasoning_content"))
     assert reasoning["choices"][0]["delta"] == {"reasoning_content": "need shell"}
+    assert reasoning["choices"][0]["hipengine"] == {
+        "phase": "think",
+        "tokens": {
+            "streamed_tokens": 2,
+            "delta_tokens": 2,
+            "reasoning_tokens": 2,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 2,
+            "prompt_tokens": 0,
+            "generated_tokens": 2,
+            "phase": "think",
+            "continuation_eligible": False,
+            "reasoning_tokens": 2,
+        },
+    }
     tool_delta = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
     tool_call = tool_delta["choices"][0]["delta"]["tool_calls"][0]
     assert tool_call["function"]["name"] == "bash"
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
+    assert tool_delta["choices"][0]["hipengine"] == {
+        "phase": "tool_call",
+        "tokens": {
+            "streamed_tokens": 3,
+            "delta_tokens": 1,
+            "reasoning_tokens": 2,
+            "tool_call_tokens": 1,
+        },
+        "decode_state": {
+            "row_index": 0,
+            "step_index": 3,
+            "prompt_tokens": 0,
+            "generated_tokens": 3,
+            "phase": "tool_call",
+            "continuation_eligible": False,
+            "reasoning_tokens": 2,
+            "tool_call_tokens": 1,
+        },
+    }
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
     assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details(
         "tool_calls",
@@ -7086,6 +7188,24 @@ def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
         tool_call_tokens=1,
         phase="tool_call",
     )
+    done_hipengine = payloads[-1]["choices"][0]["hipengine"]
+    assert done_hipengine["phase"] == "done"
+    assert done_hipengine["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        reasoning_tokens=2,
+        tool_call_tokens=1,
+        phase="tool_call",
+    )
+    assert done_hipengine["tokens"]["streamed_tokens"] == 3
+    assert done_hipengine["tokens"]["reasoning_tokens"] == 2
+    assert done_hipengine["tokens"]["tool_call_tokens"] == 1
+    assert done_hipengine["tokens"]["prompt_tokens"] == fake.count_tokens(fake.calls[0][0][0])
+    assert done_hipengine["decode_state"]["step_index"] == 3
+    assert done_hipengine["decode_state"]["prompt_tokens"] == done_hipengine["tokens"]["prompt_tokens"]
+    assert done_hipengine["decode_state"]["generated_tokens"] == done_hipengine["tokens"]["completion_tokens"]
+    assert done_hipengine["decode_state"]["phase"] == "done"
+    assert done_hipengine["decode_state"]["reasoning_tokens"] == 2
+    assert done_hipengine["decode_state"]["tool_call_tokens"] == 1
 
 
 def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:

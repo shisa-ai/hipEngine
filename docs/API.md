@@ -179,8 +179,8 @@ chunks also get
 `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, `structured`, or
 `done`) when a phase is known. Structured phases are server-authored final
 metadata for buffered result-validation streams; they are not decode-time
-grammar enforcement. When the served engine exposes `count_tokens`, live stream
-deltas also include `choices[].hipengine.tokens` with
+grammar enforcement. When the served engine exposes `count_tokens`, live and
+buffered stream deltas also include `choices[].hipengine.tokens` with
 `delta_tokens`, cumulative `streamed_tokens`, and phase counters such as
 `reasoning_tokens` / `answer_tokens`; final choice chunks include usage-derived
 `prompt_tokens`, `completion_tokens`, and `total_tokens` in the same object.
@@ -200,7 +200,9 @@ stream token counters remain available beside it under `choices[].hipengine.toke
 Buffered SSE paths that run detailed generation, such as completion `echo`
 streaming, chat `n>1`, logprob streaming, and result-validation buffering,
 preserve backend `GenerationOutput.telemetry` on the final choice `done` chunk
-when it is present.
+when it is present. Buffered tool/reasoning/structured delta token counts are
+server-derived from the parsed chunks the server emits, not authoritative
+decode-loop grammar state.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final
