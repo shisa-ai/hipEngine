@@ -1403,8 +1403,9 @@ Exit gates:
 
 Current code reality:
 
-- `session.commit="append_none"` is accepted for completions and chat as an
-  explicit stateless no-retain policy. Final choice metadata includes
+- Stateless requests without a `session` object default to no generated-tail
+  retention, and `session.commit="append_none"` is accepted as an explicit
+  stateless no-retain policy. Final choice metadata includes
   `finish_details.cache_action="append_none"` so client harnesses can record the
   selected cache behavior.
 - Stateful session ids and stateful commit modes (`append_all`,

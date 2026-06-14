@@ -98,6 +98,7 @@ def test_agentic_conformance_strict_reasoning_tool_call_response_shape() -> None
     assert choice["finish_reason"] == "tool_calls"
     assert choice["finish_details"] == {
         "reason": "tool_calls",
+        "cache_action": "append_none",
         "reasoning_tokens": 2,
         "tool_call_tokens": 1,
         "phase": "tool_call",
@@ -188,7 +189,7 @@ def test_agentic_conformance_permissive_malformed_tool_call_remains_text() -> No
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "stop"}
+    assert choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
     assert choice["message"] == {"role": "assistant", "content": raw_tool_markup}
 
 
@@ -238,6 +239,7 @@ def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -
     assert done["choices"][0]["finish_reason"] == "tool_calls"
     assert done["choices"][0]["finish_details"] == {
         "reason": "tool_calls",
+        "cache_action": "append_none",
         "reasoning_tokens": 2,
         "tool_call_tokens": 1,
         "phase": "tool_call",
@@ -245,6 +247,7 @@ def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -
     assert done["choices"][0]["hipengine"]["phase"] == "done"
     assert done["choices"][0]["hipengine"]["finish_details"] == {
         "reason": "tool_calls",
+        "cache_action": "append_none",
         "reasoning_tokens": 2,
         "tool_call_tokens": 1,
         "phase": "tool_call",

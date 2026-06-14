@@ -88557,3 +88557,21 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC default stateless cache action
+
+Made the documented stateless no-retain session policy visible by default.
+Requests without a `session` object now report
+`finish_details.cache_action="append_none"` on normal completion/chat choices,
+matching the actual no-generated-tail retention behavior. Explicit
+`session.commit="append_none"` remains accepted, while stateful `session.id` and
+other commit modes still reject before generation. Updated exact server,
+conformance, and golden-trace fixtures so normal responses distinguish the
+selected cache action from transport errors, which keep their existing finish
+details.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `29 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.

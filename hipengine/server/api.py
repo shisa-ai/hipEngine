@@ -4926,6 +4926,8 @@ def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) ->
     """
 
     session = getattr(request, "session", None)
+    if session is None:
+        return "append_none"
     if not isinstance(session, Mapping):
         return None
     commit = session.get("commit")

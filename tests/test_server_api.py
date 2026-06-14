@@ -208,6 +208,10 @@ def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
     )
 
 
+def _stateless_finish_details(reason: str, **extra: Any) -> dict[str, Any]:
+    return {"reason": reason, **extra, "cache_action": "append_none"}
+
+
 def test_coerce_generation_output_preserves_telemetry() -> None:
     raw = SimpleNamespace(
         text="answer",
@@ -1135,7 +1139,7 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     assert body["model"] == "fake-model"
     assert [choice["text"] for choice in body["choices"]] == ["alpha", "beta"]
     assert [choice["finish_reason"] for choice in body["choices"]] == ["stop", "stop"]
-    assert [choice["finish_details"] for choice in body["choices"]] == [{"reason": "stop"}, {"reason": "stop"}]
+    assert [choice["finish_details"] for choice in body["choices"]] == [_stateless_finish_details("stop"), _stateless_finish_details("stop")]
     assert body["usage"] == {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4}
     assert fake.calls == [
         (
@@ -1179,16 +1183,16 @@ def test_completions_preserve_structured_finish_details() -> None:
     assert response.status_code == 200
     choices = response.json()["choices"]
     assert [choice["finish_reason"] for choice in choices] == ["stop", "length"]
-    assert choices[0]["finish_details"] == {
-        "reason": "eos",
-        "eos_token_id": 151645,
-        "sampler_mode": "greedy_fast",
-    }
-    assert choices[1]["finish_details"] == {
-        "reason": "length",
-        "length_limit": 2,
-        "budget_pressure": "answer_budget",
-    }
+    assert choices[0]["finish_details"] == _stateless_finish_details(
+        "eos",
+        eos_token_id=151645,
+        sampler_mode="greedy_fast",
+    )
+    assert choices[1]["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=2,
+        budget_pressure="answer_budget",
+    )
 
 
 @pytest.mark.parametrize(
@@ -1214,6 +1218,35 @@ def test_session_append_none_reports_cache_action(endpoint, payload) -> None:
     client = TestClient(app)
 
     response = client.post(endpoint, json={**payload, "session": {"commit": "append_none"}})
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_details"]["cache_action"] == "append_none"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "payload"),
+    [
+        (
+            "/v1/completions",
+            {"model": "fake-model", "prompt": "hello", "max_tokens": 1},
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello"}],
+                "max_tokens": 1,
+            },
+        ),
+    ],
+)
+def test_stateless_session_default_reports_append_none_cache_action(endpoint, payload) -> None:
+    fake = FakeLLM(outputs=["reply"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(endpoint, json=payload)
 
     assert response.status_code == 200
     choice = response.json()["choices"][0]
@@ -1286,12 +1319,12 @@ def test_completions_response_format_json_object_validates_result() -> None:
 
     assert valid.status_code == 200
     assert valid.json()["choices"][0]["text"] == '{"ok":true}'
-    assert valid.json()["choices"][0]["finish_details"] == {"reason": "stop"}
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     assert invalid.status_code == 200
     invalid_choice = invalid.json()["choices"][0]
     assert invalid_choice["text"] == ""
     assert invalid_choice["finish_reason"] == "stop"
-    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
 def _response_json_schema() -> dict[str, Any]:
@@ -1334,12 +1367,12 @@ def test_completions_response_format_json_schema_validates_result() -> None:
 
     assert valid.status_code == 200
     assert valid.json()["choices"][0]["text"] == '{"ok":true,"path":"README.md"}'
-    assert valid.json()["choices"][0]["finish_details"] == {"reason": "stop"}
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     assert invalid.status_code == 200
     invalid_choice = invalid.json()["choices"][0]
     assert invalid_choice["text"] == ""
     assert invalid_choice["finish_reason"] == "stop"
-    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
 def test_completions_response_format_rejects_unsupported_modes() -> None:
@@ -1806,7 +1839,7 @@ def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:
     payloads = _sse_payloads(response.text)
     assert payloads[0]["choices"][0]["text"] == "alpha"
     assert payloads[0]["choices"][0]["logprobs"]["token_logprobs"] == [-0.25]
-    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "stop"}
+    assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     assert fake.stream_calls == []
     assert fake.calls[0][1].logprobs is True
 
@@ -1831,10 +1864,10 @@ def test_streaming_completion_response_format_buffers_validation() -> None:
     payloads = _sse_payloads(response.text)
     assert not any(payload["choices"][0].get("text") for payload in payloads if payload.get("choices"))
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
-    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
-        "finish_details": {"reason": "schema_violation"},
+        "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []
 
@@ -1861,10 +1894,10 @@ def test_streaming_completion_response_format_json_schema_buffers_validation() -
     done = next(
         payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"]
     )
-    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
-        "finish_details": {"reason": "schema_violation"},
+        "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []
 
@@ -1943,7 +1976,7 @@ def test_streaming_chat_completion_returns_logprobs_from_buffered_path() -> None
     content_chunks = [payload for payload in payloads if payload.get("choices") and payload["choices"][0]["delta"].get("content")]
     assert content_chunks[0]["choices"][0]["delta"] == {"content": "assistant"}
     assert content_chunks[0]["choices"][0]["logprobs"]["content"][0]["logprob"] == -0.1
-    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "stop"}
+    assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     assert fake.stream_calls == []
     assert fake.calls[0][1].logprobs is True
 
@@ -1973,7 +2006,7 @@ def test_chat_completion_renders_messages_to_prompt() -> None:
             "index": 0,
             "message": {"role": "assistant", "content": "assistant reply"},
             "finish_reason": "stop",
-            "finish_details": {"reason": "stop"},
+            "finish_details": _stateless_finish_details("stop"),
         }
     ]
     assert fake.calls[0][0] == (
@@ -2294,12 +2327,12 @@ def test_chat_completion_length_finish_details_include_phase(
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "length"
-    assert choice["finish_details"] == {
-        "reason": "length",
-        "length_limit": 5,
-        "phase": phase,
-        "continuation_eligible": False,
-    }
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=5,
+        phase=phase,
+        continuation_eligible=False,
+    )
     assert choice["message"]["content"] == content
     if reasoning_content is None:
         assert "reasoning_content" not in choice["message"]
@@ -2331,12 +2364,12 @@ def test_chat_completion_response_format_json_object_validates_visible_content()
     valid_choice = valid.json()["choices"][0]
     assert valid_choice["message"]["content"] == '{"ok":true}'
     assert valid_choice["message"]["reasoning_content"] == "check"
-    assert valid_choice["finish_details"] == {"reason": "stop"}
+    assert valid_choice["finish_details"] == _stateless_finish_details("stop")
     assert invalid.status_code == 200
     invalid_choice = invalid.json()["choices"][0]
     assert invalid_choice["message"] == {"role": "assistant", "content": ""}
     assert invalid_choice["finish_reason"] == "stop"
-    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert "Return only one valid JSON object" in invalid_fake.calls[0][0][0]
 
 
@@ -2362,12 +2395,12 @@ def test_chat_completion_response_format_json_schema_validates_visible_content()
     valid_choice = valid.json()["choices"][0]
     assert valid_choice["message"]["content"] == '{"ok":true,"path":"README.md"}'
     assert valid_choice["message"]["reasoning_content"] == "check"
-    assert valid_choice["finish_details"] == {"reason": "stop"}
+    assert valid_choice["finish_details"] == _stateless_finish_details("stop")
     assert invalid.status_code == 200
     invalid_choice = invalid.json()["choices"][0]
     assert invalid_choice["message"] == {"role": "assistant", "content": ""}
     assert invalid_choice["finish_reason"] == "stop"
-    assert invalid_choice["finish_details"] == {"reason": "schema_violation"}
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert "Return only JSON that satisfies this JSON schema" in invalid_fake.calls[0][0][0]
 
 
@@ -2396,12 +2429,12 @@ def test_chat_completion_response_format_length_keeps_partial_json() -> None:
     choice = response.json()["choices"][0]
     assert choice["message"] == {"role": "assistant", "content": '{"ok":'}
     assert choice["finish_reason"] == "length"
-    assert choice["finish_details"] == {
-        "reason": "length",
-        "length_limit": 6,
-        "phase": "structured",
-        "continuation_eligible": False,
-    }
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=6,
+        phase="structured",
+        continuation_eligible=False,
+    )
 
 
 def test_streaming_chat_completion_response_format_buffers_validation() -> None:
@@ -2424,10 +2457,10 @@ def test_streaming_chat_completion_response_format_buffers_validation() -> None:
     payloads = _sse_payloads(response.text)
     assert not any(payload["choices"][0]["delta"].get("content") for payload in payloads if payload.get("choices"))
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
-    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
-        "finish_details": {"reason": "schema_violation"},
+        "finish_details": _stateless_finish_details("schema_violation"),
     }
 
 
@@ -2459,10 +2492,10 @@ def test_streaming_chat_completion_response_format_json_schema_buffers_validatio
         for payload in payloads
         if payload.get("choices") and payload["choices"][0]["finish_reason"]
     )
-    assert done["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
-        "finish_details": {"reason": "schema_violation"},
+        "finish_details": _stateless_finish_details("schema_violation"),
     }
     assert fake.stream_calls == []
 
@@ -2531,11 +2564,11 @@ def test_chat_completion_returns_openai_tool_calls() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["finish_details"] == {
-        "reason": "tool_calls",
-        "tool_call_tokens": 1,
-        "phase": "tool_call",
-    }
+    assert choice["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=1,
+        phase="tool_call",
+    )
     message = choice["message"]
     assert message["content"] == ""
     tool_call = message["tool_calls"][0]
@@ -2574,12 +2607,12 @@ def test_chat_completion_preserves_reasoning_with_openai_tool_call() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["finish_details"] == {
-        "reason": "tool_calls",
-        "reasoning_tokens": 2,
-        "tool_call_tokens": 1,
-        "phase": "tool_call",
-    }
+    assert choice["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        reasoning_tokens=2,
+        tool_call_tokens=1,
+        phase="tool_call",
+    )
     message = choice["message"]
     assert message["content"] == ""
     assert message["reasoning_content"] == "need file"
@@ -2617,7 +2650,7 @@ def test_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> No
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "invalid_tool_call"}
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
     assert choice["message"] == {"role": "assistant", "content": ""}
     assert "<tool_call>" not in response.text
 
@@ -2648,7 +2681,7 @@ def test_chat_completion_required_tool_reports_missing_call() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
+    assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
@@ -2679,12 +2712,12 @@ def test_chat_completion_required_tool_missing_call_preserves_length_context() -
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "length"
-    assert choice["finish_details"] == {
-        "reason": "tool_required_not_satisfied",
-        "length_limit": 7,
-        "phase": "answer",
-        "continuation_eligible": False,
-    }
+    assert choice["finish_details"] == _stateless_finish_details(
+        "tool_required_not_satisfied",
+        length_limit=7,
+        phase="answer",
+        continuation_eligible=False,
+    )
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
@@ -2715,12 +2748,12 @@ def test_chat_completion_required_tool_partial_call_preserves_length_context() -
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "length"
-    assert choice["finish_details"] == {
-        "reason": "invalid_tool_call",
-        "length_limit": 6,
-        "phase": "tool_call",
-        "continuation_eligible": False,
-    }
+    assert choice["finish_details"] == _stateless_finish_details(
+        "invalid_tool_call",
+        length_limit=6,
+        phase="tool_call",
+        continuation_eligible=False,
+    )
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
@@ -2745,7 +2778,7 @@ def test_chat_completion_specific_tool_rejects_wrong_function() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "invalid_tool_call"}
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
@@ -2769,7 +2802,7 @@ def test_chat_completion_tool_choice_none_rejects_tool_call() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "invalid_tool_call"}
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
@@ -2837,7 +2870,7 @@ def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
+    assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
@@ -2884,7 +2917,7 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     assert params.thinking_close_token_ids == (91, 92)
     assert params.thinking_hard_token_cap == 512
     choice = response.json()["choices"][0]
-    assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
+    assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
 
 
 def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools() -> None:
@@ -2976,7 +3009,7 @@ def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "schema_violation"}
+    assert choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert "tool_calls" not in choice["message"]
 
 
@@ -3016,7 +3049,7 @@ def test_chat_completion_strict_tool_schema_rejects_missing_and_extra_arguments(
     )
 
     assert response.status_code == 200
-    assert response.json()["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert response.json()["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
 
 
 def _bounded_tool_schema() -> dict[str, Any]:
@@ -3145,7 +3178,7 @@ def test_chat_completion_strict_tool_schema_rejects_bounded_subset_violations(ar
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert choice["finish_details"] == {"reason": "schema_violation"}
+    assert choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert "tool_calls" not in choice["message"]
 
 
@@ -3192,7 +3225,7 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
         },
     )
 
-    assert rejected_response.json()["choices"][0]["finish_details"] == {"reason": "invalid_tool_call"}
+    assert rejected_response.json()["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
     accepted_choice = accepted_response.json()["choices"][0]
     assert accepted_choice["finish_reason"] == "tool_calls"
     assert len(accepted_choice["message"]["tool_calls"]) == 2
@@ -3235,11 +3268,11 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert tool_call["function"]["name"] == "bash"
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
-    assert payloads[-1]["choices"][0]["finish_details"] == {
-        "reason": "tool_calls",
-        "tool_call_tokens": 1,
-        "phase": "tool_call",
-    }
+    assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=1,
+        phase="tool_call",
+    )
 
 
 def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
@@ -3281,12 +3314,12 @@ def test_streaming_chat_completion_preserves_reasoning_with_tool_call() -> None:
     assert tool_call["function"]["name"] == "bash"
     assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
-    assert payloads[-1]["choices"][0]["finish_details"] == {
-        "reason": "tool_calls",
-        "reasoning_tokens": 2,
-        "tool_call_tokens": 1,
-        "phase": "tool_call",
-    }
+    assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        reasoning_tokens=2,
+        tool_call_tokens=1,
+        phase="tool_call",
+    )
 
 
 def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_tag() -> None:
@@ -3322,7 +3355,7 @@ def test_streaming_chat_completion_strict_validation_rejects_doubled_tool_call_t
     assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["finish_reason"] == "stop"
-    assert done["choices"][0]["finish_details"] == {"reason": "invalid_tool_call"}
+    assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
 
 
 def test_streaming_chat_completion_preserves_parallel_tool_call_indexes() -> None:
@@ -3373,11 +3406,11 @@ def test_streaming_chat_completion_preserves_parallel_tool_call_indexes() -> Non
     ]
     assert tool_calls[0]["id"] != tool_calls[1]["id"]
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
-    assert payloads[-1]["choices"][0]["finish_details"] == {
-        "reason": "tool_calls",
-        "tool_call_tokens": 2,
-        "phase": "tool_call",
-    }
+    assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details(
+        "tool_calls",
+        tool_call_tokens=2,
+        phase="tool_call",
+    )
 
 
 def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
@@ -3416,7 +3449,7 @@ def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
     payloads = _sse_payloads(response.text)
     assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
     assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
-    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "schema_violation"}
+    assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
 
 
 def test_streaming_chat_timeout_can_include_hipengine_error_metadata() -> None:
@@ -3560,7 +3593,7 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     assert done["hipengine"]["event"] == "done"
     assert done["choices"][0]["hipengine"] == {
         "phase": "done",
-        "finish_details": {"reason": "stop"},
+        "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "prompt_tokens": payloads[-1]["usage"]["prompt_tokens"],
             "completion_tokens": payloads[-1]["usage"]["completion_tokens"],
@@ -3651,7 +3684,7 @@ def test_streaming_completion_can_include_hipengine_metadata() -> None:
     assert isinstance(payloads[0]["hipengine"]["timing"]["elapsed_ms"], float)
     assert payloads[2]["choices"][0]["hipengine"] == {
         "phase": "done",
-        "finish_details": {"reason": "stop"},
+        "finish_details": _stateless_finish_details("stop"),
         "tokens": {
             "prompt_tokens": 1,
             "completion_tokens": 2,

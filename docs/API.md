@@ -387,8 +387,10 @@ no-retain policy, and keeps unsupported stateful-session fields plus
 intentionally unused tool-policy fields in `do_not_send`.
 
 Known agent fields that are advertised as unsupported are rejected before
-generation work starts. `session.commit="append_none"` is accepted and final
-choice metadata reports `finish_details.cache_action="append_none"`.
+generation work starts. Stateless requests without a `session` object default
+to no generated-tail retention, and `session.commit="append_none"` is accepted
+as an explicit no-retain marker. Final choice metadata reports
+`finish_details.cache_action="append_none"` for both forms.
 `continuation_id`, stateful `session.id`, unsupported `session.commit` modes,
 and other `session` payloads return HTTP 400 with
 `error.code: "unsupported_parameter"` and `error.param` set to the rejected

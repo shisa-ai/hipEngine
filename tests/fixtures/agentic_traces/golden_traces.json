@@ -102,6 +102,7 @@
         "finish_reason": "tool_calls",
         "finish_details": {
           "reason": "tool_calls",
+          "cache_action": "append_none",
           "phase": "tool_call",
           "reasoning_tokens": 2,
           "tool_call_tokens": 1
@@ -142,7 +143,7 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "invalid_tool_call"},
+        "finish_details": {"reason": "invalid_tool_call", "cache_action": "append_none"},
         "message_content": "",
         "no_tool_calls": true,
         "response_excludes": ["<tool_call>"]
@@ -209,6 +210,7 @@
         "finish_reason": "tool_calls",
         "finish_details": {
           "reason": "tool_calls",
+          "cache_action": "append_none",
           "phase": "tool_call",
           "reasoning_tokens": 2,
           "tool_call_tokens": 1
@@ -252,6 +254,7 @@
         "finish_reason": "tool_calls",
         "finish_details": {
           "reason": "tool_calls",
+          "cache_action": "append_none",
           "phase": "tool_call",
           "tool_call_tokens": 2
         },
@@ -344,7 +347,7 @@
       "expected": {
         "status_code": 200,
         "finish_reason": "stop",
-        "finish_details": {"reason": "schema_violation"},
+        "finish_details": {"reason": "schema_violation", "cache_action": "append_none"},
         "message_content": "",
         "prompt_contains": ["Return only JSON that satisfies this JSON schema"]
       }
@@ -382,7 +385,7 @@
         "status_code": 200,
         "finish_reason": "length",
         "text": "partial",
-        "finish_details": {"reason": "length", "length_limit": 1}
+        "finish_details": {"reason": "length", "length_limit": 1, "cache_action": "append_none"}
       }
     },
     {
