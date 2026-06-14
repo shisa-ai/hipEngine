@@ -3,7 +3,15 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from hipengine.generation import DecodePhase, DecodeState, FinishDetails, GenerationOutput, GenerationTelemetry
+from hipengine.generation import (
+    DecodePhase,
+    DecodeState,
+    FinishDetails,
+    GenerationOutput,
+    GenerationStreamChunk,
+    GenerationTelemetry,
+    TokenLogprob,
+)
 
 
 def test_decode_state_stream_snapshot_normalizes_json_payload() -> None:
@@ -168,6 +176,26 @@ def test_generation_output_accepts_finish_details_mapping() -> None:
         "phase": "answer",
         "continuation_eligible": False,
     }
+
+
+def test_generation_stream_chunk_preserves_token_logprobs() -> None:
+    chunk = GenerationStreamChunk.from_value(
+        {
+            "text": "answer",
+            "token_logprobs": (
+                TokenLogprob(token_id=7, token_text="answer", logprob=-0.25),
+            ),
+            "telemetry": {"decode_state": {"phase": "answer", "generated_tokens": 1}},
+        }
+    )
+
+    assert chunk.text == "answer"
+    assert chunk.token_logprobs == (
+        TokenLogprob(token_id=7, token_text="answer", logprob=-0.25),
+    )
+    assert chunk.telemetry is not None
+    assert chunk.telemetry.decode_state is not None
+    assert chunk.telemetry.decode_state.phase == "answer"
 
 
 def test_decode_state_mapping_accepts_json_nulls() -> None:

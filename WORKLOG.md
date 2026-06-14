@@ -90929,3 +90929,19 @@ remains future work.
 Validation:
 - `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill -q` -> `2 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q && python3 -m py_compile tests/test_generation_qwen35_paro.py && python3 -m ruff check tests/test_generation_qwen35_paro.py && git diff --check -- tests/test_generation_qwen35_paro.py docs/AGENTIC.md` -> `30 passed`, `All checks passed!` / clean.
+
+## 2026-06-15 - AGENTIC live stream logprob contract
+
+Added an explicit live streaming logprob contract for engines that advertise
+`supports_stream_logprobs` / `supports_stream_token_logprobs` and yield
+`GenerationStreamChunk.token_logprobs`. Completion and chat streams can now
+emit per-chunk OpenAI logprob payloads without buffering when that capability
+is present; engines without it keep the existing buffered detailed-generation
+path and stable missing-metadata fallback. The capabilities manifest now
+advertises `features.logprobs.live_chunk_metadata`, and AGENTIC/API docs
+distinguish the server contract from future PARO/GGUF lower-loop parity.
+
+Validation:
+- `python3 -m pytest tests/test_generation_registry.py tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata tests/test_server_api.py::test_streaming_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_completion_returns_live_chunk_logprobs_when_backend_supports_metadata tests/test_server_api.py::test_streaming_completion_logprobs_missing_backend_metadata_returns_unsupported_feature tests/test_server_api.py::test_streaming_chat_completion_returns_logprobs_from_buffered_path tests/test_server_api.py::test_streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata -q` -> `14 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `260 passed`.
+- `python3 -m py_compile hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py && python3 -m ruff check hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py && git diff --check -- hipengine/generation/registry.py hipengine/server/api.py tests/test_generation_registry.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> `All checks passed!` / clean.

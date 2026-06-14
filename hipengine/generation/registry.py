@@ -628,13 +628,15 @@ class GenerationOutput:
 
 @dataclass(frozen=True)
 class GenerationStreamChunk:
-    """Incremental generated text plus optional live backend telemetry."""
+    """Incremental generated text plus optional live backend metadata."""
 
     text: str
+    token_logprobs: tuple[TokenLogprob, ...] = ()
     telemetry: GenerationTelemetry | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
+        object.__setattr__(self, "token_logprobs", tuple(self.token_logprobs))
         if self.telemetry is not None:
             object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
 
@@ -645,6 +647,7 @@ class GenerationStreamChunk:
         if isinstance(value, Mapping):
             return cls(
                 text=str(value.get("text", "")),
+                token_logprobs=tuple(value.get("token_logprobs", ()) or ()),
                 telemetry=value.get("telemetry"),
             )
         return cls(text=str(value))

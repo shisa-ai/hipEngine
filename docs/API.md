@@ -135,10 +135,13 @@ logprobs are routed through the host-logits metadata path so the selected token
 logprob/top candidates are based on the same processed logits used for sampling.
 For completion `echo+logprobs`, the echoed prompt is represented as a prefix
 entry with `null` logprob and generated-token offsets are shifted accordingly.
-Streaming requests with logprobs use a buffered detailed-generation path so SSE
-chunks can carry logprob metadata; ordinary streams without logprobs remain
-live token/chunk streams. If a backend response path cannot provide token
-metadata for a logprobs request, the server returns HTTP 501
+Streaming requests with logprobs use a buffered detailed-generation path by
+default so SSE chunks can carry logprob metadata; ordinary streams without
+logprobs remain live token/chunk streams. Engines that explicitly advertise
+`supports_stream_logprobs` may instead return live completion/chat stream chunks
+with per-chunk token metadata, advertised as
+`features.logprobs.live_chunk_metadata=true`. If a backend response path cannot
+provide token metadata for a logprobs request, the server returns HTTP 501
 `unsupported_feature` with `error.param="logprobs"`. The capabilities manifest
 reports this under `features.logprobs.requires_backend_token_metadata` and
 `features.logprobs.missing_backend_metadata_error`.

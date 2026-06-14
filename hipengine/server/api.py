@@ -3153,12 +3153,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if not text:
                     continue
                 full_text.append(text)
+                logprobs = (
+                    _completion_stream_logprobs(stream_chunk)
+                    if _request_logprobs_enabled(request)
+                    else None
+                )
                 token_payload = token_accounting.observe("answer", text) if token_accounting is not None else None
                 yield _completion_stream_delta(
                     response_id,
                     created,
                     config.model_id,
                     text,
+                    logprobs=logprobs,
                     tokens=token_payload,
                     stream_chunk=stream_chunk,
                     include_hipengine=include_hipengine,
@@ -3694,6 +3700,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def capabilities(_auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
         tokenizer_caps = _tokenizer_capability_flags(engine)
+        stream_logprobs = _engine_supports_stream_logprobs(engine)
         configured_context = configured_max_context_tokens()
         cached_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         effective_context = configured_context if configured_context is not None else cached_context
@@ -3791,7 +3798,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "completions": True,
                     "chat": True,
                     "top_logprobs_max": 20,
-                    "streaming": "buffered",
+                    "streaming": "live_chunk_metadata" if stream_logprobs else "buffered",
+                    "live_chunk_metadata": stream_logprobs,
+                    "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
                     "requires_backend_token_metadata": True,
                     "missing_backend_metadata_error": {
                         "code": "unsupported_feature",
@@ -4004,11 +4013,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         n = _request_n(request)
         expanded_prompts = _expand_prompts_for_n(prompts, n)
         control = _request_control(config, request, raw_request)
+        live_completion_logprobs = _engine_supports_stream_logprobs(getattr(app.state, "hipengine_llm", None))
         if (
             request.stream
             and len(expanded_prompts) == 1
             and not request.echo
-            and not _request_logprobs_enabled(request)
+            and (not _request_logprobs_enabled(request) or live_completion_logprobs)
             and not _structured_result_validation(request)
         ):
             return StreamingResponse(
@@ -4165,10 +4175,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
             prompt = await _await_with_request_control(prepare_prompt(), control)
             if request.stream:
+                live_chat_logprobs = (
+                    bool(request.logprobs)
+                    and not request.tools
+                    and _engine_supports_stream_logprobs(getattr(app.state, "hipengine_llm", None))
+                )
                 streamer = (
                     stream_chat_completion_many
                     if _request_n(request) > 1
-                    or request.logprobs
+                    or (request.logprobs and not live_chat_logprobs)
                     or _structured_result_validation(request)
                     else stream_chat_completion
                 )
@@ -4644,11 +4659,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 text = stream_chunk.text
                 if not text:
                     continue
+                if request.logprobs:
+                    _validate_stream_logprob_chunk(stream_chunk)
                 full_text.append(text)
                 if buffer_tool_output:
                     continue
                 for field, chunk in splitter.feed(text):
                     phase = "think" if field == "reasoning_content" else "answer"
+                    logprobs = (
+                        _chat_stream_logprobs(stream_chunk, chunk)
+                        if request.logprobs and field == "content"
+                        else None
+                    )
                     token_payload = (
                         token_accounting.observe(phase, chunk) if token_accounting is not None else None
                     )
@@ -4658,6 +4680,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         config.model_id,
                         field,
                         chunk,
+                        logprobs=logprobs,
                         tokens=token_payload,
                         stream_chunk=stream_chunk,
                         include_hipengine=include_hipengine,
@@ -6232,6 +6255,16 @@ def _request_logprobs_enabled(request: CompletionRequest | ChatCompletionRequest
     return bool(request.logprobs)
 
 
+def _engine_supports_stream_logprobs(engine: Any | None) -> bool:
+    if engine is None:
+        return False
+    target = getattr(engine, "_text_generator", None) or engine
+    return bool(
+        getattr(target, "supports_stream_logprobs", False)
+        or getattr(target, "supports_stream_token_logprobs", False)
+    )
+
+
 def _request_top_logprobs(request: CompletionRequest | ChatCompletionRequest) -> int:
     if isinstance(request, CompletionRequest):
         return 0 if request.logprobs is None else int(request.logprobs)
@@ -6268,13 +6301,15 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
 def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
     if isinstance(value, GenerationStreamChunk):
         return value
+    token_logprobs = getattr(value, "token_logprobs", None)
     telemetry = getattr(value, "telemetry", None)
-    if telemetry is not None:
+    if token_logprobs is not None or telemetry is not None:
         return GenerationStreamChunk(
             text=str(getattr(value, "text", value)),
+            token_logprobs=tuple(token_logprobs or ()),
             telemetry=telemetry,
         )
-    if isinstance(value, Mapping) and ("text" in value or "telemetry" in value):
+    if isinstance(value, Mapping) and ("text" in value or "token_logprobs" in value or "telemetry" in value):
         return GenerationStreamChunk.from_value(value)
     return GenerationStreamChunk(text=str(value))
 
@@ -8262,6 +8297,14 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
     }
 
 
+def _completion_stream_logprobs(stream_chunk: GenerationStreamChunk) -> dict[str, Any]:
+    _validate_stream_logprob_chunk(stream_chunk)
+    return _completion_logprobs(
+        GenerationOutput(text=stream_chunk.text, token_logprobs=stream_chunk.token_logprobs),
+        stream_chunk.text,
+    )
+
+
 def _completion_top_logprobs(token: TokenLogprob) -> dict[str, float] | None:
     if not token.top_logprobs:
         return None
@@ -8285,6 +8328,59 @@ def _chat_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
         ],
         "refusal": None,
     }
+
+
+def _chat_stream_logprobs(stream_chunk: GenerationStreamChunk, text: str) -> dict[str, Any]:
+    tokens = _stream_token_logprobs_for_text(stream_chunk, text)
+    if text and not tokens:
+        raise _unsupported_stream_logprobs_error()
+    return _chat_logprobs(GenerationOutput(text=text, token_logprobs=tokens), text)
+
+
+def _validate_stream_logprob_chunk(stream_chunk: GenerationStreamChunk) -> None:
+    if stream_chunk.text and not stream_chunk.token_logprobs:
+        raise _unsupported_stream_logprobs_error()
+
+
+def _unsupported_stream_logprobs_error() -> OpenAIHTTPError:
+    return OpenAIHTTPError(
+        501,
+        "streaming logprobs are not supported by this backend response path",
+        error_type="server_error",
+        code="unsupported_feature",
+        param="logprobs",
+    )
+
+
+def _stream_token_logprobs_for_text(
+    stream_chunk: GenerationStreamChunk,
+    text: str,
+) -> tuple[TokenLogprob, ...]:
+    if not stream_chunk.token_logprobs or not text:
+        return ()
+    source_text = stream_chunk.text
+    if source_text == text:
+        return _trim_token_logprobs(stream_chunk.token_logprobs, text)
+    start = source_text.find(text)
+    if start < 0:
+        return ()
+    end = start + len(text)
+    cursor = 0
+    selected: list[TokenLogprob] = []
+    for token in stream_chunk.token_logprobs:
+        token_start = cursor
+        token_end = token_start + len(token.token_text)
+        cursor = token_end
+        if token_end <= start:
+            continue
+        if token_start < start or token_end > end:
+            return ()
+        selected.append(token)
+        if token_end == end:
+            break
+    if "".join(token.token_text for token in selected) != text:
+        return ()
+    return tuple(selected)
 
 
 def _trim_token_logprobs(tokens: Sequence[TokenLogprob], text: str) -> tuple[TokenLogprob, ...]:
