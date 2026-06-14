@@ -91544,3 +91544,18 @@ Validation:
 - `python3 -m py_compile hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/llm.py hipengine/generation/registry.py hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_sampling.py tests/test_generation_qwen35_paro.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC prompt logprob omission reason
+
+Made completion `echo+logprobs` prompt-prefix null logprobs observable through
+the same `choices[].logprobs.hipengine.omitted_token_logprobs[]` contract used
+for generated-token omissions. Echoed prompt prefix entries now report
+`reason="prompt_logprob_unavailable"` with `token_id=null`, while generated
+tokens that lack backend-selected scores keep `reason="backend_omitted_logprob"`.
+The capabilities manifest advertises both stable omission reasons.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata tests/test_server_api.py::test_completions_endpoint_echo_logprobs_shift_generated_offsets tests/test_server_api.py::test_completion_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_streaming_completion_live_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_chat_logprobs_omitted_selected_score_reports_reason tests/test_server_api.py::test_streaming_chat_live_logprobs_omitted_selected_score_reports_reason -q` -> `7 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

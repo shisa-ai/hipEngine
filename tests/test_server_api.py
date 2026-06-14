@@ -901,7 +901,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "live_chunk_metadata": False,
         "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
         "requires_backend_token_metadata": True,
-        "omission_reasons": ["backend_omitted_logprob"],
+        "omission_reasons": ["backend_omitted_logprob", "prompt_logprob_unavailable"],
         "missing_backend_metadata_error": {
             "code": "unsupported_feature",
             "status_code": 501,
@@ -1115,7 +1115,7 @@ def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_suppo
         "live_chunk_metadata": True,
         "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
         "requires_backend_token_metadata": True,
-        "omission_reasons": ["backend_omitted_logprob"],
+        "omission_reasons": ["backend_omitted_logprob", "prompt_logprob_unavailable"],
         "missing_backend_metadata_error": {
             "code": "unsupported_feature",
             "status_code": 501,
@@ -5385,6 +5385,16 @@ def test_completions_endpoint_echo_logprobs_shift_generated_offsets() -> None:
     assert choice["logprobs"]["tokens"] == ["hello", " world"]
     assert choice["logprobs"]["token_logprobs"] == [None, -0.125]
     assert choice["logprobs"]["text_offset"] == [0, 5]
+    assert choice["logprobs"]["hipengine"] == {
+        "omitted_token_logprobs": [
+            {
+                "index": 0,
+                "token": "hello",
+                "token_id": None,
+                "reason": "prompt_logprob_unavailable",
+            }
+        ]
+    }
 
 
 def test_streaming_completion_returns_logprobs_from_buffered_path() -> None:

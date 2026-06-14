@@ -64,6 +64,7 @@ _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
 _LOGPROB_OMISSION_REASON = "backend_omitted_logprob"
+_PROMPT_LOGPROB_OMISSION_REASON = "prompt_logprob_unavailable"
 _CONTINUATION_TTL_SECONDS = 15 * 60
 _SESSION_COMMIT_MODES = (
     "append_none",
@@ -3951,7 +3952,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "live_chunk_metadata": stream_logprobs,
                     "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
                     "requires_backend_token_metadata": True,
-                    "omission_reasons": [_LOGPROB_OMISSION_REASON],
+                    "omission_reasons": [_LOGPROB_OMISSION_REASON, _PROMPT_LOGPROB_OMISSION_REASON],
                     "missing_backend_metadata_error": {
                         "code": "unsupported_feature",
                         "status_code": 501,
@@ -9006,6 +9007,7 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
         token_logprobs.append(None)
         top_logprobs.append(None)
         offsets.append(0)
+        omitted.append(_prompt_logprob_omission(echo_text, 0))
         cursor = len(echo_text)
     for token in tokens:
         response_index = len(response_tokens)
@@ -9071,6 +9073,15 @@ def _logprob_omission(token: TokenLogprob, index: int) -> dict[str, Any]:
         "token": token.token_text,
         "token_id": int(token.token_id),
         "reason": _LOGPROB_OMISSION_REASON,
+    }
+
+
+def _prompt_logprob_omission(token_text: str, index: int) -> dict[str, Any]:
+    return {
+        "index": int(index),
+        "token": str(token_text),
+        "token_id": None,
+        "reason": _PROMPT_LOGPROB_OMISSION_REASON,
     }
 
 

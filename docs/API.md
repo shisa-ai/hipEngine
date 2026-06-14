@@ -135,7 +135,9 @@ Non-streaming completions accept OpenAI-style `logprobs: N` and return
 logprobs are routed through the host-logits metadata path so the selected token
 logprob/top candidates are based on the same processed logits used for sampling.
 For completion `echo+logprobs`, the echoed prompt is represented as a prefix
-entry with `null` logprob and generated-token offsets are shifted accordingly.
+entry with `null` logprob, generated-token offsets are shifted accordingly, and
+`hipengine.omitted_token_logprobs[]` reports reason
+`prompt_logprob_unavailable` for that prefix entry.
 Streaming requests with logprobs use a buffered detailed-generation path by
 default so SSE chunks can carry logprob metadata; ordinary streams without
 logprobs remain live token/chunk streams. Engines that explicitly advertise
@@ -151,9 +153,9 @@ capabilities manifest reports this under
 present but a generated token's selected score was not emitted, the standard
 OpenAI-compatible `logprob` / `token_logprobs` value remains `null` and the
 same `choices[].logprobs` object includes
-`hipengine.omitted_token_logprobs[]` with token index/id/text and reason
-`backend_omitted_logprob`; the capabilities manifest lists stable reason
-strings under `features.logprobs.omission_reasons`.
+`hipengine.omitted_token_logprobs[]` with token index, nullable token id, text,
+and a stable reason such as `backend_omitted_logprob`; the capabilities manifest
+lists stable reason strings under `features.logprobs.omission_reasons`.
 
 ### Routing metadata
 

@@ -54,8 +54,9 @@ Already available or recently added:
 - Detailed logprob metadata is available through the host-logits metadata path:
   completions accept `logprobs: N`; chat accepts `logprobs: true` plus optional
   `top_logprobs: N`; completion `echo+logprobs` returns the echoed prompt as a
-  prefix entry with `null` prompt logprob; streaming completion/chat logprobs
-  use a buffered detailed-generation path by default, or live token/chunk
+  prefix entry with `null` prompt logprob and omission reason
+  `prompt_logprob_unavailable`; streaming completion/chat logprobs use a
+  buffered detailed-generation path by default, or live token/chunk
   streams when the engine explicitly advertises `supports_stream_logprobs` and
   yields per-chunk token metadata. PARO/GGUF c=1 host-sampled streams emit that
   live token metadata for logprob requests. If generated-token metadata exists
@@ -144,7 +145,8 @@ Known baseline limitations:
   metadata. PARO/GGUF c=1 host-sampled streams now satisfy that contract for
   live logprob requests. Completion `echo+logprobs` does not compute real
   prompt-token logprobs yet; the echoed prompt is represented as a prefix entry
-  with `null` logprob.
+  with `null` logprob and stable omission reason
+  `prompt_logprob_unavailable`.
 - Streaming supports opt-in `stream_options.include_hipengine` metadata with
   server-measured elapsed time, TTFT, decode-rate timing, final finish details,
   and best-effort token accounting. When a backend yields
@@ -2082,7 +2084,8 @@ Current state: host-logits logprobs are implemented for non-streaming
 completions/chat, buffered streaming completions/chat, live streaming
 completion/chat chunks from engines that advertise `supports_stream_logprobs`,
 and completion `echo+logprobs` with the echoed prompt represented as one prefix
-entry with `null` prompt logprob. PARO/GGUF c=1 host-sampled `stream_detailed()`
+entry with `null` prompt logprob plus `prompt_logprob_unavailable` omission
+metadata. PARO/GGUF c=1 host-sampled `stream_detailed()`
 chunks emit per-token selected logprob and top-logprob metadata for logprob
 requests, so the OpenAI server can expose live logprob deltas without buffering
 on those paths. Backend paths that cannot provide token metadata for a logprobs
@@ -2096,8 +2099,9 @@ the missing-backend-metadata fallback. When token metadata is present but a
 generated-token selected score is omitted, successful completion/chat responses
 keep the OpenAI-compatible score as `null` and add
 `choices[].logprobs.hipengine.omitted_token_logprobs[]` with reason
-`backend_omitted_logprob`; `/v1/hipengine/capabilities` advertises the stable
-reason vocabulary under `features.logprobs.omission_reasons`. PARO c>N
+`backend_omitted_logprob`; echoed prompt prefixes use reason
+`prompt_logprob_unavailable`. `/v1/hipengine/capabilities` advertises the
+stable reason vocabulary under `features.logprobs.omission_reasons`. PARO c>N
 host-sampled final outputs preserve per-token selected logprob and top-logprob
 metadata from scheduler step results. Remaining work is true prompt-token
 logprobs, native c>N/GGUF GPU-path coverage, and broader performance
