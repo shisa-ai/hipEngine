@@ -88840,6 +88840,20 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
 
+## 2026-06-15 - AGENTIC echo logprob golden trace
+
+Added a required golden harness trace for completion `echo+logprobs`
+prompt-prefix omission metadata. The trace pins the OpenAI-compatible arrays
+plus `choices[].logprobs.hipengine.omitted_token_logprobs[]` with
+`reason="prompt_logprob_unavailable"` and `token_id=null`.
+
+Validation:
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/tmp/agentic-traces.json` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `53 passed`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json WORKLOG.md` -> clean.
+
 ## 2026-06-14 - AGENTIC pi tool-call smoke validation
 
 Strengthened `scripts/validate_pi_agent_models.py --chat-smoke` so the live
