@@ -699,7 +699,9 @@ Authenticated `POST /v1/hipengine/sessions/{session_id}/fork` with body
 session id. The fork preserves visible transcript messages as of the request and
 then the two sessions diverge independently on later commits. It rejects missing
 source sessions, empty or existing target ids, same-id forks, and configured
-chat-session cap overflow. Forks are transcript-only:
+chat-session cap overflow. Cap rejections use `engine_busy`, `Retry-After`, and
+matched `error.hipengine.routing` metadata with
+`overload_source: "chat_session_cap"`. Forks are transcript-only:
 `resident_state_reuse=false`, no resident KV state is copied.
 
 Authenticated `POST /v1/hipengine/sessions/{session_id}/rollback` with body
@@ -723,7 +725,8 @@ message string metadata, nested assistant `tool_calls` objects, and valid JSON
 `function.arguments` strings. Incompatible or corrupted snapshots fail before
 creating the session. Restoring a new session is subject to the configured
 chat-session cap; when the cap is full, the server returns `engine_busy` without
-creating partial session state.
+creating partial session state and includes matched `error.hipengine.routing`
+metadata with `overload_source: "chat_session_cap"`.
 
 Validate the config against a running server with:
 

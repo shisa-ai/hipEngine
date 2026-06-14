@@ -91758,3 +91758,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/fixtures/agentic_traces/golden_traces.json docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC session cap routing metadata
+
+Session fork and snapshot-restore requests now return the same matched
+`engine_busy` routing envelope as chat-generation session creation when the
+configured app-local chat-session cap is full. The cap still rejects before
+creating the target transcript, records a rejected request, and returns
+`Retry-After`; docs now describe the shared `chat_session_cap` overload metadata
+for fork and restore endpoints.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_fork_rejects_existing_target_and_session_cap tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_new_session_when_cap_full tests/test_server_api.py::test_chat_session_cap_rejects_new_sessions_before_generation -q` -> `3 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `65 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

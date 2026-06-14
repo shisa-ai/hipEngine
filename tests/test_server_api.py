@@ -2016,10 +2016,24 @@ def test_chat_session_fork_rejects_existing_target_and_session_cap() -> None:
     assert existing.json()["error"]["param"] == "id"
     assert full.status_code == 429
     assert full.json()["error"]["code"] == "engine_busy"
+    assert full.json()["error"]["message"] == "chat session limit is full"
+    assert full.json()["error"]["hipengine"] == {
+        "code": "engine_busy",
+        "status_code": 429,
+        "retryable": True,
+        "routing": {
+            **_routing_metadata(),
+            "matched": True,
+            "reason": "engine_busy",
+            "overload_source": "chat_session_cap",
+            "max_active_chat_sessions": 2,
+        },
+    }
     assert full.headers["retry-after"] == "1"
     assert missing.status_code == 404
     assert missing.json()["error"]["param"] == "session_id"
     assert set(app.state.hipengine_chat_sessions) == {"sess_root", "sess_target"}
+    assert app.state.hipengine_server_metrics.request_rejected_total == 1
 
 
 def test_chat_session_rollback_trims_visible_transcript_for_next_turn() -> None:
@@ -2630,7 +2644,21 @@ def test_chat_session_snapshot_restore_rejects_new_session_when_cap_full() -> No
     assert restored.status_code == 429
     assert restored.headers["Retry-After"] == "1"
     assert restored.json()["error"]["code"] == "engine_busy"
+    assert restored.json()["error"]["message"] == "chat session limit is full"
+    assert restored.json()["error"]["hipengine"] == {
+        "code": "engine_busy",
+        "status_code": 429,
+        "retryable": True,
+        "routing": {
+            **_routing_metadata(),
+            "matched": True,
+            "reason": "engine_busy",
+            "overload_source": "chat_session_cap",
+            "max_active_chat_sessions": 1,
+        },
+    }
     assert set(app.state.hipengine_chat_sessions) == {"sess_one"}
+    assert app.state.hipengine_server_metrics.request_rejected_total == 1
 
 
 def test_chat_session_cap_rejects_new_sessions_before_generation() -> None:

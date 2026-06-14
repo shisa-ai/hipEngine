@@ -3708,6 +3708,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "chat session limit is full",
                     error_type="rate_limit_error",
                     code="engine_busy",
+                    extra=route_rejection_extra(
+                        requested_model=None,
+                        reason="engine_busy",
+                        details={
+                            "overload_source": "chat_session_cap",
+                            "max_active_chat_sessions": int(config.max_chat_sessions),
+                        },
+                    ),
                     headers={"Retry-After": str(config.queue_retry_after_seconds)},
                 )
                 _record_openai_error(app.state.hipengine_server_metrics, exc)
@@ -3806,6 +3814,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "chat session limit is full",
                     error_type="rate_limit_error",
                     code="engine_busy",
+                    extra=route_rejection_extra(
+                        requested_model=None,
+                        reason="engine_busy",
+                        details={
+                            "overload_source": "chat_session_cap",
+                            "max_active_chat_sessions": int(config.max_chat_sessions),
+                        },
+                    ),
                     headers={"Retry-After": str(config.queue_retry_after_seconds)},
                 )
                 _record_openai_error(app.state.hipengine_server_metrics, exc)

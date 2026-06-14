@@ -1933,9 +1933,10 @@ Current code reality:
 - App-local transcript sessions can be forked with
   `POST /v1/hipengine/sessions/{session_id}/fork` into a new session id. Forks
   clone the visible transcript messages at request time, respect the configured
-  chat-session cap, report `resident_state_reuse=false`, and then diverge
-  independently on later commits. This gives agent harnesses a branch primitive
-  without exposing transcript text through metadata endpoints.
+  chat-session cap, return matched `engine_busy` route metadata on cap
+  overflow, report `resident_state_reuse=false`, and then diverge independently
+  on later commits. This gives agent harnesses a branch primitive without
+  exposing transcript text through metadata endpoints.
 - App-local transcript sessions can be rolled back with
   `POST /v1/hipengine/sessions/{session_id}/rollback` and a target
   `message_count`. Rollback trims visible transcript messages only, reports
@@ -2008,7 +2009,8 @@ Current code reality:
   transcript session. Incompatible snapshots fail with stable `invalid_request`
   errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and
-  fails with `engine_busy` without creating partial session state when full.
+  fails with matched `engine_busy` route metadata without creating partial
+  session state when full.
 - Checked-in server-conformance and golden-trace fixtures cover restoring an
   app-local session after a hidden-reasoning assistant tool call, then
   continuing from a tool response. They verify the snapshot and restored prompt
@@ -2168,8 +2170,10 @@ Current state:
   `--max-chat-sessions` / `HIPENGINE_MAX_CHAT_SESSIONS`. New `session.id`
   requests that would allocate a transcript are rejected before prompt
   preparation/generation with the same HTTP 429 `engine_busy` and
-  `Retry-After: 1` plus `overload_source="chat_session_cap"` route metadata;
-  existing sessions may continue, and deleting a session frees capacity.
+  `Retry-After: 1` plus `overload_source="chat_session_cap"` route metadata.
+  Session fork and snapshot-restore requests that would create a new transcript
+  use the same cap and route metadata. Existing sessions may continue, and
+  deleting a session frees capacity.
 - The OpenAI server batcher also has an opt-in active backend request cap via
   `--max-active-requests` / `HIPENGINE_MAX_ACTIVE_REQUESTS`. It limits how many
   HTTP requests can be coalesced into one active backend generation batch;
