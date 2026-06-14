@@ -2164,6 +2164,57 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
 
 
+def test_streaming_chat_completion_preserves_parallel_tool_call_indexes() -> None:
+    output = (
+        '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+        '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md"}}</tool_call>'
+    )
+    fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=[output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read files"}],
+            "stream": True,
+            "parallel_tool_calls": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"path": {"type": "string"}},
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    tool_calls = [
+        payload["choices"][0]["delta"]["tool_calls"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert [call["index"] for call in tool_calls] == [0, 1]
+    assert [call["function"]["name"] for call in tool_calls] == ["read", "read"]
+    assert [json.loads(call["function"]["arguments"]) for call in tool_calls] == [
+        {"path": "README.md"},
+        {"path": "WORKLOG.md"},
+    ]
+    assert tool_calls[0]["id"] != tool_calls[1]["id"]
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert payloads[-1]["choices"][0]["finish_details"] == {"reason": "tool_calls"}
+
+
 def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],

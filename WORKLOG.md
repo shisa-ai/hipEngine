@@ -87679,3 +87679,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `92 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `13 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md`.
+
+## 2026-06-14 - AGENTIC streaming tool-call multi-call fixture
+
+Added P2.6 regression coverage for streaming parallel tool calls. The new server
+test proves prompt-and-parse streaming emits one `delta.tool_calls` chunk per
+parsed call, preserves `index` values `[0, 1]`, keeps distinct stable call ids,
+and finishes with `finish_details.reason="tool_calls"`. Updated
+`docs/AGENTIC.md` to record the current streaming behavior and the remaining
+future gap: true token-incremental argument chunking is not implemented yet.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_returns_tool_call_deltas tests/test_server_api.py::test_streaming_chat_completion_preserves_parallel_tool_call_indexes tests/test_server_api.py::test_streaming_chat_completion_reports_strict_tool_schema_failure tests/test_server_api.py::test_chat_completion_parallel_tool_calls_require_explicit_opt_in -q` -> `4 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md`.
