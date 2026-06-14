@@ -87862,3 +87862,14 @@ Validation:
 - `python3 -m pytest tests/test_generation_registry.py tests/test_model_quant_and_imports.py tests/test_agentic_harness_traces.py -q` -> `20 passed`.
 - `python3 -m pytest tests/test_gpu_sampler_kernel.py::test_native_sampler_route_falls_back_to_host_for_forced_tokens -q` -> `1 passed`.
 - `python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `9 passed`.
+
+## 2026-06-14 - Full-context OOM analysis doc
+
+Created `docs/OOM.md` to capture the 24GB/GPU1 full-context memory investigation.
+Exact server command `HIP_VISIBLE_DEVICES=1 hipengine serve --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed --kv-storage int8_per_token_head --host 0.0.0.0` started at `max_context_tokens=262144`; startup logged retained int8 KV `requested_kv=2.52 GiB`, metadata `1.01 GiB`, total `3.53 GiB`, usable `5.49 GiB`, reserve `0.50 GiB`. Non-streaming `hello` with omitted/default `max_tokens=4096` and explicit `max_tokens=4096` returned HTTP 200 with `finish_details.reason=eos`, usage `9/199/208`, and left about `1.996 GiB` free on GPU1. Streaming default `hello` also returned HTTP 200 with reasoning chunks separated as `delta.reasoning_content` and no meaningful VRAM growth. A non-streaming `max_tokens=262000` request was admitted and did not immediately OOM, but timed out client-side after 90s and left the worker active until the test server was stopped. An `n=2,max_tokens=1` request returned HTTP 400 for unsupported int8 compact c>N prefill but freed the resident c=1 session (`~2.15 GiB` free before, `~6.09 GiB` after), so unsupported c>N rejection must happen before session teardown.
+
+Follow-ups recorded in the doc: add production-shaped startup chat smoke, configurable post-smoke free-memory guard/auto-context reduction, exact resident buffer ledger, cancellation audit, compact/lazy prefill metadata and MTP/speculative/sampler scratch re-optimization for the 24GB/256k target.
+
+Validation:
+- Re-read `docs/OOM.md` end-to-end after writing.
+- `git diff --staged` reviewed before commit.
