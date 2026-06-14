@@ -50,6 +50,7 @@ from hipengine.kvcache import resolve_prefix_cache_mode
 
 _LOGGER = logging.getLogger("uvicorn.error")
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
+_THINKING_CLOSE_MARKER = "</think>"
 
 
 @dataclass(frozen=True)
@@ -388,6 +389,13 @@ def _replay_sampling_payload(body_json: Any) -> dict[str, Any]:
         "timeout_ms",
         "stop",
         "ignore_eos",
+        "reasoning_effort",
+        "enable_thinking",
+        "max_think_tokens",
+        "min_answer_tokens",
+        "hard_think_cap",
+        "soft_close_window",
+        "thinking_token_budget",
     )
     return {key: body_json[key] for key in keys if key in body_json}
 
@@ -396,6 +404,23 @@ def _replay_seed_payload(body_json: Any) -> dict[str, Any]:
     if not isinstance(body_json, dict):
         return {"seed": None, "row_seeds": []}
     return {"seed": body_json.get("seed"), "row_seeds": []}
+
+
+def _reasoning_control_fields() -> list[str]:
+    return [
+        "reasoning_effort",
+        "enable_thinking",
+        "max_think_tokens",
+        "min_answer_tokens",
+        "hard_think_cap",
+        "soft_close_window",
+        "hard_close_message",
+        "hard_close_sequence",
+        "thinking_token_budget",
+        "chat_template_kwargs",
+        "thinking",
+        "reasoning",
+    ]
 
 
 def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
@@ -419,6 +444,14 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "strict_decoding": False,
                 "strict_result_validation": True,
                 "schema_validation": "function_strict",
+            },
+            "reasoning_controls": {
+                "enabled": True,
+                "fields": _reasoning_control_fields(),
+                "budget_policy": "prompt_hint_only",
+                "token_budget": False,
+                "token_budget_enforced": False,
+                "hard_close_validation": True,
             },
             "request_timeouts": {"timeout_ms": True},
         },
@@ -497,6 +530,13 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     parallel_tool_calls: bool | None = None
     reasoning_effort: str | None = None
     enable_thinking: bool | None = None
+    max_think_tokens: int | None = Field(default=None, ge=0)
+    min_answer_tokens: int | None = Field(default=None, ge=0)
+    hard_think_cap: int | None = Field(default=None, ge=0)
+    soft_close_window: int | None = Field(default=None, ge=0)
+    hard_close_message: str | None = None
+    hard_close_sequence: str | None = None
+    thinking_token_budget: int | None = Field(default=None, ge=0)
     chat_template_kwargs: dict[str, Any] | None = None
     thinking: str | dict[str, Any] | None = None
     reasoning: dict[str, Any] | None = None
@@ -526,6 +566,13 @@ class TokenDiagnosticRequest(_OpenAIBaseModel):
     tool_choice: str | dict[str, Any] | None = None
     reasoning_effort: str | None = None
     enable_thinking: bool | None = None
+    max_think_tokens: int | None = Field(default=None, ge=0)
+    min_answer_tokens: int | None = Field(default=None, ge=0)
+    hard_think_cap: int | None = Field(default=None, ge=0)
+    soft_close_window: int | None = Field(default=None, ge=0)
+    hard_close_message: str | None = None
+    hard_close_sequence: str | None = None
+    thinking_token_budget: int | None = Field(default=None, ge=0)
     chat_template_kwargs: dict[str, Any] | None = None
     thinking: str | dict[str, Any] | None = None
     reasoning: dict[str, Any] | None = None
@@ -980,6 +1027,12 @@ class _ToolValidationResult:
 class _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
+    max_think_tokens: int | None = None
+    min_answer_tokens: int | None = None
+    hard_think_cap: int | None = None
+    soft_close_window: int | None = None
+    hard_close_message: str | None = None
+    hard_close_sequence: str | None = None
 
 
 @dataclass
@@ -1694,14 +1747,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 },
                 "reasoning_controls": {
                     "enabled": True,
-                    "fields": [
-                        "reasoning_effort",
-                        "enable_thinking",
-                        "chat_template_kwargs",
-                        "thinking",
-                        "reasoning",
-                    ],
+                    "fields": _reasoning_control_fields(),
+                    "budget_policy": "prompt_hint_only",
                     "token_budget": False,
+                    "token_budget_enforced": False,
+                    "hard_close_validation": True,
+                    "hard_close_marker": _THINKING_CLOSE_MARKER,
                 },
                 "logprobs": {
                     "completions": True,
@@ -2545,14 +2596,54 @@ def _format_metric_value(value: float) -> str:
 def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
+    max_think_tokens: int | None = None
+    min_answer_tokens: int | None = None
+    hard_think_cap: int | None = None
+    soft_close_window: int | None = None
+    hard_close_message: str | None = None
+    hard_close_sequence: str | None = None
 
     if isinstance(request.chat_template_kwargs, Mapping):
         enabled = _maybe_bool(request.chat_template_kwargs.get("enable_thinking"), enabled)
         effort = _maybe_effort(request.chat_template_kwargs.get("reasoning_effort"), effort)
-        effort = _maybe_effort(request.chat_template_kwargs.get("thinking_budget"), effort)
+        thinking_budget = request.chat_template_kwargs.get("thinking_budget")
+        hard_think_cap = _maybe_budget_alias(
+            thinking_budget,
+            hard_think_cap,
+            param="chat_template_kwargs.thinking_budget",
+        )
+        if hard_think_cap is None:
+            effort = _maybe_effort(thinking_budget, effort)
 
     enabled = _maybe_bool(request.enable_thinking, enabled)
     effort = _maybe_effort(request.reasoning_effort, effort)
+    hard_think_cap = _maybe_budget_alias(
+        request.thinking_token_budget,
+        hard_think_cap,
+        param="thinking_token_budget",
+    )
+    max_think_tokens = _maybe_nonnegative_int(
+        request.max_think_tokens,
+        max_think_tokens,
+        param="max_think_tokens",
+    )
+    min_answer_tokens = _maybe_nonnegative_int(
+        request.min_answer_tokens,
+        min_answer_tokens,
+        param="min_answer_tokens",
+    )
+    hard_think_cap = _maybe_nonnegative_int(
+        request.hard_think_cap,
+        hard_think_cap,
+        param="hard_think_cap",
+    )
+    soft_close_window = _maybe_nonnegative_int(
+        request.soft_close_window,
+        soft_close_window,
+        param="soft_close_window",
+    )
+    hard_close_message = _maybe_text(request.hard_close_message, hard_close_message)
+    hard_close_sequence = _maybe_text(request.hard_close_sequence, hard_close_sequence)
     if _effort_disables_thinking(effort):
         enabled = False
 
@@ -2564,7 +2655,49 @@ def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingC
             enabled = True
         enabled = _maybe_bool(request.thinking.get("enabled"), enabled)
         effort = _maybe_effort(request.thinking.get("effort"), effort)
-        effort = _maybe_effort(request.thinking.get("budget_tokens"), effort)
+        budget_tokens = request.thinking.get("budget_tokens")
+        budget_cap = _coerce_nonnegative_int(
+            budget_tokens,
+            param="thinking.budget_tokens",
+            allow_text_alias=True,
+        )
+        if budget_cap is None:
+            effort = _maybe_effort(budget_tokens, effort)
+        else:
+            hard_think_cap = budget_cap
+        hard_think_cap = _maybe_nonnegative_int(
+            request.thinking.get("max_tokens"),
+            hard_think_cap,
+            param="thinking.max_tokens",
+        )
+        max_think_tokens = _maybe_nonnegative_int(
+            request.thinking.get("max_think_tokens"),
+            max_think_tokens,
+            param="thinking.max_think_tokens",
+        )
+        min_answer_tokens = _maybe_nonnegative_int(
+            request.thinking.get("min_answer_tokens"),
+            min_answer_tokens,
+            param="thinking.min_answer_tokens",
+        )
+        hard_think_cap = _maybe_nonnegative_int(
+            request.thinking.get("hard_think_cap"),
+            hard_think_cap,
+            param="thinking.hard_think_cap",
+        )
+        soft_close_window = _maybe_nonnegative_int(
+            request.thinking.get("soft_close_window"),
+            soft_close_window,
+            param="thinking.soft_close_window",
+        )
+        hard_close_message = _maybe_text(
+            request.thinking.get("hard_close_message"),
+            hard_close_message,
+        )
+        hard_close_sequence = _maybe_text(
+            request.thinking.get("hard_close_sequence"),
+            hard_close_sequence,
+        )
     elif isinstance(request.thinking, str):
         effort = _maybe_effort(request.thinking, effort)
         if _effort_disables_thinking(effort):
@@ -2581,7 +2714,18 @@ def _thinking_control_from_request(request: ChatCompletionRequest) -> _ThinkingC
 
     if _effort_disables_thinking(effort):
         enabled = False
-    return _ThinkingControl(enabled=enabled, effort=effort)
+    control = _ThinkingControl(
+        enabled=enabled,
+        effort=effort,
+        max_think_tokens=max_think_tokens,
+        min_answer_tokens=min_answer_tokens,
+        hard_think_cap=hard_think_cap,
+        soft_close_window=soft_close_window,
+        hard_close_message=hard_close_message,
+        hard_close_sequence=hard_close_sequence,
+    )
+    _validate_thinking_control(control)
+    return control
 
 
 def _maybe_bool(value: Any, current: bool | None) -> bool | None:
@@ -2607,8 +2751,74 @@ def _maybe_effort(value: Any, current: str | None) -> str | None:
     return text or current
 
 
+def _maybe_budget_alias(value: Any, current: int | None, *, param: str) -> int | None:
+    budget = _coerce_nonnegative_int(value, param=param, allow_text_alias=True)
+    return current if budget is None else budget
+
+
+def _maybe_nonnegative_int(value: Any, current: int | None, *, param: str) -> int | None:
+    number = _coerce_nonnegative_int(value, param=param, allow_text_alias=False)
+    return current if number is None else number
+
+
+def _coerce_nonnegative_int(value: Any, *, param: str, allow_text_alias: bool) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        _raise_invalid_nonnegative_int(param)
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, float):
+        if not value.is_integer():
+            _raise_invalid_nonnegative_int(param)
+        number = int(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            if allow_text_alias:
+                return None
+            _raise_invalid_nonnegative_int(param)
+        try:
+            number = int(text, 10)
+        except ValueError:
+            if allow_text_alias:
+                return None
+            _raise_invalid_nonnegative_int(param)
+    else:
+        _raise_invalid_nonnegative_int(param)
+    if number < 0:
+        _raise_invalid_nonnegative_int(param)
+    return number
+
+
+def _raise_invalid_nonnegative_int(param: str) -> None:
+    raise OpenAIHTTPError(
+        400,
+        f"{param} must be a non-negative integer",
+        code="invalid_request",
+        param=param,
+    )
+
+
+def _maybe_text(value: Any, current: str | None) -> str | None:
+    if value is None:
+        return current
+    return str(value)
+
+
 def _effort_disables_thinking(effort: str | None) -> bool:
     return effort in {"0", "false", "none", "off", "disabled", "disable", "nothink", "no_think"}
+
+
+def _validate_thinking_control(control: _ThinkingControl) -> None:
+    sequence = control.hard_close_sequence
+    if sequence is not None and _THINKING_CLOSE_MARKER not in sequence:
+        raise OpenAIHTTPError(
+            400,
+            f"hard_close_sequence must contain {_THINKING_CLOSE_MARKER!r}",
+            code="invalid_request",
+            param="hard_close_sequence",
+        )
 
 
 def _render_thinking_prompt(thinking: _ThinkingControl | None) -> str:
@@ -2617,18 +2827,49 @@ def _render_thinking_prompt(thinking: _ThinkingControl | None) -> str:
     if thinking.enabled is False:
         return "Do not include hidden reasoning. Answer directly after the pre-closed <think></think> block."
     effort = thinking.effort
-    if not effort or _effort_disables_thinking(effort):
+    hints: list[str] = []
+    if effort and not _effort_disables_thinking(effort):
+        if effort in {"minimal", "low"}:
+            limit = "very brief"
+        elif effort == "medium":
+            limit = "concise"
+        elif effort in {"high", "xhigh", "max"}:
+            limit = "focused but complete"
+        else:
+            limit = "concise"
+        hints.append(f"keep it {limit}")
+    if thinking.max_think_tokens is not None:
+        hints.append(f"aim to close hidden reasoning within {thinking.max_think_tokens} tokens")
+    if thinking.hard_think_cap is not None:
+        hints.append(
+            f"close {_THINKING_CLOSE_MARKER} before exceeding "
+            f"{thinking.hard_think_cap} hidden reasoning tokens"
+        )
+    if thinking.min_answer_tokens is not None:
+        hints.append(
+            f"reserve at least {thinking.min_answer_tokens} tokens for "
+            "the final answer or tool call"
+        )
+    if thinking.soft_close_window is not None:
+        hints.append(
+            f"begin closing during the final {thinking.soft_close_window} "
+            "hidden reasoning tokens"
+        )
+    if thinking.hard_close_message:
+        hints.append(
+            f"use the close message {thinking.hard_close_message!r} "
+            "only if budget pressure requires it"
+        )
+    if thinking.hard_close_sequence:
+        hints.append(
+            f"use {thinking.hard_close_sequence!r} as the close sequence "
+            "if budget pressure requires it"
+        )
+    if not hints:
         return ""
-    if effort in {"minimal", "low"}:
-        limit = "very brief"
-    elif effort == "medium":
-        limit = "concise"
-    elif effort in {"high", "xhigh", "max"}:
-        limit = "focused but complete"
-    else:
-        limit = "concise"
+    hint_text = "; ".join(hints)
     return (
-        f"If you use <think> reasoning, keep it {limit}; when ready, close </think> "
+        f"If you use <think> reasoning, {hint_text}; when ready, close {_THINKING_CLOSE_MARKER} "
         "before emitting the final answer or any <tool_call> block."
     )
 
@@ -3262,6 +3503,13 @@ def _chat_request_from_diagnostic(config: ServerConfig, request: TokenDiagnostic
         tool_choice=request.tool_choice,
         reasoning_effort=request.reasoning_effort,
         enable_thinking=request.enable_thinking,
+        max_think_tokens=request.max_think_tokens,
+        min_answer_tokens=request.min_answer_tokens,
+        hard_think_cap=request.hard_think_cap,
+        soft_close_window=request.soft_close_window,
+        hard_close_message=request.hard_close_message,
+        hard_close_sequence=request.hard_close_sequence,
+        thinking_token_budget=request.thinking_token_budget,
         chat_template_kwargs=request.chat_template_kwargs,
         thinking=request.thinking,
         reasoning=request.reasoning,

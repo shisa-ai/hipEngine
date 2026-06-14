@@ -69,7 +69,12 @@ Already available or recently added:
   successful `tool_calls` and stable `finish_details.reason`.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
   `reasoning_effort`, `chat_template_kwargs`, and nested `thinking`/`reasoning`
-  request objects.
+  request objects. Numeric budget aliases and explicit budget fields are
+  accepted and rendered as prompt hints: `thinking_token_budget`,
+  `chat_template_kwargs.thinking_budget`, `thinking.budget_tokens`,
+  `thinking.max_tokens`, `max_think_tokens`, `min_answer_tokens`,
+  `hard_think_cap`, `soft_close_window`, `hard_close_message`, and
+  `hard_close_sequence`.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 
 Known baseline limitations:
@@ -79,7 +84,9 @@ Known baseline limitations:
   `finish_details.reason="invalid_tool_call"` when strict result validation is
   active.
 - Thinking controls are prompt/template controls only; there is no token-level
-  thinking budget, dynamic logit processor, or forced close sequence yet.
+  thinking budget, dynamic logit processor, EOS suppression, or forced close
+  sequence yet. `hard_close_sequence` is validated to contain `</think>`, but it
+  is not forced during decode.
 - Server-side reasoning/tool parsing lives above generation; the generation loop
   does not yet expose canonical token-level phase state for reasoning, answer,
   tool-call, or structured-output spans.
@@ -546,8 +553,15 @@ Precedence and disabling rules:
    `0`.
 
 Current server behavior is weaker than this target: it accepts these control
-surfaces only to render prompt/template hints or pre-close Qwen thinking. It does
-not yet lower them into token-level decode policy.
+surfaces only to render prompt/template hints or pre-close Qwen thinking. Numeric
+`thinking_token_budget`, `chat_template_kwargs.thinking_budget`,
+`thinking.budget_tokens`, and `thinking.max_tokens` aliases normalize to the
+effective hard-cap hint; string `thinking_budget`/`budget_tokens` values still
+act as effort aliases for compatibility. Explicit `max_think_tokens`,
+`min_answer_tokens`, `hard_think_cap`, `soft_close_window`,
+`hard_close_message`, and `hard_close_sequence` fields are accepted, and
+`hard_close_sequence` is rejected unless it contains `</think>`. The server does
+not yet lower any of these controls into token-level decode policy.
 
 ### Hard-close sequence and overrides
 
@@ -924,6 +938,15 @@ Implement:
 - manual hard-stop/force hook for cancellation, external controller requests, or
   stream-time budget pressure;
 - EOS suppression until answer/tool-call starts when configured.
+
+Current code reality:
+
+- accepted and tested: explicit budget fields, compatibility aliases, numeric
+  alias normalization, prompt-hint rendering, and parser-marker validation for
+  `hard_close_sequence`;
+- not implemented: effort-to-hard-default clamping, tokenizer lowering, dynamic
+  soft-close bias, hard forced close, manual force hooks, EOS suppression, and
+  per-phase finish metadata.
 
 Exit gates:
 
@@ -1311,9 +1334,10 @@ Current code reality:
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support, sampling
   parameters and execution modes, strict tool result-validation support, the
-  default-off PARO c=1 native GPU sampler scope, speculative/MTP sampling
-  compatibility, request-timeout/client-disconnect support, cache/session
-  settings, loaded-model count, and unsupported fields.
+  reasoning-control field list with `budget_policy="prompt_hint_only"` and
+  `token_budget_enforced=false`, the default-off PARO c=1 native GPU sampler
+  scope, speculative/MTP sampling compatibility, request-timeout/client-disconnect
+  support, cache/session settings, loaded-model count, and unsupported fields.
 - Continuations, `session.commit`, multi-model routing, and strict tool decoding
   are advertised as unsupported until their runtime paths exist. Request
   timeouts and client-disconnect cancellation are advertised as supported with

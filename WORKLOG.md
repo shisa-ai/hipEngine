@@ -87437,3 +87437,28 @@ Validation:
 - `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md`.
+
+## 2026-06-14 - AGENTIC thinking budget request surface
+
+Implemented the documented thinking-budget request surface as prompt-level
+compatibility controls. Chat and token-diagnostic requests now accept
+`max_think_tokens`, `min_answer_tokens`, `hard_think_cap`,
+`soft_close_window`, `hard_close_message`, `hard_close_sequence`, and
+`thinking_token_budget`. Numeric `chat_template_kwargs.thinking_budget`,
+`thinking.budget_tokens`, and `thinking.max_tokens` normalize to the effective
+hard-cap hint; string `thinking_budget` / `budget_tokens` values remain effort
+aliases for compatibility.
+
+The server validates that `hard_close_sequence` contains the parser-recognized
+`</think>` marker and advertises the field list in `/v1/hipengine/capabilities`
+with `budget_policy="prompt_hint_only"` and `token_budget_enforced=false`.
+Decode-time soft-close bias, hard forced close, EOS suppression, tokenizer
+lowering, and per-phase finish metadata remain future P1.4 work and are called
+out in `docs/AGENTIC.md`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `67 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `5 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `8 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md`.

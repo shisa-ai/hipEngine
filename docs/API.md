@@ -248,10 +248,23 @@ Chat requests accept common OpenAI/Qwen thinking controls:
 - `enable_thinking`: `false` pre-fills `<think>\n\n</think>\n\n` after the
   assistant header, matching Qwen no-think chat-template behavior.
 - `chat_template_kwargs.enable_thinking`: accepted for Qwen-compatible clients;
-  `chat_template_kwargs.reasoning_effort` / `thinking_budget` are mapped to the
-  same soft effort hints.
-- nested `thinking` or `reasoning` objects with `type`, `enabled`, or `effort`
-  are accepted for OpenAI-compatible proxy variants.
+  `chat_template_kwargs.reasoning_effort` is mapped to the same soft effort
+  hints.
+- Numeric budget aliases are accepted and normalized as prompt hints:
+  `thinking_token_budget`, `chat_template_kwargs.thinking_budget`, and
+  `thinking.budget_tokens` / `thinking.max_tokens` map to the effective hard
+  thinking cap hint.
+- Explicit hint fields are accepted on chat requests:
+  `max_think_tokens`, `min_answer_tokens`, `hard_think_cap`,
+  `soft_close_window`, `hard_close_message`, and `hard_close_sequence`.
+- Nested `thinking` or `reasoning` objects with `type`, `enabled`, or `effort`
+  are accepted for OpenAI-compatible proxy variants; nested `thinking` also
+  accepts the budget fields above.
+
+Budget fields are compatibility hints today. The server validates that any
+`hard_close_sequence` contains the parser-recognized `</think>` marker, but it
+does not yet enforce token-level thinking budgets, soft logit-bias ramps, EOS
+suppression, or forced close sequences during decode.
 
 For pi, prefer `compat.thinkingFormat: "qwen"` with `reasoning: true` if you want
 pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`

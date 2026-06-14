@@ -226,6 +226,28 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "format": "qwen_tool_call_json",
         "parallel_tool_calls": True,
     }
+    assert body["features"]["reasoning_controls"] == {
+        "enabled": True,
+        "fields": [
+            "reasoning_effort",
+            "enable_thinking",
+            "max_think_tokens",
+            "min_answer_tokens",
+            "hard_think_cap",
+            "soft_close_window",
+            "hard_close_message",
+            "hard_close_sequence",
+            "thinking_token_budget",
+            "chat_template_kwargs",
+            "thinking",
+            "reasoning",
+        ],
+        "budget_policy": "prompt_hint_only",
+        "token_budget": False,
+        "token_budget_enforced": False,
+        "hard_close_validation": True,
+        "hard_close_marker": "</think>",
+    }
     assert body["features"]["logprobs"]["streaming"] == "buffered"
     assert body["features"]["request_timeouts"] == {
         "timeout_ms": True,
@@ -1253,6 +1275,104 @@ def test_chat_completion_accepts_reasoning_effort_controls() -> None:
     )
     assert none.status_code == 200
     assert fake.calls[-1][0][0].endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
+
+
+def test_chat_completion_accepts_thinking_budget_prompt_hints() -> None:
+    fake = FakeLLM(outputs=["bounded answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think, then answer"}],
+            "chat_template_kwargs": {"thinking_budget": 99, "reasoning_effort": "low"},
+            "thinking_token_budget": 123,
+            "max_think_tokens": 32,
+            "min_answer_tokens": 8,
+            "soft_close_window": 4,
+            "hard_close_message": "closing now",
+            "thinking": {
+                "budget_tokens": 456,
+                "hard_close_sequence": "closing now</think>\n",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = fake.calls[-1][0][0]
+    assert "keep it very brief" in prompt
+    assert "aim to close hidden reasoning within 32 tokens" in prompt
+    assert "close </think> before exceeding 456 hidden reasoning tokens" in prompt
+    assert "reserve at least 8 tokens for the final answer or tool call" in prompt
+    assert "begin closing during the final 4 hidden reasoning tokens" in prompt
+    assert "use the close message 'closing now' only if budget pressure requires it" in prompt
+    assert "use 'closing now</think>\\n' as the close sequence if budget pressure requires it" in prompt
+    assert "exceeding 99 hidden reasoning tokens" not in prompt
+    assert "exceeding 123 hidden reasoning tokens" not in prompt
+
+
+def test_chat_completion_preserves_string_thinking_budget_effort_alias() -> None:
+    fake = FakeLLM(outputs=["answer"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "chat_template_kwargs": {"thinking_budget": "high"},
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = fake.calls[-1][0][0]
+    assert "keep it focused but complete" in prompt
+    assert "hidden reasoning tokens" not in prompt
+
+
+def test_chat_completion_rejects_hard_close_without_think_marker() -> None:
+    fake = FakeLLM(outputs=["unused"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "hard_close_sequence": "DONE\n",
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "hard_close_sequence"
+    assert fake.calls == []
+
+
+def test_chat_completion_rejects_invalid_thinking_budget_value() -> None:
+    fake = FakeLLM(outputs=["unused"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think"}],
+            "thinking": {"max_tokens": "soon"},
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "thinking.max_tokens"
+    assert fake.calls == []
 
 
 def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
