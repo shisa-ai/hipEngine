@@ -375,6 +375,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "no_tool_start_suppression": True,
         "required_tool_start_forcing": True,
         "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
+        "tool_call_close_repair": True,
     }
     assert body["features"]["reasoning_controls"] == {
         "enabled": True,
@@ -495,6 +496,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "stop_token_sequences",
             "forced_tokens_pending",
             "post_thinking_forced_tokens_pending",
+            "force_sequence_completion_token_sequences",
             "thinking_budget",
             "logprobs",
             "top_logprobs",
@@ -511,6 +513,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "stop_token_sequences": "one or more multi-token stop sequences",
             "forced_tokens_pending": "one or more forced tokens pending",
             "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
+            "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
             "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
@@ -2720,7 +2723,7 @@ def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> 
     ],
 )
 def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool_choice) -> None:
-    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78]})
+    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78], "</tool_call>": [88, 89]})
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -2737,9 +2740,12 @@ def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["<tool_call>"]
-    assert fake.calls[-1][1].forced_tokens_pending == (77, 78)
-    assert fake.calls[-1][1].forced_token_reason == "tool_choice_required"
+    assert fake.tokenize_calls == ["<tool_call>", "</tool_call>"]
+    params = fake.calls[-1][1]
+    assert params.forced_tokens_pending == (77, 78)
+    assert params.forced_token_reason == "tool_choice_required"
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_reason == "tool_call_close_repair"
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == {"reason": "tool_required_not_satisfied"}
@@ -2747,7 +2753,10 @@ def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool
 
 
 def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget() -> None:
-    fake = FakeLLM(outputs=["ordinary answer"], token_map={"</think>": [91, 92], "<tool_call>": [77, 78]})
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={"</think>": [91, 92], "<tool_call>": [77, 78], "</tool_call>": [88, 89]},
+    )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -2766,11 +2775,13 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["</think>", "<tool_call>"]
+    assert fake.tokenize_calls == ["</think>", "<tool_call>", "</tool_call>"]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == ()
     assert params.post_thinking_forced_tokens_pending == (77, 78)
     assert params.post_thinking_forced_token_reason == "tool_choice_required"
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_reason == "tool_call_close_repair"
     assert params.thinking_close_token_ids == (91, 92)
     assert params.thinking_hard_token_cap == 512
     choice = response.json()["choices"][0]
@@ -3681,6 +3692,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "stop_token_sequences",
             "forced_tokens_pending",
             "post_thinking_forced_tokens_pending",
+            "force_sequence_completion_token_sequences",
             "thinking_budget",
             "logprobs",
             "top_logprobs",
@@ -3697,6 +3709,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "stop_token_sequences": "one or more multi-token stop sequences",
             "forced_tokens_pending": "one or more forced tokens pending",
             "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
+            "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
             "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",

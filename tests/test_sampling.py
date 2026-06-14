@@ -48,6 +48,8 @@ def _params(**overrides):
         "forced_token_reason": None,
         "post_thinking_forced_tokens_pending": (),
         "post_thinking_forced_token_reason": None,
+        "force_sequence_completion_token_sequences": (),
+        "force_sequence_completion_reason": None,
         "thinking_close_token_ids": (),
         "thinking_hard_token_cap": None,
         "thinking_soft_close_window": 0,
@@ -98,6 +100,19 @@ def test_forced_tokens_are_active_processors() -> None:
         "temperature",
         "logit_bias",
     )
+
+
+def test_force_sequence_completion_is_active_processor() -> None:
+    plan = plan_sampler(
+        _params(
+            temperature=0.0,
+            force_sequence_completion_token_sequences=((10, 11),),
+        )
+    )
+
+    assert plan.mode is SamplingMode.PROCESSED_ARGMAX
+    assert plan.active_processors == ("force_sequence_completion_token_sequences",)
+    assert plan.fast_path_blockers == ("force_sequence_completion_token_sequences",)
 
 
 def test_suppressions_and_min_tokens_are_active_processors() -> None:
@@ -154,6 +169,10 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, min_tokens=1, eos_token_id=2)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, forced_tokens_pending=(1,))) is False
     assert (
+        supports_native_gpu_sampling(_params(temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)))
+        is False
+    )
+    assert (
         supports_native_gpu_sampling(
             _params(temperature=0.7, thinking_close_token_ids=(4, 5), thinking_hard_token_cap=8)
         )
@@ -192,6 +211,9 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     )
     assert speculative_mtp_sampling_blockers(_params(forced_tokens_pending=(10, 11))) == (
         "forced_tokens_pending",
+    )
+    assert speculative_mtp_sampling_blockers(_params(force_sequence_completion_token_sequences=((10, 11),))) == (
+        "force_sequence_completion_token_sequences",
     )
     assert speculative_mtp_sampling_blockers(
         _params(
@@ -434,6 +456,34 @@ def test_post_thinking_forced_tokens_queue_after_close_sequence() -> None:
     assert state.generated_tokens == [2, 3, 4]
 
 
+def test_force_sequence_completion_queues_remaining_suffix() -> None:
+    params = _params(
+        force_sequence_completion_token_sequences=((5, 6, 7),),
+        force_sequence_completion_reason="tool_call_close_repair",
+    )
+    state = RowSamplingState(
+        force_sequence_completion_token_sequences=params.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=params.force_sequence_completion_reason,
+    )
+
+    first = select_token(np.array([0.0, 1.0, 2.0, 3.0, 4.0, 10.0, 0.0, 0.0], dtype=np.float32), params, state)
+    second = select_token(np.array([10.0, 9.0, 8.0, 7.0, 6.0, 0.0, 0.0, 0.0], dtype=np.float32), params, state)
+    third = select_token(np.array([10.0, 9.0, 8.0, 7.0, 6.0, 0.0, 0.0, 0.0], dtype=np.float32), params, state)
+
+    assert first.token_id == 5
+    assert first.forced is False
+    assert first.active_processors == ("force_sequence_completion_token_sequences",)
+    assert second.token_id == 6
+    assert second.forced is True
+    assert second.forced_reason == "tool_call_close_repair"
+    assert second.forced_tokens_remaining == 1
+    assert third.token_id == 7
+    assert third.forced is True
+    assert third.forced_reason == "tool_call_close_repair"
+    assert third.forced_tokens_remaining == 0
+    assert state.generated_tokens == [5, 6, 7]
+
+
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:
     state = RowSamplingState(
         seed=123,
@@ -505,6 +555,11 @@ def test_suppressions_validate_vocab_and_cannot_remove_every_token() -> None:
         select_token(
             np.array([1.0, 2.0], dtype=np.float32),
             _params(post_thinking_forced_tokens_pending=(1,)),
+        )
+    with pytest.raises(ValueError, match="force_sequence_completion_token_sequences"):
+        select_token(
+            np.array([1.0, 2.0], dtype=np.float32),
+            _params(force_sequence_completion_token_sequences=((-1, 2),)),
         )
 
 

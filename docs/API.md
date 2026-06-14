@@ -268,7 +268,10 @@ tokenized `<tool_call>` start marker before ordinary token selection. If a
 tokenized thinking budget is active, the same marker is queued until the
 `</think>` close sequence has moved the row into answer phase. This prevents
 ordinary prose from being selected as the first visible answer/tool token, but
-it does not yet constrain the function name, arguments JSON, or closing tag.
+it does not yet constrain the function name or arguments JSON. Required and
+specific function modes also tokenize `</tool_call>` when possible; once that
+close marker begins, the host sampler forces the remaining suffix through model
+decoding so the closing tag is not left partially emitted.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 object `properties` / `required` / `additionalProperties: false`, array `items`
@@ -497,8 +500,8 @@ strings and should only be used in local, non-sensitive debugging sessions.
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token
   suppressions, min-token/EOS policy, token stops, pending forced-token queues,
-  post-thinking forced-token queues, temperature sampling, and requested
-  logprobs require autoregressive fallback.
+  post-thinking forced-token queues, token-sequence completion repair,
+  temperature sampling, and requested logprobs require autoregressive fallback.
   The manifest also includes `incompatible_conditions`, for example
   `temperature > 0`, so inert greedy `top_p` / `top_k` / `min_p` settings are
   not mistaken for MTP blockers.

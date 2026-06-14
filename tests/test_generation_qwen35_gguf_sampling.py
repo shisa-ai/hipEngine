@@ -164,6 +164,44 @@ def test_gguf_sampled_post_thinking_forced_tokens_queue_after_close(monkeypatch)
     ]
 
 
+def test_gguf_sampled_force_sequence_completion_repairs_tool_close(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 3] = 5.0
+            return SimpleNamespace(token_id=3, logits=logits)
+
+        def step(self, token_id: int, *, return_logits=True):
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 1] = 10.0
+            return SimpleNamespace(token_id=1, logits=logits)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(
+        _request(
+            max_tokens=2,
+            force_sequence_completion_token_sequences=((3, 16),),
+            force_sequence_completion_reason="tool_call_close_repair",
+        )
+    )
+
+    assert outputs[0].text == "DQ"
+    assert outputs[0].finish_details is not None
+    assert outputs[0].finish_details.to_json_dict()["sampler_mode"] == "processed_argmax"
+    assert _decode_state(outputs[0])["active_processors"] == ["force_sequence_completion_token_sequences"]
+
+
 def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
     calls = []
 

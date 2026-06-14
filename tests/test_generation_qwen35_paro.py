@@ -91,6 +91,19 @@ def test_qwen35_paro_row_sampling_state_queues_post_thinking_forced_tokens() -> 
     assert state.post_thinking_forced_tokens_pending.pending_tokens == ()
 
 
+def test_qwen35_paro_row_sampling_state_repairs_tool_close_suffix() -> None:
+    request = _request(
+        force_sequence_completion_token_sequences=((70, 71),),
+        force_sequence_completion_reason="tool_call_close_repair",
+    )
+
+    state = qwen35._row_sampling_state(request, [1, 2], row_index=0)
+    state.observe(70)
+
+    assert state.forced_tokens == (71,)
+    assert state.forced_token_reason == "tool_call_close_repair"
+
+
 def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(monkeypatch) -> None:
     calls = []
 

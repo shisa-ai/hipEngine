@@ -170,6 +170,8 @@ class Qwen35GGUFBringupGenerator:
             forced_token_reason=sampling_request.forced_token_reason,
             post_thinking_forced_tokens_pending=sampling_request.post_thinking_forced_tokens_pending,
             post_thinking_forced_token_reason=sampling_request.post_thinking_forced_token_reason,
+            force_sequence_completion_token_sequences=sampling_request.force_sequence_completion_token_sequences,
+            force_sequence_completion_reason=sampling_request.force_sequence_completion_reason,
             thinking_budget=thinking_budget_state_from_params(sampling_request),
         )
         samples = []

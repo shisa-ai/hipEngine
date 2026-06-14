@@ -71,6 +71,12 @@ Already available or recently added:
   specific function choices, functions with `"strict": true`, and explicit
   `parallel_tool_calls`; failures return normal chat responses with no
   successful `tool_calls` and stable `finish_details.reason`.
+- Tokenizer-backed tool-call start controls: no-tool mode suppresses the first
+  `<tool_call>` token; required/specific tool modes force the tokenized
+  `<tool_call>` marker immediately, or after tokenized `</think>` close when a
+  thinking budget is active. Required/specific tool modes also repair tokenized
+  `</tool_call>` close markers by forcing the remaining suffix once the marker
+  starts.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
   `reasoning_effort`, `chat_template_kwargs`, and nested `thinking`/`reasoning`
   request objects. Numeric budget aliases and explicit budget fields are
@@ -85,10 +91,10 @@ Already available or recently added:
 
 Known baseline limitations:
 
-- Tool calling is prompt-and-parse, not constrained decoding. Malformed
-  `<tool_call>` JSON is treated as assistant text in compatibility mode and as
-  `finish_details.reason="invalid_tool_call"` when strict result validation is
-  active.
+- Tool calling is prompt-and-parse plus limited marker repair, not full
+  constrained decoding. Malformed `<tool_call>` JSON is treated as assistant
+  text in compatibility mode and as `finish_details.reason="invalid_tool_call"`
+  when strict result validation is active.
 - Thinking control is still not constrained decoding. Tokenized thinking caps
   are enforced only on host-sampled PARO/GGUF rows: the soft window applies a
   sparse close-token bias ramp, EOS is suppressed until answer phase when an
@@ -324,10 +330,11 @@ Current code reality:
   on host logits, and flow through scheduler per-row sampler blocks. `logit_bias`
   and penalty processors are also covered by standalone native sampler tests;
   suppress-token ids and min-token/EOS policy make the native sampler route fall
-  back to host. Token-level thinking-budget hard close now follows the same
-  planning contract: it binds to host row state, blocks native GPU sampling, and
-  is reported as a speculative/MTP blocker. None of these processors are
-  compatible with MTP verification yet because verify top-1 is raw argmax.
+  back to host. Token-level thinking-budget hard close and token-sequence
+  completion repair now follow the same planning contract: they bind to host row
+  state, block native GPU sampling, and are reported as speculative/MTP
+  blockers. None of these processors are compatible with MTP verification yet
+  because verify top-1 is raw argmax.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
@@ -340,10 +347,11 @@ Default rule:
 - Speculative/MTP routes are allowed only for `GREEDY_FAST` requests with no
   active pre-selection processors and no logprob/metadata requirement that would
   force processed logits.
-- If `logit_bias`, penalties, suppressions, forced tokens, grammar constraints,
-  thinking budget processors, `temperature > 0`, or requested logprobs are
-  active, route to AR `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE` until the
-  verifier can produce the same processed target selection per verify row.
+- If `logit_bias`, penalties, suppressions, forced tokens, sequence-completion
+  repair, grammar constraints, thinking budget processors, `temperature > 0`, or
+  requested logprobs are active, route to AR `PROCESSED_ARGMAX` /
+  `HOST_LOGITS_SAMPLE` until the verifier can produce the same processed target
+  selection per verify row.
 
 Future exact speculative support:
 
@@ -1005,10 +1013,11 @@ Current code reality:
   `forced_tokens_pending`, are rejected from the current native GPU sampler
   route, dynamically fall back to host token selection if they appear while a
   row is configured for native sampling, and block raw-argmax MTP verification.
-- Queue population from thinking close delimiters, JSON/tool repair, and grammar
-  processors remains future server/controller work, though the host sampler now
-  consumes a wired `ThinkingBudgetState` close queue exactly like other forced
-  tokens.
+- `RowSamplingState` can also bind tokenizer-aware sequence-completion repair
+  rules. Once a configured delimiter prefix is selected, the remaining delimiter
+  suffix is queued as forced tokens. The server uses this today for
+  required/specific tool-call `</tool_call>` close repair. JSON close-brace
+  repair and grammar processors remain future server/controller work.
 
 Implement:
 
@@ -1035,8 +1044,8 @@ Current code reality:
   suffix reporting.
 - PARO/GGUF stop checks and final decode telemetry now use this shared helper
   for multi-token stop match state.
-- Native c>N/GPU sampler parity and grammar/forced-delimiter reuse remain future
-  work.
+- Native c>N/GPU sampler parity and grammar reuse remain future work; host row
+  state already reuses this DFA for forced delimiter suffix repair.
 
 Implement:
 
@@ -1207,6 +1216,11 @@ Current state:
   until the `</think>` close sequence moves the row into answer phase. This uses
   the same host forced-token queue family as thinking hard-close, so it routes
   through processed AR sampling and blocks current raw-argmax MTP verification.
+- Required and specific function modes also tokenize the Qwen `</tool_call>`
+  close marker when possible. If generation begins that close marker, host row
+  state forces the remaining suffix through model decoding so the closing tag is
+  not left half-emitted. This is delimiter repair, not full function-name or
+  argument grammar enforcement.
 - `response_format={"type":"json_object"}` and
   `response_format={"type":"json_schema","json_schema":{"schema": ...}}` are
   accepted for completion and chat requests as post-generation result
@@ -1222,7 +1236,6 @@ Implement:
 
 - decode-time enforcement for `tool_choice="auto"` and stronger
   required/specific function-name and argument constraints;
-- decode-state repair close sequences for required/specific tool modes;
 - structured refusal/error when a required call cannot be produced under budget.
 
 Exit gates:
@@ -1231,8 +1244,9 @@ Exit gates:
   and specific function choice;
 - no-tool mode suppresses `<tool_call>` starts;
 - required/specific-tool modes force `<tool_call>` starts when tokenization is
-  available, including after tokenized thinking close, and still do not return
-  ordinary prose as success.
+  available, including after tokenized thinking close;
+- required/specific-tool modes repair partial `</tool_call>` close markers when
+  tokenization is available, and still do not return ordinary prose as success.
 
 #### P2.2 Tool JSON schema validation
 

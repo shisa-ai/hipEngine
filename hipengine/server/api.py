@@ -58,6 +58,7 @@ _LOGGER = logging.getLogger("uvicorn.error")
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
+_TOOL_CALL_END_MARKER = "</tool_call>"
 
 
 @dataclass(frozen=True)
@@ -582,6 +583,7 @@ def _replay_capability_snapshot(config: ServerConfig) -> dict[str, Any]:
                 "no_tool_start_suppression": False,
                 "required_tool_start_forcing": False,
                 "required_tool_start_forcing_scope": "none",
+                "tool_call_close_repair": False,
             },
             "reasoning_controls": {
                 "enabled": True,
@@ -1718,6 +1720,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest)
             else ()
         )
+        force_sequence_completion_token_sequences = (
+            _tool_call_close_repair_token_sequences(request, engine)
+            if isinstance(request, ChatCompletionRequest)
+            else ()
+        )
         initial_forced_tool_token_ids = () if thinking_budget else forced_tool_token_ids
         post_thinking_forced_tool_token_ids = forced_tool_token_ids if thinking_budget else ()
         suppress_token_ids = tuple(
@@ -1755,6 +1762,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             forced_token_reason="tool_choice_required" if initial_forced_tool_token_ids else None,
             post_thinking_forced_tokens_pending=post_thinking_forced_tool_token_ids,
             post_thinking_forced_token_reason="tool_choice_required" if post_thinking_forced_tool_token_ids else None,
+            force_sequence_completion_token_sequences=force_sequence_completion_token_sequences,
+            force_sequence_completion_reason="tool_call_close_repair" if force_sequence_completion_token_sequences else None,
             ignore_eos=bool(request.ignore_eos),
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
@@ -2278,6 +2287,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "no_tool_start_suppression": tokenizer_caps["tokenize"],
                     "required_tool_start_forcing": tokenizer_caps["tokenize"],
                     "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
+                    "tool_call_close_repair": tokenizer_caps["tokenize"],
                 },
                 "reasoning_controls": {
                     "enabled": True,
@@ -4778,6 +4788,24 @@ def _required_tool_sampling_forced_token_ids(
     except OpenAIHTTPError:
         return ()
     return tuple(int(token_id) for token_id in token_ids)
+
+
+def _tool_call_close_repair_token_sequences(
+    request: ChatCompletionRequest,
+    engine: Any,
+) -> tuple[tuple[int, ...], ...]:
+    if not request.tools:
+        return ()
+    mode, _name = _tool_choice_mode(request.tool_choice)
+    if mode not in {"required", "function"}:
+        return ()
+    try:
+        token_ids = _tokenize_text(engine, _TOOL_CALL_END_MARKER)
+    except OpenAIHTTPError:
+        return ()
+    if not token_ids:
+        return ()
+    return (tuple(int(token_id) for token_id in token_ids),)
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

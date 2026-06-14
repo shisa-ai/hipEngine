@@ -16,7 +16,12 @@ from typing import Any
 
 import numpy as np
 
-from hipengine.generation.constraints import ForcedTokenQueue, ThinkingBudgetState
+from hipengine.generation.constraints import (
+    ForcedTokenQueue,
+    ThinkingBudgetState,
+    TokenSequenceDFAState,
+    normalize_token_sequences,
+)
 
 _LOGIT_BIAS_EMPTY: tuple[tuple[int, float], ...] = ()
 _UINT64_MASK = (1 << 64) - 1
@@ -34,6 +39,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "stop_token_sequences",
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
+    "force_sequence_completion_token_sequences",
     "thinking_budget",
     "logprobs",
     "top_logprobs",
@@ -50,6 +56,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
     "post_thinking_forced_tokens_pending": "one or more post-thinking forced tokens pending",
+    "force_sequence_completion_token_sequences": "one or more token sequence completion repairs",
     "thinking_budget": "thinking budget soft-close, EOS suppression, or hard-close control",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
@@ -93,8 +100,11 @@ class RowSamplingState:
     forced_token_reason: str | None = None
     post_thinking_forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
     post_thinking_forced_token_reason: str | None = None
+    force_sequence_completion_token_sequences: Sequence[Sequence[int]] = ()
+    force_sequence_completion_reason: str | None = None
     thinking_budget: ThinkingBudgetState | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
+    _force_sequence_state: TokenSequenceDFAState = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.prompt_tokens = tuple(int(token) for token in self.prompt_tokens)
@@ -103,6 +113,17 @@ class RowSamplingState:
         self.request_id = int(self.request_id)
         self.row_index = int(self.row_index)
         self.step_index = int(self.step_index)
+        try:
+            self.force_sequence_completion_token_sequences = normalize_token_sequences(
+                self.force_sequence_completion_token_sequences
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "force_sequence_completion_token_sequences must contain non-negative token ids"
+            ) from exc
+        self.force_sequence_completion_reason = (
+            None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason)
+        )
         if isinstance(self.forced_tokens_pending, ForcedTokenQueue):
             forced = self.forced_tokens_pending
         else:
@@ -128,6 +149,13 @@ class RowSamplingState:
         self.post_thinking_forced_token_reason = post_thinking_forced.reason
         if self.step_index < 0:
             raise ValueError("step_index must be non-negative")
+        self._force_sequence_state = TokenSequenceDFAState.from_sequences(self.force_sequence_completion_token_sequences)
+        if self.generated_tokens:
+            self._force_sequence_state = self._force_sequence_state.observe_many(self.generated_tokens)
+            if self._force_sequence_state.matched:
+                self._force_sequence_state = TokenSequenceDFAState.from_sequences(
+                    self.force_sequence_completion_token_sequences
+                )
         self._rng = np.random.Generator(np.random.PCG64(self.seed))
         if self.step_index:
             # Keep reconstructed state deterministic when a caller restores a
@@ -150,6 +178,7 @@ class RowSamplingState:
         self.step_index += 1
         if self.thinking_budget is not None:
             self.thinking_budget.observe(token)
+        self._queue_force_sequence_completion_if_partial(token)
 
     @property
     def forced_tokens(self) -> tuple[int, ...]:
@@ -190,6 +219,29 @@ class RowSamplingState:
         self.forced_tokens_pending.extend(pending.pending_tokens, reason=pending.reason)
         self.post_thinking_forced_tokens_pending = ForcedTokenQueue()
         self.post_thinking_forced_token_reason = None
+
+    def _queue_force_sequence_completion_if_partial(self, token_id: int) -> None:
+        if not self.force_sequence_completion_token_sequences:
+            return
+        self._force_sequence_state = self._force_sequence_state.observe(int(token_id))
+        if self._force_sequence_state.matched:
+            self._force_sequence_state = TokenSequenceDFAState.from_sequences(
+                self.force_sequence_completion_token_sequences
+            )
+            return
+        suffix = self._force_sequence_state.suffix
+        if not suffix or self.forced_tokens_pending:
+            return
+        for sequence in self.force_sequence_completion_token_sequences:
+            if sequence[: len(suffix)] != suffix:
+                continue
+            remaining = sequence[len(suffix) :]
+            if remaining:
+                self.queue_forced_tokens(
+                    remaining,
+                    reason=self.force_sequence_completion_reason or "sequence_completion",
+                )
+            return
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,6 +375,9 @@ def validate_sampling_params(params: Any) -> None:
         if int(token_id) < 0:
             raise ValueError("stop_token_ids must be non-negative")
     normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None))
+    force_sequence_completion_token_sequences = _force_sequence_completion_token_sequences(params)
+    if any(token < 0 for sequence in force_sequence_completion_token_sequences for token in sequence):
+        raise ValueError("force_sequence_completion_token_sequences must contain non-negative token ids")
     normalize_logit_bias_pairs(getattr(params, "logit_bias", None))
     close_token_ids = _thinking_close_token_ids(params)
     if any(token_id < 0 for token_id in close_token_ids):
@@ -365,6 +420,8 @@ def active_processor_names(params: Any) -> tuple[str, ...]:
         names.append("forced_tokens_pending")
     if _post_thinking_forced_tokens_pending(params):
         names.append("post_thinking_forced_tokens_pending")
+    if _force_sequence_completion_token_sequences(params):
+        names.append("force_sequence_completion_token_sequences")
     return tuple(names)
 
 
@@ -413,6 +470,13 @@ def _post_thinking_forced_tokens_pending(params: Any) -> tuple[int, ...]:
     if queue is None:
         return ()
     return tuple(int(token) for token in queue)
+
+
+def _force_sequence_completion_token_sequences(params: Any) -> tuple[tuple[int, ...], ...]:
+    try:
+        return normalize_token_sequences(getattr(params, "force_sequence_completion_token_sequences", None))
+    except ValueError as exc:
+        raise ValueError("force_sequence_completion_token_sequences must contain non-negative token ids") from exc
 
 
 def _thinking_close_token_ids(params: Any) -> tuple[int, ...]:
@@ -476,6 +540,10 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     if int(getattr(params, "min_tokens", 0)) > 0:
         return False
     if _forced_tokens_pending(params):
+        return False
+    if _post_thinking_forced_tokens_pending(params):
+        return False
+    if _force_sequence_completion_token_sequences(params):
         return False
     if thinking_budget_active(params):
         return False
@@ -584,6 +652,8 @@ def select_token(
             forced_token_reason=getattr(params, "forced_token_reason", None),
             post_thinking_forced_tokens_pending=_post_thinking_forced_tokens_pending(params),
             post_thinking_forced_token_reason=getattr(params, "post_thinking_forced_token_reason", None),
+            force_sequence_completion_token_sequences=_force_sequence_completion_token_sequences(params),
+            force_sequence_completion_reason=getattr(params, "force_sequence_completion_reason", None),
         )
     )
     source = np.asarray(logits, dtype=np.float32)

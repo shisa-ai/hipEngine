@@ -1074,6 +1074,8 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         forced_token_reason=request.forced_token_reason,
         post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
         post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+        force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=request.force_sequence_completion_reason,
         thinking_close_token_ids=request.thinking_close_token_ids,
         thinking_hard_token_cap=request.thinking_hard_token_cap,
         thinking_soft_close_window=request.thinking_soft_close_window,
@@ -1103,6 +1105,8 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
             step_index=state.step_index,
             post_thinking_forced_tokens_pending=state.post_thinking_forced_tokens_pending.pending_tokens,
             post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
+            force_sequence_completion_token_sequences=state.force_sequence_completion_token_sequences,
+            force_sequence_completion_reason=state.force_sequence_completion_reason,
             thinking_budget=thinking_budget,
         )
     return RowSamplingState(
@@ -1116,6 +1120,8 @@ def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
         forced_token_reason=state.forced_token_reason,
         post_thinking_forced_tokens_pending=state.post_thinking_forced_tokens_pending.pending_tokens,
         post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
+        force_sequence_completion_token_sequences=state.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=state.force_sequence_completion_reason,
     )
 
 
@@ -1191,6 +1197,8 @@ def _row_sampling_state(
         forced_token_reason=request.forced_token_reason,
         post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
         post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+        force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
+        force_sequence_completion_reason=request.force_sequence_completion_reason,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 
