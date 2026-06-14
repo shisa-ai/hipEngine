@@ -577,16 +577,17 @@ Authenticated `GET /v1/hipengine/sessions/{session_id}/snapshot` exports a
 versioned `hipengine.chat_session_snapshot.v1` snapshot for that app-local
 transcript session. Unlike the metadata list, this response intentionally
 includes the visible transcript messages so a client can save it. The snapshot
-records served model id, backend, quant, storage, timestamps, and
-`resident_state_reuse=false`; it does not include resident KV, tokenizer state,
-or decode/sampling state. Authenticated
+records served model id, backend, quant, tokenizer compatibility metadata,
+storage, timestamps, and `resident_state_reuse=false`; it does not include
+resident KV, tokenizer state, or decode/sampling state. Authenticated
 `POST /v1/hipengine/sessions/{session_id}/snapshot` restores the snapshot into
 the same session id after validating schema, model id, backend, quant, storage,
-message shape, text content parts, message string metadata, nested assistant
-`tool_calls` objects, and valid JSON `function.arguments` strings. Incompatible
-or corrupted snapshots fail before creating the session. Restoring a new session
-is subject to the configured chat-session cap; when the cap is full, the server
-returns `engine_busy` without creating partial session state.
+tokenizer metadata when the model is loaded, message shape, text content parts,
+message string metadata, nested assistant `tool_calls` objects, and valid JSON
+`function.arguments` strings. Incompatible or corrupted snapshots fail before
+creating the session. Restoring a new session is subject to the configured
+chat-session cap; when the cap is full, the server returns `engine_busy` without
+creating partial session state.
 
 Validate the config against a running server with:
 

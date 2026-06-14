@@ -90025,3 +90025,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 232`.
 - `python3 -m pytest tests/test_agentic_harness_traces.py --collect-only -q` -> `tests/test_agentic_harness_traces.py: 31`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC session snapshot tokenizer metadata
+
+Added tokenizer compatibility metadata to app-local chat session snapshots and
+restore validation when the model is already loaded. Snapshots now record the
+current tokenizer implementation name plus tokenize/detokenize/count-token
+capability flags, and incompatible tokenizer metadata fails before creating or
+replacing a session. The session metadata capability advertises that snapshots
+include tokenizer metadata and validate it when possible. Updated `docs/API.md`
+and `docs/AGENTIC.md` to distinguish tokenizer metadata from resident KV,
+full tokenizer state, and decode/sampling state.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_chat_session_snapshot_export_restore_round_trips_visible_transcript tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_incompatible_tokenizer tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_incompatible_model -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all `233` collected tests passed.
+- `python3 -m pytest tests/test_server_api.py --collect-only -q` -> `tests/test_server_api.py: 233`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

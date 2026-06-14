@@ -1074,6 +1074,8 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_includes_transcript": True,
         "snapshot_resident_state_reuse": False,
+        "snapshot_includes_tokenizer_metadata": True,
+        "snapshot_tokenizer_validation": "when_model_loaded",
     }
 
 
@@ -1901,6 +1903,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "backend": config.backend,
                 "quant": config.quant,
             },
+            "tokenizer": _chat_session_snapshot_tokenizer_metadata(
+                getattr(app.state, "hipengine_llm", None)
+            ),
             "session": {
                 **chat_session_metadata(record),
                 "includes_transcript": True,
@@ -1933,6 +1938,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     code="invalid_request",
                     param=f"model.{key}",
                 )
+        _validate_chat_session_snapshot_tokenizer_metadata(
+            snapshot.get("tokenizer"),
+            current_engine=getattr(app.state, "hipengine_llm", None),
+        )
         session = snapshot.get("session")
         if not isinstance(session, Mapping):
             raise OpenAIHTTPError(
@@ -6066,6 +6075,44 @@ def _tokenizer_capability_flags(engine: Any | None) -> dict[str, bool]:
         "detokenize": callable(getattr(target, "detokenize", None)) or callable(getattr(tokenizer, "decode", None)),
         "count_tokens": callable(getattr(target, "count_tokens", None)),
     }
+
+
+def _chat_session_snapshot_tokenizer_metadata(engine: Any | None) -> dict[str, Any]:
+    flags = _tokenizer_capability_flags(engine)
+    target = getattr(engine, "_text_generator", None) or engine
+    return {
+        "name": None if target is None else type(target).__name__,
+        "tokenize": flags["tokenize"],
+        "detokenize": flags["detokenize"],
+        "count_tokens": flags["count_tokens"],
+    }
+
+
+def _validate_chat_session_snapshot_tokenizer_metadata(
+    value: Any,
+    *,
+    current_engine: Any | None,
+) -> None:
+    if value is None:
+        return
+    if not isinstance(value, Mapping):
+        raise OpenAIHTTPError(
+            400,
+            "session snapshot tokenizer must be an object",
+            code="invalid_request",
+            param="tokenizer",
+        )
+    if current_engine is None:
+        return
+    expected = _chat_session_snapshot_tokenizer_metadata(current_engine)
+    for key, expected_value in expected.items():
+        if value.get(key) != expected_value:
+            raise OpenAIHTTPError(
+                400,
+                f"session snapshot tokenizer.{key} is incompatible with this server",
+                code="invalid_request",
+                param=f"tokenizer.{key}",
+            )
 
 
 def _tokenize_text(engine: Any, text: str) -> tuple[int, ...]:

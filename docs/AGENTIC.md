@@ -1684,17 +1684,19 @@ Current code reality:
 - App-local transcript sessions support authenticated snapshot export and
   restore at `/v1/hipengine/sessions/{session_id}/snapshot`.
   Snapshots are versioned as `hipengine.chat_session_snapshot.v1`, include the
-  visible transcript messages, served model id, backend, quant, storage, and
-  timestamps, and explicitly report `resident_state_reuse=false`.
+  visible transcript messages, served model id, backend, quant, tokenizer
+  compatibility metadata, storage, and timestamps, and explicitly report
+  `resident_state_reuse=false`.
 - Restore validates snapshot schema, same session id, model id, backend, quant,
-  storage, resident-state flag, timestamps, message shape, text content parts,
-  message string metadata, and nested assistant `tool_calls` shape, including
-  valid JSON `function.arguments` strings, before creating or replacing the
-  app-local transcript session. Incompatible snapshots fail with stable
-  `invalid_request` errors and do not create a session.
+  storage, resident-state flag, tokenizer metadata when the model is loaded,
+  timestamps, message shape, text content parts, message string metadata, and
+  nested assistant `tool_calls` shape, including valid JSON
+  `function.arguments` strings, before creating or replacing the app-local
+  transcript session. Incompatible snapshots fail with stable `invalid_request`
+  errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and
   fails with `engine_busy` without creating partial session state when full.
-- Resident KV payload references, prefix token blobs, tokenizer state, and
+- Resident KV payload references, prefix token blobs, full tokenizer state, and
   decode/sampling state are not snapshotted yet; restored sessions re-render the
   transcript through the normal prompt path.
 

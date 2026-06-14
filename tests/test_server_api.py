@@ -357,6 +357,8 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_includes_transcript": True,
         "snapshot_resident_state_reuse": False,
+        "snapshot_includes_tokenizer_metadata": True,
+        "snapshot_tokenizer_validation": "when_model_loaded",
     }
 
 
@@ -1554,6 +1556,12 @@ def test_chat_session_snapshot_export_restore_round_trips_visible_transcript() -
     assert snapshot["object"] == "hipengine.session.snapshot"
     assert snapshot["schema"] == "hipengine.chat_session_snapshot.v1"
     assert snapshot["model"] == {"id": "fake-model", "backend": "test-backend", "quant": "test-quant"}
+    assert snapshot["tokenizer"] == {
+        "name": "SequentialFakeLLM",
+        "tokenize": True,
+        "detokenize": True,
+        "count_tokens": True,
+    }
     assert snapshot["resident_state_reuse"] is False
     assert snapshot["session"]["id"] == "sess_snap"
     assert snapshot["session"]["storage"] == "app_local_transcript"
@@ -1617,6 +1625,50 @@ def test_chat_session_snapshot_restore_rejects_incompatible_model() -> None:
     assert restored.json()["error"]["code"] == "invalid_request"
     assert restored.json()["error"]["param"] == "model.quant"
     assert "sess_bad" not in app.state.hipengine_chat_sessions
+
+
+def test_chat_session_snapshot_restore_rejects_incompatible_tokenizer() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "snapshot prompt"}],
+            "session": {"id": "sess_bad_tokenizer"},
+            "max_tokens": 4,
+        },
+    )
+    snapshot = client.get(
+        "/v1/hipengine/sessions/sess_bad_tokenizer/snapshot",
+        headers=headers,
+    ).json()
+    snapshot["tokenizer"]["name"] = "OtherTokenizer"
+    client.delete("/v1/hipengine/sessions/sess_bad_tokenizer", headers=headers)
+
+    restored = client.post(
+        "/v1/hipengine/sessions/sess_bad_tokenizer/snapshot",
+        headers=headers,
+        json=snapshot,
+    )
+
+    assert created.status_code == 200
+    assert restored.status_code == 400
+    assert restored.json()["error"]["code"] == "invalid_request"
+    assert restored.json()["error"]["param"] == "tokenizer.name"
+    assert "sess_bad_tokenizer" not in app.state.hipengine_chat_sessions
 
 
 def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None:
