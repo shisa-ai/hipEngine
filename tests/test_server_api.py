@@ -541,6 +541,12 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "max_active": 3,
             "rejects_new_sessions_when_full": True,
         },
+        "scheduler_fairness": {
+            "policy": "fifo_compatible_sampling_key",
+            "compatible_sampling_coalescing": True,
+            "continuous_decode": False,
+            "preemptive_fairness": False,
+        },
     }
     assert body["errors"]["schema"] == "hipengine.error_taxonomy.v1"
     errors_by_code = {item["code"]: item for item in body["errors"]["codes"]}
@@ -1036,6 +1042,12 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["queue"]["max_depth"] is None
     assert body["queue"]["active_requests"] == 0
     assert body["queue"]["max_active_requests"] is None
+    assert body["queue"]["scheduler_fairness"] == {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": True,
+        "continuous_decode": False,
+        "preemptive_fairness": False,
+    }
     assert body["sessions"] == {
         "resident_context": True,
         "active": 0,
@@ -5096,6 +5108,11 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(before.text, "hipengine_generation_worker_active") == 0
     assert _metric_value(before.text, "hipengine_generation_requests_active") == 0
     assert _metric_value(before.text, "hipengine_generation_requests_max_active") == 2
+    assert (
+        'hipengine_generation_scheduler_fairness_policy_info{policy="fifo_compatible_sampling_key",'
+        'compatible_sampling_coalescing="true",continuous_decode="false",preemptive_fairness="false"} 1'
+        in before.text
+    )
     assert _metric_value(before.text, "hipengine_chat_sessions_active") == 0
     assert _metric_value(before.text, "hipengine_chat_sessions_pending") == 0
     assert _metric_value(before.text, "hipengine_chat_sessions_max_active") == 4

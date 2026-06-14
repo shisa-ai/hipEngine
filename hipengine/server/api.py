@@ -84,6 +84,7 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
         "tool_required_not_satisfied",
     }
 )
+_GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
 
 
 @dataclass(frozen=True)
@@ -687,6 +688,16 @@ def _admission_capability(config: ServerConfig) -> dict[str, Any]:
             "max_active": config.max_chat_sessions,
             "rejects_new_sessions_when_full": config.max_chat_sessions is not None,
         },
+        "scheduler_fairness": _scheduler_fairness_capability(),
+    }
+
+
+def _scheduler_fairness_capability() -> dict[str, Any]:
+    return {
+        "policy": _GENERATION_SCHEDULER_FAIRNESS_POLICY,
+        "compatible_sampling_coalescing": True,
+        "continuous_decode": False,
+        "preemptive_fairness": False,
     }
 
 
@@ -2634,6 +2645,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "worker_active": generation_batcher.active(),
                 "active_requests": generation_batcher.active_requests(),
                 "max_active_requests": generation_batcher.max_active_requests(),
+                "scheduler_fairness": _scheduler_fairness_capability(),
                 "batch_window_ms": float(config.generation_batch_window_ms),
             },
             "sessions": chat_session_summary(),
@@ -3876,6 +3888,17 @@ def _render_prometheus_metrics(
         lines.append(f"# HELP {name} {help_text[name]}")
         lines.append(f"# TYPE {name} {'counter' if name in counter_names else 'gauge'}")
         lines.append(f"{name} {_format_metric_value(value)}")
+    scheduler = _scheduler_fairness_capability()
+    lines.append("# HELP hipengine_generation_scheduler_fairness_policy_info Generation scheduler fairness policy.")
+    lines.append("# TYPE hipengine_generation_scheduler_fairness_policy_info gauge")
+    lines.append(
+        "hipengine_generation_scheduler_fairness_policy_info{"
+        f'policy="{_escape_prometheus_label_value(str(scheduler["policy"]))}",'
+        f'compatible_sampling_coalescing="{str(bool(scheduler["compatible_sampling_coalescing"])).lower()}",'
+        f'continuous_decode="{str(bool(scheduler["continuous_decode"])).lower()}",'
+        f'preemptive_fairness="{str(bool(scheduler["preemptive_fairness"])).lower()}"'
+        "} 1"
+    )
     _append_labeled_counter_metrics(
         lines,
         "hipengine_graph_bucket_miss_reason_total",

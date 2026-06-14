@@ -1691,15 +1691,19 @@ Current state:
   `hipengine_request_rejected_total`, queue depth, configured queue cap,
   active/max backend request gauges, active/pending/max chat-session gauges, and
   worker-active gauges in addition to completed/failed/cancelled request
-  counters.
+  counters. Metrics also expose
+  `hipengine_generation_scheduler_fairness_policy_info` with the current
+  `fifo_compatible_sampling_key` policy.
 - Default behavior remains unlimited server queueing until a cap is configured.
   Default active backend request grouping remains uncapped until a cap is
   configured. Default chat-session behavior remains unlimited until a cap is
-  configured. Scheduler fairness remains future runtime work.
+  configured. Runtime fairness beyond FIFO-compatible batching remains future
+  scheduler work.
 
-Implement:
+Remaining implementation:
 
-- scheduler fairness policy visible in metrics.
+- continuous-decode scheduler fairness beyond the current FIFO-compatible
+  batcher policy.
 
 Exit gates:
 
@@ -1740,8 +1744,8 @@ Current code reality:
   tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
   sampler scope, speculative/MTP sampling compatibility,
   request-timeout/client-disconnect support, backend-authored choice telemetry,
-  queue/active-request/chat-session admission caps, cache/session settings,
-  loaded-model count, and
+  queue/active-request/chat-session admission caps, scheduler fairness policy,
+  cache/session settings, loaded-model count, and
   unsupported fields.
 - Continuations are advertised as supported with `stateful=false`,
   `resident_state_reuse=false`, `single_use=true`, a 15-minute TTL,

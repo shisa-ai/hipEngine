@@ -88790,3 +88790,20 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC scheduler fairness policy observability
+
+Exposed the current OpenAI server generation scheduler policy as
+`fifo_compatible_sampling_key` in `/ready`, `/v1/hipengine/capabilities`, replay
+capability snapshots, and Prometheus
+`hipengine_generation_scheduler_fairness_policy_info`. This records the current
+FIFO-compatible batching behavior explicitly while leaving continuous-decode
+fairness as future runtime work.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_health_and_ready_report_eager_startup_diagnostics tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check` -> clean.
