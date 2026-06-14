@@ -89252,3 +89252,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC snapshot tool-call argument JSON validation
+
+Extended app-local session snapshot restore validation so persisted assistant
+tool-call `function.arguments` strings must parse as JSON. Restore still
+preserves the original valid argument string, but corrupted saved transcripts
+with malformed argument JSON now fail before creating or replacing session
+state.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape -q` -> `9 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `43 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

@@ -6319,6 +6319,15 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
             code="invalid_request",
             param=f"{function_param}.arguments",
         )
+    try:
+        json.loads(arguments)
+    except Exception as exc:
+        raise OpenAIHTTPError(
+            400,
+            f"session snapshot {function_param}.arguments must be valid JSON",
+            code="invalid_request",
+            param=f"{function_param}.arguments",
+        ) from exc
     return {
         "id": call_id,
         "type": "function",

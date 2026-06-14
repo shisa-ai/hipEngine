@@ -1497,6 +1497,7 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
         ("function_extra_key", "messages[1].tool_calls[0].function.unexpected"),
         ("empty_name", "messages[1].tool_calls[0].function.name"),
         ("non_string_arguments", "messages[1].tool_calls[0].function.arguments"),
+        ("invalid_json_arguments", "messages[1].tool_calls[0].function.arguments"),
     ],
 )
 def test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape(
@@ -1557,6 +1558,8 @@ def test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape(
         tool_call["function"]["name"] = ""
     elif corruption == "non_string_arguments":
         tool_call["function"]["arguments"] = {"path": "README.md"}
+    elif corruption == "invalid_json_arguments":
+        tool_call["function"]["arguments"] = '{"path":'
     else:
         raise AssertionError(f"unhandled corruption case: {corruption}")
     client.delete("/v1/hipengine/sessions/sess_corrupt_tool", headers=headers)
