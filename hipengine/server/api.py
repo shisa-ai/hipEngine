@@ -270,6 +270,7 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
 
 _ERROR_CODE_ALIASES = {
     "context_length_exceeded": "context_overflow",
+    "invalid_request": "schema_violation",
     "model_not_found": "model_unavailable",
     "validation_error": "schema_violation",
 }

@@ -1906,7 +1906,9 @@ Current code reality:
   taxonomy code, HTTP status, retryability, and `legacy_code` when the public
   code still uses an older name.
 - Request-body validation errors populate OpenAI-style `error.param` with the
-  first FastAPI/Pydantic field path when available.
+  first FastAPI/Pydantic field path when available. FastAPI
+  `validation_error` payloads and server-side `invalid_request` payloads both
+  map to canonical `error.hipengine.code="schema_violation"`.
 - `/v1/hipengine/capabilities` advertises
   `errors.schema="hipengine.error_taxonomy.v1"`, canonical code metadata, and
   legacy aliases. Currently emitted canonical codes include

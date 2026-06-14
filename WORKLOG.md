@@ -88916,3 +88916,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC invalid-request taxonomy alias
+
+Mapped OpenAI-compatible `invalid_request` error payloads to canonical
+`error.hipengine.code="schema_violation"` while preserving the public legacy
+`error.code`. Capabilities now advertise `invalid_request` as a legacy alias
+next to FastAPI `validation_error`, so every currently emitted AGENTIC error
+extension is discoverable from the manifest.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options tests/test_server_api.py::test_token_diagnostics_reject_ambiguous_inputs tests/test_server_api.py::test_completions_response_format_rejects_unsupported_modes tests/test_server_api.py::test_chat_completion_rejects_hard_close_without_think_marker tests/test_server_api.py::test_chat_completion_rejects_invalid_thinking_budget_value -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -617,6 +617,14 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "legacy_code": "model_not_found",
         "code": "model_unavailable",
     } in body["errors"]["aliases"]
+    assert {
+        "legacy_code": "invalid_request",
+        "code": "schema_violation",
+    } in body["errors"]["aliases"]
+    assert {
+        "legacy_code": "validation_error",
+        "code": "schema_violation",
+    } in body["errors"]["aliases"]
     assert body["sampling"]["execution_modes"] == [
         "greedy_fast",
         "processed_argmax",
@@ -929,6 +937,12 @@ def test_token_diagnostics_reject_ambiguous_inputs() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_request"
+    assert response.json()["error"]["hipengine"] == {
+        "code": "schema_violation",
+        "status_code": 400,
+        "legacy_code": "invalid_request",
+        "retryable": False,
+    }
 
 
 def test_token_diagnostics_reject_session_for_raw_text() -> None:
@@ -2238,9 +2252,13 @@ def test_completions_response_format_rejects_unsupported_modes() -> None:
     assert missing_schema.status_code == 400
     assert missing_schema.json()["error"]["code"] == "invalid_request"
     assert missing_schema.json()["error"]["param"] == "response_format.json_schema.schema"
+    assert missing_schema.json()["error"]["hipengine"]["code"] == "schema_violation"
+    assert missing_schema.json()["error"]["hipengine"]["legacy_code"] == "invalid_request"
     assert echo.status_code == 400
     assert echo.json()["error"]["code"] == "invalid_request"
     assert echo.json()["error"]["param"] == "echo"
+    assert echo.json()["error"]["hipengine"]["code"] == "schema_violation"
+    assert echo.json()["error"]["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
 
 
@@ -5439,8 +5457,10 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
     assert schema_violation.json()["error"]["code"] == "invalid_request"
     assert schema_violation.json()["error"]["param"] == "prompt"
     assert schema_violation.json()["error"]["hipengine"] == {
-        "code": "invalid_request",
+        "code": "schema_violation",
         "status_code": 400,
+        "legacy_code": "invalid_request",
+        "retryable": False,
     }
 
     unsupported_chat_top_logprobs = client.post(
