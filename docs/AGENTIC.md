@@ -1625,7 +1625,8 @@ Current code reality:
 - `guided_choice` is implemented as prompt-hint plus exact post-generation
   result validation against a non-empty string-choice list. Streaming requests
   use buffered response paths so invalid choices are not emitted as successful
-  deltas;
+  deltas, and deterministic buffered continuation handles inherit the original
+  choice list across partial length stops;
 - decode-time close-brace/quote enforcement and schema-constrained generation
   remain future grammar work.
 

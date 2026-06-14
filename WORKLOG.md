@@ -91254,3 +91254,17 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC guided-choice continuation
+
+Added a server regression proving deterministic buffered `guided_choice` length
+stops mint continuation handles and inherit the original choice list on resume,
+matching the already-covered guided JSON/regex/patch continuation behavior.
+Updated AGENTIC P2.3 current reality to document guided-choice continuation
+inheritance.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_choice_and_inherits_validation tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_json_and_inherits_validation tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_regex_and_inherits_validation tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_patch_and_inherits_validation -q` -> `4 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

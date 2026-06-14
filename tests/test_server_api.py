@@ -6786,6 +6786,54 @@ def test_chat_continuation_resumes_partial_guided_regex_and_inherits_validation(
     assert second_choice["finish_details"] == _stateless_finish_details("stop")
 
 
+def test_chat_continuation_resumes_partial_guided_choice_and_inherits_validation() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="ye",
+                finish_details=FinishDetails(reason="length", length_limit=2),
+            ),
+            GenerationOutput(text="s", finish_details=FinishDetails(reason="stop")),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "answer yes or no"}],
+            "guided_choice": ["yes", "no"],
+            "max_tokens": 2,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert first_choice["message"] == {"role": "assistant", "content": "ye"}
+    assert first_choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=2,
+        phase="structured",
+        continuation_eligible=True,
+        continuation_id=continuation_id,
+    )
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 1},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["message"] == {"role": "assistant", "content": "yes"}
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["finish_details"] == _stateless_finish_details("stop")
+
+
 def test_chat_continuation_resume_rejects_explicit_response_format_override() -> None:
     fake = SequentialFakeLLM(
         [
