@@ -524,7 +524,7 @@ def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) ->
     assert out == ["C"]
     assert generator.last_generation_outputs[0].finish_details is not None
     assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
-        "reason": "length",
+        "reason": "thinking_budget_exhausted",
         "length_limit": 1,
         "forced_close": True,
         "reasoning_tokens": 1,

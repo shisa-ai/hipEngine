@@ -90142,3 +90142,23 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC thinking-budget exhaustion reason
+
+Implemented the bounded P1.4/P1.5 finish-detail contract for host-sampled
+thinking hard-close exhaustion. PARO/GGUF length exits where hard-close
+enforcement consumes the whole generation budget before any visible answer token
+now report `finish_details.reason="thinking_budget_exhausted"` while the
+OpenAI-compatible server still maps the coarse `finish_reason` to `length`.
+Documented the public API detail in `docs/API.md`. Continuation handles remain
+ineligible for active thinking-budget controls until sampler/decode state is
+preserved by handles.
+
+Validation:
+- RED: `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_server_api.py::test_chat_completion_thinking_budget_exhausted_maps_to_length_finish -q` failed on plain `length` details and chat `finish_reason='stop'`.
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_server_api.py::test_chat_completion_thinking_budget_exhausted_maps_to_length_finish -q` -> `3 passed`.
+- `python3 -m py_compile hipengine/generation/finish.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py -q` -> all `71` tests passed.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check hipengine/generation/finish.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/finish.py hipengine/server/api.py docs/API.md tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> clean.

@@ -4905,6 +4905,50 @@ def test_chat_completion_length_finish_details_include_phase(
         assert choice["message"]["reasoning_content"] == reasoning_content
 
 
+def test_chat_completion_thinking_budget_exhausted_maps_to_length_finish() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="<think>closed</think>",
+                finish_details=FinishDetails(
+                    reason="thinking_budget_exhausted",
+                    length_limit=1,
+                    forced_close=True,
+                    reasoning_tokens=1,
+                    budget_pressure="hard_close",
+                    phase="answer",
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think briefly"}],
+            "reasoning_effort": "low",
+            "max_tokens": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "length"
+    assert "continuation_id" not in choice
+    assert choice["finish_details"] == _stateless_finish_details(
+        "thinking_budget_exhausted",
+        length_limit=1,
+        forced_close=True,
+        reasoning_tokens=1,
+        budget_pressure="hard_close",
+        phase="answer",
+        continuation_eligible=False,
+    )
+
+
 def test_chat_completion_response_format_json_object_validates_visible_content() -> None:
     valid_client = TestClient(
         create_app(

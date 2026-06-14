@@ -13,6 +13,7 @@ _THINKING_PHASE_TO_FINISH_PHASE = {
     "answer": "answer",
     "done": "done",
 }
+_LENGTH_REASONS = {"length", "max_length", "max_tokens", "token_budget_exhausted", "budget_exhausted"}
 
 
 def finish_details_with_sampling_state(
@@ -30,11 +31,14 @@ def finish_details_with_sampling_state(
     reasoning_tokens = max(int(details.reasoning_tokens), int(getattr(budget, "reasoning_tokens", 0)))
     answer_tokens = max(int(details.answer_tokens), int(getattr(budget, "answer_tokens", 0)))
     budget_pressure = details.budget_pressure or ("hard_close" if forced_close else getattr(budget, "budget_pressure", None))
+    reason = details.reason
+    if str(reason).strip().lower() in _LENGTH_REASONS and forced_close and answer_tokens == 0:
+        reason = "thinking_budget_exhausted"
     phase = details.phase
     if phase is None and (forced_close or reasoning_tokens or answer_tokens):
         phase = _THINKING_PHASE_TO_FINISH_PHASE.get(str(getattr(budget, "phase", "")))
     return FinishDetails(
-        reason=details.reason,
+        reason=reason,
         eos_token_id=details.eos_token_id,
         stop_sequence=details.stop_sequence,
         length_limit=details.length_limit,

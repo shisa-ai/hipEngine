@@ -242,7 +242,10 @@ PARO/GGUF detailed generation reports backend finish details for EOS, token
 stops, stop sequences, length limits, sampler mode, and host-sampled thinking
 hard-close enforcement. When the close sequence was forced, details include
 `forced_close: true`, `budget_pressure: "hard_close"`, reasoning/answer token
-counts, and the current budget phase.
+counts, and the current budget phase. If hard-close enforcement consumes the
+whole generation budget before any visible answer token is emitted, the coarse
+OpenAI `finish_reason` remains `length` and `finish_details.reason` is
+`thinking_budget_exhausted`.
 
 When a backend does not yet provide structured finish metadata, the server emits
 the conservative fallback `{"reason": finish_reason}`.

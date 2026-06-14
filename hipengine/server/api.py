@@ -7427,7 +7427,14 @@ def _finish_reason_for_output(
     if finish is None:
         return str(fallback)
     reason = finish.reason.strip().lower()
-    if reason in {"length", "max_length", "max_tokens", "token_budget_exhausted", "budget_exhausted"}:
+    if reason in {
+        "length",
+        "max_length",
+        "max_tokens",
+        "token_budget_exhausted",
+        "budget_exhausted",
+        "thinking_budget_exhausted",
+    }:
         return "length"
     if reason in {"tool_call", "tool_calls"}:
         return "tool_calls"
@@ -7668,6 +7675,7 @@ def _is_length_finish_payload(payload: Mapping[str, Any]) -> bool:
         "max_tokens",
         "token_budget_exhausted",
         "budget_exhausted",
+        "thinking_budget_exhausted",
     }
 
 
