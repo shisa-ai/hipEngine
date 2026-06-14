@@ -1639,6 +1639,8 @@ Current code reality:
   storage, resident-state flag, timestamps, and message shape before creating or
   replacing the app-local transcript session. Incompatible snapshots fail with
   stable `invalid_request` errors and do not create a session.
+- Restoring a new snapshot session respects the configured chat-session cap and
+  fails with `engine_busy` without creating partial session state when full.
 - Resident KV payload references, prefix token blobs, tokenizer state, and
   decode/sampling state are not snapshotted yet; restored sessions re-render the
   transcript through the normal prompt path.

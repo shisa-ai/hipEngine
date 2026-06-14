@@ -514,7 +514,9 @@ or decode/sampling state. Authenticated
 `POST /v1/hipengine/sessions/{session_id}/snapshot` restores the snapshot into
 the same session id after validating schema, model id, backend, quant, storage,
 and message shape. Incompatible or corrupted snapshots fail before creating the
-session.
+session. Restoring a new session is subject to the configured chat-session cap;
+when the cap is full, the server returns `engine_busy` without creating partial
+session state.
 
 Validate the config against a running server with:
 

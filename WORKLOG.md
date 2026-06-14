@@ -89187,3 +89187,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-14 - AGENTIC session snapshot cap safety
+
+Added snapshot restore regressions for authenticated restore and chat-session
+cap handling. A valid snapshot restore into a new session now has explicit test
+coverage for the full-cap case: it returns canonical `engine_busy` with
+`Retry-After: 1` and leaves only the pre-existing session in app-local storage.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_snapshot_export_restore_round_trips_visible_transcript tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_new_session_when_cap_full -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

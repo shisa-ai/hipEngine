@@ -1335,6 +1335,7 @@ def test_chat_session_snapshot_export_restore_round_trips_visible_transcript() -
     headers = {"Authorization": "Bearer secret"}
 
     unauthorized = client.get("/v1/hipengine/sessions/sess_snap/snapshot")
+    unauthorized_restore = client.post("/v1/hipengine/sessions/sess_snap/snapshot", json={})
     created = client.post(
         "/v1/chat/completions",
         headers=headers,
@@ -1364,6 +1365,7 @@ def test_chat_session_snapshot_export_restore_round_trips_visible_transcript() -
     )
 
     assert unauthorized.status_code == 401
+    assert unauthorized_restore.status_code == 401
     assert created.status_code == 200
     assert exported.status_code == 200
     snapshot = exported.json()
@@ -1474,6 +1476,47 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
     assert restored.json()["error"]["code"] == "invalid_request"
     assert restored.json()["error"]["param"] == "messages[0].unexpected"
     assert "sess_corrupt" not in app.state.hipengine_chat_sessions
+
+
+def test_chat_session_snapshot_restore_rejects_new_session_when_cap_full() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            api_key="secret",
+            max_chat_sessions=1,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    created = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "snapshot prompt"}],
+            "session": {"id": "sess_one"},
+            "max_tokens": 4,
+        },
+    )
+    snapshot = client.get("/v1/hipengine/sessions/sess_one/snapshot", headers=headers).json()
+    snapshot["session"]["id"] = "sess_two"
+
+    restored = client.post(
+        "/v1/hipengine/sessions/sess_two/snapshot",
+        headers=headers,
+        json=snapshot,
+    )
+
+    assert created.status_code == 200
+    assert restored.status_code == 429
+    assert restored.headers["Retry-After"] == "1"
+    assert restored.json()["error"]["code"] == "engine_busy"
+    assert set(app.state.hipengine_chat_sessions) == {"sess_one"}
 
 
 def test_chat_session_cap_rejects_new_sessions_before_generation() -> None:
