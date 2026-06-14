@@ -1592,7 +1592,8 @@ Current code reality:
 - `length`, `cancelled`, `deadline_exceeded`, invalid/missing tool-call,
   schema-violation, and synthetic-token finishes downgrade
   `append_visible_only` to `append_prompt_only`; `finish_details.cache_action`
-  reports the effective action.
+  reports the effective action on normal responses and structured error
+  payloads.
 - Session requests do not mint continuation handles, and resume requests cannot
   combine `session.id` with `continuation_id`.
 - Authenticated `GET /v1/hipengine/sessions` lists metadata for app-local

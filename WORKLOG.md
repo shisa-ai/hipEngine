@@ -90399,3 +90399,21 @@ Validation:
 - Re-read the changed known-limitation paragraph in `docs/AGENTIC.md`.
 - `git diff --check -- docs/AGENTIC.md WORKLOG.md` -> clean.
 - `rg -n "not yet designed|tensor parallelism" docs/AGENTIC.md` -> no stale undesigned wording remains.
+
+## 2026-06-15 - AGENTIC session prompt-only error commits
+
+Fixed the chat session error path so backend-authored deadline and cancellation
+errors with `session.commit="append_visible_only"` downgrade to
+`append_prompt_only`, attach the effective cache action to
+`error.finish_details`, and retain only the incoming prompt messages for the
+next session turn. Added fake-backend tests for both error types and updated
+`docs/AGENTIC.md` P3.1 wording to cover structured error payloads.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_visible_only_downgrades_backend_errors_to_prompt_only -q` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_chat_session_visible_only_downgrades_backend_errors_to_prompt_only tests/test_server_api.py::test_streaming_chat_timeout_can_include_hipengine_error_metadata -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'chat_session_visible_only or backend_deadline or backend_cancelled or timeout or cancelled'` -> `21 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

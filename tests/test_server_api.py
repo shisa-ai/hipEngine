@@ -261,6 +261,28 @@ class BackendCancelledFakeLLM(FakeLLM):
         yield  # pragma: no cover - keeps this method a generator
 
 
+class BackendErrorThenSequentialFakeLLM(SequentialFakeLLM):
+    def __init__(self, error: str, outputs: list[str | GenerationOutput]) -> None:
+        super().__init__(outputs)
+        self.error = str(error)
+        self.raised = False
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        if not self.raised:
+            self.raised = True
+            prompts = tuple(prompts)
+            self.calls.append((prompts, sampling_params))
+            if self.error == "deadline":
+                assert sampling_params.deadline_at is not None
+                raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
+            if self.error == "cancelled":
+                assert sampling_params.cancellation_token is not None
+                sampling_params.cancellation_token.cancel()
+                raise GenerationCancelled(sampling_params.cancellation_token.finish_details)
+            raise AssertionError(f"unsupported fake backend error {self.error!r}")
+        return super().generate_detailed(prompts, sampling_params)
+
+
 def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
     bytes_per_token = 8192
     rounded_tokens = ((int(max_sequence_length) + 255) // 256) * 256
@@ -3470,6 +3492,69 @@ def test_chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_onl
     assert rejected_text not in prompt
     record = app.state.hipengine_chat_sessions[session_id]
     assert record.messages == ({"role": "user", "content": "try tool"},)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_finish_details", "request_extra"),
+    [
+        (
+            "deadline",
+            408,
+            {
+                "reason": "deadline_exceeded",
+                "deadline_exceeded": True,
+                "cache_action": "append_prompt_only",
+            },
+            {"timeout_ms": 5000},
+        ),
+        (
+            "cancelled",
+            499,
+            {"reason": "cancelled", "cancelled": True, "cache_action": "append_prompt_only"},
+            {},
+        ),
+    ],
+)
+def test_chat_session_visible_only_downgrades_backend_errors_to_prompt_only(
+    error: str,
+    expected_status: int,
+    expected_finish_details: dict[str, Any],
+    request_extra: dict[str, Any],
+) -> None:
+    fake = BackendErrorThenSequentialFakeLLM(error, ["done"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    session_id = f"sess_backend_error_{error}"
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "unsafe turn"}],
+            "max_tokens": 4,
+            "session": {"id": session_id, "commit": "append_visible_only"},
+            **request_extra,
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "follow up"}],
+            "max_tokens": 4,
+            "session": {"id": session_id, "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == expected_status
+    assert first.json()["error"]["finish_details"] == expected_finish_details
+    assert second.status_code == 200
+    prompt = fake.calls[1][0][0]
+    assert "unsafe turn" in prompt
+    assert "follow up" in prompt
+    assert "done" not in prompt
+    record = app.state.hipengine_chat_sessions[session_id]
+    assert record.messages == ({"role": "user", "content": "unsafe turn"},)
 
 
 def test_chat_session_visible_only_commits_tool_calls_without_reasoning() -> None:
@@ -6806,7 +6891,7 @@ def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
 
 
 def test_streaming_chat_timeout_can_include_hipengine_error_metadata() -> None:
-    fake = DelayedFakeLLM(outputs=["ok"], stream_chunks=["late"], stream_delay_s=0.03)
+    fake = DelayedFakeLLM(outputs=["ok"], stream_chunks=["late"], stream_delay_s=0.1)
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -6816,7 +6901,7 @@ def test_streaming_chat_timeout_can_include_hipengine_error_metadata() -> None:
             "model": "fake-model",
             "messages": [{"role": "user", "content": "hello"}],
             "stream": True,
-            "timeout_ms": 1,
+            "timeout_ms": 50,
             "stream_options": {"include_hipengine": True},
         },
     )

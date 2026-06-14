@@ -2227,6 +2227,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 updated=now,
             )
 
+    async def commit_chat_session_error(
+        request: ChatCompletionRequest,
+        *,
+        request_messages: Sequence[ChatMessage | Mapping[str, Any]],
+        exc: OpenAIHTTPError,
+    ) -> None:
+        if not isinstance(exc.finish_details, Mapping):
+            return
+        requested_cache_action = _session_cache_action(request)
+        effective_cache_action = _effective_session_cache_action(
+            requested_cache_action,
+            exc.finish_details,
+        )
+        if effective_cache_action != "append_prompt_only":
+            return
+        exc.finish_details = {**dict(exc.finish_details), "cache_action": effective_cache_action}
+        await commit_chat_session(
+            request,
+            request_messages=request_messages,
+            raw_output="",
+            visible_message={"role": "assistant", "content": ""},
+            cache_action=effective_cache_action,
+        )
+
     async def diagnostic_render_for_request(
         request: TokenDiagnosticRequest,
         engine: Any,
@@ -3936,7 +3960,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 )
             n = _request_n(request)
             prompts = tuple(prompt for _ in range(n))
-            batch = await generate_with_request_control(prompts, request, control)
+            try:
+                batch = await generate_with_request_control(prompts, request, control)
+            except OpenAIHTTPError as exc:
+                await commit_chat_session_error(
+                    request,
+                    request_messages=request.messages,
+                    exc=exc,
+                )
+                raise
             response_id = f"chatcmpl-{uuid.uuid4().hex}"
             created = int(time.time())
             choices = []
