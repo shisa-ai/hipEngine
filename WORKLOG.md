@@ -91111,3 +91111,14 @@ instead of a hand-maintained example list.
 
 Validation:
 - `python3 -m pytest tests/test_server_api.py::test_capabilities_advertised_unsupported_fields_are_rejected_before_generation -q` -> `1 passed`.
+
+## 2026-06-15 - AGENTIC PARO c>N stop-token regression
+
+Added a PARO scheduler-owned c>N processed sampling regression for AGENTIC P1.3
+stop-DFA parity. The fixture uses packed prefill for two rows, stops one row
+immediately on a stop token id, lets the other continue through serial decode
+until a multi-token stop sequence matches, and asserts final `FinishDetails`,
+processor/blocker telemetry, and compact stop-suffix decode state.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_processed_batch_honors_stop_tokens_per_row -q` -> `1 passed`.

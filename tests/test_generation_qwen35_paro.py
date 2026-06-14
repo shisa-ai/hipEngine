@@ -1308,6 +1308,105 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
     ]
 
 
+def test_qwen35_paro_processed_batch_honors_stop_tokens_per_row(monkeypatch) -> None:
+    calls = []
+    token_rows = {"alpha": [10, 11], "beta": [20]}
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: None,
+            decode=lambda ids: {100: "A", 101: "B", 200: "C"}.get(int(ids[0]), "?"),
+        )
+        block_size = 256
+        vocab_size = 512
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length, kwargs.get("max_batch_size")))
+            self.max_sequence_length = max_sequence_length
+            self.max_batch_size = kwargs.get("max_batch_size", 1)
+
+        def configure_host_sampler_rows(self, params, states_by_slot):
+            calls.append(
+                (
+                    "configure_host_sampler_rows",
+                    None if params is None else params.temperature,
+                    None
+                    if states_by_slot is None
+                    else {slot: tuple(state.generated_tokens) for slot, state in states_by_slot.items()},
+                )
+            )
+
+        def prefill_native_packed(self, slab, *, sample: bool = True):
+            calls.append(("prefill_native_packed", slab.request_ids, slab.physical_slot_ids, sample))
+            return tuple(
+                _result(100, "A") if request_id == 0 else _result(101, "B")
+                for request_id in slab.request_ids
+            )
+
+        def step_batch_serial(self, token_ids, *, positions, slots, sample: bool = True):
+            calls.append(("step_batch_serial", tuple(token_ids), tuple(positions), tuple(slots), sample))
+            assert tuple(token_ids) == (100,)
+            assert tuple(slots) == (0,)
+            return (_result(200, "C"),)
+
+        def batch_execution_metadata(self, *, scheduler_owned: bool = False, native_decode: bool = False):
+            calls.append(("batch_execution_metadata", scheduler_owned, native_decode))
+            return SimpleNamespace(native_compact_prefill=True)
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    out = generator.generate(
+        _request(
+            prompts=("alpha", "beta"),
+            max_tokens=3,
+            stop_token_ids=(101,),
+            stop_token_sequences=((100, 200),),
+        )
+    )
+
+    assert out == ["AC", "B"]
+    assert calls == [
+        ("init", runner, 4096, 2),
+        ("configure_host_sampler_rows", 0.0, {0: (), 1: ()}),
+        ("prefill_native_packed", (0, 1), (0, 1), True),
+        ("configure_host_sampler_rows", 0.0, {0: (100,)}),
+        ("step_batch_serial", (100,), (2,), (0,), True),
+        ("configure_host_sampler_rows", None, None),
+        ("batch_execution_metadata", True, False),
+    ]
+    outputs = generator.last_generation_outputs
+    assert [output.finish_details.to_json_dict() for output in outputs] == [
+        {"reason": "stop", "stop_sequence": [100, 200], "sampler_mode": "processed_argmax"},
+        {"reason": "stop", "stop_sequence": [101], "sampler_mode": "processed_argmax"},
+    ]
+    assert [_decode_state(output)["sampler_mode"] for output in outputs] == [
+        "processed_argmax",
+        "processed_argmax",
+    ]
+    assert [_decode_state(output)["active_processors"] for output in outputs] == [
+        ["stop_token_ids", "stop_token_sequences"],
+        ["stop_token_ids", "stop_token_sequences"],
+    ]
+    assert [_decode_state(output)["sampler_fast_path_blockers"] for output in outputs] == [
+        ["stop_token_ids", "stop_token_sequences"],
+        ["stop_token_ids", "stop_token_sequences"],
+    ]
+    assert _decode_state(outputs[0])["stop_suffix_state"] == {"matched_sequence": [100, 200]}
+    assert "stop_suffix_state" not in _decode_state(outputs[1])
+
+
 @pytest.mark.parametrize(
     ("native_requested", "expected_fallback"),
     [

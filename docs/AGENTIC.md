@@ -1244,6 +1244,11 @@ Current code reality:
   suffix reporting.
 - PARO/GGUF stop checks and final decode telemetry now use this shared helper
   for multi-token stop match state.
+- PARO scheduler-owned c>N processed rows are covered by a regression that
+  proves per-row stop handling across packed prefill and decode: one row can
+  stop immediately on a stop token id while another continues until an
+  overlapping multi-token stop sequence completes, with stop details preserved
+  in final `FinishDetails` and decode telemetry.
 - Native c>N/GPU sampler parity and grammar reuse remain future work; host row
   state already reuses this DFA for forced delimiter suffix repair.
 
