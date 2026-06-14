@@ -89593,3 +89593,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - AGENTIC continuation stop-control blockers
+
+Made OpenAI `stop` controls an explicit continuation-handle blocker. Current
+handles do not store stop-string/token suffix state, so stop-controlled length
+finishes no longer mint continuation ids, and resume requests that send `stop`
+fail before generation without consuming the existing handle. The capabilities
+manifest and AGENTIC/API docs now advertise the same fail-closed contract.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completion_length_finish_with_stop_is_continuation_ineligible tests/test_server_api.py::test_completion_continuation_resume_rejects_explicit_stop_without_consuming_handle -q` -> `3 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `48 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

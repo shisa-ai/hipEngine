@@ -240,8 +240,9 @@ text instead of reusing resident KV state, and the capabilities manifest reports
 
 Unsupported resume combinations fail before generation: `stream=true`,
 `n != 1`, logprobs, completion `echo=true`, non-deterministic sampling/logit
-processors, chat tools, `parallel_tool_calls`, explicit `response_format`
-overrides, and thinking-budget controls such as `reasoning_effort`,
+processors, OpenAI `stop` controls, chat tools, `parallel_tool_calls`,
+explicit `response_format` overrides, and thinking-budget controls such as
+`reasoning_effort`,
 `chat_template_kwargs`, nested `thinking`, and nested `reasoning`. The
 capabilities manifest exposes the same contract under
 `sessions.continuations.ineligible_when` and

@@ -87,6 +87,7 @@ _CONTINUATION_INELIGIBLE_WHEN = (
     "completion_echo",
     "non_deterministic_sampling",
     "logit_processors",
+    "stop",
     "chat_tools",
     "thinking_budget_controls",
     "session_id",
@@ -100,6 +101,7 @@ _CONTINUATION_UNSUPPORTED_RESUME_FIELDS = (
     "logit_bias",
     "suppress_token_ids",
     "min_tokens",
+    "stop",
     "repetition_penalty",
     "presence_penalty",
     "frequency_penalty",
@@ -6080,6 +6082,8 @@ def _continuation_resume_unsupported_param(request: CompletionRequest | ChatComp
         return "suppress_token_ids"
     if int(request.min_tokens or 0) != 0:
         return "min_tokens"
+    if request.stop is not None:
+        return "stop"
     if float(request.repetition_penalty or 1.0) != 1.0:
         return "repetition_penalty"
     if float(request.presence_penalty or 0.0) != 0.0:
@@ -6157,6 +6161,8 @@ def _continuation_sampling_is_deterministic(request: CompletionRequest | ChatCom
     if request.suppress_token_ids:
         return False
     if int(request.min_tokens or 0) != 0:
+        return False
+    if request.stop is not None:
         return False
     if float(request.repetition_penalty or 1.0) != 1.0:
         return False
