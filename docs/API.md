@@ -465,11 +465,13 @@ validate the completed visible output after generation. Valid JSON is returned
 normally; invalid stop-finished outputs return a normal response with empty
 successful content and `finish_details.reason: "schema_violation"`. Length
 finishes keep their visible partial text. Structurally repairable partial
-JSON-object prefixes can produce deterministic continuation handles; prefixes
-that are already structurally invalid, such as mismatched close delimiters,
-report `finish_details.reason: "schema_violation"` and
+root-object JSON prefixes can produce deterministic continuation handles;
+prefixes that are already structurally invalid, such as mismatched close
+delimiters, report `finish_details.reason: "schema_violation"` and
 `continuation_eligible: false` while keeping coarse `finish_reason: "length"`.
-The capabilities manifest reports this normal-response failure reason under
+This applies to JSON-object mode and JSON Schema/guided-JSON schema requests
+when the partial output has begun with `{`. The capabilities manifest reports
+this normal-response failure reason under
 `features.structured_outputs.result_validation_failure_reasons`.
 
 JSON-schema result validation uses the same supported subset as strict tool

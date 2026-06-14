@@ -507,7 +507,8 @@ Current code reality:
   cases.
 - JSON/tool/patch constraints are still result-validation-only in the public
   server path. The JSON object state is wired into length-finished
-  JSON-object continuation eligibility so structurally invalid prefixes report
+  root-object JSON continuation eligibility for JSON-object and JSON Schema
+  result-validation requests, so structurally invalid prefixes report
   `schema_violation` and remain non-continuable, but it is not yet wired into
   token masks, decode-time close forcing, or sampler/MTP compatibility
   decisions.
@@ -1421,9 +1422,10 @@ Current code reality:
 - deterministic buffered answer/structured length stops return single-use
   15-minute continuation handles; ineligible length stops explicitly report
   `continuation_eligible=false`;
-- length-finished JSON-object outputs use the shared
+- length-finished root-object JSON outputs use the shared
   `JsonObjectConstraintState` to reject structurally invalid partial prefixes
-  from continuation: the partial text is preserved with coarse
+  from continuation for JSON-object mode and JSON Schema/guided-JSON schema
+  requests that have begun with `{`: the partial text is preserved with coarse
   `finish_reason="length"`, but `finish_details.reason="schema_violation"` and
   `continuation_eligible=false`;
 - no synthetic text is appended; decode-loop phase accounting remains
@@ -1553,9 +1555,9 @@ Current state:
   validation. Valid visible JSON is returned normally; invalid stop-finished
   outputs return `finish_details.reason="schema_violation"`, advertised under
   `features.structured_outputs.result_validation_failure_reasons`. Length
-  finishes preserve visible partial text; structurally repairable JSON-object
-  prefixes may create deterministic continuation handles, while structurally
-  invalid prefixes report `schema_violation` and
+  finishes preserve visible partial text; structurally repairable root-object
+  JSON prefixes may create deterministic continuation handles, while
+  structurally invalid root-object prefixes report `schema_violation` and
   `continuation_eligible=false`.
 - `guided_json` is accepted for completion and chat requests as a
   post-generation validation-only JSON guidance field. `true` uses JSON-object
@@ -1563,9 +1565,9 @@ Current state:
   containing schema objects use the same fail-closed JSON Schema subset as
   `response_format` and strict tool schemas. Invalid stop-finished outputs are
   suppressed with `finish_details.reason="schema_violation"`. Length-finished
-  structurally repairable JSON-object prefixes keep their text and may use
-  deterministic buffered continuation handles; structurally invalid prefixes
-  keep their text but report `schema_violation` and
+  structurally repairable root-object JSON prefixes keep their text and may use
+  deterministic buffered continuation handles; structurally invalid root-object
+  prefixes keep their text but report `schema_violation` and
   `continuation_eligible=false`.
 - `guided_regex` is accepted for completion and chat requests as
   post-generation result validation. It accepts a non-empty Python regular

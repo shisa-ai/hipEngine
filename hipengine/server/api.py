@@ -8702,12 +8702,24 @@ def _structured_length_failure_reason(
 ) -> str | None:
     if str(finish_reason).strip().lower() != "length":
         return None
-    if _response_format_mode(request) != "json_object" and _guided_json_mode_from_value(
-        getattr(request, "guided_json", None), validate=False
-    ) != "json_object":
+    if not _structured_json_object_prefix_validation(request, text):
         return None
     state = JsonObjectConstraintState().observe_text(text)
     return "schema_violation" if state.invalid else None
+
+
+def _structured_json_object_prefix_validation(
+    request: CompletionRequest | ChatCompletionRequest,
+    text: str,
+) -> bool:
+    response_mode = _response_format_mode(request)
+    guided_mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
+    if response_mode == "json_object" or guided_mode == "json_object":
+        return True
+    if response_mode != "json_schema" and guided_mode != "json_schema":
+        return False
+    stripped = str(text).lstrip()
+    return stripped.startswith("{")
 
 
 def _guided_json_failure_reason(

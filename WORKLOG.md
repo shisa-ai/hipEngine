@@ -91427,3 +91427,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py hipengine/generation/__init__.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py hipengine/generation/__init__.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py hipengine/generation/__init__.py tests/test_server_api.py` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema length-finish guard
+
+Extended the `JsonObjectConstraintState` length-finish guard from JSON-object
+mode to JSON Schema / guided-JSON schema requests whose partial output has
+already begun a root object. Structurally repairable object prefixes keep the
+existing continuation behavior, while mismatched root-object prefixes now keep
+their coarse length finish and visible partial text but report
+`schema_violation` with `continuation_eligible=false`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completions_response_format_json_schema_length_rejects_invalid_json_continuation tests/test_server_api.py::test_completions_guided_json_schema_length_rejects_invalid_json_continuation tests/test_server_api.py::test_chat_completion_response_format_json_schema_length_rejects_invalid_json_continuation tests/test_server_api.py::test_chat_guided_json_schema_length_rejects_invalid_json_continuation tests/test_server_api.py::test_chat_continuation_resumes_partial_guided_json_and_inherits_validation -q` -> `5 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
