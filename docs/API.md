@@ -316,10 +316,13 @@ Budget fields are prompt hints plus host-sampler hard-close policy today. The
 server validates that any `hard_close_sequence` contains the parser-recognized
 `</think>` marker. When the served engine exposes tokenization and an effective
 `hard_think_cap` is present, chat generation lowers `hard_close_sequence` or the
-default `</think>` marker into token ids and forces that close sequence at the
-hard cap on host-sampled PARO/GGUF paths. If tokenization is unavailable,
-generation remains prompt-hint-only rather than failing. Soft logit-bias ramps,
-EOS suppression tied to reasoning phase, native GPU sampler parity, and
+default `</think>` marker into token ids, applies a host-sampler sparse
+soft-close bias ramp to the first close token inside the soft window, and forces
+the full close sequence at the hard cap on host-sampled PARO/GGUF paths. If a
+soft-biased first close token is selected, the remaining close suffix is forced
+through normal token selection so KV state remains consistent. If tokenization
+is unavailable, generation remains prompt-hint-only rather than failing. EOS
+suppression tied to reasoning phase, native GPU sampler parity, and
 speculative/MTP parity are not implemented yet. Generic sampler `min_tokens` /
 `eos_token_id` can suppress EOS for ordinary generation, but it is not wired to
 thinking-budget phase policy yet. Chat `count_tokens` and `fit_context`
@@ -327,8 +330,8 @@ diagnostics also lower the configured close sequence into token ids and return
 an initial thinking-budget state for harness/debug verification when
 tokenization is available. The capabilities manifest exposes enforcement under
 `features.reasoning_controls.token_budget_enforced`,
-`hard_close_token_forcing`, `diagnostic_close_token_lowering`, and
-`diagnostic_initial_state`.
+`hard_close_token_forcing`, `soft_close_bias`,
+`diagnostic_close_token_lowering`, and `diagnostic_initial_state`.
 
 For pi, prefer `compat.thinkingFormat: "qwen"` with `reasoning: true` if you want
 pi's thinking toggle to send `enable_thinking`; keep `supportsReasoningEffort`

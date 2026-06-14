@@ -81,10 +81,29 @@ def test_thinking_budget_state_reports_soft_and_hard_pressure() -> None:
     state.observe(3)
     assert state.soft_close_active is True
     assert state.budget_pressure == "soft_close"
+    assert state.soft_close_progress == 0.5
+    assert state.soft_close_bias == 4.0
 
-    state.observe(4).observe(5)
+    state.observe(4)
+    assert state.soft_close_progress == 1.0
+    assert state.soft_close_bias == 8.0
+
+    state.observe(5)
     assert state.hard_close_due is True
     assert state.budget_pressure == "hard_close"
+    assert state.soft_close_bias is None
+
+
+def test_thinking_budget_state_queues_close_suffix_after_soft_close_start() -> None:
+    state = ThinkingBudgetState(close_sequence=(10, 11, 12), hard_token_cap=5, soft_close_window=2)
+
+    state.observe(1).observe(2).observe(3)
+    assert state.soft_close_active is True
+    state.observe(10)
+
+    assert state.phase == "closing_think"
+    assert state.forced_tokens.pending_tokens == (11, 12)
+    assert state.forced_tokens.to_json_dict()["reason"] == "thinking_soft_close"
 
 
 def test_thinking_budget_state_enqueues_hard_close_once() -> None:

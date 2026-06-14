@@ -12,6 +12,7 @@ _PHASE_CLOSING_THINK = "closing_think"
 _PHASE_ANSWER = "answer"
 _PHASE_DONE = "done"
 _THINKING_PHASES = {_PHASE_THINK, _PHASE_CLOSING_THINK, _PHASE_ANSWER, _PHASE_DONE}
+_SOFT_CLOSE_MAX_LOGIT_BIAS = 8.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +191,25 @@ class ThinkingBudgetState:
         return int(self.reasoning_tokens) >= threshold
 
     @property
+    def soft_close_progress(self) -> float | None:
+        """Return soft-close window progress in ``(0, 1]`` when active."""
+
+        if not self.soft_close_active or self.hard_close_due:
+            return None
+        threshold = max(0, int(self.hard_token_cap or 0) - int(self.soft_close_window))
+        consumed = max(1, int(self.reasoning_tokens) - threshold + 1)
+        return min(1.0, float(consumed) / float(max(1, int(self.soft_close_window))))
+
+    @property
+    def soft_close_bias(self) -> float | None:
+        """Positive sparse logit bias for the first close token during soft close."""
+
+        progress = self.soft_close_progress
+        if progress is None:
+            return None
+        return float(_SOFT_CLOSE_MAX_LOGIT_BIAS * progress)
+
+    @property
     def budget_pressure(self) -> str | None:
         if self.hard_close_due:
             return "hard_close"
@@ -222,6 +242,11 @@ class ThinkingBudgetState:
             self.close_state = self.close_state.observe(token)
             if self.close_state.matched:
                 self.phase = _PHASE_ANSWER
+            elif self.phase == _PHASE_THINK and self.soft_close_active and self.close_state.suffix:
+                remaining = self.close_sequence[len(self.close_state.suffix) :]
+                if remaining:
+                    self.forced_tokens.extend(remaining, reason="thinking_soft_close")
+                    self.phase = _PHASE_CLOSING_THINK
         elif self.phase == _PHASE_ANSWER:
             self.answer_tokens += 1
         return self
@@ -239,6 +264,8 @@ class ThinkingBudgetState:
             payload["soft_close_window"] = int(self.soft_close_window)
         if self.budget_pressure is not None:
             payload["budget_pressure"] = self.budget_pressure
+        if self.soft_close_bias is not None:
+            payload["soft_close_bias"] = self.soft_close_bias
         if self.close_sequence:
             payload["close_sequence"] = list(self.close_sequence)
         close_state = self.close_state.to_json_dict()

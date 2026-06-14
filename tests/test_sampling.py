@@ -328,6 +328,36 @@ def test_thinking_budget_hard_close_queues_forced_tokens_before_selection() -> N
     assert state.thinking_budget.reasoning_tokens == 3
 
 
+def test_thinking_budget_soft_close_bias_changes_argmax_and_forces_suffix() -> None:
+    state = RowSamplingState(
+        thinking_budget=ThinkingBudgetState(
+            close_sequence=(2, 1),
+            hard_token_cap=5,
+            soft_close_window=2,
+        ),
+    )
+    state.observe(7)
+    state.observe(8)
+    state.observe(9)
+
+    first_close = select_token(np.array([2.0, 1.0, -1.0], dtype=np.float32), _params(), state)
+    second_close = select_token(np.array([2.0, 0.0, -1.0], dtype=np.float32), _params(), state)
+
+    assert first_close.token_id == 2
+    assert first_close.logit == 3.0
+    assert first_close.forced is False
+    assert first_close.mode is SamplingMode.PROCESSED_ARGMAX
+    assert first_close.active_processors == ("thinking_budget",)
+    assert first_close.fast_path_blockers == ("thinking_budget",)
+    assert second_close.token_id == 1
+    assert second_close.forced is True
+    assert second_close.forced_reason == "thinking_soft_close"
+    assert state.generated_tokens == [7, 8, 9, 2, 1]
+    assert state.forced_tokens == ()
+    assert state.thinking_budget is not None
+    assert state.thinking_budget.phase == "answer"
+
+
 def test_thinking_budget_hard_close_overrides_logit_bias_and_sampling() -> None:
     state = RowSamplingState(
         seed=123,

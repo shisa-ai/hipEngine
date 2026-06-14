@@ -48,7 +48,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
-    "thinking_budget": "hard thinking budget with a forced close sequence",
+    "thinking_budget": "thinking budget soft-close or hard-close control",
     "logprobs": "logprobs requested",
     "top_logprobs": "top_logprobs > 0",
 }
@@ -548,12 +548,16 @@ def select_token(
     _apply_history_penalties(processed, params, row_state)
     _apply_suppression_processors(processed, params, row_state)
 
+    row_state.prepare_for_selection()
+    soft_close_biased = _apply_thinking_budget_soft_close_bias(processed, row_state)
     active_processors = active_processor_names(params)
     fast_path_blockers = sampler_fast_path_blockers(params)
+    if soft_close_biased:
+        active_processors = _append_unique(active_processors, "thinking_budget")
+        fast_path_blockers = _append_unique(fast_path_blockers, "thinking_budget")
     requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
-    row_state.prepare_for_selection()
     forced_token_id = row_state.peek_forced_token()
     if forced_token_id is not None:
         token_id = int(forced_token_id)
@@ -679,6 +683,20 @@ def _apply_suppression_processors(logits: np.ndarray, params: Any, state: RowSam
         if token_id >= vocab:
             raise ValueError(f"eos_token_id {token_id} is outside vocab size {vocab}")
         logits[token_id] = -np.inf
+
+
+def _apply_thinking_budget_soft_close_bias(logits: np.ndarray, state: RowSamplingState) -> bool:
+    budget = state.thinking_budget
+    if budget is None or budget.soft_close_bias is None or budget.forced_tokens:
+        return False
+    if not budget.close_sequence:
+        return False
+    token_id = int(budget.close_sequence[0])
+    if token_id < 0 or token_id >= int(logits.size):
+        raise ValueError(f"thinking close token id {token_id} is outside vocab size {logits.size}")
+    if np.isfinite(logits[token_id]):
+        logits[token_id] += float(budget.soft_close_bias)
+    return True
 
 
 def _argmax_lower_id(values: np.ndarray) -> int:

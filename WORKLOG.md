@@ -88328,3 +88328,25 @@ Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py::test_resident_scheduler_unified_reclaim_finish_reasons tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_eos_reclaims_finished_rows_only tests/test_generation_batch_scheduler.py::test_resident_scheduler_control_exits_reclaim_active_rows_and_kv tests/test_generation_batch_scheduler.py::test_resident_engine_loop_submit_poll_cancel_and_reclaim -q` -> `4 passed`.
 - `git diff --check` -> clean.
 - `python3 -m ruff check tests/test_generation_batch_scheduler.py` still reports pre-existing F811/F841 issues at lines 1377 and 11813 outside this change.
+
+## 2026-06-14 - AGENTIC thinking soft-close bias
+
+Implemented the host-sampler soft-close half of tokenized thinking budgets.
+`ThinkingBudgetState` now reports ramp progress and sparse close-token bias
+inside the soft window, and queues the remaining close suffix when a soft-biased
+close token is accepted. `select_token()` applies that bias before argmax or
+sampling while preserving hard-cap forced-close override semantics. The
+capabilities manifest now reports
+`budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"` and
+tokenizer-dependent `soft_close_bias=true` for loaded/tokenizable engines.
+`docs/AGENTIC.md` and `docs/API.md` were updated to remove the stale
+soft-close-future wording.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/server/api.py tests/test_generation_constraints.py tests/test_sampling.py tests/test_server_api.py tests/test_local_agent_config.py`.
+- `python3 -m pytest tests/test_generation_constraints.py::test_thinking_budget_state_reports_soft_and_hard_pressure tests/test_generation_constraints.py::test_thinking_budget_state_queues_close_suffix_after_soft_close_start tests/test_sampling.py::test_thinking_budget_soft_close_bias_changes_argmax_and_forces_suffix tests/test_sampling.py::test_thinking_budget_hard_close_queues_forced_tokens_before_selection tests/test_sampling.py::test_thinking_budget_hard_close_overrides_logit_bias_and_sampling -q` -> `5 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_generation_constraints.py -q` -> `42 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_local_agent_config.py -q` -> `10 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py::test_qwen35_paro_row_sampling_state_binds_thinking_budget tests/test_generation_qwen35_paro.py::test_qwen35_paro_finish_details_report_forced_thinking_close tests/test_generation_qwen35_gguf_sampling.py::test_gguf_finish_details_report_forced_thinking_close -q` -> `3 passed`.
+- `python3 -m ruff check hipengine/generation/constraints.py hipengine/generation/sampling.py hipengine/server/api.py tests/test_generation_constraints.py tests/test_sampling.py tests/test_server_api.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

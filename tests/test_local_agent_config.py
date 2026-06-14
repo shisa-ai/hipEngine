@@ -76,7 +76,7 @@ def _capabilities(**overrides):
                     "thinking",
                     "reasoning",
                 ],
-                "budget_policy": "prompt_hint_plus_tokenized_hard_close",
+                "budget_policy": "prompt_hint_plus_tokenized_soft_and_hard_close",
                 "token_budget": True,
                 "token_budget_enforced": True,
                 "effort_defaults": {
@@ -89,7 +89,7 @@ def _capabilities(**overrides):
                 },
                 "effort_default_clamp": "request_max_tokens_chat_default_or_remaining_context",
                 "hard_close_token_forcing": True,
-                "soft_close_bias": False,
+                "soft_close_bias": True,
             },
             "request_timeouts": {
                 "timeout_ms": True,
