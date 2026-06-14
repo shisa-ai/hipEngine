@@ -677,7 +677,12 @@ def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
             "scratch_probe": {
                 "status": "passed",
                 "result": {
-                    "live_memory": {"free_bytes": 250, "used_bytes": 750, "total_bytes": 1000},
+                    "live_memory": {
+                        "stage": "linear_prefill_scratch_live",
+                        "free_bytes": 250,
+                        "used_bytes": 750,
+                        "total_bytes": 1000,
+                    },
                 },
             },
         },
@@ -688,9 +693,9 @@ def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
         "final_stage": "guard",
         "final_free_bytes": 600,
         "final_used_bytes": 400,
-        "peak_stage": "scratch_probe_live",
+        "peak_stage": "scratch_probe:linear_prefill_scratch_live",
         "peak_used_bytes": 750,
-        "min_free_stage": "scratch_probe_live",
+        "min_free_stage": "scratch_probe:linear_prefill_scratch_live",
         "min_free_bytes": 250,
         "total_bytes": 1000,
     }

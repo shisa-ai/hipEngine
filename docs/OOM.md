@@ -16,10 +16,9 @@ actually serve production requests, or fail at startup with an actionable reason
   scratch probe (`prepare_request_scratch(max_prompt_tokens=context-1)`), bounded
   chat-shaped smoke through the generation batcher, GPU memory snapshots in
   `/ready`, and optional `--startup-min-free-mib` headroom enforcement.
-- On the current tree, the exact command below can allocate model-max context and
-  serve a one-row `hello` request with the server default token budget, but the
-  new scratch probe correctly rejects 262k on the 24GB GPU before advertising the
-  server ready:
+- On the current tree, the exact command below can allocate model-max context,
+  run the max-prompt scratch probe, and serve a one-row `hello` request with the
+  server default token budget on the 24GB GPU:
 
   ```bash
   HIP_VISIBLE_DEVICES=1 hipengine serve \
@@ -28,10 +27,9 @@ actually serve production requests, or fail at startup with an actionable reason
     --host 0.0.0.0
   ```
 
-- The same run leaves only about **2.0 GiB free** on GPU1 after a successful
-  raw warmup / `hello` request. The max-prompt scratch probe then fails at 262k
-  with HIP OOM in chunked linear-attention scratch, while 128k passes. This is
-  now caught at startup instead of discovered by the first long prompt.
+- The same run leaves only about **2.0 GiB free** on GPU1 after startup, and
+  only about **0.61 GiB free** at the live scratch-probe peak. This is viable but
+  tight; the probe now makes that risk explicit at startup.
 - Streaming does **not** appear to add meaningful VRAM. It changes response and
   cancellation behavior, not retained device memory. The streamed hidden
   reasoning is emitted as separate `reasoning_content` chunks.
@@ -65,7 +63,7 @@ All runs used `HIP_VISIBLE_DEVICES=1`, model
 | ---: | ---: | ---: | --- | --- |
 | 65,536 | 5.088 GiB | 5.051 GiB | pass in 0.050s | `prefill_hidden_bytes=268,431,360`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=134,217,728` |
 | 131,072 | 4.199 GiB | 4.162 GiB | pass in 0.054s | `prefill_hidden_bytes=536,866,816`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=268,435,456` |
-| 262,144 | 2.045 GiB | 2.008 GiB | **fails** | `HipError: out of memory` while allocating chunked `linear_attn.tree_recurrent_state` |
+| 262,144 | ~2.04 GiB | ~2.01 GiB | pass in 0.195s | low-memory/full-context auto chunks `linear=moe=full=256`; peak `linear_prefill_scratch_live` used 23.38 GiB, min-free 0.61 GiB |
 
 Important implementation detail: the first raw warmup prompt is tiny, and the
 PARO session resolves prefill chunking based on the active prompt length. The
@@ -74,18 +72,27 @@ before allocating; otherwise it incorrectly reuses the tiny-prompt unchunked
 policy and overstates OOM risk. The current probe does this and reports
 `prefill_chunk_tuning` in `/ready`.
 
-A real `hipengine serve --max-context-tokens 128000` startup after adding the
-single-line memory summary logged:
+Phase-accurate probing matters: the first live-peak summary was too pessimistic
+because the probe kept linear and full-attention prefill workspaces live together.
+After mirroring the real long-context phase lifetime, `--max-context-tokens
+128000` reports:
 
 ```text
-STARTUP_MEMORY: final_stage=guard final_free=4.17 GiB final_used=19.81 GiB peak_stage=scratch_probe_live peak_used=23.69 GiB min_free_stage=scratch_probe_live min_free=0.29 GiB total=23.98 GiB samples=7
+STARTUP_MEMORY: final_stage=guard final_free=4.17 GiB final_used=19.81 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=22.64 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=1.35 GiB total=23.98 GiB samples=7
 ```
 
-Conclusion: **128k is currently admitted by the strong startup gate, but its
-transient live scratch peak is already close to the 24GB limit; 262k is not
-admitted** on the 24GB GPU with the current scratch layout. Restoring 256k
-requires reducing or streaming the transient linear/full prefill workspaces, not
-just proving KV allocation.
+For full 262k on GPU1, the default 1024/4096 chunk profile still fails at
+`linear_attn.tree_recurrent_state`. A memory-constrained auto profile for
+24GB-class, model-max-ish contexts now selects 256-token chunks across
+linear/MoE/full-attention prefill. With that profile, real startup reaches ready:
+
+```text
+STARTUP_MEMORY: final_stage=guard final_free=2.01 GiB final_used=21.98 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=23.38 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=0.61 GiB total=23.98 GiB samples=7
+```
+
+Conclusion: **262k/int8 can now start on the 24GB GPU**, but the transient
+scratch peak is still tight (`~0.61 GiB` free). The next optimization target is
+still linear prefill scratch, followed by the int8 BF16 prefill oracle.
 
 ### Legacy exact full-context server startup
 
@@ -490,9 +497,8 @@ server.
 - Audit sampler scratch so greedy-fast and exact top-p only retain what they need.
 - Release decode scratch before large prefill whenever overlap is unsafe, and
   restore it after prefill.
-- Reduce the chunked linear-attention transient footprint enough for 262k on
-  24GB; the current failure is at `linear_attn.tree_recurrent_state` after the
-  262k session leaves only about 2.0 GiB free.
+- Further reduce chunked linear-attention transient footprint so 262k on 24GB has
+  more than the current `~0.61 GiB` live-peak margin.
 - Tune default auto-context reserve by measured scratch high-water, not a fixed
   512 MiB guess.
 

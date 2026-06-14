@@ -619,6 +619,28 @@ def test_prefill_config_autotunes_gt1k_chunks_from_budget() -> None:
     assert very_long.full_attn_query_chunk_size == 4096
     assert very_long_tuning["reason"] == "manual_long_equiv_gt1k"
 
+    low_memory_full_context, low_memory_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=262144,
+        total_memory_bytes=24 * 1024**3,
+    )
+    assert (
+        low_memory_full_context.linear_chunk_size,
+        low_memory_full_context.moe_chunk_size,
+        low_memory_full_context.full_attn_query_chunk_size,
+        low_memory_full_context.full_attn_post_chunk_size,
+        low_memory_full_context.full_attn_rope_chunk_size,
+    ) == (256, 256, 256, 256, 256)
+    assert low_memory_tuning["reason"] == "low_memory_full_context_24gb"
+
+    low_memory_mid_context, low_memory_mid_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=128000,
+        total_memory_bytes=24 * 1024**3,
+    )
+    assert low_memory_mid_context.full_attn_query_chunk_size == 4096
+    assert low_memory_mid_tuning["reason"] == "manual_long_equiv_gt1k"
+
     budget_limited, budget_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(chunk_tune_memory_budget_gib=24.0),
         max_sequence_length=131072 + 129,

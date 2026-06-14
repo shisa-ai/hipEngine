@@ -3442,13 +3442,14 @@ class Qwen35ParoResidentSession:
         max_batch_size: int = 1,
         release_after_probe: bool = True,
     ) -> dict[str, Any]:
-        """Allocate the worst-case serving scratch for an admitted c=1 request.
+        """Allocate serving scratch for an admitted c=1 request shape.
 
         This is a startup/readiness probe, not a generation path: it reserves the
         prompt-length-dependent prefill buffers and workspaces without launching a
-        full prompt prefill or decoding to the output limit.  By default the bulk
-        prefill buffers are released afterward, mirroring the real prefill path;
-        decode scratch is restored if it was temporarily freed to make room.
+        full prompt prefill or decoding to the output limit.  For long prompts it
+        mirrors the real prefill path's workspace lifetime: the prompt hidden
+        buffer stays live, while prefill workspaces are released between adjacent
+        layer-type phases when `_run_native_prefill_layers()` would do so.
         """
 
         if self.closed:
@@ -3465,18 +3466,46 @@ class Qwen35ParoResidentSession:
 
         self._resolve_prefill_config_for_length(prompt_rows)
         layer_types = tuple(str(item) for item in self.config.layer_types[: len(self.states)])
-        has_linear = any(item == "linear_attention" for item in layer_types)
-        has_full = any(item == "full_attention" for item in layer_types)
+        phase_order: list[str] = []
+        for layer_type in layer_types:
+            if layer_type not in {"linear_attention", "full_attention"}:
+                continue
+            if not phase_order or phase_order[-1] != layer_type:
+                phase_order.append(layer_type)
+        has_linear = "linear_attention" in phase_order
+        has_full = "full_attention" in phase_order
         linear_chunk_rows = 0
         full_chunk_rows = 0
         int8_oracle_bytes = 0
-        probe_memory: dict[str, int | float] | None = None
-        decode_scratch_released = self._should_minimize_prefill_workspace_overlap(prompt_rows)
+        live_memory_samples: list[dict[str, int | float | str]] = []
+        minimize_workspace_overlap = self._should_minimize_prefill_workspace_overlap(prompt_rows)
+
+        def capture_live_memory(stage: str) -> dict[str, int | float | str] | None:
+            self.runtime.device_synchronize()
+            try:
+                free_bytes, total_bytes = self.runtime.mem_get_info()
+            except Exception:
+                return None
+            free = int(free_bytes)
+            total = int(total_bytes)
+            sample: dict[str, int | float | str] = {
+                "stage": str(stage),
+                "free_bytes": free,
+                "total_bytes": total,
+                "used_bytes": max(0, total - free),
+                "free_gib": round(free / 1024**3, 6),
+                "used_gib": round(max(0, total - free) / 1024**3, 6),
+            }
+            live_memory_samples.append(sample)
+            return sample
+
         try:
-            if decode_scratch_released:
+            if minimize_workspace_overlap:
                 self._release_decode_scratch_for_prefill()
             self._prepare_prefill_context_counts(prompt_rows, stream=0)
             self._prefill_hidden_view_for_rows(prompt_rows)
+            capture_live_memory("prefill_hidden_live")
+
             if has_linear:
                 linear_chunk = self._linear_prefill_layer_chunk_size(prompt_rows)
                 min_rows = int(getattr(self.config, "linear_conv_kernel_dim", 1))
@@ -3488,8 +3517,6 @@ class Qwen35ParoResidentSession:
                         min_chunk_size=min_rows,
                     )
                 )
-                self._ensure_linear_prefill_scratch(tokens=linear_chunk_rows)
-                self._ensure_moe_prefill_scratch(None, tokens=linear_chunk_rows)
             if has_full:
                 full_chunk = self._full_attention_prefill_layer_chunk_size(prompt_rows)
                 full_chunk_rows = max(
@@ -3500,31 +3527,34 @@ class Qwen35ParoResidentSession:
                         min_chunk_size=2,
                     )
                 )
-                use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(prompt_rows)
-                self._ensure_full_prefill_scratch(
-                    tokens=full_chunk_rows,
-                    aotriton_attention=use_aotriton_attention,
-                )
-                self._ensure_moe_prefill_scratch(None, tokens=full_chunk_rows)
-                if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
-                    key, value = self._prefill_int8_oracle_cache(0, total_tokens=prompt_rows)
-                    int8_oracle_bytes = int(
-                        key.numel * key.dtype.itemsize + value.numel * value.dtype.itemsize
+
+            previous_phase: str | None = None
+            for phase in phase_order:
+                if minimize_workspace_overlap and previous_phase is not None and phase != previous_phase:
+                    self._release_prefill_workspace()
+                    capture_live_memory(f"after_{previous_phase}_workspace_release")
+                previous_phase = phase
+                if phase == "linear_attention":
+                    self._ensure_linear_prefill_scratch(tokens=linear_chunk_rows)
+                    self._ensure_moe_prefill_scratch(None, tokens=linear_chunk_rows)
+                    capture_live_memory("linear_prefill_scratch_live")
+                elif phase == "full_attention":
+                    use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(prompt_rows)
+                    self._ensure_full_prefill_scratch(
+                        tokens=full_chunk_rows,
+                        aotriton_attention=use_aotriton_attention,
                     )
-            self.runtime.device_synchronize()
-            try:
-                free_bytes, total_bytes = self.runtime.mem_get_info()
-                free = int(free_bytes)
-                total = int(total_bytes)
-                probe_memory = {
-                    "free_bytes": free,
-                    "total_bytes": total,
-                    "used_bytes": max(0, total - free),
-                    "free_gib": round(free / 1024**3, 6),
-                    "used_gib": round(max(0, total - free) / 1024**3, 6),
-                }
-            except Exception:
-                probe_memory = None
+                    self._ensure_moe_prefill_scratch(None, tokens=full_chunk_rows)
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+                        key, value = self._prefill_int8_oracle_cache(0, total_tokens=prompt_rows)
+                        int8_oracle_bytes = int(
+                            key.numel * key.dtype.itemsize + value.numel * value.dtype.itemsize
+                        )
+                    capture_live_memory("full_prefill_scratch_live")
+
+            peak_memory = None
+            if live_memory_samples:
+                peak_memory = max(live_memory_samples, key=lambda item: int(item.get("used_bytes", 0) or 0))
             return {
                 "max_prompt_tokens": prompt_rows,
                 "max_new_tokens": new_tokens,
@@ -3533,15 +3563,18 @@ class Qwen35ParoResidentSession:
                 "linear_prefill_chunk_rows": int(linear_chunk_rows),
                 "full_prefill_chunk_rows": int(full_chunk_rows),
                 "int8_oracle_bytes": int(int8_oracle_bytes),
-                "decode_scratch_released_for_probe": bool(decode_scratch_released),
+                "decode_scratch_released_for_probe": bool(minimize_workspace_overlap),
+                "workspace_overlap_minimized": bool(minimize_workspace_overlap),
+                "prefill_phase_order": list(phase_order),
                 "prefill_chunk_tuning": dict(getattr(self, "prefill_chunk_tuning", {}) or {}),
-                "live_memory": probe_memory,
+                "live_memory": peak_memory,
+                "live_memory_samples": list(live_memory_samples),
                 "release_after_probe": bool(release_after_probe),
             }
         finally:
             if release_after_probe:
                 self._restore_decode_scratch_after_prefill()
-            elif decode_scratch_released:
+            elif minimize_workspace_overlap:
                 self._reserve_decode_scratch_after_prefill()
 
     def _trace_linear_input_bits(

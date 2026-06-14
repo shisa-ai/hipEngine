@@ -3823,7 +3823,8 @@ def _startup_memory_samples(
         if isinstance(result, Mapping):
             live_memory = result.get("live_memory")
             if isinstance(live_memory, Mapping) and "free_bytes" in live_memory and "used_bytes" in live_memory:
-                samples.append(("scratch_probe_live", live_memory))
+                inner_stage = str(live_memory.get("stage") or "live")
+                samples.append((f"scratch_probe:{inner_stage}", live_memory))
     return samples
 
 

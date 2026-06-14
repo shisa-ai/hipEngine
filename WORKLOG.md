@@ -88111,3 +88111,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
 - `python3 -m pytest tests/test_server_api.py::test_replay_artifact_redacts_failed_request tests/test_server_api.py::test_replay_artifacts_are_default_off tests/test_server_api.py::test_server_rejects_wrong_model_and_unsupported_options -q` -> `3 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-14 - Phase-accurate 24GB full-context scratch probe
+
+Fixed the PARO startup scratch probe to mirror real long-context prefill workspace lifetime: prompt hidden stays live, but prefill workspaces are released between adjacent layer-type phases when `_run_native_prefill_layers()` would release them. The probe now records per-phase `live_memory_samples` and reports the true peak sample, with startup summaries preserving the inner phase name (for example `scratch_probe:linear_prefill_scratch_live`).
+
+GPU1/W7900 evidence (`shisa-ai/Qwen3.6-35B-A3B-PARO-packed`, `hip_gfx1100`, `w4_paro`, `kv_storage=int8_per_token_head`):
+- 128000 context with the existing mid-context 1024/4096 chunk profile now reports `peak_used=22.64 GiB`, `min_free=1.35 GiB` instead of the earlier union-probe `min_free=0.29 GiB`.
+- 262144 context with the existing 1024/4096 chunk profile still fails in the linear phase at `linear_attn.tree_recurrent_state`.
+- Manual probe with 512 chunks passes but reports `free_bytes=0` at the linear phase, so it has no safe margin.
+- Manual probe with 256 chunks passes with `linear_prefill_scratch_live` peak `used=23.38 GiB`, `free=0.605 GiB`; full-attention phase peak is lower (`free=0.664 GiB`).
+- Added a low-memory/full-context auto prefill profile for <=26 GiB devices and >=196608 tokens that selects 256-token chunks across linear/MoE/full-attention prefill. Real `hipengine serve --max-context-tokens 262144` on GPU1 now reaches ready and logs `STARTUP_MEMORY: final_stage=guard final_free=2.01 GiB final_used=21.98 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=23.38 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=0.61 GiB total=23.98 GiB samples=7`.
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_server_api.py tests/test_qwen35_resident_batch_layout.py` -> passed.
+- `uv run pytest -q tests/test_server_api.py tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget` -> passed.
+- Real GPU1 128000 and 262144 startup smokes reached readiness; timeout terminated them cleanly; `rocm-smi --showmeminfo vram --showpidgpus` showed no KFD PIDs afterward.
