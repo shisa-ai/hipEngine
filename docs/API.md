@@ -138,7 +138,9 @@ Streaming requests with logprobs use a buffered detailed-generation path so SSE
 chunks can carry logprob metadata; ordinary streams without logprobs remain
 live token/chunk streams. If a backend response path cannot provide token
 metadata for a logprobs request, the server returns HTTP 501
-`unsupported_feature` with `error.param="logprobs"`.
+`unsupported_feature` with `error.param="logprobs"`. The capabilities manifest
+reports this under `features.logprobs.requires_backend_token_metadata` and
+`features.logprobs.missing_backend_metadata_error`.
 
 ### Routing metadata
 

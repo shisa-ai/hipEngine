@@ -3412,6 +3412,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "chat": True,
                     "top_logprobs_max": 20,
                     "streaming": "buffered",
+                    "requires_backend_token_metadata": True,
+                    "missing_backend_metadata_error": {
+                        "code": "unsupported_feature",
+                        "status_code": 501,
+                        "param": "logprobs",
+                    },
                 },
                 "request_timeouts": {
                     "timeout_ms": True,

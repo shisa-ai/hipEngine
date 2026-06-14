@@ -1745,8 +1745,10 @@ completions/chat, buffered streaming completions/chat, and completion
 `echo+logprobs` with the echoed prompt represented as one prefix entry with
 `null` prompt logprob. Backend paths that cannot provide token metadata for a
 logprobs request return stable HTTP 501 `unsupported_feature` with
-`error.param="logprobs"`. Remaining work is true prompt-token logprobs,
-native-path coverage, and live token-stream parity.
+`error.param="logprobs"`, and the capabilities manifest advertises that
+fallback under `features.logprobs.missing_backend_metadata_error`. Remaining
+work is true prompt-token logprobs, native-path coverage, and live token-stream
+parity.
 
 Implement:
 
@@ -1831,6 +1833,7 @@ Current code reality:
 - The manifest reports served model/config, configured/effective context tokens,
   bounded vs auto chat default, tokenizer/count-token callable availability,
   Qwen chat-template family, tools/reasoning/logprobs/streaming support,
+  logprobs backend-metadata fallback errors,
   the stream metadata extension version/event/timing fields, no-tool
   start-marker suppression, required/specific tool start-marker forcing plus
   its initial-or-post-thinking scope, sampling parameters and execution modes,

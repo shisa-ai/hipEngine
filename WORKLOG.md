@@ -89888,3 +89888,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> `221 passed`.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-14 - AGENTIC logprobs capability fallback metadata
+
+Extended `/v1/hipengine/capabilities` so `features.logprobs` advertises that
+logprob responses require backend token metadata and names the exact stable
+fallback error (`unsupported_feature`, HTTP 501, `param="logprobs"`) when a
+backend response path cannot provide it. Updated `docs/API.md` and
+`docs/AGENTIC.md` so local harnesses can discover the behavior from the
+manifest instead of guessing from the coarse logprobs support flag.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completion_logprobs_missing_backend_metadata_returns_unsupported_feature tests/test_server_api.py::test_streaming_completion_logprobs_missing_backend_metadata_returns_unsupported_feature tests/test_server_api.py::test_chat_logprobs_missing_backend_metadata_returns_unsupported_feature -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> `221 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

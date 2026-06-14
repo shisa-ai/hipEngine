@@ -711,7 +711,18 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "diagnostic_close_token_lowering": True,
         "diagnostic_initial_state": True,
     }
-    assert body["features"]["logprobs"]["streaming"] == "buffered"
+    assert body["features"]["logprobs"] == {
+        "completions": True,
+        "chat": True,
+        "top_logprobs_max": 20,
+        "streaming": "buffered",
+        "requires_backend_token_metadata": True,
+        "missing_backend_metadata_error": {
+            "code": "unsupported_feature",
+            "status_code": 501,
+            "param": "logprobs",
+        },
+    }
     assert body["features"]["request_timeouts"] == {
         "timeout_ms": True,
         "default_timeout_ms": 250.0,
