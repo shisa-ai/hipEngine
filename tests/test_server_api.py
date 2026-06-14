@@ -7119,6 +7119,14 @@ def test_replay_artifacts_are_default_off(tmp_path) -> None:
     assert not replay_dir.exists()
 
 
+def _load_single_replay_artifact(replay_dir: Path) -> tuple[dict[str, Any], str]:
+    artifacts = list(replay_dir.glob("*.json"))
+    assert len(artifacts) == 1
+    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
+    serialized = json.dumps(artifact, sort_keys=True, allow_nan=False)
+    return artifact, serialized
+
+
 def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     replay_dir = tmp_path / "replay"
     app = create_app(
@@ -7149,10 +7157,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     )
 
     assert response.status_code == 400
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["schema"] == "hipengine.replay.v1"
     assert artifact["redaction"] == {"mode": "hash", "hash": "sha256"}
     assert artifact["request"]["method"] == "POST"
@@ -7302,10 +7307,7 @@ def test_replay_artifact_counts_chat_prompt_when_engine_loaded(tmp_path) -> None
     )
 
     assert response.status_code == 400
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
 
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["request"]["prompt_hashes"] == [
@@ -7368,10 +7370,7 @@ def test_replay_artifact_captures_completion_structured_result_validation_failur
     assert choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert choice["text"] == ""
 
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["schema"] == "hipengine.replay.v1"
     assert artifact["request"]["path"] == "/v1/completions"
     assert artifact["request"]["json"]["prompt"]["redacted"] == "sha256"
@@ -7432,10 +7431,7 @@ def test_replay_artifact_captures_guided_patch_result_validation_failure(tmp_pat
     assert choice["finish_details"] == _stateless_finish_details("schema_violation")
     assert choice["message"] == {"role": "assistant", "content": ""}
 
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["schema"] == "hipengine.replay.v1"
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["request"]["json"]["messages"][0]["content"]["redacted"] == "sha256"
@@ -7504,10 +7500,7 @@ def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) ->
     assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert choice["message"] == {"role": "assistant", "content": ""}
 
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["schema"] == "hipengine.replay.v1"
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["request"]["json"]["messages"][0]["content"]["redacted"] == "sha256"
@@ -7570,10 +7563,7 @@ def test_replay_artifact_captures_streaming_structured_result_validation_failure
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"]["finish_details"] == _stateless_finish_details("schema_violation")
 
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["sampling"]["response_format"]["type"]["redacted"] == "sha256"
     assert artifact["sampling"]["response_format"]["type"]["length"] == len("json_object")
@@ -7623,10 +7613,7 @@ def test_replay_artifact_captures_streaming_guided_diff_result_validation_failur
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
     assert done["choices"][0]["hipengine"]["finish_details"] == _stateless_finish_details("schema_violation")
 
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["request"]["path"] == "/v1/completions"
     assert artifact["sampling"]["guided_diff"] is True
     assert artifact["finish_details"] == _stateless_finish_details("schema_violation")
@@ -7686,10 +7673,7 @@ def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tm
         "tool_required_not_satisfied"
     )
 
-    artifacts = list(replay_dir.glob("*.json"))
-    assert len(artifacts) == 1
-    artifact = json.loads(artifacts[0].read_text(encoding="utf-8"))
-    serialized = json.dumps(artifact, sort_keys=True)
+    artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert artifact["error"] is None

@@ -90319,3 +90319,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC replay finite-JSON assertions
+
+Tightened replay artifact tests so every emitted artifact is loaded through a
+shared helper and re-serialized with `allow_nan=false`. This directly exercises
+the P5.6 finite-JSON exit gate across failed HTTP requests, buffered
+result-validation failures, and streaming result-validation failures. Updated
+`docs/AGENTIC.md` P5.6 current-reality text to name the finite-JSON assertion.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'replay_artifact or replay_artifacts'` -> `9 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> all tests passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

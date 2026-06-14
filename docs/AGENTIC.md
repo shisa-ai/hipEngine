@@ -2158,7 +2158,9 @@ Current code reality:
   local debugging only.
 - Tests cover default-off behavior, failed HTTP request redaction, strict tool
   validation failures, streaming strict tool failures, completion structured
-  failures, and streaming chat structured failures.
+  failures, and streaming chat structured failures. Replay artifact tests load
+  each emitted artifact and re-serialize it with `allow_nan=false`, so
+  non-standard JSON values fail the suite.
 
 Exit gates:
 
