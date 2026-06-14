@@ -1690,7 +1690,8 @@ Current state:
   count, and configured active-request cap. Prometheus metrics include
   `hipengine_request_rejected_total`, queue depth, configured queue cap,
   active/max backend request gauges, active/pending/max chat-session gauges, and
-  worker-active gauges in addition to completed/failed request counters.
+  worker-active gauges in addition to completed/failed/cancelled request
+  counters.
 - Default behavior remains unlimited server queueing until a cap is configured.
   Default active backend request grouping remains uncapped until a cap is
   configured. Default chat-session behavior remains unlimited until a cap is

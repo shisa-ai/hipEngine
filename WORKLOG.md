@@ -88774,3 +88774,19 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
 - `python3 -m ruff check hipengine/server/api.py hipengine/server/__main__.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check` -> clean.
+
+## 2026-06-14 - AGENTIC cancelled request metric
+
+Added `hipengine_request_cancelled_total` to the opt-in Prometheus endpoint as
+a failed-request subcounter for backend/client cancellation paths. The existing
+OpenAI error recorder now classifies canonical `cancelled` errors separately
+while preserving total failed-request accounting. API/AGENTIC docs now list the
+cancelled counter alongside completed, failed, and rejected request totals.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py`.
+- `python3 -m pytest tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive tests/test_server_api.py::test_metrics_endpoint_counts_cancelled_requests tests/test_server_api.py::test_backend_cancelled_exception_maps_to_completion_499 tests/test_server_api.py::test_streaming_completion_backend_cancelled_exception_emits_error_and_done -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py tests/test_local_agent_config.py -q` -> `32 passed`.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check` -> clean.

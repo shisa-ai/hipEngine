@@ -589,6 +589,7 @@ strings and should only be used in local, non-sensitive debugging sessions.
   `hipengine_generation_worker_active` gauges plus
   `hipengine_generation_requests_active` and
   `hipengine_generation_requests_max_active` for backpressure monitors.
+  Request counters include completed, failed, rejected, and cancelled totals.
 - PARO and GGUF sampling support `temperature`, `top_p`, `top_k`, `min_p`,
   `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
   `suppress_token_ids`, forced-token queues, `min_tokens` / `eos_token_id`,

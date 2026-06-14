@@ -987,6 +987,7 @@ class _ServerMetrics:
     request_completed_total: int = 0
     request_failed_total: int = 0
     request_rejected_total: int = 0
+    request_cancelled_total: int = 0
     prompt_tokens_total: int = 0
     completion_tokens_total: int = 0
 
@@ -1005,10 +1006,17 @@ class _ServerMetrics:
         self.request_failed_total += 1
         self.request_rejected_total += 1
 
+    def record_cancelled(self) -> None:
+        self.request_total += 1
+        self.request_failed_total += 1
+        self.request_cancelled_total += 1
+
 
 def _record_openai_error(metrics: _ServerMetrics, exc: OpenAIHTTPError) -> None:
     if exc.code == "engine_busy":
         metrics.record_rejected()
+    elif exc.code == "cancelled":
+        metrics.record_cancelled()
     else:
         metrics.record_failure()
 
@@ -2345,7 +2353,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         except OpenAIHTTPError as exc:
             if exc.code in {"deadline_exceeded", "cancelled"}:
-                app.state.hipengine_server_metrics.record_failure()
+                _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
 
     async def stream_completion_one(
@@ -3794,6 +3802,7 @@ def _render_prometheus_metrics(
         "hipengine_request_completed_total": metrics.request_completed_total,
         "hipengine_request_failed_total": metrics.request_failed_total,
         "hipengine_request_rejected_total": metrics.request_rejected_total,
+        "hipengine_request_cancelled_total": metrics.request_cancelled_total,
         "hipengine_prompt_tokens_total": metrics.prompt_tokens_total,
         "hipengine_completion_tokens_total": metrics.completion_tokens_total,
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
@@ -3825,6 +3834,7 @@ def _render_prometheus_metrics(
         "hipengine_request_completed_total": "Generation requests that completed successfully.",
         "hipengine_request_failed_total": "Generation requests that failed after reaching generation validation.",
         "hipengine_request_rejected_total": "Generation requests rejected by admission/backpressure.",
+        "hipengine_request_cancelled_total": "Generation requests cancelled after client disconnect or backend cancellation.",
         "hipengine_prompt_tokens_total": "Prompt tokens counted for successful requests.",
         "hipengine_completion_tokens_total": "Completion tokens counted for successful requests.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
@@ -3852,6 +3862,7 @@ def _render_prometheus_metrics(
         "hipengine_request_completed_total",
         "hipengine_request_failed_total",
         "hipengine_request_rejected_total",
+        "hipengine_request_cancelled_total",
         "hipengine_prompt_tokens_total",
         "hipengine_completion_tokens_total",
         "hipengine_kv_pool_grow_events_total",

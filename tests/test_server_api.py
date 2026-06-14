@@ -5091,6 +5091,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert before.status_code == 200
     assert _metric_value(before.text, "hipengine_requests_total") == 0
     assert _metric_value(before.text, "hipengine_generation_queue_depth") == 0
+    assert _metric_value(before.text, "hipengine_request_cancelled_total") == 0
     assert _metric_value(before.text, "hipengine_generation_queue_max_depth") == 3
     assert _metric_value(before.text, "hipengine_generation_worker_active") == 0
     assert _metric_value(before.text, "hipengine_generation_requests_active") == 0
@@ -5113,6 +5114,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_request_completed_total") == 2
     assert _metric_value(metrics.text, "hipengine_request_failed_total") == 0
     assert _metric_value(metrics.text, "hipengine_request_rejected_total") == 0
+    assert _metric_value(metrics.text, "hipengine_request_cancelled_total") == 0
     assert _metric_value(metrics.text, "hipengine_generation_queue_depth") == 0
     assert _metric_value(metrics.text, "hipengine_generation_queue_max_depth") == 3
     assert _metric_value(metrics.text, "hipengine_generation_worker_active") == 0
@@ -5145,6 +5147,31 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS:
         assert f'hipengine_graph_bucket_kernel_time_bucket_total{{bucket="{bucket}"}}' in metrics.text
     assert 'hipengine_graph_bucket_kernel_time_bucket_total{bucket="lt_1us"}' not in metrics.text
+
+
+def test_metrics_endpoint_counts_cancelled_requests() -> None:
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            metrics="prometheus",
+        ),
+        llm=BackendCancelledFakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "cancel", "max_tokens": 1},
+    )
+    metrics = client.get("/metrics")
+
+    assert response.status_code == 499
+    assert _metric_value(metrics.text, "hipengine_requests_total") == 1
+    assert _metric_value(metrics.text, "hipengine_request_failed_total") == 1
+    assert _metric_value(metrics.text, "hipengine_request_cancelled_total") == 1
+    assert _metric_value(metrics.text, "hipengine_request_rejected_total") == 0
 
 
 def test_metrics_endpoint_filters_malformed_graph_bucket_scalars() -> None:
