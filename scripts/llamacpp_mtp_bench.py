@@ -210,6 +210,7 @@ def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
                 "content_chars": len(content),
                 "timings": timings,
                 "draft_acceptance": _draft_acceptance(timings),
+                "accepted_per_output": _accepted_per_output(timings),
             }
         )
     return {
@@ -250,6 +251,7 @@ def _run_token_repeat(args: argparse.Namespace) -> dict[str, Any]:
                 "draft_n": timings.get("draft_n"),
                 "draft_n_accepted": timings.get("draft_n_accepted"),
                 "draft_acceptance": _draft_acceptance(timings),
+                "accepted_per_output": _accepted_per_output(timings),
                 "wall_s": wall_s,
                 "stop_type": resp.get("stop_type"),
                 "truncated": resp.get("truncated"),
@@ -355,6 +357,12 @@ def _draft_acceptance(timings: dict[str, Any]) -> float | None:
     return (draft_accepted / draft_n) if draft_n else None
 
 
+def _accepted_per_output(timings: dict[str, Any]) -> float | None:
+    output_tokens = timings.get("predicted_n") or 0
+    draft_accepted = timings.get("draft_n_accepted") or 0
+    return (draft_accepted / output_tokens) if output_tokens else None
+
+
 def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     pred_n = sum((row.get("timings", {}).get("predicted_n") or 0) for row in rows)
     pred_ms = sum((row.get("timings", {}).get("predicted_ms") or 0.0) for row in rows)
@@ -372,6 +380,11 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "draft_n": draft_n,
         "draft_n_accepted": draft_acc,
         "draft_acceptance": (draft_acc / draft_n) if draft_n else None,
+        "accepted_per_output": (draft_acc / pred_n) if pred_n else None,
+        "denominators": {
+            "draft_acceptance": "draft_n_accepted / draft_n",
+            "accepted_per_output": "draft_n_accepted / predicted_n",
+        },
     }
 
 
@@ -383,11 +396,18 @@ def _summarize_by_category(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _summarize_token_repeat(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total_predicted = sum((row.get("tokens_predicted") or 0) for row in rows)
+    total_accepted = sum((row.get("draft_n_accepted") or 0) for row in rows)
     return {
         "rows": len(rows),
         "weighted_predicted_per_second": _weighted_tps(rows, "tokens_predicted", "predicted_ms"),
         "weighted_prompt_per_second": _weighted_tps(rows, "tokens_evaluated", "prompt_ms"),
         "draft_acceptance": _weighted_draft_acceptance(rows),
+        "accepted_per_output": (total_accepted / total_predicted) if total_predicted else None,
+        "denominators": {
+            "draft_acceptance": "draft_n_accepted / draft_n",
+            "accepted_per_output": "draft_n_accepted / tokens_predicted",
+        },
     }
 
 
@@ -418,6 +438,7 @@ def _summarize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
                     "mtp_weighted_predicted_per_second": mtp_tps,
                     "speedup": (mtp_tps / base_tps) if base_tps and mtp_tps else None,
                     "mtp_draft_acceptance": mtp["summary"].get("draft_acceptance"),
+                    "mtp_accepted_per_output": mtp["summary"].get("accepted_per_output"),
                 }
     return summary
 
@@ -433,10 +454,11 @@ def _summary_text(artifact: dict[str, Any]) -> str:
     for protocol, row in artifact.get("summary", {}).items():
         speedup = row.get("speedup")
         acc = _fmt(row.get("mtp_draft_acceptance"), 3) if speedup else "-"
+        acc_out = _fmt(row.get("mtp_accepted_per_output"), 3) if speedup else "-"
         lines.append(
             f"{protocol}: base={_fmt(row.get('base_weighted_predicted_per_second'))} "
             f"mtp={_fmt(row.get('mtp_weighted_predicted_per_second'))} "
-            f"speedup={speedup:.3f}x acc={acc}"
+            f"speedup={speedup:.3f}x acc={acc} accepted/output={acc_out}"
         )
     return "\n".join(lines)
 

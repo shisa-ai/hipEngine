@@ -96205,3 +96205,50 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Denominator checks only validate the captured llama.cpp trace oracle and
   mark accepted/output as not comparable until visible output-token counts exist.
+
+## 2026-06-15 - MTP-GGUF llama.cpp accepted/output denominators
+
+Implemented `mtp-gguf` multiloop iteration 78: taught the llama.cpp GGUF MTP
+comparison helper to emit accepted/output denominators alongside draft acceptance.
+
+Scope note:
+- External llama.cpp diagnostic script/docs/tests only. No GGUF tensor payload
+  loading, hipEngine generation integration, native NextN execution, actual KV
+  allocation, GPU kernel, attention/KV runtime path, or performance path changed.
+- This makes future M5 B1-B4 parity artifacts compare llama.cpp using the same
+  accepted/output semantics required by `docs/MTP-gguf.md`: accepted draft tokens
+  over visible output tokens, not just `draft_n_accepted / draft_n`.
+
+Changes:
+- `scripts/llamacpp_mtp_bench.py` now records per-row `accepted_per_output` for
+  both natural and token-repeat protocols.
+- Natural summaries now include `accepted_per_output = draft_n_accepted /
+  predicted_n` plus explicit denominator labels.
+- Token-repeat summaries now include `accepted_per_output = draft_n_accepted /
+  tokens_predicted` plus explicit denominator labels.
+- Top-level artifact summaries and human summary text now include
+  `mtp_accepted_per_output`.
+- Added `tests/test_llamacpp_mtp_bench_metrics.py` covering row helpers, natural
+  and token-repeat summaries, artifact summary propagation, and missing
+  denominator handling.
+- Updated `docs/MTP-gguf.md` to document the llama.cpp accepted/output field for
+  future parity rows.
+
+Validation:
+- Focused llama.cpp MTP metrics tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_llamacpp_mtp_bench_metrics.py` -> `4` passed.
+- Metrics smoke passed:
+  `_summarize_rows([predicted_n=10, draft_n=8, draft_n_accepted=4])` ->
+  `accepted_per_output=0.4`, `draft_acceptance=0.5`, and denominator labels.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/llamacpp_mtp_bench.py tests/test_llamacpp_mtp_bench_metrics.py` and
+  `git diff --check -- scripts/llamacpp_mtp_bench.py tests/test_llamacpp_mtp_bench_metrics.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: external diagnostic/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. The change only makes denominator accounting explicit for
+  future llama.cpp parity artifacts.

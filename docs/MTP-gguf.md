@@ -681,6 +681,9 @@ Acceptance:
 - **Parity Preconditions (a)/(b)/(c) pass per-prompt before any accepted/output
   number is compared.**
 - hipEngine B1-B4 exactness and accepted/output are reported per prompt.
+  `scripts/llamacpp_mtp_bench.py` now emits llama.cpp `accepted_per_output`
+  from `draft_n_accepted / predicted_n` alongside draft acceptance so the
+  denominator is explicit in external comparison artifacts.
 - If hipEngine accepted/output lags llama.cpp by more than ~10% relative on the
   same budget, stop performance tuning and debug draft logits/model identity.
 
@@ -877,7 +880,9 @@ is now answered by the M1 required/optional table.)
       `draft_sampling_contract_precheck`, and `hidden_seed_contract_precheck`
       sections so a requested B1-B4 artifact cannot silently reuse mismatched
       budget, stale draft `top_k=1` sampling, or a non-fp32/non-post-`output_norm`
-      seed contract.
+      seed contract. The llama.cpp comparison helper now reports
+      `accepted_per_output` with explicit `draft_n_accepted / predicted_n`
+      denominator for future parity rows.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts; actual B2-B4
       execution/parity still waits on native draft execution.
