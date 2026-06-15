@@ -96573,3 +96573,45 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. Future MTP attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF scripts use speculative exports
+
+Implemented `mtp-gguf` multiloop iteration 86: updated GGUF MTP preflight/oracle
+scripts to consume the public `hipengine.speculative` package-boundary exports.
+
+Scope note:
+- Import-boundary/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- This exercises the same exported contracts intended for future runtime callers
+  instead of importing directly from `hipengine.speculative.gguf_mtp` inside the
+  scripts.
+
+Changes:
+- `scripts/gguf_mtp_b1_prompt_suite.py` now imports
+  `Qwen35GGUFMTPRuntimeKernelPlan` and `Qwen35GGUFMTPVerificationMetrics` from
+  `hipengine.speculative`.
+- `scripts/gguf_mtp_oracle_gate.py` now imports `Qwen35GGUFMTPContext` from
+  `hipengine.speculative`.
+- Updated `docs/MTP-gguf.md` to state that preflight/oracle scripts consume the
+  public speculative package boundary.
+
+Validation:
+- Focused preflight/oracle/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_exports.py` -> `19` passed.
+- Package-import smoke passed:
+  `scripts/gguf_mtp_oracle_gate.py --out <tmp> --fail-on-fail` plus
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `package_import_smoke True blocked 4 ['native_gguf_mtp_runtime_missing']`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py scripts/gguf_mtp_oracle_gate.py hipengine/speculative/__init__.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py scripts/gguf_mtp_oracle_gate.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: import-boundary/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. Future MTP attention/KV-write execution remains
+  KVLiveSpans-gated.

@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 import hipengine.kernels.cpu_reference  # noqa: F401,E402 - self-registers CPU kernels
 from hipengine.kernels.registry import resolve  # noqa: E402
 from hipengine.quant.gguf import GGMLQuantizationType  # noqa: E402
-from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext  # noqa: E402
+from hipengine.speculative import Qwen35GGUFMTPContext  # noqa: E402
 
 
 DEFAULT_FIXTURE = Path("benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json")

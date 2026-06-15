@@ -29,7 +29,7 @@ from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     qwen35_gguf_current_hidden_seed_contract,
     qwen35_gguf_fp32_hidden_seed_contract,
 )
-from hipengine.speculative.gguf_mtp import (  # noqa: E402
+from hipengine.speculative import (  # noqa: E402
     Qwen35GGUFMTPRuntimeKernelPlan,
     Qwen35GGUFMTPVerificationMetrics,
 )
