@@ -331,6 +331,44 @@ class Qwen35GGUFMTPKVLiveSpansPlan:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPDraftExecutionPlan:
+    """Torch-free draft proposal plus metadata-only KVLiveSpans contract."""
+
+    proposal: Qwen35GGUFMTPDraftProposal
+    kv_live_spans: Qwen35GGUFMTPKVLiveSpansPlan
+    attention_layer: str = "mtp_nextn_attention"
+
+    def __post_init__(self) -> None:
+        if not self.attention_layer:
+            raise ValueError("attention_layer must be non-empty")
+        rows = self.proposal.batch.rows
+        if len(rows) != self.kv_live_spans.rows:
+            raise ValueError("proposal rows must match KVLiveSpans rows")
+        positions = tuple(row.position for row in rows)
+        if positions != self.kv_live_spans.token_positions:
+            raise ValueError("proposal positions must match KVLiveSpans token_positions")
+
+    @property
+    def proposed_token_ids(self) -> tuple[int, ...]:
+        return self.proposal.proposed_token_ids
+
+    def cpu_reference_kwargs(self) -> dict[str, object]:
+        return {
+            "append": self.kv_live_spans.cpu_reference_kwargs(role="append"),
+            "decode": self.kv_live_spans.cpu_reference_kwargs(role="decode"),
+        }
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "attention_layer": self.attention_layer,
+            "proposed_token_ids": list(self.proposed_token_ids),
+            "proposal": self.proposal.as_dict(),
+            "kv_live_spans": self.kv_live_spans.as_dict(),
+            "cpu_reference_kwargs": self.cpu_reference_kwargs(),
+        }
+
+
 @dataclass(slots=True)
 class Qwen35GGUFMTPContext:
     """Target-attached GGUF MTP state shell.
@@ -463,6 +501,36 @@ class Qwen35GGUFMTPContext:
             batch,
             block_size=block_size,
             storage_dtype=storage_dtype,
+        )
+
+    def build_draft_execution_plan_from_logits(
+        self,
+        *,
+        request_id: int,
+        logits: Any,
+        seed_rows: Sequence[Qwen35GGUFMTPSeedRow | _DraftSeedLike] | None = None,
+        top_k: int = DEFAULT_DRAFT_TOPK,
+        selected_index: int = 0,
+        topk_kernel: tuple[str, str, str, str] = DEFAULT_DRAFT_TOPK_KERNEL,
+        block_size: int = 256,
+        storage_dtype: str = "bf16",
+    ) -> Qwen35GGUFMTPDraftExecutionPlan:
+        proposal = self.build_draft_proposal_from_logits(
+            request_id=request_id,
+            logits=logits,
+            seed_rows=seed_rows,
+            top_k=top_k,
+            selected_index=selected_index,
+            topk_kernel=topk_kernel,
+        )
+        kv_live_spans = self.build_kvlivespans_plan(
+            proposal.batch,
+            block_size=block_size,
+            storage_dtype=storage_dtype,
+        )
+        return Qwen35GGUFMTPDraftExecutionPlan(
+            proposal=proposal,
+            kv_live_spans=kv_live_spans,
         )
 
     def build_draft_batch(

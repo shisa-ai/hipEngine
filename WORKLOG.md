@@ -95865,3 +95865,56 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. The new metadata plan explicitly carries the KVLiveSpans-shaped fields
   required for future MTP attention/KV-write execution.
+
+## 2026-06-15 - MTP-GGUF draft execution-plan contract
+
+Implemented `mtp-gguf` multiloop iteration 71: bundled GGUF MTP draft proposal
+selection and metadata-only KVLiveSpans into a single torch-free draft execution
+plan contract.
+
+Scope note:
+- Context/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This creates one tested handoff object for the future runtime: selected draft
+  tokens, top-k evidence, and CPU-reference-shaped append/decode KVLiveSpans
+  kwargs.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftExecutionPlan` in
+  `hipengine/speculative/gguf_mtp.py`, bundling `Qwen35GGUFMTPDraftProposal` and
+  `Qwen35GGUFMTPKVLiveSpansPlan`.
+- Added `Qwen35GGUFMTPContext.build_draft_execution_plan_from_logits(...)`, which
+  resolves/uses the registered top-k proposal bridge and immediately derives the
+  metadata KVLiveSpans plan from the selected draft batch.
+- The execution plan validates that proposal rows and KVLiveSpans token positions
+  match, exposes `proposed_token_ids`, and emits CPU-reference-shaped append and
+  decode kwargs.
+- Added tests for the end-to-end metadata execution-plan contract and mismatched
+  proposal/spans validation.
+- Updated `docs/MTP-gguf.md` to document that the target-attached context now
+  includes proposal, KVLiveSpans, and execution-plan contracts while native
+  runtime registration remains open.
+
+Validation:
+- Focused context/CPU-reference/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` -> `38` passed.
+- Execution-plan smoke passed:
+  constructed a context seed and selected from logits `[[0.2, 4.0, 4.0]]` with
+  `top_k=2`, `block_size=4` -> `execution_plan (1,) ((1, 2),)` with uniform
+  KVLiveSpans `base_offsets [[0, 1]]`, append live count `[6]`, decode live count
+  `[7]`, and decode CPU-reference kwargs carrying the same KVLiveSpans-shaped
+  fields.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: context/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; top-k proposal resolves the four-axis registry
+  key; no generation integration, native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. The execution plan
+  explicitly carries KVLiveSpans-shaped append/decode kwargs for the future MTP
+  attention/KV-write path.

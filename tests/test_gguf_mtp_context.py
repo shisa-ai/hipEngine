@@ -9,6 +9,7 @@ from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
 from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPDraftBatch,
+    Qwen35GGUFMTPDraftExecutionPlan,
     Qwen35GGUFMTPDraftProposal,
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPKVLiveSpansPlan,
@@ -167,6 +168,71 @@ def test_gguf_mtp_context_builds_multi_depth_draft_batch_from_seed_rows() -> Non
     assert [row.position for row in batch.rows] == [6, 7, 8]
     assert [row.parent_token_id for row in batch.rows] == [10, 11, 12]
     assert [row.parent_position for row in batch.rows] == [5, 6, 7]
+
+
+def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))
+    logits = np.asarray([[0.2, 4.0, 4.0]], dtype=np.float32)
+
+    plan = context.build_draft_execution_plan_from_logits(
+        request_id=9,
+        logits=logits,
+        top_k=2,
+        block_size=4,
+    )
+
+    assert isinstance(plan, Qwen35GGUFMTPDraftExecutionPlan)
+    assert plan.proposed_token_ids == (1,)
+    assert plan.proposal.top_k_token_ids == ((1, 2),)
+    assert plan.kv_live_spans.token_positions == (6,)
+    assert plan.cpu_reference_kwargs() == {
+        "append": {
+            "kv_base_offsets": [[0, 1]],
+            "kv_live_counts": [6],
+            "kv_token_positions": [6],
+            "kv_evict_mask": None,
+            "block_size": 4,
+        },
+        "decode": {
+            "kv_base_offsets": [[0, 1]],
+            "kv_live_counts": [7],
+            "kv_token_positions": [6],
+            "kv_evict_mask": None,
+            "block_size": 4,
+        },
+    }
+    assert plan.as_dict()["proposed_token_ids"] == [1]
+    assert plan.as_dict()["proposal"]["topk_kernel"] == [
+        "cpu_reference",
+        "mtp_draft_topk",
+        "w4_gguf",
+        "full_vocab_d2h",
+    ]
+
+
+def test_gguf_mtp_execution_plan_validates_positions_match_spans() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))
+    batch = context.build_b1_draft_batch(request_id=0, token_id=20)
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((20,),),
+        top_k_logits=((1.0,),),
+    )
+    mismatched_spans = Qwen35GGUFMTPKVLiveSpansPlan(
+        rows=1,
+        block_size=4,
+        logical_blocks=2,
+        base_offsets=((0, 1),),
+        append_live_counts=(99,),
+        decode_live_counts=(100,),
+        token_positions=(99,),
+    )
+
+    with pytest.raises(ValueError, match="token_positions"):
+        Qwen35GGUFMTPDraftExecutionPlan(proposal=proposal, kv_live_spans=mismatched_spans)
 
 
 def test_gguf_mtp_context_builds_metadata_only_kvlivespans_plan_for_draft_batch() -> None:
