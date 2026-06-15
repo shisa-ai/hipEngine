@@ -93500,3 +93500,20 @@ Validation:
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-15 - Synthetic-output session downgrade regression
+
+Added endpoint-level coverage for the visible-only session commit rule that any
+finish carrying `synthetic_tokens > 0` is stored as prompt-only even when the
+public finish reason is otherwise safe. The regression confirms the response can
+still return visible content with synthetic-token metadata, but the app-local
+session stores only the incoming user prompt and the next request does not
+render the synthetic text.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'synthetic_output_to_prompt_only'` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'synthetic_output_to_prompt_only or structured_output_failures_to_prompt_only or chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_only or chat_session_visible_only_downgrades_unparseable_tool_markup_to_prompt_only or chat_session_visible_only_downgrades_length_finish_to_prompt_only or chat_session_visible_only_downgrades_backend_errors_to_prompt_only'` -> `10 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.

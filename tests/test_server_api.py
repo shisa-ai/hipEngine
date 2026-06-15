@@ -5670,6 +5670,53 @@ def test_chat_session_visible_only_downgrades_structured_output_failures_to_prom
     assert record.messages == ({"role": "user", "content": "return json"},)
 
 
+def test_chat_session_visible_only_downgrades_synthetic_output_to_prompt_only() -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="synthetic repair",
+                finish_details=FinishDetails(reason="stop", synthetic_tokens=2),
+            ),
+            "done",
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "repair"}],
+            "max_tokens": 4,
+            "session": {"id": "sess_synthetic", "commit": "append_visible_only"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 4,
+            "session": {"id": "sess_synthetic", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_choice = first.json()["choices"][0]
+    assert first_choice["message"] == {"role": "assistant", "content": "synthetic repair"}
+    assert first_choice["finish_details"]["reason"] == "stop"
+    assert first_choice["finish_details"]["synthetic_tokens"] == 2
+    assert first_choice["finish_details"]["cache_action"] == "append_prompt_only"
+    prompt = fake.calls[1][0][0]
+    assert "repair" in prompt
+    assert "continue" in prompt
+    assert "synthetic repair" not in prompt
+    record = app.state.hipengine_chat_sessions["sess_synthetic"]
+    assert record.messages == ({"role": "user", "content": "repair"},)
+
+
 def test_completions_response_format_json_object_validates_result() -> None:
     valid_client = TestClient(
         create_app(
