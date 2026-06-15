@@ -673,11 +673,12 @@ python3 scripts/validate_pi_agent_models.py \
 The `--chat-smoke` check requires the response to finish with a parsed
 `record_result` tool call whose JSON arguments set `result` to `"ok"`;
 ordinary assistant text, raw `<tool_call>` markup, a missing `tool_calls`
-payload, raw `<tool_call>` leakage in assistant `content` alongside parsed
-tool calls, or the wrong tool argument fails validation. The
+payload, raw `<tool_call>` leakage in assistant `content` or
+`reasoning_content` alongside parsed tool calls, or the wrong tool argument
+fails validation. The
 `--reasoning-smoke` check sends `enable_thinking=true`, requires a non-empty
 parsed `message.reasoning_content`, and fails if raw `<think>` markup leaks into
-assistant `content`.
+assistant text fields.
 
 ### Local-agent config validation
 
@@ -697,8 +698,9 @@ When `--chat-smoke` is used and the config enables tools, the validator sends a
 specific `record_result` tool choice and requires the server response to contain
 that parsed tool call with JSON arguments that set `result` to `"ok"`. If tools
 are disabled, the smoke only requires a valid chat completion response. Raw
-`<tool_call>` markup in assistant `content` is treated as a failed adapter
-contract, even if a parsed `tool_calls` payload is also present.
+`<tool_call>` markup in assistant `content` or `reasoning_content` is treated
+as a failed adapter contract, even if a parsed `tool_calls` payload is also
+present.
 
 Known agent fields that are advertised as unsupported are rejected before
 generation work starts. Stateless requests without a `session` object default

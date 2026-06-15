@@ -264,10 +264,11 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
         raise PiConfigValidationError("chat smoke response.choices must contain at least one choice")
     choice = _object_value(choices[0], "chat smoke response.choices[0]")
     message = _object(choice, "message", label="chat smoke response.choices[0].message")
-    content = message.get("content")
-    if isinstance(content, str) and "<tool_call>" in content:
+    raw_tool_field = _first_message_field_containing(message, "<tool_call>")
+    if raw_tool_field is not None:
         raise PiConfigValidationError(
-            "chat smoke returned raw <tool_call> text instead of parsed message.tool_calls; "
+            f"chat smoke returned raw <tool_call> text in message.{raw_tool_field} "
+            "instead of parsed message.tool_calls; "
             "check that pi is using the OpenAI chat-completions adapter with tools enabled"
         )
     if choice.get("finish_reason") != "tool_calls":
@@ -521,6 +522,14 @@ def _object_value(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PiConfigValidationError(f"{label} must be a JSON object")
     return value
+
+
+def _first_message_field_containing(message: dict[str, Any], marker: str) -> str | None:
+    for field in ("content", "reasoning_content"):
+        value = message.get(field)
+        if isinstance(value, str) and marker in value:
+            return field
+    return None
 
 
 def _list(value: Any, label: str) -> list[Any]:

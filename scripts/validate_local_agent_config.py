@@ -198,10 +198,11 @@ def validate_chat_smoke_response(
     choice = _object_value(choices[0], "chat smoke response.choices[0]")
     message = _object(choice, "message")
     finish_reason = choice.get("finish_reason")
-    content = message.get("content")
-    if isinstance(content, str) and "<tool_call>" in content:
+    raw_tool_field = _first_message_field_containing(message, "<tool_call>")
+    if raw_tool_field is not None:
         raise ConfigValidationError(
-            "chat smoke returned raw <tool_call> text instead of parsed message.tool_calls; "
+            f"chat smoke returned raw <tool_call> text in message.{raw_tool_field} "
+            "instead of parsed message.tool_calls; "
             "check that the client is using /v1/chat/completions with tools enabled"
         )
     if not expect_tool_call:
@@ -352,6 +353,14 @@ def _object_value(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigValidationError(f"{label} must be a JSON object")
     return value
+
+
+def _first_message_field_containing(message: dict[str, Any], marker: str) -> str | None:
+    for field in ("content", "reasoning_content"):
+        value = message.get(field)
+        if isinstance(value, str) and marker in value:
+            return field
+    return None
 
 
 def _string_list(value: Any, label: str) -> list[str]:

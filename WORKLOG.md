@@ -92209,3 +92209,22 @@ Validation:
 - `uv run pytest tests/test_server_api.py -q -k 'replay_artifact_captures_agentic_result_validation_failure'` -> passed.
 - `uv run pytest tests/test_server_api.py -q -k 'replay_artifact'` -> `14 passed`.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC config smoke assistant text leak checks
+
+Hardened the local-agent and pi-agent chat smoke validators so raw
+`<tool_call>` markup is rejected from assistant `reasoning_content` as well as
+`content`, even when a parsed `message.tool_calls` payload is present. Added
+regression tests for both validators and pinned the pi reasoning smoke rejection
+for `reasoning_content` that still contains Qwen `<think>` tags. Updated
+`docs/API.md` and `docs/AGENTIC.md` to describe assistant text-field leak
+checks.
+
+Validation:
+- `uv run pytest tests/test_local_agent_config.py -q -k 'raw_tool_call_reasoning_leak or reasoning_content_with_tags or raw_tool_call_content_leak or raw_tool_call_markup'` -> `8 passed`.
+- `uv run pytest tests/test_local_agent_config.py -q` -> `36 passed`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `python3 -m py_compile scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
+- `uv run ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 scripts/validate_local_agent_config.py --help` and `python3 scripts/validate_pi_agent_models.py --help` -> printed help successfully.
+- `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.

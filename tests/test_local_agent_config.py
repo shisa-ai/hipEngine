@@ -317,6 +317,41 @@ def test_local_agent_chat_smoke_response_rejects_raw_tool_call_content_leak() ->
         )
 
 
+def test_local_agent_chat_smoke_response_rejects_raw_tool_call_reasoning_leak() -> None:
+    with pytest.raises(
+        validate_local_agent_config.ConfigValidationError,
+        match=r"message\.reasoning_content",
+    ):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "reasoning_content": (
+                                '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>'
+                            ),
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "record_result",
+                                        "arguments": json.dumps({"result": "ok"}),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
+
+
 def test_local_agent_chat_smoke_response_rejects_wrong_tool_argument() -> None:
     with pytest.raises(validate_local_agent_config.ConfigValidationError, match="result.*'ok'"):
         validate_local_agent_config.validate_chat_smoke_response(
@@ -680,6 +715,40 @@ def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_content_leak() -> No
         )
 
 
+def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_reasoning_leak() -> None:
+    with pytest.raises(
+        validate_pi_agent_models.PiConfigValidationError,
+        match=r"message\.reasoning_content",
+    ):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "reasoning_content": (
+                                '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>'
+                            ),
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "record_result",
+                                        "arguments": json.dumps({"result": "ok"}),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        )
+
+
 def test_pi_agent_reasoning_smoke_response_rejects_missing_reasoning_content() -> None:
     with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="reasoning_content"):
         validate_pi_agent_models.validate_pi_reasoning_smoke_response(
@@ -704,6 +773,25 @@ def test_pi_agent_reasoning_smoke_response_rejects_raw_think_markup() -> None:
                     {
                         "finish_reason": "stop",
                         "message": {"role": "assistant", "content": "<think>brief</think>OK"},
+                    }
+                ],
+            }
+        )
+
+
+def test_pi_agent_reasoning_smoke_response_rejects_reasoning_content_with_tags() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="think tags"):
+        validate_pi_agent_models.validate_pi_reasoning_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": "OK",
+                            "reasoning_content": "<think>brief</think>",
+                        },
                     }
                 ],
             }

@@ -2349,8 +2349,9 @@ Current code reality:
   When tools are enabled, the local-agent `--chat-smoke` request forces the
   `record_result` function and requires a parsed tool call with valid JSON
   arguments that set `result` to `"ok"`; raw `<tool_call>` assistant text,
-  including leakage in assistant `content` alongside a parsed `tool_calls`
-  payload, or wrong tool arguments are rejected as a config/server mismatch.
+  including leakage in assistant `content` or `reasoning_content` alongside a
+  parsed `tool_calls` payload, or wrong tool arguments are rejected as a
+  config/server mismatch.
   When tools are disabled, it only validates a normal chat response.
 - `scripts/validate_pi_agent_models.py` validates the checked-in pi
   `models.json` shape offline and fails on the common `reasoning=false` or
@@ -2365,11 +2366,12 @@ Current code reality:
   `/v1/hipengine/capabilities`; `--chat-smoke` additionally POSTs a small Qwen
   tool-call request and requires a parsed `record_result` tool call with JSON
   arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
-  including a doubled start-marker form or assistant `content` leakage alongside
-  parsed `tool_calls`, is rejected as a tool-calling mismatch.
+  including a doubled start-marker form or assistant `content` /
+  `reasoning_content` leakage alongside parsed `tool_calls`, is rejected as a
+  tool-calling mismatch.
   `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
   parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
-  in assistant content as a Qwen thinking/parser mismatch.
+  in assistant text fields as a Qwen thinking/parser mismatch.
 - `tests/test_local_agent_config.py` posts that exact pi smoke payload through a
   FastAPI `create_app()` test server with fake Qwen `<tool_call>` output and
   asserts the response is parsed OpenAI `message.tool_calls`, not raw markup. It
