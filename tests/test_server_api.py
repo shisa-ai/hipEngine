@@ -550,13 +550,20 @@ def _session_commit_policy_capability() -> dict[str, Any]:
         "context_overflow_policy": {
             "field": "session.context_overflow_policy",
             "default": "reject",
-            "modes": ["reject", "new_session"],
+            "modes": ["reject", "new_session", "truncate_oldest_visible"],
             "aliases": {"fail": "reject"},
             "new_session": {
                 "scope": "app_local_chat_transcript_prefix",
                 "drops_request_content": False,
                 "requires_request_only_fit": True,
                 "metadata": ["clear_policy", "would_reset_session", "would_drop", "kept_segments"],
+            },
+            "truncate_oldest_visible": {
+                "scope": "app_local_chat_transcript_prefix",
+                "drops_request_content": False,
+                "requires_valid_rendered_suffix": True,
+                "commit": "replace_stored_prefix_on_success",
+                "metadata": ["clear_policy", "would_truncate", "would_drop", "kept_segments"],
             },
         },
     }
@@ -785,7 +792,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "chat_default_mode": "bounded",
         "overflow_policy_field": "session.context_overflow_policy",
         "default_overflow_policy": "reject",
-        "overflow_policies": ["reject", "new_session"],
+        "overflow_policies": ["reject", "new_session", "truncate_oldest_visible"],
     }
     assert body["tokenizer"]["tokenize"] is True
     assert body["tokenizer"]["detokenize"] is True
@@ -1884,6 +1891,104 @@ def test_chat_context_new_session_policy_does_not_hide_request_overflow() -> Non
     )
 
 
+def test_chat_context_truncate_oldest_visible_policy_keeps_fitting_suffix() -> None:
+    fake = SequentialFakeLLM(["answer alpha", "answer beta", "answer gamma"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=12,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "one alpha"}],
+            "max_tokens": 1,
+            "session": {"id": "truncate_session"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "two beta"}],
+            "max_tokens": 1,
+            "session": {"id": "truncate_session"},
+        },
+    )
+    payload = {
+        "messages": [{"role": "user", "content": "now gamma"}],
+        "max_tokens": 1,
+        "session": {"id": "truncate_session", "context_overflow_policy": "truncate_oldest_visible"},
+    }
+    fit = client.post("/v1/hipengine/fit_context", json=payload)
+    third = client.post("/v1/chat/completions", json={"model": "fake-model", **payload})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert fit.status_code == 200
+    assert third.status_code == 200
+    fit_body = fit.json()
+    assert fit_body["fits"] is True
+    assert fit_body["prompt_tokens"] == 10
+    assert fit_body["effective_max_tokens"] == 1
+    assert fit_body["required_context_tokens"] == 12
+    assert fit_body["clear_policy"] == "truncate_oldest_visible"
+    assert fit_body["would_truncate"] is True
+    assert fit_body["would_reset_session"] is False
+    assert fit_body["would_drop"] == [
+        {
+            "kind": "session_prefix",
+            "session_id": "truncate_session",
+            "storage": "app_local_transcript",
+            "message_count": 2,
+        }
+    ]
+    assert fit_body["kept_segments"] == [
+        {
+            "kind": "session_prefix",
+            "session_id": "truncate_session",
+            "storage": "app_local_transcript",
+            "message_count": 2,
+        },
+        {"kind": "request_messages", "message_count": 1},
+    ]
+    assert fit_body["session"] == {
+        "id": "truncate_session",
+        "stateful": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "prefix_message_count": 2,
+        "request_message_count": 1,
+        "rendered_message_count": 3,
+        "cache_action": "append_visible_only",
+    }
+    serialized = json.dumps(fit_body)
+    assert "two beta" in serialized
+    assert "answer beta" in serialized
+    assert "now gamma" in serialized
+    assert "one alpha" not in serialized
+    assert "answer alpha" not in serialized
+    prompt = fake.calls[2][0][0]
+    assert "two beta" in prompt
+    assert "answer beta" in prompt
+    assert "now gamma" in prompt
+    assert "one alpha" not in prompt
+    assert "answer alpha" not in prompt
+    assert app.state.hipengine_chat_sessions["truncate_session"].messages == (
+        {"role": "user", "content": "two beta"},
+        {"role": "assistant", "content": "answer beta"},
+        {"role": "user", "content": "now gamma"},
+        {"role": "assistant", "content": "answer gamma"},
+    )
+
+
 def test_chat_context_overflow_policy_requires_known_stateful_mode() -> None:
     fake = FakeLLM(outputs=["unused"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -1894,7 +1999,7 @@ def test_chat_context_overflow_policy_requires_known_stateful_mode() -> None:
         json={
             "model": "fake-model",
             "messages": [{"role": "user", "content": "hello"}],
-            "session": {"id": "bad_policy", "context_overflow_policy": "truncate_oldest_visible"},
+            "session": {"id": "bad_policy", "context_overflow_policy": "compact_summary"},
         },
     )
     stateless = client.post(

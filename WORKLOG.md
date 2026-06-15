@@ -93410,3 +93410,23 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Stateful chat truncate-oldest context policy
+
+Added `session.context_overflow_policy="truncate_oldest_visible"` for buffered
+app-local chat sessions. `/v1/hipengine/fit_context` and generation now search
+for the shortest dropped oldest stored prefix whose retained suffix plus current
+request still renders as a valid tool transcript and fits the admitted context.
+Successful generation replaces the stored transcript with that kept suffix plus
+the new turn; failed/no-fit requests leave the session intact. Fit/error
+metadata reports `clear_policy="truncate_oldest_visible"`, `would_truncate`,
+sanitized dropped-prefix counts, and kept segments. API/AGENTIC docs and the
+capabilities manifest now advertise the policy.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'new_session_policy or truncate_oldest_visible or context_overflow_policy_requires_known_stateful_mode or capabilities_endpoint_reports_manifest_and_auth'` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'fit_context or context_overflow or capabilities_endpoint_reports_manifest_and_auth or chat_session_visible_only or session_append_none or stateless_session_default or context_overflow_policy or truncate_oldest_visible'` -> `22 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

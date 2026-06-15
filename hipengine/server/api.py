@@ -78,7 +78,7 @@ _SESSION_COMMIT_MODES = (
     "append_all",
 )
 _SESSION_STATEFUL_DEFAULT_COMMIT = "append_visible_only"
-_SESSION_CONTEXT_OVERFLOW_POLICIES = ("reject", "new_session")
+_SESSION_CONTEXT_OVERFLOW_POLICIES = ("reject", "new_session", "truncate_oldest_visible")
 _SESSION_CONTEXT_OVERFLOW_POLICY_ALIASES = {"fail": "reject"}
 _SESSION_ALLOWED_STATEFUL_KEYS = frozenset({"id", "commit", "context_overflow_policy"})
 _SESSION_UNSAFE_VISIBLE_REASONS = frozenset(
@@ -1190,6 +1190,13 @@ def _session_commit_policy_capability() -> dict[str, Any]:
                 "requires_request_only_fit": True,
                 "metadata": ["clear_policy", "would_reset_session", "would_drop", "kept_segments"],
             },
+            "truncate_oldest_visible": {
+                "scope": "app_local_chat_transcript_prefix",
+                "drops_request_content": False,
+                "requires_valid_rendered_suffix": True,
+                "commit": "replace_stored_prefix_on_success",
+                "metadata": ["clear_policy", "would_truncate", "would_drop", "kept_segments"],
+            },
         },
     }
 
@@ -1536,6 +1543,7 @@ class _ChatContextRender:
     session_payload: dict[str, Any] | None = None
     fit_context_extra: dict[str, Any] | None = None
     reset_session_on_commit: bool = False
+    commit_base_messages: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass
@@ -2588,6 +2596,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         visible_message: Mapping[str, Any],
         cache_action: str | None,
         reset_session: bool = False,
+        commit_base_messages: Sequence[Mapping[str, Any]] | None = None,
     ) -> None:
         session_id = _session_id(request)
         if session_id is None or cache_action in (None, "append_none"):
@@ -2605,7 +2614,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         async with chat_session_lock:
             previous = chat_sessions.get(session_id)
             created = now if previous is None or reset_session else previous.created
-            base = () if previous is None or reset_session else previous.messages
+            if commit_base_messages is not None:
+                base = tuple(_chat_session_message_copy(message) for message in commit_base_messages)
+            else:
+                base = () if previous is None or reset_session else previous.messages
             chat_sessions[session_id] = _ChatSessionRecord(
                 id=session_id,
                 messages=(*base, *appended),
@@ -2656,6 +2668,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_tokens=max_tokens,
         )
 
+    def chat_context_candidate(
+        request: ChatCompletionRequest,
+        prefix_messages: Sequence[Mapping[str, Any]],
+        engine: Any,
+    ) -> tuple[ChatCompletionRequest, str]:
+        render_request = request
+        if prefix_messages:
+            render_request = _chat_request_with_messages(
+                request,
+                (*prefix_messages, *request.messages),
+            )
+        return render_request, chat_prompt_for_request(render_request, engine)
+
     async def render_chat_context_for_request(
         request: ChatCompletionRequest,
         engine: Any,
@@ -2663,36 +2688,53 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         apply_context_policy: bool,
     ) -> _ChatContextRender:
         prefix_messages = tuple(await chat_session_prefix_messages(request))
-        render_request = request
-        if prefix_messages:
-            render_request = _chat_request_with_messages(
-                request,
-                (*prefix_messages, *request.messages),
-            )
-        prompt = chat_prompt_for_request(render_request, engine)
+        render_request, prompt = chat_context_candidate(request, prefix_messages, engine)
         effective_prefix = prefix_messages
         session_payload = _diagnostic_session_payload(request, effective_prefix)
         fit_context_extra = None if session_payload is None else {"session": session_payload}
         reset_session = False
+        commit_base_messages = None
         policy = _session_context_overflow_policy(request)
-        if apply_context_policy and policy == "new_session" and session_payload is not None:
+        if (
+            apply_context_policy
+            and policy in {"new_session", "truncate_oldest_visible"}
+            and session_payload is not None
+        ):
             dropped_message_count = 0
             if prefix_messages and effective_max_context_tokens(engine) is not None:
                 prefixed_fit = chat_context_fit_payload(render_request, prompt, engine)
-                request_only_prompt = chat_prompt_for_request(request, engine)
-                request_only_fit = chat_context_fit_payload(request, request_only_prompt, engine)
-                if not prefixed_fit["fits"] and request_only_fit["fits"]:
-                    prompt = request_only_prompt
-                    render_request = request
-                    effective_prefix = ()
-                    dropped_message_count = len(prefix_messages)
-                    reset_session = True
-                    session_payload = _diagnostic_session_payload(request, effective_prefix)
-            policy_extra = _context_policy_new_session_payload(
+                if not prefixed_fit["fits"]:
+                    candidate_drop_counts = (
+                        (len(prefix_messages),)
+                        if policy == "new_session"
+                        else tuple(range(1, len(prefix_messages) + 1))
+                    )
+                    for drop_count in candidate_drop_counts:
+                        candidate_prefix = prefix_messages[drop_count:]
+                        try:
+                            candidate_request, candidate_prompt = chat_context_candidate(
+                                request,
+                                candidate_prefix,
+                                engine,
+                            )
+                        except OpenAIHTTPError:
+                            continue
+                        candidate_fit = chat_context_fit_payload(candidate_request, candidate_prompt, engine)
+                        if candidate_fit["fits"]:
+                            prompt = candidate_prompt
+                            render_request = candidate_request
+                            effective_prefix = candidate_prefix
+                            dropped_message_count = drop_count
+                            reset_session = policy == "new_session"
+                            commit_base_messages = tuple(dict(item) for item in candidate_prefix)
+                            session_payload = _diagnostic_session_payload(request, effective_prefix)
+                            break
+            policy_extra = _context_policy_session_prefix_payload(
                 request,
                 session_id=_session_id(request),
+                clear_policy=policy,
                 dropped_message_count=dropped_message_count,
-                kept_prefix_message_count=0 if reset_session else len(prefix_messages),
+                kept_prefix_message_count=len(effective_prefix),
                 reset=reset_session,
             )
             fit_context_extra = {"session": session_payload, **policy_extra}
@@ -2703,6 +2745,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             session_payload=session_payload,
             fit_context_extra=fit_context_extra,
             reset_session_on_commit=reset_session,
+            commit_base_messages=commit_base_messages,
         )
 
     async def diagnostic_render_for_request(
@@ -4901,6 +4944,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     visible_message=message,
                     cache_action=effective_cache_action,
                     reset_session=prepared_prompt.reset_session_on_commit,
+                    commit_base_messages=prepared_prompt.commit_base_messages,
                 )
             response = {
                 "id": response_id,
@@ -8298,10 +8342,11 @@ def _diagnostic_session_payload(
     }
 
 
-def _context_policy_new_session_payload(
+def _context_policy_session_prefix_payload(
     request: ChatCompletionRequest,
     *,
     session_id: str | None,
+    clear_policy: str,
     dropped_message_count: int,
     kept_prefix_message_count: int,
     reset: bool,
@@ -8323,7 +8368,7 @@ def _context_policy_new_session_payload(
         }
     )
     would_drop: list[dict[str, Any]] = []
-    if reset and dropped_message_count > 0:
+    if dropped_message_count > 0:
         would_drop.append(
             {
                 "kind": "session_prefix",
@@ -8333,8 +8378,8 @@ def _context_policy_new_session_payload(
             }
         )
     return {
-        "clear_policy": "new_session",
-        "would_truncate": False,
+        "clear_policy": clear_policy,
+        "would_truncate": clear_policy == "truncate_oldest_visible" and dropped_message_count > 0,
         "would_reset_session": bool(reset),
         "would_drop": would_drop,
         "kept_segments": kept_segments,

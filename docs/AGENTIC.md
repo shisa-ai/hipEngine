@@ -1197,11 +1197,13 @@ Current code reality:
   thinking controls, before counting. When a chat diagnostic request includes
   `session.id`, `count_tokens` prepends the stored app-local transcript exactly
   as stored. `fit_context` shares generation's overflow-policy decision: the
-  default is `reject`, and `session.context_overflow_policy="new_session"` drops
-  the stored prefix only when prefix+request overflows and the current request
-  alone fits. The responses report session prefix/request/rendered message
-  counts plus `resident_state_reuse=false`. Chat count/fit diagnostics also
-  expose lowered thinking-budget close tokens, the initialized
+  default is `reject`, `session.context_overflow_policy="new_session"` drops the
+  stored prefix only when prefix+request overflows and the current request alone
+  fits, and `truncate_oldest_visible` drops the shortest oldest prefix whose
+  retained suffix remains a valid rendered transcript and fits. The responses
+  report session prefix/request/rendered message counts plus
+  `resident_state_reuse=false`. Chat count/fit diagnostics also expose lowered
+  thinking-budget close tokens, the initialized
   `ThinkingBudgetState` payload, and `allow_unbounded=true` when that merged
   control is active and tokenization is available; capability metadata
   advertises that diagnostic lowering/state support separately from live
@@ -2094,21 +2096,30 @@ Current code reality:
   request is rendered without the stored prefix and the app-local transcript is
   replaced on successful commit. If the current request alone still overflows,
   the request is rejected and the transcript is left intact.
+- Stateful buffered chat requests may also set
+  `session.context_overflow_policy="truncate_oldest_visible"`. Generation and
+  `/fit_context` search for the shortest dropped oldest stored prefix whose
+  retained suffix plus current request renders through the normal chat
+  tool-transcript validation and fits the context budget. On successful commit,
+  the app-local transcript is replaced with that kept suffix plus the new turn.
+  If no valid suffix fits, the request is rejected and the transcript is left
+  intact.
 - `/fit_context` reports prompt tokens, effective max tokens, required context,
   max allowed/recommended `max_tokens`, overflow tokens, `fits`,
-  `clear_policy`, `would_truncate=false`, `would_reset_session` for
+  `clear_policy`, `would_truncate`, `would_reset_session` for
   `new_session`, sanitized `would_drop`, and `kept_segments` using the same
   helper as generation admission. Chat preflight with `session.id` includes the
   app-local stored transcript prefix before computing prompt tokens unless
-  `new_session` can safely reset to the current request; it reports the same
-  session-prefix metadata as generation.
+  `new_session` can safely reset to the current request or
+  `truncate_oldest_visible` can safely keep a fitting suffix; it reports the
+  same session-prefix metadata as generation.
 - Generation `context_overflow` errors include `error.fit_context` with the same
   actionable shape, so clients can retry with a smaller `max_tokens` or run the
   preflight endpoint without reverse-engineering the error message. For
   session-backed chat requests, generation overflow errors also include the
   same `session` prefix-count and overflow-policy metadata as `/fit_context`.
-- `auto_clear_transient`, `truncate_oldest_visible`, `keep_pinned_prefix`, and
-  summary compaction are still future work; `new_session` never drops current
+- `auto_clear_transient`, `keep_pinned_prefix`, and summary compaction are still
+  future work; `new_session` and `truncate_oldest_visible` never drop current
   request messages.
 
 Exit gates:
@@ -2974,8 +2985,10 @@ units, in order:
 5. **Resident KV session/cache work:** implement visible-only re-prefill,
    forkable prefix/cache handles, rollback/delete semantics, and resident-state
    continuation reuse.
-6. **Context policies beyond reject:** add explicit auto-clear/truncate/summary
-   policies only after they can report kept/dropped/reset segments deterministically.
+6. **Context policies beyond reject:** `new_session` and
+   `truncate_oldest_visible` now report kept/dropped/reset segments
+   deterministically; auto-clear, pinned-prefix, and summary policies remain
+   future work until they can do the same.
 7. **Multi-model routing and TP runtime:** build these after the single-model
    agentic contract stays green, using `docs/TENSOR_PARALLEL.md` as the TP gate.
 
