@@ -760,6 +760,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "composition.anyOf",
             "composition.oneOf",
             "composition.not",
+            "conditional.if",
+            "conditional.then",
+            "conditional.else",
             "object.properties",
             "object.patternProperties",
             "object.propertyNames",
@@ -842,6 +845,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "composition.anyOf",
             "composition.oneOf",
             "composition.not",
+            "conditional.if",
+            "conditional.then",
+            "conditional.else",
             "object.properties",
             "object.patternProperties",
             "object.propertyNames",
@@ -5120,6 +5126,57 @@ def test_completions_response_format_json_schema_validates_dependent_schemas() -
         assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_json_schema_validates_conditional_schemas() -> None:
+    schema = {
+        "name": "agent_result",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"enum": ["file", "url"]},
+                "path": {"type": "string"},
+                "href": {"type": "string", "pattern": r"^https://"},
+            },
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "file"}}},
+            "then": {"required": ["path"], "not": {"required": ["href"]}},
+            "else": {"required": ["href"], "not": {"required": ["path"]}},
+            "additionalProperties": False,
+        },
+    }
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"kind":"file","path":"README.md"}']),
+        )
+    )
+    invalid_outputs = [
+        '{"kind":"file","href":"https://example.test"}',
+        '{"kind":"url","path":"README.md"}',
+    ]
+
+    valid = valid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"kind":"file","path":"README.md"}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    for generated in invalid_outputs:
+        invalid = TestClient(
+            create_app(
+                ServerConfig(model="fake-path", served_model_name="fake-model"),
+                llm=FakeLLM(outputs=[generated]),
+            )
+        ).post("/v1/completions", json=payload)
+        assert invalid.status_code == 200
+        invalid_choice = invalid.json()["choices"][0]
+        assert invalid_choice["text"] == ""
+        assert invalid_choice["finish_reason"] == "stop"
+        assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_json_schema_validates_numeric_multiple_of() -> None:
     schema = {
         "name": "agent_result",
@@ -5629,6 +5686,55 @@ def test_completions_response_format_rejects_invalid_composition_schema() -> Non
     error = response.json()["error"]
     assert error["code"] == "invalid_request"
     assert error["param"] == "response_format.json_schema.schema.properties.ok.anyOf"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("schema", "param"),
+    [
+        (
+            {"type": "object", "if": "file"},
+            "response_format.json_schema.schema.if",
+        ),
+        (
+            {"type": "object", "if": {"type": "object"}, "then": "file"},
+            "response_format.json_schema.schema.then",
+        ),
+        (
+            {"type": "object", "if": {"type": "object"}, "else": "url"},
+            "response_format.json_schema.schema.else",
+        ),
+    ],
+)
+def test_completions_response_format_rejects_invalid_conditional_schema(
+    schema: dict[str, Any],
+    param: str,
+) -> None:
+    fake = FakeLLM(outputs=['{"ok":true}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_result",
+                    "schema": schema,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == param
     assert error["hipengine"]["code"] == "schema_violation"
     assert error["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
@@ -9890,6 +9996,62 @@ def test_chat_completion_strict_tool_schema_validates_dependent_schemas() -> Non
         ServerConfig(model="fake-path", served_model_name="fake-model"),
         llm=FakeLLM(
             outputs=['<tool_call>{"name":"record","arguments":{"kind":"url","path":"README.md"}}</tool_call>']
+        ),
+    )
+
+    valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
+    invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["finish_reason"] == "tool_calls"
+    assert valid_choice["finish_details"]["reason"] == "tool_calls"
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "tool_calls" not in invalid_choice["message"]
+
+
+def test_chat_completion_strict_tool_schema_validates_conditional_schemas() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "record",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"enum": ["file", "url"]},
+                        "path": {"type": "string"},
+                        "href": {"type": "string", "pattern": r"^https://"},
+                    },
+                    "if": {"required": ["kind"], "properties": {"kind": {"const": "file"}}},
+                    "then": {"required": ["path"], "not": {"required": ["href"]}},
+                    "else": {"required": ["href"], "not": {"required": ["path"]}},
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "record result"}],
+        "tools": tools,
+    }
+    valid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=['<tool_call>{"name":"record","arguments":{"kind":"file","path":"README.md"}}</tool_call>']
+        ),
+    )
+    invalid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=[
+                '<tool_call>{"name":"record","arguments":{"kind":"file","href":"https://example.test"}}</tool_call>'
+            ]
         ),
     )
 

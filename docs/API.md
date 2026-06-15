@@ -465,9 +465,9 @@ forces the remaining suffix through model decoding so the closing tag is not
 left partially emitted.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
-schema composition with `allOf` / `anyOf` / `oneOf` / `not`, object
-`properties` / `patternProperties` / `propertyNames` / `required` /
-`dependentRequired` / `dependentSchemas` /
+schema composition with `allOf` / `anyOf` / `oneOf` / `not`, conditionals with
+`if` / `then` / `else`, object `properties` / `patternProperties` /
+`propertyNames` / `required` / `dependentRequired` / `dependentSchemas` /
 `additionalProperties: false` or a schema / `minProperties` / `maxProperties`,
 array `items` / `contains` with `minItems` / `maxItems` / `minContains` /
 `maxContains`, `uniqueItems`, string `minLength` / `maxLength` / `pattern`,
@@ -480,8 +480,8 @@ are distinct from numbers while numeric `1` and `1.0` compare equal. String
 generation, and invalid regexes are rejected before generation. Numeric
 `multipleOf` uses decimal divisibility semantics after generation, and
 non-positive or non-finite divisors are rejected before generation. Unsupported
-validation keywords such as `$ref` and `if` / `then` / `else` are rejected
-before generation when strict tool validation would use the schema;
+validation keywords such as `$ref` are rejected before generation when strict
+tool validation would use the schema;
 annotation keys such as `title`, `description`, `default`, and `format` are
 accepted but ignored by validation. This is result validation only; decode-time
 JSON/schema constraints remain unsupported.
@@ -521,8 +521,9 @@ argument validation: `type`, `enum`, `const`, object `properties` /
 `minProperties` / `maxProperties`, array `items` / `contains` / `minItems` /
 `maxItems` / `minContains` / `maxContains` / `uniqueItems`, string `minLength`
 / `maxLength` / `pattern`, numeric min/max / `multipleOf` bounds, and schema
-composition with `allOf` / `anyOf` / `oneOf` / `not`. Unsupported validation
-keywords are rejected before generation instead of being silently ignored;
+composition with `allOf` / `anyOf` / `oneOf` / `not`, plus conditionals with
+`if` / `then` / `else`. Unsupported validation keywords are rejected before
+generation instead of being silently ignored;
 annotation keys, including `format`, are accepted but ignored by validation.
 This is result validation plus object close-suffix forcing, not
 grammar-constrained decoding.

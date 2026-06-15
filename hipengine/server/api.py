@@ -171,6 +171,9 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "anyOf",
         "oneOf",
         "not",
+        "if",
+        "then",
+        "else",
         "properties",
         "patternProperties",
         "propertyNames",
@@ -876,6 +879,9 @@ def _tool_schema_subset() -> list[str]:
         "composition.anyOf",
         "composition.oneOf",
         "composition.not",
+        "conditional.if",
+        "conditional.then",
+        "conditional.else",
         "object.properties",
         "object.patternProperties",
         "object.propertyNames",
@@ -9685,6 +9691,16 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
         if error is not None:
             return error
 
+    for key in ("if", "then", "else"):
+        conditional_schema = schema.get(key)
+        if key not in schema:
+            continue
+        if not isinstance(conditional_schema, Mapping):
+            return (f"{path}.{key}", f"{path}.{key} must be an object")
+        error = _validate_json_schema_subset(conditional_schema, path=f"{path}.{key}")
+        if error is not None:
+            return error
+
     properties = schema.get("properties")
     if properties is not None:
         if not isinstance(properties, Mapping):
@@ -9862,6 +9878,14 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
     not_schema = schema.get("not")
     if isinstance(not_schema, Mapping) and _validate_json_schema_value(value, not_schema, path=path) is None:
         return f"{path} matches a disallowed schema"
+    if_schema = schema.get("if")
+    if isinstance(if_schema, Mapping):
+        branch_key = "then" if _validate_json_schema_value(value, if_schema, path=path) is None else "else"
+        branch_schema = schema.get(branch_key)
+        if isinstance(branch_schema, Mapping):
+            error = _validate_json_schema_value(value, branch_schema, path=path)
+            if error is not None:
+                return error
     schema_type = _primary_json_schema_type(expected, value)
     if schema_type == "object":
         if not isinstance(value, Mapping):
