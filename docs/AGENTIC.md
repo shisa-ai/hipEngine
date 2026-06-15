@@ -1139,7 +1139,10 @@ Current code reality:
   `features.stream_metadata.buffered_scheduler_chunks` so clients can see which
   buffered c>N surfaces may replay engine or wrapped-generator
   `last_batch_generation.scheduler_token_chunks` and which conditions force
-  conservative buffering.
+  conservative buffering. Invalid or unmappable buffered tool-call scheduler
+  chunks remain withheld from public deltas, but final done choices include
+  sanitized `choices[].hipengine.withheld_scheduler_tool_chunks` diagnostics
+  when clients opt in with `stream_options.include_hipengine=true`.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
@@ -2886,8 +2889,10 @@ golden harness traces are now implemented. Good next logical units, in order:
    `phase="structured"`.
    Validated tool-call argument spans can likewise replay scheduler chunks as
    OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
-   runtime-native live c>N stream forwarding, invalid/unmappable tool-call
-   chunk forwarding, true live reasoning-logprob forwarding, and real
+   invalid/unmappable tool-call chunks are withheld fail-closed with private
+   final-choice diagnostics. Runtime-native live c>N stream forwarding, public
+   invalid/unmappable tool-call chunk forwarding, true live reasoning-logprob
+   forwarding, and real
    continuation eligibility still need lower-loop work instead of relying on
    server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token

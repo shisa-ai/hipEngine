@@ -4124,6 +4124,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "structured_validation_failure",
                             "unmappable_logprobs",
                         ],
+                        "fallback_diagnostics": [
+                            "choices[].hipengine.withheld_scheduler_tool_chunks",
+                        ],
                     },
                     "routing": "stream_options.include_hipengine",
                     "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
@@ -4593,8 +4596,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 output = f"{previous_text}{output}"
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
-                parsed = _parse_chat_tool_calls(text)
-                tool_validation = _validate_chat_tool_result(request, parsed, text)
+                raw_parsed = _parse_chat_tool_calls(text)
+                tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
                 parsed = tool_validation.parsed
                 message, parsed_finish_reason = _chat_message_from_parsed(parsed)
                 if tool_validation.failed:
@@ -4744,8 +4747,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
-                parsed = _parse_chat_tool_calls(text)
-                tool_validation = _validate_chat_tool_result(request, parsed, text)
+                raw_parsed = _parse_chat_tool_calls(text)
+                tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
                 parsed = tool_validation.parsed
                 detail = batch.details[index]
                 if tool_validation.failed:
@@ -4851,6 +4854,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     and structured_failure is None
                     and structured_length_failure is None
                 )
+                withheld_scheduler_tool_chunks = None
+                withheld_tool_chunk_reason = None
+                if scheduler_chunks and (tool_validation.failed or raw_parsed.tool_calls):
+                    if tool_validation.failed:
+                        withheld_tool_chunk_reason = tool_validation.failure_reason
+                    elif raw_parsed.tool_calls and not use_scheduler_tool_chunks:
+                        withheld_tool_chunk_reason = "unmappable_tool_arguments"
+                if withheld_tool_chunk_reason is not None:
+                    withheld_scheduler_tool_chunks = _withheld_scheduler_tool_chunks_payload(
+                        str(withheld_tool_chunk_reason),
+                        raw_text=text,
+                        scheduler_chunks=scheduler_chunks,
+                    )
                 use_scheduler_chunks = (
                     not request.tools
                     and not parsed.tool_calls
@@ -4919,6 +4935,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_accounting=token_accounting,
                         stream_chunk=_stream_chunk_from_detail("", detail),
                         include_hipengine=include_hipengine,
+                        final_hipengine=withheld_scheduler_tool_chunks,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
@@ -11633,6 +11650,49 @@ def _scheduler_chunks_match_completion_text(
     return "".join(pieces) == str(text)
 
 
+def _withheld_scheduler_tool_chunks_payload(
+    reason: str,
+    *,
+    raw_text: str,
+    scheduler_chunks: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    if not scheduler_chunks:
+        return None
+    pieces: list[str] = []
+    chunk_text_bytes: list[int] = []
+    execution_paths: set[str] = set()
+    malformed_chunk_count = 0
+    for payload in scheduler_chunks:
+        stream_chunk = _scheduler_payload_stream_chunk(payload)
+        if stream_chunk is None:
+            malformed_chunk_count += 1
+            continue
+        chunk_text = str(stream_chunk.text)
+        pieces.append(chunk_text)
+        chunk_text_bytes.append(len(chunk_text.encode("utf-8")))
+        telemetry = stream_chunk.telemetry
+        execution_path = None if telemetry is None else telemetry.decode_state.execution_path
+        if execution_path:
+            execution_paths.add(str(execution_path))
+    if not pieces and malformed_chunk_count == 0:
+        return None
+    text = "".join(pieces)
+    return {
+        "withheld_scheduler_tool_chunks": {
+            "surface": "chat_tool_argument_delta",
+            "reason": str(reason),
+            "public_delta": "withheld",
+            "chunk_count": len(pieces),
+            "malformed_chunk_count": malformed_chunk_count,
+            "raw_text_matches": malformed_chunk_count == 0 and text == str(raw_text),
+            "text_bytes": len(text.encode("utf-8")),
+            "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "chunk_text_bytes": chunk_text_bytes,
+            "execution_paths": sorted(execution_paths),
+        }
+    }
+
+
 def _scheduler_chunks_support_chat_logprob_stream(
     text: str,
     chunks: Sequence[Mapping[str, Any]],
@@ -11841,6 +11901,7 @@ def _chat_stream_parsed(
     token_accounting: _StreamTokenAccounting | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
+    final_hipengine: Mapping[str, Any] | None = None,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
@@ -11943,6 +12004,7 @@ def _chat_stream_parsed(
         tokens=final_tokens,
         stream_chunk=stream_chunk,
         include_hipengine=include_hipengine,
+        extra_hipengine=final_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
         kv_pool=kv_pool,
@@ -12188,6 +12250,7 @@ def _chat_stream_done(
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
+    extra_hipengine: Mapping[str, Any] | None = None,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
@@ -12201,12 +12264,15 @@ def _chat_stream_done(
         "finish_details": finish_payload,
     }
     if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload(
+        hipengine_payload = _choice_hipengine_payload(
             phase,
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
         )
+        if extra_hipengine is not None:
+            hipengine_payload.update(deepcopy(dict(extra_hipengine)))
+        choice["hipengine"] = hipengine_payload
     return _sse(
         _attach_stream_hipengine(
             {

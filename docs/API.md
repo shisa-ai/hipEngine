@@ -284,7 +284,13 @@ lists the public surfaces where
 be replayed (`completion_delta`, answer/reasoning chat deltas, reasoning chat
 deltas with private hipEngine logprobs, visible chat content-logprob deltas,
 validated structured content deltas, and validated tool-call argument deltas),
-plus the fallback conditions that force conservative buffering. It also reports
+plus the fallback conditions that force conservative buffering. When
+`stream_options.include_hipengine=true`, invalid or unmappable buffered
+tool-call scheduler chunks are not forwarded as public deltas, but final done
+choices can include sanitized
+`choices[].hipengine.withheld_scheduler_tool_chunks` metadata with the failure
+reason, chunk counts, byte lengths, a SHA-256 text hash, a raw-text-match
+boolean, and scheduler execution-path names. It also reports
 the optional
 backend-authored field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
@@ -480,6 +486,11 @@ validation failures return a normal chat response with no successful
 `finish_reason` is usually `"stop"`, but remains `"length"` when the backend
 ended because the generation budget was exhausted; in that case
 `finish_details` also includes length-limit phase metadata.
+For buffered c>N streams that have backend scheduler chunks, final done choices
+also include private `choices[].hipengine.withheld_scheduler_tool_chunks`
+diagnostics when those chunks were withheld because the parsed tool call was
+invalid or the raw argument span could not be mapped safely; the payload never
+contains raw `<tool_call>` text or raw arguments.
 `/v1/hipengine/capabilities` reports these normal-response failure reasons under
 `features.tools.result_validation_failure_reasons`. Compatibility parsing
 recovers a common duplicated-start form,

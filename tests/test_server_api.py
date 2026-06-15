@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -153,6 +154,61 @@ class FakeLLM:
 
     def detokenize(self, token_ids, *, skip_special: bool = False) -> str:
         return " ".join(f"T{int(token)}" for token in token_ids)
+
+
+class SchedulerChunkRowsFakeLLM(FakeLLM):
+    def __init__(
+        self,
+        raw_outputs: tuple[str, ...],
+        chunk_rows: tuple[tuple[str, ...], ...],
+        *,
+        execution_path: str = "scheduler_tool_call_chunks",
+    ) -> None:
+        super().__init__()
+        self.raw_outputs = raw_outputs
+        self.chunk_rows = chunk_rows
+        self.execution_path = str(execution_path)
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        self.calls.append((prompt_tuple, sampling_params))
+        self.last_batch_generation = {
+            "scheduler_token_chunks": [
+                {
+                    "request_id": request_id,
+                    "token_index": token_index,
+                    "token_id": 600 + request_id * 10 + token_index,
+                    "finished": token_index == len(row) - 1,
+                    "chunk": {
+                        "text": text,
+                        "telemetry": GenerationTelemetry.from_decode_counts(
+                            prompt_tokens=1,
+                            generated_tokens=token_index + 1,
+                            row_index=request_id,
+                            request_id=str(request_id),
+                            phase="answer",
+                            sampler_mode="greedy_fast",
+                            execution_path=self.execution_path,
+                        ).to_json_dict(),
+                    },
+                }
+                for request_id, row in enumerate(self.chunk_rows)
+                for token_index, text in enumerate(row)
+            ]
+        }
+        return [
+            GenerationOutput(
+                text=self.raw_outputs[index],
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=len(self.chunk_rows[index]),
+                    row_index=index,
+                    phase="done",
+                    sampler_mode="greedy_fast",
+                ),
+            )
+            for index, _prompt in enumerate(prompt_tuple)
+        ]
 
 
 class ScratchProbeFailureFakeLLM(FakeLLM):
@@ -759,6 +815,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
                 "unmappable_tool_arguments",
                 "structured_validation_failure",
                 "unmappable_logprobs",
+            ],
+            "fallback_diagnostics": [
+                "choices[].hipengine.withheld_scheduler_tool_chunks",
             ],
         },
         "routing": "stream_options.include_hipengine",
@@ -12319,6 +12378,164 @@ def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_argumen
         choice["hipengine"]["decode_state"]["execution_path"]
         for choice in done
     } == {"scheduler_tool_call_chunks"}
+    assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call() -> None:
+    raw_outputs = (
+        '<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>',
+        '<tool_call>{"name":"write","arguments":{"path":"WORKLOG.md"}}</tool_call>',
+    )
+    fake = SchedulerChunkRowsFakeLLM(
+        raw_outputs,
+        (
+            (
+                '<tool_call>{"name":"write","arguments":',
+                '{"path":"README.md"}}</tool_call>',
+            ),
+            (
+                '<tool_call>{"name":"write","arguments":',
+                '{"path":"WORKLOG.md"}}</tool_call>',
+            ),
+        ),
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read files"}],
+            "n": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    assert "write" not in response.text
+    assert "README.md" not in response.text
+    payloads = _sse_payloads(response.text)
+    assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"]
+    ]
+    assert [choice["index"] for choice in done] == [0, 1]
+    for index, choice in enumerate(done):
+        assert choice["finish_reason"] == "stop"
+        assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
+        diagnostic = choice["hipengine"]["withheld_scheduler_tool_chunks"]
+        assert diagnostic == {
+            "surface": "chat_tool_argument_delta",
+            "reason": "invalid_tool_call",
+            "public_delta": "withheld",
+            "chunk_count": 2,
+            "malformed_chunk_count": 0,
+            "raw_text_matches": True,
+            "text_bytes": len(raw_outputs[index].encode("utf-8")),
+            "text_sha256": hashlib.sha256(raw_outputs[index].encode("utf-8")).hexdigest(),
+            "chunk_text_bytes": [
+                len(chunk.encode("utf-8")) for chunk in fake.chunk_rows[index]
+            ],
+            "execution_paths": ["scheduler_tool_call_chunks"],
+        }
+    assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_n_reports_unmappable_scheduler_tool_chunks() -> None:
+    raw_output = '<tool_call>{"name":"bash","arguments":"{\\"command\\":\\"pwd\\"}"}</tool_call>'
+    fake = SchedulerChunkRowsFakeLLM(
+        (raw_output, raw_output),
+        (
+            (
+                '<tool_call>{"name":"bash","arguments":',
+                '"{\\"command\\":\\"pwd\\"}"}</tool_call>',
+            ),
+            (
+                '<tool_call>{"name":"bash","arguments":',
+                '"{\\"command\\":\\"pwd\\"}"}</tool_call>',
+            ),
+        ),
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "n": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    tool_choices = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert [choice["index"] for choice in tool_choices] == [0, 1]
+    for choice in tool_choices:
+        _assert_openai_stream_tool_call_delta_shape(
+            choice,
+            name="bash",
+            arguments={"command": "pwd"},
+            index=choice["index"],
+        )
+        assert choice["hipengine"]["phase"] == "tool_call"
+        assert choice["hipengine"]["decode_state"]["phase"] == "tool_call"
+        assert choice["hipengine"]["decode_state"].get("execution_path") != "scheduler_tool_call_chunks"
+
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"]
+    ]
+    assert [choice["index"] for choice in done] == [0, 1]
+    for choice in done:
+        assert choice["finish_reason"] == "tool_calls"
+        assert choice["finish_details"] == _stateless_finish_details(
+            "tool_calls",
+            tool_call_tokens=1,
+            phase="tool_call",
+        )
+        diagnostic = choice["hipengine"]["withheld_scheduler_tool_chunks"]
+        assert diagnostic["reason"] == "unmappable_tool_arguments"
+        assert diagnostic["public_delta"] == "withheld"
+        assert diagnostic["chunk_count"] == 2
+        assert diagnostic["raw_text_matches"] is True
+        assert diagnostic["text_sha256"] == hashlib.sha256(raw_output.encode("utf-8")).hexdigest()
+        assert diagnostic["execution_paths"] == ["scheduler_tool_call_chunks"]
+        assert "text" not in diagnostic
     assert fake.stream_calls == []
 
 

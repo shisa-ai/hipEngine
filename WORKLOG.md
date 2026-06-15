@@ -93117,3 +93117,22 @@ Validation:
 - `uv run pytest tests/test_qwen35_resident_batch_layout.py -q` -> passed.
 - `uv run ruff check hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py docs/REFACTOR.md` -> clean.
+
+## 2026-06-15 - Withheld scheduler tool-call diagnostics
+
+Added endpoint-level coverage and private stream metadata for buffered c>N tool
+calls whose scheduler chunks cannot be safely exposed as public deltas. Valid
+mapped tool-call argument spans still replay as OpenAI `delta.tool_calls`; invalid
+or unmappable scheduler chunks remain fail-closed publicly and now surface a
+sanitized final-choice `choices[].hipengine.withheld_scheduler_tool_chunks`
+payload when `stream_options.include_hipengine=true`.
+
+The diagnostic records the failure reason, chunk counts, byte lengths,
+raw-text-match status, SHA-256 text hash, and scheduler execution-path names
+without raw `<tool_call>` markup or raw arguments.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'withheld_scheduler_tool_chunks or unmappable_scheduler_tool_chunks'` -> `2 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments or withheld_scheduler_tool_chunks or unmappable_scheduler_tool_chunks or streaming_chat_completion_rejects_undeclared_auto_tool_name or streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup or streaming_chat_completion_reports_strict_tool_schema_failure'` -> `7 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
