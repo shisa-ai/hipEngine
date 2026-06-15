@@ -42667,3 +42667,62 @@ python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
 ```
 
 Results: targeted top-token roundtrip tests passed (`5` tests); top-token roundtrip verifier status returns `"match"`, verifier failures `[]`, verifier digest `5f8b4264055e35dbd408b1ed7ea2c330fdfdc22274db7d67c4bd2b377f1a2d7f`; status/final-blocker/handoff verification returned `"match"`; top-token roundtrip status remains `"passed"`; compact all-roundtrip output remains `true`; compact mismatches output remains `[]`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `436b9681abe39ed7436badd2437ecb3d746d8d264a9596aef9d4faeb14510564`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are top-token roundtrip `1e028dac72506c087f77adf09a372f81a31bc0c0a36c4daf02967eb2b4ed6dc2`, evidence consistency `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c`, oracle next-action `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `78f95b999f890f6a3787456d44cdcf1d3052dae72aec2d27e64547798ab10be8`, correctness-status `089655caf6bef08f8e971848cde64a84f4a012f782b4c2477c30250b955a5d80`, final-blocker `623483ed98d139bc988aac5363d7bec0b177e8e8195791ade577074d9bfa08af`, handoff `41fd1c56f423bb4159eb81b462d3548478fcd3ddadbc22fcfd92a7b7b489620d`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun prompt-token roundtrip drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 538. Added an explicit verifier for the retained host prompt-token roundtrip artifact. `scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip` now rebuilds the host prompt/input-ID vs llama.cpp no-BOS tokenization coherence report from the current prompt and llama-tokenize inputs and compares it with the persisted `benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json`, with compact status/failure/digest modes for handoff polling. This verifies the prompt/input-ID tokenizer coherence evidence before it feeds oracle blocker diagnosis, evidence-consistency, next-action, remaining-blockers rollup, or final handoff artifacts; it does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json` remains `status=passed`, `prompt_tokenization_matches_host_input_ids=true`, and `first_mismatch=null`; its file SHA is `bfb36b26bafb200fdae30152ffe6a057516c867bb91d7dfc695a25357ef05c3a` and stable payload SHA is `1684aef6c074af5e0b4e1bd9ed894ed0b75d118af11726894c7693bb21636fd8`. `--verify-roundtrip --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `78b0da1b09d59168b9844b235692d4189fd64156bf808e7a345819ec640d0bfc`. Refreshed `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json`, and `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` after documenting the new verifier. Downstream evidence-consistency, next-action manifest, and remaining-blockers rollup verifiers all return `"match"`; remaining-blockers rollup stays blocked with stable payload SHA `9ab77d90cb8ffea8a4ce2d6249ae0b586d3aa5dbf0b7fc42ec6b583b14832db9`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_prompt_token_roundtrip.py tests/test_stepfun_prompt_token_roundtrip.py
+python3 -m pytest -q tests/test_stepfun_prompt_token_roundtrip.py
+python3 scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-status-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-failures-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-sha-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --sha-only
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty
+python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --status-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --roundtrip-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --first-mismatch-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --sha-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-status-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-failures-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-sha-only
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --sha-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_prompt_token_roundtrip.py tests/test_stepfun_prompt_token_roundtrip.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-status-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-failures-only
+python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --sha-only
+```
+
+Results: targeted prompt-token roundtrip tests passed (`5` tests); prompt roundtrip verifier status returns `"match"`, verifier failures `[]`, verifier digest `78b0da1b09d59168b9844b235692d4189fd64156bf808e7a345819ec640d0bfc`; status/final-blocker/handoff verification returned `"match"`; prompt-token roundtrip status remains `"passed"`; compact roundtrip output remains `true`; compact first mismatch output remains `null`; oracle blocker diagnosis stable payload SHA `2577f7dacb1458169774dac3d6a75b1c118252a4765a8f77833a67a8ca96564b`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `8a9a1ae183cd39044a6f1da1fd9242fc3071d705ca335b16a84885ec9d4ef8e2`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are prompt roundtrip `bfb36b26bafb200fdae30152ffe6a057516c867bb91d7dfc695a25357ef05c3a`, oracle blocker diagnosis `44ed5dcb1bf7dd144fae4223cb6555372ef652e7f5cd1315df2ffea2903898d9`, evidence consistency `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c`, oracle next-action `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `90842a0ccf29ef88978e351cbd9181969d4664fadfca9a7df83f66f572a147db`, correctness-status `83155cd12b50f72e9d43f85f10d1feb6e5baffba294c385c51111f6fd521a898`, final-blocker `fc96eedb3b961ac1827ad85ecb8990b8312ae5eb0faaa813f2c1d8665f30ba33`, handoff `ccf5f46777453b4236c20f0d306bdeb9570ac03064d265f29600cae00bbb6c39`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

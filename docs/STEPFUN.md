@@ -936,7 +936,8 @@ reporting.
   is the drift check for that top-token text/token-ID coherence evidence;
   `scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json`, showing the
-  23-token host prompt input sequence also matches llama.cpp no-BOS tokenization.
+  23-token host prompt input sequence also matches llama.cpp no-BOS tokenization; `python3 scripts/stepfun_prompt_token_roundtrip.py --verify-roundtrip --verification-status-only`
+  is the drift check for that prompt/input-ID tokenizer coherence evidence.
   `scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json`, consolidating
   that prompt/top-token/expected-token text drift is ruled out while `generated_text_matches_target`
