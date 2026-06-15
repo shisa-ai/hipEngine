@@ -92461,3 +92461,20 @@ and the shared-memory/GTT note for large local LLM runs.
 
 Validation:
 - `git diff --check -- docs/THEROCK.md` -> clean.
+## 2026-06-15 - AGENTIC session isolation capability flags
+
+Advertised the app-local transcript deep-copy isolation contract in
+`/v1/hipengine/capabilities` under `sessions.metadata`. The manifest now reports
+`transcript_message_copy="json_deep_copy"` plus explicit deep-copy guarantees
+for forked transcripts, rollback-retained transcripts, and snapshot exports, so
+agent harnesses can discover branch/export isolation instead of relying only on
+docs. Updated docs/API and docs/AGENTIC to point clients at the new fields.
+
+Validation:
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or custom_chat_default or chat_session_message_copy or fork_deep_copies_nested_tool_calls or rollback_deep_copies_retained_tool_calls or chat_session_fork_branches or chat_session_rollback_trims or chat_session_snapshot_export_restore'` -> passed.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> passed.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities or chat_session or tool_transcript or prior_assistant_tool_call_shape or role_specific_tool_fields'` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

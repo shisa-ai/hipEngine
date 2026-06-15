@@ -757,6 +757,9 @@ chat-session cap overflow. Cap rejections use `engine_busy`, `Retry-After`, and
 matched `error.hipengine.routing` metadata with
 `overload_source: "chat_session_cap"`. Forks are transcript-only:
 `resident_state_reuse=false`, no resident KV state is copied.
+The capabilities manifest reports this under
+`sessions.metadata.transcript_message_copy="json_deep_copy"` and
+`sessions.metadata.fork_deep_copies_transcript=true`.
 
 Authenticated `POST /v1/hipengine/sessions/{session_id}/rollback` with body
 `{"message_count":2}` trims the app-local visible transcript to exactly that
@@ -766,6 +769,8 @@ do not include transcript content. Rollbacks are transcript-only:
 `resident_state_reuse=false`, no resident KV state is rewound. Retained
 messages are copied before the rollback record is installed, so nested tool-call
 state from the pre-rollback record is not shared.
+The capabilities manifest advertises this with
+`sessions.metadata.rollback_deep_copies_retained_transcript=true`.
 
 Authenticated `GET /v1/hipengine/sessions/{session_id}/snapshot` exports a
 versioned `hipengine.chat_session_snapshot.v1` snapshot for that app-local
@@ -788,6 +793,8 @@ creating the session. Restoring a new session is subject to the configured
 chat-session cap; when the cap is full, the server returns `engine_busy` without
 creating partial session state and includes matched `error.hipengine.routing`
 metadata with `overload_source: "chat_session_cap"`.
+Snapshot export copy behavior is advertised as
+`sessions.metadata.snapshot_export_deep_copies_transcript=true`.
 
 Validate the config against a running server with:
 

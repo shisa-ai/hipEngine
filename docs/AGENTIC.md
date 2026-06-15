@@ -1959,13 +1959,17 @@ Current code reality:
   clone the visible transcript messages at request time, respect the configured
   chat-session cap, return matched `engine_busy` route metadata on cap
   overflow, report `resident_state_reuse=false`, and then diverge independently
-  on later commits. This gives agent harnesses a branch primitive without
-  exposing transcript text through metadata endpoints.
+  on later commits. Forks deep-copy JSON-like transcript messages, including
+  nested assistant `tool_calls`, and advertise that behavior under
+  `sessions.metadata.fork_deep_copies_transcript`. This gives agent harnesses a
+  branch primitive without exposing transcript text through metadata endpoints.
 - App-local transcript sessions can be rolled back with
   `POST /v1/hipengine/sessions/{session_id}/rollback` and a target
   `message_count`. Rollback trims visible transcript messages only, reports
   previous/retained counts without exposing transcript text, and keeps
-  `resident_state_reuse=false`.
+  `resident_state_reuse=false`. Retained messages are deep-copied before the new
+  record is installed, and the manifest reports
+  `sessions.metadata.rollback_deep_copies_retained_transcript`.
 - Forkable pinned prefixes, resident KV cache handles, resident KV
   fork/rollback, and prefix-vs-turn-history eviction policy remain future work.
 
@@ -2041,6 +2045,8 @@ Current code reality:
   app-local session after a hidden-reasoning assistant tool call, then
   continuing from a tool response. They verify the snapshot and restored prompt
   retain only visible tool-call state and do not replay hidden reasoning.
+  Snapshot export deep-copies transcript payloads and advertises that under
+  `sessions.metadata.snapshot_export_deep_copies_transcript`.
 - Resident KV payload references, prefix token blobs, full tokenizer state, and
   decode/sampling state are not snapshotted yet; restored sessions re-render the
   transcript through the normal prompt path.
@@ -2281,8 +2287,10 @@ Current code reality:
   policy is advertised as stateful app-local transcript
   storage with `resident_state_reuse=false`, buffered chat-only scope,
   `append_visible_only` as the stateful default, and downgrade reasons for
-  unsafe visible-only finishes. Multi-model routing and strict tool decoding
-  remain advertised as unsupported until their runtime paths exist. Tensor
+  unsafe visible-only finishes. Session metadata advertises
+  `transcript_message_copy="json_deep_copy"` plus deep-copy guarantees for
+  forks, rollbacks, and snapshot export. Multi-model routing and strict tool
+  decoding remain advertised as unsupported until their runtime paths exist. Tensor
   parallelism is advertised as disabled with single-process topology and
   explicit unsupported multi-GPU/sharding features. Request timeouts and
   client-disconnect cancellation are advertised as supported with cooperative
