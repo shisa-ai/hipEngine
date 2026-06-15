@@ -93172,3 +93172,36 @@ Validation:
 - Prompt verifier passed: registered GGUF RMSNorm f32-output kernel only, no torch
   hot-path import, no backend/quant dispatch branches, no attention/KV/runtime
   generation behavior changes, no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF opt-in fp32 hidden seed tap wiring
+
+Implemented `mtp-gguf` multiloop iteration 12: wired the fp32 hidden-seed output
+path into one-step GGUF decode behind an explicit opt-in flag.
+
+Changes:
+- Added `capture_hidden_seed_fp32=False` to `Qwen35GGUFResidentSession.step(...)`,
+  `_run_token_to_final_hidden(...)`, and `_run_current_hidden_to_final_hidden(...)`.
+- Default decode behavior is unchanged: it still writes only BF16 `scratch.norm`
+  for sampling.
+- When `capture_hidden_seed_fp32=True`, decode also launches
+  `gguf_rmsnorm_bf16_f32_weight_out_f32(...)` using the same post-trunk source
+  row and output_norm weight, writing fp32 output to `scratch.hidden_seed_fp32`.
+- The session clears `_hidden_seed_fp32_populated` at the start of each decode
+  step and marks it true only when the fp32 tap is requested/written, so
+  `fp32_hidden_seed_contract().ready_for_mtp` cannot become true accidentally.
+- Extended `tests/test_qwen35_gguf_hidden_seed_contract.py` with a pure
+  monkeypatch test that exercises `_run_current_hidden_to_final_hidden(...)`
+  without GPU/model construction:
+  - default path calls only the BF16 output_norm wrapper and leaves fp32 seed not
+    ready;
+  - opt-in path calls BF16 + f32 output_norm wrappers and marks fp32 seed ready.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Hidden-seed opt-in tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `8` passed.
+- `py_compile` passed for `hipengine/runtime/qwen35_gguf_runner.py`.
+- Prompt verifier passed: opt-in fp32 seed tap only, no torch hot-path import, no
+  backend/quant dispatch branches, no attention/KV ABI changes, no NextN
+  execution, and no performance claims.

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from hipengine.core.dtype import DType
+from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFHiddenSeedContract,
     Qwen35GGUFResidentSession,
@@ -54,6 +56,7 @@ def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(hidden_size=8192)
     session.scratch = SimpleNamespace(hidden_seed_fp32=object())
+    session._hidden_seed_fp32_populated = False
 
     current = session.hidden_seed_contract(rows=2)
     fp32 = session.fp32_hidden_seed_contract(rows=2)
@@ -72,6 +75,71 @@ def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without
     assert not fp32.populated_by_decode
     assert not fp32.llama_cpp_compatible
     assert not fp32.ready_for_mtp
+
+    session._hidden_seed_fp32_populated = True
+    populated = session.fp32_hidden_seed_contract(rows=2)
+    assert populated.populated_by_decode
+    assert populated.llama_cpp_compatible
+    assert populated.ready_for_mtp
+
+
+def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_requested(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, int, int, int]] = []
+
+    def fake_bf16(src_ptr: int, weight_ptr: int, out_ptr: int, **kwargs: object) -> None:
+        calls.append(("bf16", src_ptr, weight_ptr, out_ptr))
+
+    def fake_f32(src_ptr: int, weight_ptr: int, out_ptr: int, **kwargs: object) -> None:
+        calls.append(("f32", src_ptr, weight_ptr, out_ptr))
+
+    monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight", fake_bf16)
+    monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight_out_f32", fake_f32)
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=200)))
+    weights = SimpleNamespace(
+        config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6),
+        root=lambda name: output_norm if name == "output_norm" else None,
+    )
+    session.runner = SimpleNamespace(weights=weights, hidden_size=8)
+    session.scratch = SimpleNamespace(
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+        norm=SimpleNamespace(ptr=300),
+        hidden_seed_fp32=SimpleNamespace(ptr=400),
+    )
+    session.runtime = object()
+    session._hidden_a = SimpleNamespace(ptr=100)
+    session._hidden_b = SimpleNamespace(ptr=101)
+    session._hidden_seed_fp32_populated = True
+
+    ptr = session._run_current_hidden_to_final_hidden(position=5, capture_hidden_seed_fp32=False)
+
+    assert ptr == 300
+    assert calls == [("bf16", 100, 200, 300)]
+    assert not session._hidden_seed_fp32_populated
+    assert not session.fp32_hidden_seed_contract().ready_for_mtp
+
+    calls.clear()
+    ptr = session._run_current_hidden_to_final_hidden(position=6, capture_hidden_seed_fp32=True)
+
+    assert ptr == 300
+    assert calls == [("bf16", 100, 200, 300), ("f32", 100, 200, 400)]
+    assert session._hidden_seed_fp32_populated
+    assert session.fp32_hidden_seed_contract().ready_for_mtp
+
+
+def test_resident_session_reset_clears_hidden_seed_populated_flag_without_gpu_init() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.scratch = SimpleNamespace(zero_states=lambda runtime: None)
+    session.runtime = object()
+    session._position = 7
+    session._hidden_seed_fp32_populated = True
+
+    session.reset()
+
+    assert session._position == 0
+    assert not session._hidden_seed_fp32_populated
 
 
 def test_resident_session_hidden_seed_contract_rejects_closed_session() -> None:
