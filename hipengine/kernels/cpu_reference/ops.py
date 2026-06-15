@@ -179,6 +179,8 @@ def qwen35_gguf_mtp_attention_sublayer(
     per head, RMS-normalizes Q/K, applies RoPE, runs dense GQA attention over the
     MTP context's own K/V cache, multiplies the attention result by
     ``sigmoid(gate)``, applies ``wo``, then adds the pre-attention residual.
+    Qwen35 GGUF attention width is not necessarily ``hidden / num_heads``; infer
+    Q/K and V head widths from the GGUF norm/projection tensor shapes.
 
     This helper is a CPU oracle for that sublayer only.  Runtime MTP attention
     still must use the KVLiveSpans paged-KV ABI; passing ``key_cache``/
@@ -193,9 +195,6 @@ def qwen35_gguf_mtp_attention_sublayer(
     kv_heads = int(num_kv_heads)
     if heads <= 0 or kv_heads <= 0:
         raise ValueError("num_heads and num_kv_heads must be positive")
-    if hidden_size % heads != 0:
-        raise ValueError("hidden size must be divisible by num_heads")
-    head_dim = hidden_size // heads
     if heads % kv_heads != 0:
         raise ValueError("num_heads must be divisible by num_kv_heads")
 
@@ -204,31 +203,39 @@ def qwen35_gguf_mtp_attention_sublayer(
     k_norm = np.asarray(k_norm_weight, dtype=np.float32)
     if attn_norm.shape != (hidden_size,):
         raise ValueError("attn_norm_weight must have shape [hidden]")
-    if q_norm.shape != (head_dim,):
-        raise ValueError("q_norm_weight must have shape [head_dim]")
-    if k_norm.shape != (head_dim,):
-        raise ValueError("k_norm_weight must have shape [head_dim]")
+    if q_norm.ndim != 1:
+        raise ValueError("q_norm_weight must have shape [qk_head_dim]")
+    qk_head_dim = q_norm.shape[0]
+    if qk_head_dim <= 0:
+        raise ValueError("qk_head_dim must be positive")
+    if k_norm.shape != (qk_head_dim,):
+        raise ValueError("k_norm_weight must have shape [qk_head_dim]")
 
     wq = np.asarray(wq_weight, dtype=np.float32)
     wk = np.asarray(wk_weight, dtype=np.float32)
     wv = np.asarray(wv_weight, dtype=np.float32)
     wo = np.asarray(wo_weight, dtype=np.float32)
-    if wq.shape != (hidden_size * 2, hidden_size):
-        raise ValueError("wq_weight must have shape [2 * hidden, hidden]")
-    if wk.shape != (kv_heads * head_dim, hidden_size):
-        raise ValueError("wk_weight must have shape [num_kv_heads * head_dim, hidden]")
-    if wv.shape != (kv_heads * head_dim, hidden_size):
-        raise ValueError("wv_weight must have shape [num_kv_heads * head_dim, hidden]")
-    if wo.shape != (hidden_size, hidden_size):
-        raise ValueError("wo_weight must have shape [hidden, hidden]")
+    if wq.shape != (heads * 2 * qk_head_dim, hidden_size):
+        raise ValueError("wq_weight must have shape [num_heads * 2 * qk_head_dim, hidden]")
+    if wk.shape != (kv_heads * qk_head_dim, hidden_size):
+        raise ValueError("wk_weight must have shape [num_kv_heads * qk_head_dim, hidden]")
+    if wv.ndim != 2 or wv.shape[1] != hidden_size or wv.shape[0] % kv_heads != 0:
+        raise ValueError("wv_weight must have shape [num_kv_heads * value_head_dim, hidden]")
+    value_head_dim = wv.shape[0] // kv_heads
+    if value_head_dim <= 0:
+        raise ValueError("value_head_dim must be positive")
+    if value_head_dim != qk_head_dim:
+        raise ValueError("value_head_dim must match qk_head_dim for gated Qwen35 attention")
+    if wo.shape != (hidden_size, heads * value_head_dim):
+        raise ValueError("wo_weight must have shape [hidden, num_heads * value_head_dim]")
 
     normed = rmsnorm(x, attn_norm, eps=eps)
     q_full = linear(normed, wq)
-    q_gate = q_full.reshape(tokens, heads, 2, head_dim)
+    q_gate = q_full.reshape(tokens, heads, 2, qk_head_dim)
     query = rmsnorm(q_gate[:, :, 0, :], q_norm, eps=eps)
     gate = q_gate[:, :, 1, :]
-    key_cur = rmsnorm(linear(normed, wk).reshape(tokens, kv_heads, head_dim), k_norm, eps=eps)
-    value_cur = linear(normed, wv).reshape(tokens, kv_heads, head_dim)
+    key_cur = rmsnorm(linear(normed, wk).reshape(tokens, kv_heads, qk_head_dim), k_norm, eps=eps)
+    value_cur = linear(normed, wv).reshape(tokens, kv_heads, value_head_dim)
 
     if (rope_cos is None) != (rope_sin is None):
         raise ValueError("rope_cos and rope_sin must be provided together")
@@ -238,10 +245,14 @@ def qwen35_gguf_mtp_attention_sublayer(
 
     key_dense = key_cur if key_cache is None else np.asarray(key_cache, dtype=np.float32)
     value_dense = value_cur if value_cache is None else np.asarray(value_cache, dtype=np.float32)
-    if key_dense.shape != value_dense.shape or key_dense.ndim != 3:
+    if key_dense.ndim != 3 or value_dense.ndim != 3:
         raise ValueError("key_cache and value_cache must have shape [cache_tokens, num_kv_heads, head_dim]")
-    if key_dense.shape[1:] != (kv_heads, head_dim):
-        raise ValueError("key_cache/value_cache shape must match num_kv_heads and head_dim")
+    if key_dense.shape[:2] != value_dense.shape[:2]:
+        raise ValueError("key_cache and value_cache must have matching cache_tokens and num_kv_heads")
+    if key_dense.shape[1:] != (kv_heads, qk_head_dim):
+        raise ValueError("key_cache shape must match num_kv_heads and qk_head_dim")
+    if value_dense.shape[1:] != (kv_heads, value_head_dim):
+        raise ValueError("value_cache shape must match num_kv_heads and value_head_dim")
     pos = np.arange(tokens, dtype=np.int64) if positions is None else np.asarray(positions, dtype=np.int64)
     if pos.shape != (tokens,):
         raise ValueError("positions must have shape [tokens]")
@@ -250,7 +261,7 @@ def qwen35_gguf_mtp_attention_sublayer(
         raise ValueError("context_counts must have shape [tokens]")
 
     attn = _dense_causal_gqa_attention(query, key_dense, value_dense, pos, ctx, scale=scale)
-    gated = (attn * _sigmoid(gate)).reshape(tokens, hidden_size)
+    gated = (attn * _sigmoid(gate)).reshape(tokens, heads * value_head_dim)
     return (x + linear(gated, wo)).astype(np.float32)
 
 
@@ -1709,20 +1720,23 @@ def _dense_causal_gqa_attention(
     scale: float | None,
 ) -> np.ndarray:
     if query.ndim != 3:
-        raise ValueError("query must have shape [tokens, num_heads, head_dim]")
-    tokens, heads, head_dim = query.shape
-    if key_cache.shape != value_cache.shape or key_cache.ndim != 3:
+        raise ValueError("query must have shape [tokens, num_heads, qk_head_dim]")
+    tokens, heads, qk_head_dim = query.shape
+    if key_cache.ndim != 3 or value_cache.ndim != 3:
         raise ValueError("key_cache and value_cache must have shape [cache_tokens, num_kv_heads, head_dim]")
-    cache_tokens, kv_heads, cache_dim = key_cache.shape
-    if cache_dim != head_dim:
-        raise ValueError("query head_dim must match cache head_dim")
+    cache_tokens, kv_heads, key_dim = key_cache.shape
+    value_tokens, value_heads, value_head_dim = value_cache.shape
+    if (value_tokens, value_heads) != (cache_tokens, kv_heads):
+        raise ValueError("key_cache and value_cache must have matching cache_tokens and num_kv_heads")
+    if key_dim != qk_head_dim:
+        raise ValueError("query qk_head_dim must match key_cache head_dim")
     if heads % kv_heads != 0:
         raise ValueError("num_heads must be divisible by num_kv_heads")
     if positions.shape != (tokens,) or context_counts.shape != (tokens,):
         raise ValueError("positions and context_counts must have shape [tokens]")
-    scale_value = (head_dim ** -0.5) if scale is None else float(scale)
+    scale_value = (qk_head_dim ** -0.5) if scale is None else float(scale)
     kv_group = heads // kv_heads
-    out = np.empty_like(query, dtype=np.float32)
+    out = np.empty((tokens, heads, value_head_dim), dtype=np.float32)
     for row in range(tokens):
         position = int(positions[row])
         context = int(context_counts[row])

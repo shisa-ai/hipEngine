@@ -93683,3 +93683,56 @@ Validation:
 - Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
   registry key, no backend/quant branches, no runtime KV/dispatch path changes,
   explicit KVLiveSpans reminder, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU attention oracle head-width fix
+
+Implemented `mtp-gguf` multiloop iteration 25: fixed the torch-free
+CPU-reference MTP attention oracle to support the real Qwen35 GGUF attention
+widths.
+
+Pivot note:
+- The planned metadata bridge uncovered a higher-priority correctness issue in
+  the CPU oracle. The existing helper assumed `head_dim = hidden_size / n_heads`,
+  but the real UD-Q4_K_M MTP block uses `n_embd_head` from GGUF q/k norms and
+  projections: `n_heads * n_embd_head = 4096` while model hidden is `2048`.
+
+Evidence:
+- Real GGUF shape check:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf') ... PY`
+  reported:
+  - `blk.40.attn_q.weight (8192, 2048) Q8_0`
+  - `blk.40.attn_k.weight (512, 2048) Q8_0`
+  - `blk.40.attn_v.weight (512, 2048) Q8_0`
+  - `blk.40.attn_output.weight (2048, 4096) Q8_0`
+  - `blk.40.attn_q_norm.weight (256,) F32`
+  - `blk.40.attn_k_norm.weight (256,) F32`
+- llama.cpp source check:
+  `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '624,669p'`
+  confirms Q view as `[n_embd_head, n_head, n_tokens]` with stride
+  `n_embd_head * 2`, gate as the adjacent `n_embd_head` segment, K/V reshape with
+  `n_embd_head`, sigmoid gate multiply, `wo`, and residual add.
+
+Changes:
+- Updated `qwen35_gguf_mtp_attention_sublayer(...)` to infer:
+  - `qk_head_dim` from `q_norm_weight.shape[0]`;
+  - `value_head_dim` from `wv_weight.shape[0] / num_kv_heads`;
+  - `wo_weight` shape as `[hidden, num_heads * value_head_dim]`.
+- Updated `_dense_causal_gqa_attention(...)` so key and value caches may have
+  distinct feature widths while sharing cache length and KV-head count.
+- Added a deterministic CPU fixture where `num_heads * qk_head_dim` exceeds the
+  model hidden size, which would have failed under the previous hidden/heads
+  assumption.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- Attention-focused tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py -k attention` -> `3` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py`,
+  `hipengine/kernels/cpu_reference/__init__.py`, and the updated test file.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free NumPy CPU-reference fix only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, KVLiveSpans
+  reminder preserved, and no performance claims.

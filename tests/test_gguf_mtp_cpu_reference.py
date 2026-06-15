@@ -197,6 +197,60 @@ def test_qwen35_gguf_mtp_attention_sublayer_uses_interleaved_q_gate_layout() -> 
     np.testing.assert_allclose(out, expected, rtol=1.0e-6, atol=1.0e-6)
 
 
+def test_qwen35_gguf_mtp_attention_sublayer_supports_gguf_head_width_greater_than_hidden_per_head() -> None:
+    hidden = np.asarray([[1.0, 2.0]], dtype=np.float32)
+    attn_norm = np.ones((2,), dtype=np.float32)
+    q_norm = np.ones((3,), dtype=np.float32)
+    k_norm = np.ones((3,), dtype=np.float32)
+    wq = np.zeros((12, 2), dtype=np.float32)
+    # Two heads, qk/value dim 3: [Q0(3), gate0(3), Q1(3), gate1(3)].
+    # This pins the real GGUF pattern where heads * key_length can exceed hidden.
+    wq[3, 0] = 1.0
+    wq[4, 1] = -1.0
+    wq[5, :] = 0.5
+    wq[9, 0] = -0.25
+    wq[10, 1] = 0.75
+    wq[11, :] = -0.5
+    wk = np.zeros((3, 2), dtype=np.float32)
+    wv = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [1.0, -1.0],
+        ],
+        dtype=np.float32,
+    )
+    wo = np.asarray(
+        [
+            [1.0, 0.0, 0.0, 0.5, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, -0.5, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    out = qwen35_gguf_mtp_attention_sublayer(
+        hidden,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        num_heads=2,
+        num_kv_heads=1,
+    )
+
+    normed = _rmsnorm(hidden, attn_norm)
+    q_full = np.matmul(normed, wq.T).reshape(1, 2, 2, 3)
+    gate = q_full[:, :, 1, :]
+    value = np.matmul(normed, wv.T).reshape(1, 1, 3)
+    attn = np.repeat(value, repeats=2, axis=1)
+    gated = (attn * (1.0 / (1.0 + np.exp(-gate)))).reshape(1, 6)
+    expected = hidden + np.matmul(gated, wo.T)
+    np.testing.assert_allclose(out, expected.astype(np.float32), rtol=1.0e-6, atol=1.0e-6)
+
+
 def test_qwen35_gguf_mtp_attention_sublayer_validates_shapes() -> None:
     hidden = np.ones((1, 4), dtype=np.float32)
     attn_norm = np.ones((4,), dtype=np.float32)
@@ -206,7 +260,7 @@ def test_qwen35_gguf_mtp_attention_sublayer_validates_shapes() -> None:
     wv = np.zeros((2, 4), dtype=np.float32)
     wo = np.eye(4, dtype=np.float32)
 
-    with pytest.raises(ValueError, match="hidden size must be divisible"):
+    with pytest.raises(ValueError, match="num_heads must be divisible"):
         qwen35_gguf_mtp_attention_sublayer(
             hidden,
             attn_norm,
@@ -216,8 +270,8 @@ def test_qwen35_gguf_mtp_attention_sublayer_validates_shapes() -> None:
             wo,
             head_norm,
             head_norm,
-            num_heads=3,
-            num_kv_heads=1,
+            num_heads=2,
+            num_kv_heads=3,
         )
     with pytest.raises(ValueError, match="wq_weight must have shape"):
         qwen35_gguf_mtp_attention_sublayer(
@@ -227,6 +281,19 @@ def test_qwen35_gguf_mtp_attention_sublayer_validates_shapes() -> None:
             wk,
             wv,
             wo,
+            head_norm,
+            head_norm,
+            num_heads=2,
+            num_kv_heads=1,
+        )
+    with pytest.raises(ValueError, match="wo_weight must have shape"):
+        qwen35_gguf_mtp_attention_sublayer(
+            hidden,
+            attn_norm,
+            wq,
+            wk,
+            wv,
+            np.zeros((4, 2), dtype=np.float32),
             head_norm,
             head_norm,
             num_heads=2,
