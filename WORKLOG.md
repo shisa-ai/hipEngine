@@ -40964,3 +40964,33 @@ git diff --check
 ```
 
 Results: targeted prompt-token/rollup tests passed (`7` tests); status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `652f3319125bcf1bff4f928be28fd8218a4e208175d8837bb8ba802c506a113e`; remaining-blockers file SHA `f2df51077e91a23ae3cf9df651429e85839ca7fca58fdb05325905ad12dddd0e`; correctness-status file SHA `697d957ecfcf24feb549cf44518b7e0157c2851599fa71eadcaab28aff5f5cb7`; final-blocker file SHA `6266c448f267867232fc8cb135b7f09b86472d41b52d212c4d88615b8d354bd5`; handoff file SHA `44ba84768428f699bc7aae50f4d820b294b60514cf0531466c41d61df11ce736`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle blocker diagnosis rollup
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 492. Added `scripts/stepfun_oracle_blocker_diagnosis.py`, a consolidated oracle-parity blocker diagnosis that reads the retained backend matrix, token-mismatch, rank-check, host top-token round-trip, and prompt-token round-trip artifacts. Added `tests/test_stepfun_oracle_blocker_diagnosis.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the diagnosis artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json` reports `status=blocked`, `all_tokenizer_prompt_drift_causes_ruled_out=true`, and `active_blocker_count=3`. Ruled-out causes are `prompt_token_drift`, `host_top_token_text_label_drift`, and `expected_next_token_text_tokenization_drift`; active findings remain `generated_text_mismatch`, `generated_token_absent_from_host_top_tokens`, and comparison-only `hip_oracle_timeout`. The diagnosis is `prompt/tokenizer drift ruled out; generated-text mismatch remains`, with next action `investigate logits/backend parity for the canonical Vulkan executed oracle; do not claim oracle parity until generated_text_matches_target passes`. Diagnosis file SHA is `44ed5dcb1bf7dd144fae4223cb6555372ef652e7f5cd1315df2ffea2903898d9`; stable payload SHA from `scripts/stepfun_oracle_blocker_diagnosis.py --sha-only` is `2577f7dacb1458169774dac3d6a75b1c118252a4765a8f77833a67a8ca96564b`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_blocker_diagnosis.py tests/test_stepfun_oracle_blocker_diagnosis.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_oracle_blocker_diagnosis.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --sha-only
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --status-only
+python3 scripts/stepfun_oracle_blocker_diagnosis.py --next-action-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted diagnosis/rollup tests passed (`7` tests); status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `5a47b6e99f4befcc8cb49a8d72ddb084532a5c20689b32d8da8ad54531c8c087`; remaining-blockers file SHA `6d98ae44d6422faf3f3ac79b295c54489a1ee5b8b39d484cf4d0081d32fb4dcb`; correctness-status file SHA `d49cdfb118aa5f8427f963381d7146d4d5008d9598d93bf8cfe8a849d952e147`; final-blocker file SHA `5370609c105a17f23f09023f9298ce867868814507b607b38b8f8b45f66f27ae`; handoff file SHA `dabc70fa663c7fc4039ec9ef048f0a4c7f1f25f6d2503e535650216b83104457`; full StepFun guard passed; `git diff --check` passed.

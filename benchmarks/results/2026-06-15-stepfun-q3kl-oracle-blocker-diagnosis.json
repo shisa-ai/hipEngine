@@ -1,0 +1,142 @@
+{
+  "active_blocker_count": 3,
+  "active_findings": [
+    {
+      "active": true,
+      "evidence_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json",
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "finding": "generated_text_mismatch",
+      "generated_first_token_id": 671,
+      "generated_first_token_matches_expected_id": false,
+      "generated_text": "The\n\n",
+      "generated_text_stripped_token_ids": [
+        671
+      ],
+      "generated_text_token_ids": [
+        671,
+        271
+      ],
+      "missing_evidence": [
+        "generated_text_matches_target"
+      ]
+    },
+    {
+      "active": true,
+      "evidence_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+      "finding": "generated_token_absent_from_host_top_tokens",
+      "generated_token_host_rank": null,
+      "generated_token_in_host_top_tokens": false,
+      "host_top_token_ids": [
+        369,
+        5,
+        15251,
+        223,
+        201
+      ]
+    },
+    {
+      "active": true,
+      "backend_outcomes": [
+        {
+          "backend": "vulkan",
+          "outcome": "executed_token_mismatch"
+        },
+        {
+          "backend": "hip",
+          "outcome": "timeout"
+        }
+      ],
+      "evidence_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
+      "finding": "hip_oracle_timeout",
+      "note": "HIP oracle is comparison evidence only; canonical executed oracle remains Vulkan."
+    }
+  ],
+  "all_tokenizer_prompt_drift_causes_ruled_out": true,
+  "artifact_kind": "stepfun_oracle_blocker_diagnosis",
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "date": "2026-06-15",
+  "diagnosis": "prompt/tokenizer drift ruled out; generated-text mismatch remains",
+  "evidence_artifacts": {
+    "backend_matrix": {
+      "artifact_kind": "stepfun_llamacpp_oracle_backend_matrix",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
+      "sha256": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
+      "status": "blocked"
+    },
+    "prompt_token_roundtrip": {
+      "artifact_kind": "stepfun_prompt_token_roundtrip",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
+      "sha256": "1684aef6c074af5e0b4e1bd9ed894ed0b75d118af11726894c7693bb21636fd8",
+      "status": "passed"
+    },
+    "rank_check": {
+      "artifact_kind": "stepfun_llamacpp_oracle_rank_check",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+      "sha256": "2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba",
+      "status": "failed"
+    },
+    "token_mismatch": {
+      "artifact_kind": null,
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json",
+      "sha256": "206f04205bc9cd48f6c23d19d4b74e203974c1b4ccd74dea3b1d5a61e9ee0979",
+      "status": "failed"
+    },
+    "top_token_roundtrip": {
+      "artifact_kind": "stepfun_host_top_token_roundtrip",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json",
+      "sha256": "53aa0da3e30fbfc839ed141b692af34924a1b1d9cf5eb5a13010a5560c2cfc14",
+      "status": "passed"
+    }
+  },
+  "next_action": "investigate logits/backend parity for the canonical Vulkan executed oracle; do not claim oracle parity until generated_text_matches_target passes",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This diagnosis consolidates retained evidence and explicitly leaves generated_text_matches_target unresolved."
+  },
+  "oracle_parity_ready": false,
+  "ready": false,
+  "ruled_out_cause_count": 3,
+  "ruled_out_causes": [
+    {
+      "cause": "prompt_token_drift",
+      "evidence_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
+      "first_mismatch": null,
+      "host_input_id_count": 23,
+      "llama_token_count": 23,
+      "ruled_out": true
+    },
+    {
+      "cause": "host_top_token_text_label_drift",
+      "evidence_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json",
+      "host_top_token_ids": [
+        369,
+        5,
+        15251,
+        223,
+        201
+      ],
+      "mismatch_count": 0,
+      "ruled_out": true
+    },
+    {
+      "cause": "expected_next_token_text_tokenization_drift",
+      "evidence_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json",
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "expected_next_token_text_token_ids": [
+        369
+      ],
+      "ruled_out": true
+    }
+  ],
+  "schema_version": 1,
+  "status": "blocked"
+}

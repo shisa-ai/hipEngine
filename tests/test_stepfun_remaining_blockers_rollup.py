@@ -89,6 +89,12 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     assert oracle_blocker["prompt_token_roundtrip_generator_command"] == (
         "python3 scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty"
     )
+    assert oracle_blocker["diagnosis_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json"
+    )
+    assert oracle_blocker["diagnosis_generator_command"] == (
+        "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty"
+    )
     assert kv_blocker["readiness_gate"] == "kv_backed_decode"
     assert kv_blocker["generator_command_kind"] == "kv_blocker_status"
     assert kv_blocker["kv_decode_dispatch_ready"] is True
@@ -129,6 +135,9 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         ),
         "prompt_token_roundtrip": (
             "python3 scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty"
+        ),
+        "oracle_blocker_diagnosis": (
+            "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty"
         ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
@@ -243,6 +252,9 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
     )
     assert commands["prompt_token_roundtrip"].endswith(
         "stepfun_prompt_token_roundtrip.py --default-output --pretty"
+    )
+    assert commands["oracle_blocker_diagnosis"].endswith(
+        "stepfun_oracle_blocker_diagnosis.py --default-output --pretty"
     )
     assert commands["kv_blocker_status"].endswith(
         "stepfun_kv_blocker_status.py --default-output --pretty"

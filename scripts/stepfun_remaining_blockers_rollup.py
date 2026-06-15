@@ -166,6 +166,9 @@ def _generator_commands() -> dict[str, str]:
         "prompt_token_roundtrip": (
             "python3 scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty"
         ),
+        "oracle_blocker_diagnosis": (
+            "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -254,6 +257,8 @@ def build_remaining_blockers_rollup(
                 "top_token_roundtrip_generator_command": commands["top_token_roundtrip"],
                 "prompt_token_roundtrip_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
                 "prompt_token_roundtrip_generator_command": commands["prompt_token_roundtrip"],
+                "diagnosis_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json",
+                "diagnosis_generator_command": commands["oracle_blocker_diagnosis"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

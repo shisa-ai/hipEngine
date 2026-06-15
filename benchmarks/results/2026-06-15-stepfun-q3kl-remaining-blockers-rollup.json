@@ -8,6 +8,7 @@
     "kv_evidence_preflight": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
     "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
+    "oracle_blocker_diagnosis": "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty",
     "oracle_rank_check": "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty",
     "oracle_token_mismatch": "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
     "prompt_token_roundtrip": "python3 scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty",
@@ -82,6 +83,8 @@
       "blocked_reason": "canonical Vulkan oracle executes but generated token does not match the host-composed target; HIP comparison oracle times out before generation",
       "blocker_kind": "oracle_parity_blocked",
       "canonical_backend": "vulkan",
+      "diagnosis_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json",
+      "diagnosis_generator_command": "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty",
       "generator_command": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
       "generator_command_kind": "oracle_backend_matrix",
       "oracle_parity_ready": false,
@@ -240,9 +243,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "4dd16522486de02272cec3488504480698edc792095d018fe6cbb85534edff96",
+    "kv_blocker_status": "0b24a9b31f888d3dcbb197e0d4754ccf8cf413bc3630dd50b2707b6e55e21ec0",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "205615a8efedabd60ae9ccce8a1adbc74f04917dbb746831afb814cbc5e80391"
+    "status": "7349c25cf0a2463cebf8d40f42a7b8940ae0017ad57618a91e050e07ab1b7fa7"
   },
   "status": "blocked"
 }

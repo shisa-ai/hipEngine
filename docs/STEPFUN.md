@@ -911,8 +911,12 @@ reporting.
   five host top-token texts round-trip through llama.cpp no-BOS tokenization to the same IDs;
   `scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json`, showing the
-  23-token host prompt input sequence also matches llama.cpp no-BOS tokenization. The remaining
-  mismatch is therefore not explained by prompt-token drift or host top-token text-label drift.
+  23-token host prompt input sequence also matches llama.cpp no-BOS tokenization.
+  `scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty` retains
+  `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json`, consolidating
+  that prompt/top-token/expected-token text drift is ruled out while `generated_text_matches_target`
+  remains unresolved. The remaining mismatch is therefore not explained by prompt-token drift or
+  host top-token text-label drift.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in
   `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`.
