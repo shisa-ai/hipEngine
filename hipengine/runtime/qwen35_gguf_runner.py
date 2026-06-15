@@ -223,6 +223,23 @@ class Qwen35GGUFHiddenSeedContract:
         }
 
 
+def qwen35_gguf_fp32_hidden_seed_contract(
+    hidden_size: int,
+    *,
+    rows: int = 1,
+) -> Qwen35GGUFHiddenSeedContract:
+    """Describe the M2.5 fp32 GGUF hidden seed target buffer."""
+
+    return Qwen35GGUFHiddenSeedContract(
+        provenance="post_output_norm",
+        dtype=DType.FP32,
+        rows=int(rows),
+        hidden_size=int(hidden_size),
+        source_buffer="Qwen35GGUFResidentSession.scratch.hidden_seed_fp32",
+        llama_cpp_compatible=True,
+    )
+
+
 def qwen35_gguf_current_hidden_seed_contract(
     hidden_size: int,
     *,
@@ -2963,6 +2980,20 @@ class Qwen35GGUFResidentSession:
             rows=rows,
         )
 
+    def fp32_hidden_seed_contract(self, *, rows: int = 1) -> Qwen35GGUFHiddenSeedContract:
+        """Return the allocated fp32 M2.5 hidden-seed target contract.
+
+        This only describes the scratch buffer ABI; the current kernels do not
+        write the fp32 seed yet.
+        """
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        return qwen35_gguf_fp32_hidden_seed_contract(
+            self.runner.hidden_size,
+            rows=rows,
+        )
+
     def reset(self) -> None:
         """Reset sequence state without freeing resident weights or scratch."""
 
@@ -4025,6 +4056,7 @@ class _GGUFFullAttentionPrefillScratch:
 @dataclass(frozen=True)
 class _FullStackScratch:
     norm: object
+    hidden_seed_fp32: object
     post_norm: object
     residual: object
     attn_out: object
@@ -4124,6 +4156,7 @@ class _FullStackScratch:
         block_count = (requested_positions + block_size - 1) // block_size
         max_positions = min(int(cfg.context_length), block_count * block_size)
         hidden_bytes = runner.hidden_size * 2
+        hidden_fp32_bytes = runner.hidden_size * DType.FP32.itemsize
         ffn_bytes = runner.ffn_size * 2
         moe_lane_count = max(1, int(cfg.expert_used_count)) if cfg.is_moe else 1
         moe_top_k = max(1, int(cfg.expert_used_count))
@@ -4202,6 +4235,7 @@ class _FullStackScratch:
         sin_table = Tensor.from_handle(sin_table_buf.ptr, sin_arr.shape, DType.FP32, device)
         fields = {
             "norm": buf(hidden_bytes),
+            "hidden_seed_fp32": buf(hidden_fp32_bytes),
             "post_norm": buf(hidden_bytes),
             "residual": buf(hidden_bytes),
             "attn_out": buf(hidden_bytes),
@@ -5901,6 +5935,7 @@ __all__ = [
     "Qwen35GGUFResidentSession",
     "build_qwen35_gguf_decode_graph_bucket_key",
     "qwen35_gguf_current_hidden_seed_contract",
+    "qwen35_gguf_fp32_hidden_seed_contract",
     "qwen35_gguf_decode_graph_active_symbol_groups",
     "qwen35_gguf_decode_graph_weight_roles",
     "resolve_qwen35moe_fastpath_safety",
