@@ -158,6 +158,13 @@ No-hold notes:
   memory and the `4K/128` generated ID, but changed the `512/128` final token
   (`220 -> 318`) and dropped short-prefill throughput (`1647.390 ->
   1516.829 tok/s`). Keep the GGUF AOTriton prefill threshold default at `512`.
+- **G-P4 chunk-min=8192 rejected (2026-06-15).** Raising the
+  auto-chunk minimum from `1025` to `8192` disabled chunking for the 4K gate and
+  preserved generated IDs, but raised tracked peak (`21.335 -> 21.416 GiB`),
+  dropped `512/128` prefill (`1647.390 -> 1592.474 tok/s`), and regressed both
+  retained decode medians (`127.012 -> 126.952 tok/s`, `115.805 ->
+  115.617 tok/s`) despite improving `4K/128` prefill (`1855.806 ->
+  1864.260 tok/s`). Keep the auto-chunk minimum at `1025`.
 - **G-P4 MoE-only chunk=2048 rejected (2026-06-15).** Raising only the default
   auto-tuned MoE prefill chunk from `1024` to `2048` preserved generated IDs and
   memory and improved `4K/128` prefill (`1855.806 -> 1857.311 tok/s`), but left

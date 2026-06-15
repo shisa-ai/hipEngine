@@ -93731,3 +93731,23 @@ PY` -> `split_threshold=8192`, `use_split_512=False`, `use_split_4k=False`, `use
 - Result: `512/128` median prefill/decode `1660.866404 / 127.009660 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1852.976669 / 125.592313 tok/s`, stable candidate IDs `[263, 263, 263]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Decision: no-hold/reverted. The direct `4K/128` path looked faster (`115.804576 -> 125.592313 tok/s`) and preserved memory, but changed the final token versus retained/default (`570 -> 263`); keep the full-attention split decode threshold default at `1024` until direct 4K decode is correctness-equivalent.
+
+## 2026-06-15 - GGUF G-P4 chunk-min=8192 no-hold
+
+Tried raising the auto-tuned prefill chunk minimum in
+`hipengine/runtime/prefill.py` from `1025` to `8192`, so the shared
+`512/128`+`4K/128` session (`max_sequence_length=4352`) resolved to no
+linear/MoE/full-attention chunking while 128K-scale runs would still use the
+existing `1024`/`4096` chunks. The code change was reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
+for n in (640, 4352, 8192, 131201):
+    cfg, meta = resolve_prefill_config_for_sequence(PrefillConfig(), max_sequence_length=n, total_memory_bytes=25753026560)
+    print(n, cfg.linear_chunk_size, cfg.moe_chunk_size, cfg.full_attn_query_chunk_size, cfg.chunk_tune_min_tokens, meta['applied'], meta['reason'])
+PY` -> `4352 0 0 0 8192 False below_min_tokens`; `8192` and `131201` still applied the existing chunks.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-chunkmin8192.json`.
+- Result: `512/128` median prefill/decode `1592.473844 / 126.951867 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1864.259809 / 115.617059 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.415609 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. The candidate preserved IDs and improved `4K/128` prefill (`1855.806476 -> 1864.259809 tok/s`), but increased tracked peak (`21.334858 -> 21.415609 GiB`), lowered `512/128` prefill, and regressed both retained decode medians (`127.011979 -> 126.951867 tok/s`, `115.804576 -> 115.617059 tok/s`); keep the auto-chunk minimum at `1025`.
