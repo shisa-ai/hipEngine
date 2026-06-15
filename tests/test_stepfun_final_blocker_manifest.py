@@ -96,6 +96,24 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
         "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
     )
+    command_records = oracle_helper_handoff["required_next_command_records"]
+    assert [record["kind"] for record in command_records] == [
+        "apply_retained_token_helper_patch",
+        "build_llama_debug_helper",
+        "capture_same_prompt_logits",
+    ]
+    assert command_records[0]["command"] == oracle_helper_handoff[
+        "patch_apply_command"
+    ]
+    assert command_records[1]["command"] == (
+        "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j"
+    )
+    assert command_records[2]["command"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+    assert oracle_helper_handoff["required_next_command_records_sha256"] == (
+        _stable_json_sha256(command_records)
+    )
     assert oracle_helper_handoff["readiness_refresh_command"] == (
         "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
     )

@@ -127,6 +127,32 @@ def test_stepfun_llamacpp_logits_helper_readiness_reports_current_blockers(
         "llama_debug_retained_token_ids_input_present",
         "llama_cpp_same_prompt_logits_artifact_present",
     ]
+    commands = report["required_next_commands"]
+    assert commands == [
+        f"git -C {root} apply --unidiff-zero {patch}",
+        "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",
+        "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
+    ]
+    command_records = report["required_next_command_records"]
+    assert [record["kind"] for record in command_records] == [
+        "apply_retained_token_helper_patch",
+        "build_llama_debug_helper",
+        "capture_same_prompt_logits",
+    ]
+    assert [record["command"] for record in command_records] == commands
+    assert [record["side_effect_scope"] for record in command_records] == [
+        "external_llama_cpp_worktree",
+        "external_llama_cpp_build_dir",
+        "in_tree_benchmark_artifact",
+    ]
+    for record in command_records:
+        payload = {key: value for key, value in record.items() if key != "sha256"}
+        assert record["sha256"] == hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    assert report["required_next_command_records_sha256"] == hashlib.sha256(
+        json.dumps(command_records, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     assert report["no_claim_policy"] == {
         "oracle_parity_claim_allowed": False,
         "kv_backed_decode_claim_allowed": False,

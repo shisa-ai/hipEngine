@@ -247,6 +247,61 @@ def _llama_logits_record(path: Path) -> dict[str, object]:
     }
 
 
+def _record_with_sha256(record: dict[str, object]) -> dict[str, object]:
+    enriched = dict(record)
+    enriched["sha256"] = status_mod._stable_json_sha256(record)
+    return enriched
+
+
+def _required_next_command_records(
+    *, llama_cpp_root: Path, patch_artifact: Path
+) -> list[dict[str, object]]:
+    patch_path = patch_artifact if patch_artifact.is_absolute() else REPO_ROOT / patch_artifact
+    return [
+        _record_with_sha256(
+            {
+                "step": 1,
+                "kind": "apply_retained_token_helper_patch",
+                "command": f"git -C {llama_cpp_root} apply --unidiff-zero {patch_path}",
+                "side_effect_scope": "external_llama_cpp_worktree",
+                "unblocks_missing_evidence": [
+                    "llama_cpp_token_ids_helper_patch_applied",
+                ],
+            }
+        ),
+        _record_with_sha256(
+            {
+                "step": 2,
+                "kind": "build_llama_debug_helper",
+                "command": (
+                    f"cmake --build {patch_plan_mod.DEFAULT_BUILD_DIR} "
+                    "--target llama-debug -j"
+                ),
+                "side_effect_scope": "external_llama_cpp_build_dir",
+                "unblocks_missing_evidence": [
+                    "same_prompt_logits_helper_built",
+                    "llama_debug_retained_token_ids_input_present",
+                ],
+            }
+        ),
+        _record_with_sha256(
+            {
+                "step": 3,
+                "kind": "capture_same_prompt_logits",
+                "command": (
+                    "python3 scripts/stepfun_llamacpp_logits_probe.py "
+                    "--prompt-token-source retained-input-ids --execute "
+                    "--default-output --pretty"
+                ),
+                "side_effect_scope": "in_tree_benchmark_artifact",
+                "unblocks_missing_evidence": [
+                    "llama_cpp_same_prompt_logits_artifact_present",
+                ],
+            }
+        ),
+    ]
+
+
 def build_llamacpp_logits_helper_readiness(
     *,
     llama_cpp_root: Path = contract_mod.DEFAULT_LLAMA_CPP_ROOT,
@@ -296,6 +351,10 @@ def build_llamacpp_logits_helper_readiness(
         missing_evidence.append("llama_cpp_same_prompt_logits_artifact_present")
 
     ready = not missing_evidence
+    command_records = _required_next_command_records(
+        llama_cpp_root=llama_cpp_root,
+        patch_artifact=patch_artifact,
+    )
     return {
         "schema_version": 1,
         "artifact_kind": "stepfun_llamacpp_logits_helper_readiness",
@@ -310,10 +369,12 @@ def build_llamacpp_logits_helper_readiness(
         "llama_debug": helper_record,
         "llama_logits_artifact": logits_record,
         "required_next_commands": [
-            f"git -C {llama_cpp_root} apply --unidiff-zero {(patch_artifact if patch_artifact.is_absolute() else REPO_ROOT / patch_artifact)}",
-            f"cmake --build {patch_plan_mod.DEFAULT_BUILD_DIR} --target llama-debug -j",
-            "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
+            str(record["command"]) for record in command_records
         ],
+        "required_next_command_records": command_records,
+        "required_next_command_records_sha256": status_mod._stable_json_sha256(
+            command_records
+        ),
         "missing_evidence": missing_evidence,
         "blocked_reason": None if ready else "retained-token helper patch/build/capture evidence is incomplete",
         "no_claim_policy": {

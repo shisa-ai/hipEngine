@@ -41941,3 +41941,41 @@ python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-j
 ```
 
 Results: targeted KV session/decode/final-manifest selection passed with `7` tests plus `2` StepFun-GGUF-dependent skips; broader selected KV/session/final-manifest/handoff run passed with `12` tests plus `2` skips; status/manifest/handoff verification returned `"match"`; KV session status remains `"blocked"`; `--blocked-by-only` remains `"streaming_decode_loop_not_wired"`; KV session stable payload SHA is `501fb1f2fdc27ac12e8c1166be9738a503bdb015ee8d4d3b7c0f9f81a07ec23c`; final manifest entries SHA `343f566bcd28e83f8dec8044a345adc8e88c438b4be9c4877d0178f58ad3b109`, manifest SHA `bb3cebc5217cc9a1a628fbe8af2155b1a735aebac035ca29193f9a43e20dd35d`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are KV session `8b3f137e6ead32ae150d2dd84a67146c0d983da19249be117e40397941a653da`, KV blocker `760bf349c5a457dc608aa038e11e053a8c5c2d82bbadd63bb7d646c5d61f1529`, KV preflight `93490a960eb1c6c02fa215b61acf5d84010cbef6d1429662989b879b4ad7e171`, correctness-status `4ee2d237e1d3cb16ceea9569a1f2c5674983c380714e4d4c5c2845610f406691`, final-blocker `eb3765294e7ec65f3e8e433907e289e85145fe53e086329323b3b56a870ff104`, handoff `e8b1b15244dc592d1d3f4ea5f836aebd8b05eda91682bf6119c8f2ef2b6706ec`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched runtime/scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle helper command-digest handoff
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 523. Strengthened the remaining llama.cpp oracle blocker handoff by adding ordered patch/build/probe command records to the retained-token `llama-debug` helper readiness artifact. The readiness report now records the exact external patch apply command, the `llama-debug` rebuild command, and the in-tree retained-token logits probe command with per-record SHA-256 digests plus the combined command-record digest. The final blocker manifest mirrors those records/digest so the next operator can reproduce the external-tree steps without guessing and without treating the metadata as oracle parity evidence. No external `/home/lhl/llama.cpp/` files were edited; this is no-side-effect readiness/blocker metadata only.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json` remains `status=blocked`, `ready=false`, with missing evidence `llama_cpp_token_ids_helper_patch_applied`, `llama_debug_retained_token_ids_input_present`, and `llama_cpp_same_prompt_logits_artifact_present`. It now records `required_next_command_records_sha256=73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d`, with record digests `0e24f3730e951e3ad84ff0ff73f48b1b3a5feb9a9c53c37956e7ccf8a67931ff` (apply retained-token patch), `9c5222c03530bce54cca513fc7cad96e2607f01be64ae13ce7b37b0a65792bcf` (build `llama-debug`), and `f1325f1aceff88d95e4d48f207e73c4553c4c7fa4e5b4649522312194f48bb1c` (capture same-prompt logits). `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json` mirrors the same digest in `entries[0].oracle_helper_prerequisite_handoff`. Updated `docs/STEPFUN.md` P12 and refreshed correctness-status, final-blocker-manifest, and handoff artifacts. Oracle parity remains blocked on `generated_text_matches_target`; KV remains blocked separately on `streaming_decode_loop_not_wired`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_llamacpp_logits_helper_readiness.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_helper_readiness.py
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --sha-only
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_helper_readiness.py scripts/stepfun_final_blocker_manifest.py tests/test_stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_final_blocker_manifest.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_final_blocker_manifest.py -k 'logits_helper_readiness or final_blocker_manifest'
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --missing-evidence-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_llamacpp_logits_helper_readiness.py scripts/stepfun_final_blocker_manifest.py tests/test_stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_final_blocker_manifest.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+git diff --check
+```
+
+Results: targeted readiness tests passed (`4` tests); targeted readiness/final-blocker selection passed (`8` tests); status/final-blocker/handoff verification returned `"match"`; readiness status remains `"blocked"`; readiness stable payload SHA is `8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7`; final manifest entries SHA `78171a92416418693ef734f22eac308e1922d43a6a27fbe43344763f95b2ba1f`, manifest SHA `542bbce679477f4580ad7629adc246ce38c04298a14a60235dfd7135e36e8b50`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, correctness-status `ede75cc0c36bf50fe409270a3bba236a1c19adf9f24086dc73ff0b028101bbd7`, final-blocker `94161fe6633aa0c42d5c656de4e96bab098814aa0114e681844eb6ae2f8d0ad0`, handoff `bb6b772d302aac840cd394c6dac200e27b93614ab07a314deb5b7ade05daf4ba`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

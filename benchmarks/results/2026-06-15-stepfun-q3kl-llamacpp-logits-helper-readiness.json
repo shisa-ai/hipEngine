@@ -79,6 +79,40 @@
     "status": "blocked"
   },
   "ready": false,
+  "required_next_command_records": [
+    {
+      "command": "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+      "kind": "apply_retained_token_helper_patch",
+      "sha256": "0e24f3730e951e3ad84ff0ff73f48b1b3a5feb9a9c53c37956e7ccf8a67931ff",
+      "side_effect_scope": "external_llama_cpp_worktree",
+      "step": 1,
+      "unblocks_missing_evidence": [
+        "llama_cpp_token_ids_helper_patch_applied"
+      ]
+    },
+    {
+      "command": "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",
+      "kind": "build_llama_debug_helper",
+      "sha256": "9c5222c03530bce54cca513fc7cad96e2607f01be64ae13ce7b37b0a65792bcf",
+      "side_effect_scope": "external_llama_cpp_build_dir",
+      "step": 2,
+      "unblocks_missing_evidence": [
+        "same_prompt_logits_helper_built",
+        "llama_debug_retained_token_ids_input_present"
+      ]
+    },
+    {
+      "command": "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
+      "kind": "capture_same_prompt_logits",
+      "sha256": "f1325f1aceff88d95e4d48f207e73c4553c4c7fa4e5b4649522312194f48bb1c",
+      "side_effect_scope": "in_tree_benchmark_artifact",
+      "step": 3,
+      "unblocks_missing_evidence": [
+        "llama_cpp_same_prompt_logits_artifact_present"
+      ]
+    }
+  ],
+  "required_next_command_records_sha256": "73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d",
   "required_next_commands": [
     "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
     "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",

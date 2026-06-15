@@ -990,7 +990,10 @@ reporting.
   `llama_debug.retained_token_ids_capable=false`, and missing evidence
   `llama_cpp_token_ids_helper_patch_applied`, `llama_debug_retained_token_ids_input_present`, and
   `llama_cpp_same_prompt_logits_artifact_present`; after applying the retained patch and rebuilding `llama-debug`, this
-  verifier is the mechanical check before rerunning the retained-token logits probe. The contract reports
+  verifier is the mechanical check before rerunning the retained-token logits probe; it also binds the ordered
+  patch/build/probe handoff commands with command-record digest
+  `73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d` so the external-tree steps stay reproducible.
+  The contract reports
   `implementation_ready=true`
   and `source_hooks_ready=true`, but remains `status=blocked` until `same_prompt_logits_helper_built` and
   `llama_cpp_same_prompt_logits_artifact_present` are captured. The remaining mismatch is therefore not explained by

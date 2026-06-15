@@ -220,6 +220,8 @@ def _oracle_helper_prerequisite_handoff() -> dict[str, object]:
     readiness = _load_json_object_if_present(readiness_file) or {}
     patch_dry_run = readiness.get("patch_dry_run_artifact")
     patch_dry_run_record = patch_dry_run if isinstance(patch_dry_run, dict) else {}
+    command_records_raw = readiness.get("required_next_command_records")
+    command_records = command_records_raw if isinstance(command_records_raw, list) else []
     patch_apply_command = None
     required_commands = readiness.get("required_next_commands")
     if isinstance(required_commands, list) and required_commands:
@@ -261,6 +263,10 @@ def _oracle_helper_prerequisite_handoff() -> dict[str, object]:
         ),
         "patch_artifact_sha256_matches_dry_run": patch_dry_run_record.get(
             "patch_artifact_sha256_matches"
+        ),
+        "required_next_command_records": command_records,
+        "required_next_command_records_sha256": readiness.get(
+            "required_next_command_records_sha256"
         ),
         "patch_apply_command": patch_apply_command,
         "patch_apply_command_sha256": status_mod._stable_json_sha256(
