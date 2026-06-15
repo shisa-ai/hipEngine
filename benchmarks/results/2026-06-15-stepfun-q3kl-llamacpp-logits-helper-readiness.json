@@ -1,0 +1,132 @@
+{
+  "artifact_kind": "stepfun_llamacpp_logits_helper_readiness",
+  "blocked_reason": "retained-token helper patch/build/capture evidence is incomplete",
+  "date": "2026-06-15",
+  "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+  "llama_debug": {
+    "capability": {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "matched_same_prompt_special_markers": [],
+      "output_special_flag_present": false,
+      "parse_special_flag_present": false,
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
+      "same_prompt_retained_token_ids_capable": false,
+      "same_prompt_special_markers_checked": [
+        "--special",
+        "--parse-special",
+        "--token-ids"
+      ],
+      "same_prompt_special_token_flag_present": false,
+      "same_prompt_text_tokenization_capable": false,
+      "token_ids_flag_present": false
+    },
+    "executable": true,
+    "exists": true,
+    "parse_special_capable": false,
+    "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
+    "retained_token_ids_capable": false,
+    "version": "version: 9641 (6e9007ae6)\nbuilt with GNU 16.1.1 for Linux x86_64"
+  },
+  "llama_logits_artifact": {
+    "exists": true,
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
+    "prompt_token_source": "retained-input-ids",
+    "ready": false,
+    "same_prompt_tokens_match": null,
+    "sha256": "ba95bd134e2b8be906c8af15ee00175c46f9b1bddcd2b6ed3fec5ace3340fd75",
+    "status": "blocked"
+  },
+  "missing_evidence": [
+    "llama_cpp_token_ids_helper_patch_applied",
+    "llama_debug_retained_token_ids_input_present",
+    "llama_cpp_same_prompt_logits_artifact_present"
+  ],
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "Readiness metadata is not same-prompt logits parity evidence."
+  },
+  "patch_artifact": {
+    "exists": true,
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+    "sha256": "fa733be08306aa52af23cf154002cec9c4ed7cd5f671cd2444b0a5cb144838f9"
+  },
+  "ready": false,
+  "required_next_commands": [
+    "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+    "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",
+    "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty"
+  ],
+  "schema_version": 1,
+  "source_patch": {
+    "exists": true,
+    "markers": [
+      {
+        "key": "include_sstream",
+        "marker": "#include <sstream>",
+        "present": false,
+        "role": "CSV token-id parser include"
+      },
+      {
+        "key": "extra_params_struct",
+        "marker": "struct stepfun_debug_extra_params",
+        "present": false,
+        "role": "debug-local helper argument state"
+      },
+      {
+        "key": "token_ids_csv_parser",
+        "marker": "stepfun_parse_token_ids_csv",
+        "present": false,
+        "role": "comma-separated retained token-id parser"
+      },
+      {
+        "key": "token_ids_arg",
+        "marker": "arg == \"--token-ids\"",
+        "present": false,
+        "role": "debug-local --token-ids argv handling"
+      },
+      {
+        "key": "parse_special_arg",
+        "marker": "arg == \"--parse-special\"",
+        "present": false,
+        "role": "debug-local --parse-special argv handling"
+      },
+      {
+        "key": "retained_decode_selection",
+        "marker": "common_tokenize(ctx, params.prompt, add_bos, extra.parse_special)",
+        "present": false,
+        "role": "parse-special text tokenization fallback for non-token-id mode"
+      },
+      {
+        "key": "exact_prompt_tokens_saved",
+        "marker": "output_data output {ctx, model, params, tokens};",
+        "present": false,
+        "role": "saved prompt metadata uses decoded retained tokens"
+      },
+      {
+        "key": "main_threads_extra",
+        "marker": "if (!run(ctx, params, stepfun_extra))",
+        "present": false,
+        "role": "main threads debug-local helper options into run"
+      }
+    ],
+    "missing_markers": [
+      "include_sstream",
+      "extra_params_struct",
+      "token_ids_csv_parser",
+      "token_ids_arg",
+      "parse_special_arg",
+      "retained_decode_selection",
+      "exact_prompt_tokens_saved",
+      "main_threads_extra"
+    ],
+    "patch_applied": false,
+    "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp"
+  },
+  "status": "blocked"
+}

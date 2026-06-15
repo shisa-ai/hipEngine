@@ -202,6 +202,9 @@ def _generator_commands() -> dict[str, str]:
         "llamacpp_logits_helper_patch_dry_run": (
             "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty"
         ),
+        "llamacpp_logits_helper_readiness": (
+            "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -319,6 +322,8 @@ def build_remaining_blockers_rollup(
                     "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
                     "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
                 ),
+                "llamacpp_logits_helper_readiness_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json",
+                "llamacpp_logits_helper_readiness_generator_command": commands["llamacpp_logits_helper_readiness"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

@@ -12,6 +12,7 @@
     "llamacpp_logits_helper_contract": "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty",
     "llamacpp_logits_helper_patch_dry_run": "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty",
     "llamacpp_logits_helper_patch_plan": "python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty",
+    "llamacpp_logits_helper_readiness": "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty",
     "llamacpp_logits_plan": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
     "llamacpp_logits_preflight": "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
     "llamacpp_logits_probe": "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
@@ -112,6 +113,8 @@
       "llamacpp_logits_helper_patch_dry_run_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty",
       "llamacpp_logits_helper_patch_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-plan.json",
       "llamacpp_logits_helper_patch_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty",
+      "llamacpp_logits_helper_readiness_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json",
+      "llamacpp_logits_helper_readiness_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty",
       "llamacpp_logits_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
       "llamacpp_logits_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
       "llamacpp_logits_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
@@ -278,9 +281,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "cceee0fa3a0655ef62958f70fb74a4d69be9123236782bc80bf9a2d46443e0ff",
+    "kv_blocker_status": "fd652f17c83ae06e218fa38d9787795778f9cea9defb7342bc1706f38403a7db",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "d082c4fc68f9ae9ce43c0cfa6c625f220b63bf7025e0263133f5b76c2afaaac3"
+    "status": "faa42b0323b919daff8dd1cd7e1b267078ba767a3db54c0aefba8f3aee8aed42"
   },
   "status": "blocked"
 }

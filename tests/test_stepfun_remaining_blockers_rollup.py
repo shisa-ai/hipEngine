@@ -168,6 +168,12 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
         "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
     )
+    assert oracle_blocker["llamacpp_logits_helper_readiness_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json"
+    )
+    assert oracle_blocker["llamacpp_logits_helper_readiness_generator_command"] == (
+        "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
+    )
     assert kv_blocker["readiness_gate"] == "kv_backed_decode"
     assert kv_blocker["generator_command_kind"] == "kv_blocker_status"
     assert kv_blocker["kv_decode_dispatch_ready"] is True
@@ -244,6 +250,9 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         ),
         "llamacpp_logits_helper_patch_dry_run": (
             "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty"
+        ),
+        "llamacpp_logits_helper_readiness": (
+            "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
         ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
@@ -394,6 +403,9 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
     )
     assert commands["llamacpp_logits_helper_patch_dry_run"].endswith(
         "stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty"
+    )
+    assert commands["llamacpp_logits_helper_readiness"].endswith(
+        "stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
     )
     assert commands["kv_blocker_status"].endswith(
         "stepfun_kv_blocker_status.py --default-output --pretty"

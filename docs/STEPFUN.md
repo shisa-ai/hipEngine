@@ -967,7 +967,14 @@ reporting.
   and remains `status=blocked` on
   `llama_cpp_token_ids_helper_patch_applied`, `same_prompt_logits_helper_built`, and
   `llama_cpp_same_prompt_logits_artifact_present`. The dry-run has the same missing applied/build/capture evidence.
-  The contract reports `implementation_ready=true`
+  `scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty` retains
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json`, a no-side-effect post-apply
+  verifier that currently reports `status=blocked`, `source_patch.patch_applied=false`,
+  `llama_debug.retained_token_ids_capable=false`, and missing evidence
+  `llama_cpp_token_ids_helper_patch_applied`, `llama_debug_retained_token_ids_input_present`, and
+  `llama_cpp_same_prompt_logits_artifact_present`; after applying the retained patch and rebuilding `llama-debug`, this
+  verifier is the mechanical check before rerunning the retained-token logits probe. The contract reports
+  `implementation_ready=true`
   and `source_hooks_ready=true`, but remains `status=blocked` until `same_prompt_logits_helper_built` and
   `llama_cpp_same_prompt_logits_artifact_present` are captured. The remaining mismatch is therefore not explained by
   prompt-token drift or host top-token text-label drift; the next llama.cpp evidence blocker is building that
