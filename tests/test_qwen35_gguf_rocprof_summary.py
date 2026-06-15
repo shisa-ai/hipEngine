@@ -43,6 +43,8 @@ _CSV_COLUMNS = (
     "Start_Timestamp",
     "End_Timestamp",
     "VGPR_Count",
+    "Accum_VGPR_Count",
+    "SGPR_Count",
     "Scratch_Size",
     "LDS_Block_Size",
     "Workgroup_Size_X",
@@ -169,6 +171,68 @@ def test_read_kernel_trace_skips_malformed_rows(tmp_path: Path) -> None:
     kernels = SCRIPT.read_kernel_trace(csv_path)
     assert [k.name for k in kernels] == ["good_kernel", "another_good"]
     assert [k.duration_ns for k in kernels] == [100, 200]
+
+
+def test_summary_includes_rocprof_resource_metadata(tmp_path: Path) -> None:
+    csv_path = tmp_path / "trace.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "Kernel_Name": "q8_0_t16_gemv_kernel<unsigned short, unsigned short>",
+                "Start_Timestamp": 0,
+                "End_Timestamp": 1_000_000,
+                "VGPR_Count": 64,
+                "Accum_VGPR_Count": 8,
+                "SGPR_Count": 48,
+                "Scratch_Size": 0,
+                "LDS_Block_Size": 128,
+                "Workgroup_Size_X": 128,
+                "Workgroup_Size_Y": 1,
+                "Workgroup_Size_Z": 1,
+                "Grid_Size_X": 10,
+                "Grid_Size_Y": 2,
+                "Grid_Size_Z": 1,
+            },
+            {
+                "Kernel_Name": "q8_0_t16_gemv_kernel<unsigned short, unsigned short>",
+                "Start_Timestamp": 1_000_000,
+                "End_Timestamp": 2_000_000,
+                "VGPR_Count": 64,
+                "Accum_VGPR_Count": 8,
+                "SGPR_Count": 48,
+                "Scratch_Size": 0,
+                "LDS_Block_Size": 128,
+                "Workgroup_Size_X": 128,
+                "Workgroup_Size_Y": 1,
+                "Workgroup_Size_Z": 1,
+                "Grid_Size_X": 11,
+                "Grid_Size_Y": 2,
+                "Grid_Size_Z": 1,
+            },
+        ],
+    )
+    summary = SCRIPT.build_summary(
+        prefill_csv=None,
+        decode_csv=None,
+        single_csv=csv_path,
+        tokens_prefill=2,
+        tokens_decode=None,
+        footprints=SCRIPT._QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH,
+        top=10,
+        prefill_dispatches_from_single=False,
+    )
+    phase = summary["phases"]["prefill"]
+    bucket = phase["buckets"][0]
+    resources = bucket["resource_summary"]
+    assert resources["vgpr_count"] == {"min": 64, "max": 64, "values": [64]}
+    assert resources["accum_vgpr_count"] == {"min": 8, "max": 8, "values": [8]}
+    assert resources["sgpr_count"] == {"min": 48, "max": 48, "values": [48]}
+    assert resources["scratch_bytes"] == {"min": 0, "max": 0, "values": [0]}
+    assert resources["lds_bytes"] == {"min": 128, "max": 128, "values": [128]}
+    assert resources["workgroup_size"] == {"min": 128, "max": 128, "values": [128]}
+    assert resources["grid_size"] == {"min": 20, "max": 22, "values": [20, 22]}
+    assert phase["top_kernels"][0]["resource_summary"]["scratch_bytes"]["max"] == 0
 
 
 def test_summary_single_csv_prefill_phase(tmp_path: Path) -> None:

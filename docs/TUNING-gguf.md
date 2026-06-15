@@ -123,6 +123,20 @@ compact retained-refresh artifact is
 | 4K/16 | prefill | `2094.198 ms` | selected dual Q4_K WMMA `800.455 ms` (`38.22%`); GDN prefill recurrent `351.231 ms` (`16.77%`); dense Q8_0 WMMA `329.473 ms` (`15.73%`); full-attn prefill `87.719 ms` (`4.19%`) |
 | 4K/16 | decode | `138.513 ms` (`8.657 ms/token`) | dense Q8_0 T16 GEMV `49.758 ms` (`35.92%`); selected dual Q4_K T16 GEMV `17.154 ms` (`12.38%`); full-attn decode `13.912 ms` (`10.04%`); lm-head Q6 T16 `10.087 ms` (`7.28%`) |
 
+G-M3 resource census on the refreshed 4K/16 trace is recorded in
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-resource-census-diagnostic.json`.
+`qwen35_gguf_rocprof_summary.py` now emits VGPR/SGPR/scratch/LDS/workgroup/grid
+summaries per bucket and per kernel.
+
+| Phase | Bucket | Scratch | VGPR | LDS | Read |
+| --- | --- | ---: | ---: | ---: | --- |
+| prefill | selected dual Q4_K WMMA | `676 B` | `256` | `0` | dominant prefill bucket is register-pressure/spill-limited; inspect ISA/codegen before more launch-bound pokes. |
+| prefill | dense Q8_0 WMMA | `0/8 B` | `96/128/192` | `0` | mostly scratch-free, with one tiny-spill shape; do tile-specific census before changing tile policy. |
+| prefill | full-attn prefill | `3200 B` | `256` | `0` | AOTriton/full-attn spill exists but is only `~4%` of the 4K prefill trace. |
+| decode | dense Q8_0 T16 GEMV | `0 B` | `64` | `512` | top decode bucket is scratch-free; blind launch-bound retuning has little evidence now. |
+| decode | selected dual Q4_K T16 GEMV | `0 B` | `200` | `1024` | scratch-free but high VGPR; candidate only if ISA shows an easy pressure cut. |
+| decode | Q6 lm-head T16 GEMV | `0 B` | `72` | `512` | scratch-free; prior Q6 d-load/lb variants stayed no-hold. |
+
 Retained notes:
 
 - **G-P1 launch-bound default retained (2026-06-15).** Lowering

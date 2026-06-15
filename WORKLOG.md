@@ -94045,3 +94045,23 @@ Validation and outcome:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a diagnostic no-change iteration. Generated IDs stayed deterministic, memory stayed at the retained envelope, no torch/llama.cpp hot-path dependency or raw+packed residency change was introduced, and no promotion was claimed.
 - Decision: log/diagnostic. The refreshed profile still points to selected dual Q4_K WMMA for prefill work and dense Q8_0 T16 GEMV for decode work; blind Q8/Q6 launch-bound changes should stay parked until code-object/ISA evidence identifies a pressure issue.
+
+## 2026-06-16 - GGUF G-M3 resource census metadata
+
+Added resource metadata to `scripts/qwen35_gguf_rocprof_summary.py` so GGUF
+rocprof summaries preserve VGPR, Accum_VGPR, SGPR, Scratch_Size, LDS,
+workgroup-size, and grid-size sets per bucket and per kernel. Generated a G-M3
+resource census from the retained-default 4K/16 trace captured in the previous
+iteration. This is a diagnostic/tooling iteration, not a performance-claiming
+runtime change.
+
+Validation and outcome:
+- Tooling test: `python3 -m pytest tests/test_qwen35_gguf_rocprof_summary.py -q` -> passed (`71` tests).
+- Resource summary command: `python3 scripts/qwen35_gguf_rocprof_summary.py --prefill-csv /tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/prefill_rocprof/q4ks4k_prefill_kernel_trace.csv --decode-csv /tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/decode_rocprof/q4ks4k_decode16_kernel_trace.csv --strip-prefill-prefix --tokens-prefill 4096 --tokens-decode 16 --json /tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/summary_with_resources.json --top 20 --quiet`.
+- Compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-resource-census-diagnostic.json`.
+- Resource finding: decode top buckets are scratch-free (`dense_q8_0_t16_gemv_decode_p9` VGPR `64`, scratch `0`; selected dual Q4_K T16 GEMV VGPR `200`, scratch `0`; Q6 lm-head T16 GEMV VGPR `72`, scratch `0`). Prefill is not: selected dual Q4_K WMMA reports VGPR `256` and Scratch_Size `676 B`; dense Q8_0 WMMA reports VGPR `96/128/192` and scratch `0/8 B`; full-attn prefill reports VGPR `256` and scratch `3200 B`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1650.529628 / 126.666521 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.479694 / 115.771004 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic/tooling-only change. The runtime path was not changed, generated IDs stayed stable, tracked peak stayed `21.334858 GiB`, no torch/llama.cpp hot-path dependency was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. Next prefill work should inspect selected dual Q4_K WMMA ISA/codegen/register pressure before more launch-bound or fusion probes. Dense Q8_0 T16 decode is already scratch-free, so more blind launch-bound sweeps are lower priority.

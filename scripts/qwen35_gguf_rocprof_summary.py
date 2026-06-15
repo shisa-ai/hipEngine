@@ -11,7 +11,8 @@ expects.
 Outputs (per phase):
 
 * Per-kernel rankings (top-N): ``total_ms``, ``dispatches``,
-  ``avg_dispatch_ms``, share of phase total.
+  ``avg_dispatch_ms``, share of phase total, and rocprof resource metadata
+  (VGPR/SGPR/scratch/LDS/workgroup size) when present.
 * Per-bucket rollup: GGUF-aware bucket classifier (P8/P9 selected WMMA vs
   P9.B GEMV decode, legacy ``*_prefill_out_*`` family, GDN, router, full
   attention, etc.).
@@ -120,8 +121,12 @@ class _Kernel:
     name: str
     duration_ns: int
     vgpr: int | None = None
+    accum_vgpr: int | None = None
+    sgpr: int | None = None
     scratch: int | None = None
     lds: int | None = None
+    workgroup_size: int | None = None
+    grid_size: int | None = None
 
 
 def _int_or_none(text: str | None) -> int | None:
@@ -131,6 +136,19 @@ def _int_or_none(text: str | None) -> int | None:
         return int(float(text))
     except ValueError:
         return None
+
+
+def _product_or_none(*values: int | None) -> int | None:
+    product = 1
+    for value in values:
+        if value is None:
+            return None
+        product *= value
+    return product
+
+
+def _row_product_or_none(row: dict[str, str], *columns: str) -> int | None:
+    return _product_or_none(*(_int_or_none(row.get(column)) for column in columns))
 
 
 def read_kernel_trace(path: Path) -> list[_Kernel]:
@@ -160,8 +178,22 @@ def read_kernel_trace(path: Path) -> list[_Kernel]:
                     name=name,
                     duration_ns=end - start,
                     vgpr=_int_or_none(row.get("VGPR_Count")),
+                    accum_vgpr=_int_or_none(row.get("Accum_VGPR_Count")),
+                    sgpr=_int_or_none(row.get("SGPR_Count")),
                     scratch=_int_or_none(row.get("Scratch_Size")),
                     lds=_int_or_none(row.get("LDS_Block_Size")),
+                    workgroup_size=_row_product_or_none(
+                        row,
+                        "Workgroup_Size_X",
+                        "Workgroup_Size_Y",
+                        "Workgroup_Size_Z",
+                    ),
+                    grid_size=_row_product_or_none(
+                        row,
+                        "Grid_Size_X",
+                        "Grid_Size_Y",
+                        "Grid_Size_Z",
+                    ),
                 )
             )
     return rows
@@ -313,19 +345,56 @@ def classify_kernel(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_RESOURCE_FIELDS = {
+    "vgpr_count": "vgpr",
+    "accum_vgpr_count": "accum_vgpr",
+    "sgpr_count": "sgpr",
+    "scratch_bytes": "scratch",
+    "lds_bytes": "lds",
+    "workgroup_size": "workgroup_size",
+    "grid_size": "grid_size",
+}
+
+
+def _new_kernel_stats() -> dict[str, Any]:
+    return {"ns": 0, "n": 0, "resources": defaultdict(set)}
+
+
+def _add_resources(resource_sets: dict[str, set[int]], kernel: _Kernel) -> None:
+    for public_name, attr in _RESOURCE_FIELDS.items():
+        value = getattr(kernel, attr)
+        if value is not None:
+            resource_sets[public_name].add(value)
+
+
+def _resource_summary(resource_sets: dict[str, set[int]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for public_name in _RESOURCE_FIELDS:
+        values = sorted(resource_sets.get(public_name, ()))
+        summary[public_name] = {
+            "min": values[0] if values else None,
+            "max": values[-1] if values else None,
+            "values": values,
+        }
+    return summary
+
+
 @dataclass
 class BucketStats:
     bucket: str
     total_ns: int = 0
     dispatches: int = 0
-    kernels: dict[str, dict[str, int]] = field(default_factory=lambda: defaultdict(lambda: {"ns": 0, "n": 0}))
+    kernels: dict[str, dict[str, Any]] = field(default_factory=lambda: defaultdict(_new_kernel_stats))
+    resources: dict[str, set[int]] = field(default_factory=lambda: defaultdict(set))
 
-    def add(self, kernel_name: str, duration_ns: int) -> None:
-        self.total_ns += duration_ns
+    def add(self, kernel: _Kernel) -> None:
+        self.total_ns += kernel.duration_ns
         self.dispatches += 1
-        ent = self.kernels[kernel_name]
-        ent["ns"] += duration_ns
+        _add_resources(self.resources, kernel)
+        ent = self.kernels[kernel.name]
+        ent["ns"] += kernel.duration_ns
         ent["n"] += 1
+        _add_resources(ent["resources"], kernel)
 
 
 def _summarise_phase(
@@ -336,15 +405,16 @@ def _summarise_phase(
     top: int,
 ) -> dict[str, Any]:
     buckets: dict[str, BucketStats] = {}
-    per_kernel: dict[str, dict[str, int]] = defaultdict(lambda: {"ns": 0, "n": 0})
+    per_kernel: dict[str, dict[str, Any]] = defaultdict(_new_kernel_stats)
     total_ns = 0
     for k in kernels:
         total_ns += k.duration_ns
         bucket = classify_kernel(k.name)
-        buckets.setdefault(bucket, BucketStats(bucket=bucket)).add(k.name, k.duration_ns)
+        buckets.setdefault(bucket, BucketStats(bucket=bucket)).add(k)
         ent = per_kernel[k.name]
         ent["ns"] += k.duration_ns
         ent["n"] += 1
+        _add_resources(ent["resources"], k)
 
     bucket_rows: list[dict[str, Any]] = []
     for stats in buckets.values():
@@ -366,12 +436,17 @@ def _summarise_phase(
                 "share_of_phase": share,
                 "footprint_bytes_per_dispatch": footprint,
                 "effective_gb_s": effective_gb_s,
+                "resource_summary": _resource_summary(stats.resources),
                 "kernel_names": sorted(stats.kernels.keys()),
                 "per_kernel_ms": {
                     name: ent["ns"] / 1e6 for name, ent in stats.kernels.items()
                 },
                 "per_kernel_dispatches": {
                     name: ent["n"] for name, ent in stats.kernels.items()
+                },
+                "per_kernel_resource_summary": {
+                    name: _resource_summary(ent["resources"])
+                    for name, ent in stats.kernels.items()
                 },
                 "ms_per_token": None if not tokens else total_ms / tokens,
             }
@@ -391,6 +466,7 @@ def _summarise_phase(
                 "avg_dispatch_ms": avg_ms,
                 "share_of_phase": share,
                 "bucket": classify_kernel(name),
+                "resource_summary": _resource_summary(ent["resources"]),
                 "ms_per_token": None if not tokens else total_ms / tokens,
             }
         )
