@@ -1556,7 +1556,10 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         ("step_batch_serial", (100, 101), (2, 1), (0, 1), True),
         ("batch_execution_metadata", True, False),
     ]
-    assert generator.last_batch_generation == {
+    batch_generation = generator.last_batch_generation
+    assert batch_generation is not None
+    scheduler_chunks = batch_generation["scheduler_token_chunks"]
+    assert {key: value for key, value in batch_generation.items() if key != "scheduler_token_chunks"} == {
         "path": "scheduler_native_packed_prefill_serial_decode",
         "batch_size": 2,
         "request_ids": [0, 1],
@@ -1576,6 +1579,34 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         "native_compact_prefill": True,
         "native_caware_decode": False,
         "throughput_claim_eligible": False,
+    }
+    assert [
+        (chunk["request_id"], chunk["token_index"], chunk["token_id"], chunk["finished"], chunk["chunk"]["text"])
+        for chunk in scheduler_chunks
+    ] == [
+        (0, 0, 100, False, "A"),
+        (0, 1, 200, True, "C"),
+        (1, 0, 101, False, "B"),
+        (1, 1, 201, True, "D"),
+    ]
+    assert scheduler_chunks[0]["chunk"]["telemetry"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "request_id": "0",
+        "sampler_mode": "greedy_fast",
+        "execution_path": "scheduler_native_packed_prefill_serial_decode",
+        "native_compact_prefill": True,
+        "native_caware_decode": False,
+        "serial_decode_fallback": True,
+    }
+    assert scheduler_chunks[1]["chunk"]["finish_details"] == {
+        "reason": "length",
+        "length_limit": 2,
+        "sampler_mode": "greedy_fast",
     }
     assert [_decode_state(output)["row_index"] for output in generator.last_generation_outputs] == [0, 1]
     assert [_decode_state(output)["request_id"] for output in generator.last_generation_outputs] == ["0", "1"]
@@ -1699,6 +1730,27 @@ def test_qwen35_paro_processed_batch_honors_stop_tokens_per_row(monkeypatch) -> 
     ]
     assert _decode_state(outputs[0])["stop_suffix_state"] == {"matched_sequence": [100, 200]}
     assert "stop_suffix_state" not in _decode_state(outputs[1])
+    scheduler_chunks = generator.last_batch_generation["scheduler_token_chunks"]
+    assert [
+        (chunk["request_id"], chunk["token_index"], chunk["token_id"], chunk["finished"], chunk["chunk"]["text"])
+        for chunk in scheduler_chunks
+    ] == [
+        (0, 0, 100, False, "A"),
+        (0, 1, 200, True, "C"),
+        (1, 0, 101, True, "B"),
+    ]
+    assert scheduler_chunks[0]["chunk"]["telemetry"]["decode_state"]["stop_suffix_state"] == {
+        "partial_suffix": [100],
+        "candidate_sequences": [[100, 200]],
+    }
+    assert scheduler_chunks[1]["chunk"]["telemetry"]["decode_state"]["stop_suffix_state"] == {
+        "matched_sequence": [100, 200],
+    }
+    assert scheduler_chunks[1]["chunk"]["finish_details"] == {
+        "reason": "stop",
+        "stop_sequence": [100, 200],
+        "sampler_mode": "processed_argmax",
+    }
 
 
 @pytest.mark.parametrize(
@@ -1792,6 +1844,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
             temperature=0.7,
             seed=5,
             logit_bias={42: 1.5},
+            logprobs=True,
         )
     )
 
@@ -1888,6 +1941,33 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
             ((201, "D", -0.4), (401, "?", -1.8)),
         ],
     ]
+    scheduler_chunks = generator.last_batch_generation["scheduler_token_chunks"]
+    assert [
+        (chunk["request_id"], chunk["token_index"], chunk["token_id"], chunk["finished"], chunk["chunk"]["text"])
+        for chunk in scheduler_chunks
+    ] == [
+        (0, 0, 100, False, "A"),
+        (0, 1, 200, True, "C"),
+        (1, 0, 101, False, "B"),
+        (1, 1, 201, True, "D"),
+    ]
+    assert scheduler_chunks[0]["chunk"]["token_logprobs"] == [
+        {
+            "token_id": 100,
+            "token_text": "A",
+            "logprob": -0.1,
+            "top_logprobs": [
+                {"token_id": 100, "token_text": "A", "logprob": -0.1},
+                {"token_id": 300, "token_text": "?", "logprob": -1.5},
+            ],
+        }
+    ]
+    first_decode_state = scheduler_chunks[0]["chunk"]["telemetry"]["decode_state"]
+    assert first_decode_state["sampler_mode"] == "host_logits_sample"
+    assert first_decode_state["active_processors"] == ["logit_bias"]
+    assert first_decode_state["sampler_fast_path_blockers"] == ["temperature", "logit_bias"]
+    assert first_decode_state["full_vocab_logits_d2h"] is True
+    assert first_decode_state["logits_d2h_bytes"] == 2048
 
 
 def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:

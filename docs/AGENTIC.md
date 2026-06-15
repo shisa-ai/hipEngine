@@ -127,7 +127,9 @@ Known baseline limitations:
   `RowSamplingState`, including sampler mode, active processors, native fallback,
   token stop suffix state, forced-token queues, thinking-budget pressure, and
   scheduler execution flags.
-  PARO scheduler-owned c>N final telemetry reports scheduler execution path and
+  PARO scheduler-owned c>N batch diagnostics retain JSON-ready
+  `scheduler_token_chunks` with per-token `GenerationStreamChunk` payloads,
+  and final telemetry reports scheduler execution path plus
   native-prefill/native-decode/serial-fallback state. Buffered streaming
   preserves final backend telemetry on choice `done` chunks and, when
   tokenizer/counting hooks are available, emits server-derived per-delta
@@ -999,10 +1001,11 @@ Current code reality:
   Those buffered deltas inherit stable backend sampler/execution metadata from
   the final telemetry, but keep token-specific fields such as forced-token state,
   stop suffixes, budget pressure, timing, and usage on final/backend-authored
-  snapshots or scheduler token-event chunks. Backend-authored buffered
-  per-token snapshots, runtime-native c>N stream chunk forwarding, canonical
-  tool/structured phases, and real continuation eligibility remain future
-  lower-loop work.
+  snapshots, scheduler token-event chunks, or PARO c>N
+  `last_batch_generation.scheduler_token_chunks` diagnostics.
+  Backend-authored buffered per-token snapshots, public runtime-native c>N
+  stream chunk forwarding, canonical tool/structured phases, and real
+  continuation eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -2103,6 +2106,10 @@ Current code reality:
   `last_batch_generation.sampler_plan_metadata` and builds final per-choice
   telemetry from the scheduler-owned row plans, so native-sampler request
   fallback and processor blockers are observable from the actual batch path.
+  Greedy and sampled PARO c>N batch paths also retain JSON-ready
+  `last_batch_generation.scheduler_token_chunks` with per-token text,
+  finish-details, decode-state telemetry, stop-suffix state, execution-path
+  flags, and sampled logprob payloads when requested.
 - True batched sampled decode is still not native-promoted: PARO c>N sampled
   batches use native packed prefill plus serial host-sampler decode, while GGUF
   sampled requests stay on host sampling.
@@ -2802,15 +2809,17 @@ golden harness traces are now implemented. Good next logical units, in order:
    submit/poll token events can carry `GenerationStreamChunk` snapshots for
    token stop suffix state, forced-token state, budget pressure, sampler
    fallback, and execution flags.
-   Runtime-native c>N/PARO scheduler runners still need to forward or author
-   those per-token chunks from lower loops, including real continuation
-   eligibility, instead of relying on server post-parse inference.
+   PARO c>N batch generation now authors JSON-ready scheduler token chunks in
+   `last_batch_generation`; public runtime-native c>N stream forwarding and
+   real continuation eligibility still need lower-loop work instead of relying
+   on server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
    per-row planner metadata for native fallback/rejection decisions, and PARO
-   c>N sampled batches record it in runtime diagnostics. c>N/GGUF/native GPU
-   sampler paths still need emitted chunk/final metadata and logprob semantics
+   c>N sampled batches record it in runtime diagnostics, including per-token
+   scheduler chunk diagnostics. GGUF/native GPU sampler paths and public c>N
+   stream surfaces still need emitted chunk/final metadata and logprob semantics
    to match host AR sampling everywhere.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path

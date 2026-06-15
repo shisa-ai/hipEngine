@@ -684,6 +684,22 @@ class Qwen35ParoOneTokenGenerator:
                 getattr(batch_execution, "throughput_claim_eligible", False)
             ),
         }
+        self.last_batch_generation["scheduler_token_chunks"] = _batch_scheduler_token_chunks(
+            request_ids,
+            prompt_rows_by_request,
+            generated_ids,
+            output_parts,
+            tokenizer=session.tokenizer,
+            ignore_eos=ignore_eos,
+            stop_token_ids=(),
+            stop_token_sequences=(),
+            max_tokens=max_tokens,
+            sampler_mode=sampler_mode,
+            execution_path=self.last_batch_generation["path"],
+            native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
+            native_caware_decode=self.last_batch_generation["native_caware_decode"],
+            serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+        )
         return [
             GenerationOutput(
                 text="".join(output_parts[request_id]),
@@ -781,6 +797,9 @@ class Qwen35ParoOneTokenGenerator:
             request_id: _clone_row_sampling_state(scheduler.sampler_state(request_id))
             for request_id in request_ids
         }
+        sampling_state_step_snapshots: dict[int, list[RowSamplingState]] = {
+            request_id: [] for request_id in request_ids
+        }
         next_token_by_request: dict[int, int] = {}
         packed_slabs = scheduler.next_compact_prefill_slabs(
             chunk_size=max(len(row) for row in prompt_rows),
@@ -827,6 +846,7 @@ class Qwen35ParoOneTokenGenerator:
                         stop_token_sequences=request.stop_token_sequences,
                     )
                     if finished:
+                        sampling_state_step_snapshots[request_id].append(snapshot)
                         generated.append(GeneratedToken(request_id, result.token_id, finished=True))
                     else:
                         owner_state = scheduler.sampler_state(request_id)
@@ -838,6 +858,7 @@ class Qwen35ParoOneTokenGenerator:
                             remaining_tokens=max_tokens - len(generated_ids[request_id]),
                         )
                         sampling_state_snapshots[request_id] = _clone_row_sampling_state(owner_state)
+                        sampling_state_step_snapshots[request_id].append(sampling_state_snapshots[request_id])
                         next_token_by_request[request_id] = int(result.token_id)
                 if generated:
                     completed_ids = {done.request_id for done in scheduler.record_generated(generated)}
@@ -897,6 +918,7 @@ class Qwen35ParoOneTokenGenerator:
                     next_token_by_request.pop(done, None)
                 for request_id, result in decode_results_by_request.items():
                     if request_id in completed_ids:
+                        sampling_state_step_snapshots[request_id].append(sampling_state_snapshots[request_id])
                         continue
                     owner_state = scheduler.sampler_state(request_id)
                     _queue_json_object_close_if_needed(
@@ -906,6 +928,7 @@ class Qwen35ParoOneTokenGenerator:
                         remaining_tokens=max_tokens - len(generated_ids[request_id]),
                     )
                     sampling_state_snapshots[request_id] = _clone_row_sampling_state(owner_state)
+                    sampling_state_step_snapshots[request_id].append(sampling_state_snapshots[request_id])
                     next_token_by_request[request_id] = int(result.token_id)
                 decode_steps += 1
         finally:
@@ -926,6 +949,20 @@ class Qwen35ParoOneTokenGenerator:
             "throughput_claim_eligible": False,
             "sampler_plan_metadata": [dict(row) for row in sampler_plan_metadata],
         }
+        self.last_batch_generation["scheduler_token_chunks"] = _sampled_batch_scheduler_token_chunks(
+            request_ids,
+            prompt_rows_by_request,
+            output_steps,
+            sampling_state_step_snapshots,
+            tokenizer=session.tokenizer,
+            vocab_size=getattr(session, "vocab_size", None),
+            request=sampling_request,
+            plans=sampler_plans,
+            execution_path=self.last_batch_generation["path"],
+            native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
+            native_caware_decode=self.last_batch_generation["native_caware_decode"],
+            serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+        )
         outputs: list[GenerationOutput] = []
         for request_id in request_ids:
             plan = sampler_plans[request_id]
@@ -1367,6 +1404,172 @@ def _generation_output_from_steps(
         finish_details=finish_details,
         telemetry=telemetry,
     )
+
+
+def _batch_scheduler_token_chunks(
+    request_ids: tuple[int, ...],
+    prompt_rows_by_request: dict[int, list[int]],
+    generated_ids: dict[int, list[int]],
+    generated_texts: dict[int, list[str]],
+    *,
+    tokenizer: Any,
+    ignore_eos: bool,
+    stop_token_ids: tuple[int, ...],
+    stop_token_sequences: tuple[tuple[int, ...], ...],
+    max_tokens: int,
+    sampler_mode: str,
+    execution_path: str | None,
+    native_compact_prefill: bool | None,
+    native_caware_decode: bool | None,
+    serial_decode_fallback: bool | None,
+) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    for request_id in request_ids:
+        ids = generated_ids[request_id]
+        texts = generated_texts[request_id]
+        prefix: list[int] = []
+        for token_index, (token_id, token_text) in enumerate(zip(ids, texts, strict=True)):
+            prefix.append(int(token_id))
+            final = token_index == len(ids) - 1
+            chunk = GenerationStreamChunk(
+                text=token_text,
+                finish_details=(
+                    _finish_details_for_tokens(
+                        tokenizer,
+                        prefix,
+                        ignore_eos=ignore_eos,
+                        stop_token_ids=stop_token_ids,
+                        stop_token_sequences=stop_token_sequences,
+                        max_tokens=max_tokens,
+                        sampler_mode=sampler_mode,
+                    )
+                    if final
+                    else None
+                ),
+                telemetry=_telemetry_for_tokens(
+                    prompt_rows_by_request[request_id],
+                    prefix,
+                    row_index=request_id,
+                    request_id=str(request_id),
+                    sampler_mode=sampler_mode,
+                    stop_token_sequences=stop_token_sequences,
+                    phase="answer",
+                    execution_path=execution_path,
+                    native_compact_prefill=native_compact_prefill,
+                    native_caware_decode=native_caware_decode,
+                    serial_decode_fallback=serial_decode_fallback,
+                ),
+            )
+            chunks.append(_scheduler_token_chunk_payload(request_id, token_index, int(token_id), chunk))
+    return chunks
+
+
+def _sampled_batch_scheduler_token_chunks(
+    request_ids: tuple[int, ...],
+    prompt_rows_by_request: dict[int, list[int]],
+    output_steps: dict[int, list[Qwen35ParoAutoregressiveStepResult]],
+    sampling_state_step_snapshots: dict[int, list[RowSamplingState]],
+    *,
+    tokenizer: Any,
+    vocab_size: Any | None,
+    request: GenerationRequest,
+    plans: dict[int, Any],
+    execution_path: str | None,
+    native_compact_prefill: bool | None,
+    native_caware_decode: bool | None,
+    serial_decode_fallback: bool | None,
+) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    for request_id in request_ids:
+        steps = output_steps[request_id]
+        snapshots = sampling_state_step_snapshots[request_id]
+        if len(snapshots) != len(steps):
+            raise RuntimeError("sampled scheduler token snapshot count does not match generated steps")
+        plan = plans[request_id]
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
+            plan,
+            vocab_size=vocab_size,
+        )
+        prefix: list[int] = []
+        for token_index, (step, state) in enumerate(zip(steps, snapshots, strict=True)):
+            prefix.append(int(step.token_id))
+            final = token_index == len(steps) - 1
+            phase = None if state.thinking_budget is not None else "answer"
+            chunk = GenerationStreamChunk(
+                text=step.token_text,
+                token_logprobs=_stream_token_logprobs_from_step(tokenizer, step, request),
+                finish_details=(
+                    _finish_details_for_tokens(
+                        tokenizer,
+                        prefix,
+                        ignore_eos=request.ignore_eos,
+                        stop_token_ids=request.stop_token_ids,
+                        stop_token_sequences=request.stop_token_sequences,
+                        max_tokens=request.max_tokens,
+                        sampler_mode=plan.mode.value,
+                        sampling_state=state,
+                    )
+                    if final
+                    else None
+                ),
+                telemetry=_telemetry_for_tokens(
+                    prompt_rows_by_request[request_id],
+                    prefix,
+                    row_index=request_id,
+                    request_id=str(request_id),
+                    sampler_mode=plan.mode.value,
+                    stop_token_sequences=request.stop_token_sequences,
+                    phase=phase,
+                    active_processors=plan.active_processors,
+                    sampler_fast_path_blockers=plan.fast_path_blockers,
+                    sampler_fallback_reason=plan.fallback_reason,
+                    sampling_state=state,
+                    forced_sample=step,
+                    full_vocab_logits_d2h=full_vocab_logits_d2h,
+                    logits_d2h_bytes=logits_d2h_bytes,
+                    execution_path=execution_path,
+                    native_compact_prefill=native_compact_prefill,
+                    native_caware_decode=native_caware_decode,
+                    serial_decode_fallback=serial_decode_fallback,
+                ),
+            )
+            chunks.append(_scheduler_token_chunk_payload(request_id, token_index, int(step.token_id), chunk))
+    return chunks
+
+
+def _scheduler_token_chunk_payload(
+    request_id: int,
+    token_index: int,
+    token_id: int,
+    chunk: GenerationStreamChunk,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "request_id": int(request_id),
+        "token_index": int(token_index),
+        "token_id": int(token_id),
+        "finished": chunk.finish_details is not None,
+        "chunk": {
+            "text": chunk.text,
+        },
+    }
+    if chunk.token_logprobs:
+        payload["chunk"]["token_logprobs"] = [
+            {
+                "token_id": token.token_id,
+                "token_text": token.token_text,
+                "logprob": token.logprob,
+                "top_logprobs": [
+                    {"token_id": top_id, "token_text": top_text, "logprob": top_logprob}
+                    for top_id, top_text, top_logprob in token.top_logprobs
+                ],
+            }
+            for token in chunk.token_logprobs
+        ]
+    if chunk.finish_details is not None:
+        payload["chunk"]["finish_details"] = chunk.finish_details.to_json_dict()
+    if chunk.telemetry is not None:
+        payload["chunk"]["telemetry"] = chunk.telemetry.to_json_dict()
+    return payload
 
 
 def _stream_token_logprobs_from_step(

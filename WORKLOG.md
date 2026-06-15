@@ -92579,3 +92579,23 @@ Validation:
 - `uv run pytest tests/test_generation_batch_scheduler.py -q -k 'record_generated_events_emit_decode_telemetry or record_generated_events_emit_stop_suffix_telemetry or token_events_carry_stream_telemetry'` -> `3 passed`.
 - `uv run ruff check hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC PARO c>N scheduler token chunks
+
+PARO scheduler-owned c>N batch generation now retains JSON-ready
+`last_batch_generation.scheduler_token_chunks` diagnostics for every emitted
+token. The payloads preserve `GenerationStreamChunk` text, final finish details,
+decode-state telemetry, scheduler execution flags, stop-suffix state, and
+sampled logprob payloads when the request asks for logprobs. Sampled c>N
+generation now keeps per-token `RowSamplingState` snapshots so chunk telemetry
+reflects the row state at each emitted token instead of only the final row
+snapshot. This is still a diagnostics surface, not a public c>N live stream API;
+public stream forwarding and real continuation eligibility remain open in
+`docs/AGENTIC.md`.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> passed.
+- `uv run pytest tests/test_generation_qwen35_paro.py -q -k 'generator_uses_scheduler_packed_prefill_for_prompt_batch or processed_batch_honors_stop_tokens_per_row or sampled_batch_uses_scheduler_packed_prefill'` -> `4 passed`.
+- `uv run pytest tests/test_generation_qwen35_paro.py -q` -> `38 passed`.
+- `uv run ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py docs/AGENTIC.md` -> clean.
