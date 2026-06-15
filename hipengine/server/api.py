@@ -50,6 +50,7 @@ from hipengine.generation import (
     GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
+    NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
     ThinkingBudgetState,
@@ -227,19 +228,6 @@ _UNSUPPORTED_GRAMMAR_FIELDS = (
 _GUIDED_JSON_FIELD = "guided_json"
 _GUIDED_REGEX_FIELD = "guided_regex"
 _GUIDED_CHOICE_FIELD = "guided_choice"
-_NATIVE_GPU_SAMPLER_UNSUPPORTED = (
-    "true_batched_c_gt_1",
-    "gguf",
-    "top_logprobs",
-    "suppress_token_ids",
-    "min_tokens",
-    "forced_tokens_pending",
-    "post_thinking_forced_tokens_pending",
-    "force_sequence_completion_token_sequences",
-    "json_object_close_forcing",
-    "thinking_budget",
-    "combined_top_k_with_top_p_or_min_p",
-)
 _GUIDED_PATCH_FIELDS = ("guided_patch", "guided_diff")
 _GUIDED_PATCH_FORMATS = ("unified_diff",)
 _GUIDED_PATCH_FENCED_POLICIES = ("optional", "required", "forbidden")
@@ -4457,7 +4445,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "stop_token_ids",
                         "stop_token_sequences",
                     ],
-                    "unsupported": list(_NATIVE_GPU_SAMPLER_UNSUPPORTED),
+                    "unsupported": list(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES),
                 },
                 "speculative_mtp": {
                     "serving_route": False,

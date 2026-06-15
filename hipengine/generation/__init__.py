@@ -68,6 +68,7 @@ from hipengine.generation.registry import (
     resolve_text_generator,
 )
 from hipengine.generation.sampling import (
+    NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     RowSamplingState,
     SampleResult,
     SamplerPlan,
@@ -137,6 +138,7 @@ __all__ = [
     "GenerationStreamChunk",
     "JsonObjectConstraintState",
     "MissingGeneratorError",
+    "NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES",
     "PREFILL_DECODE_POLICIES",
     "PerRowSamplingParams",
     "RequestObservability",

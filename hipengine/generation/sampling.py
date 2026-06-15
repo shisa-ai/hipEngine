@@ -28,6 +28,19 @@ _LOGIT_BIAS_EMPTY: tuple[tuple[int, float], ...] = ()
 _UINT64_MASK = (1 << 64) - 1
 _SEED_MASK = (1 << 63) - 1
 _MAX_NATIVE_GPU_TOP_K = 64
+NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES: tuple[str, ...] = (
+    "true_batched_c_gt_1",
+    "gguf",
+    "top_logprobs",
+    "suppress_token_ids",
+    "min_tokens",
+    "forced_tokens_pending",
+    "post_thinking_forced_tokens_pending",
+    "force_sequence_completion_token_sequences",
+    "json_object_close_forcing",
+    "thinking_budget",
+    "combined_top_k_with_top_p_or_min_p",
+)
 SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "temperature",
     "logit_bias",
@@ -1038,6 +1051,7 @@ __all__ = [
     "SampleResult",
     "SamplerPlan",
     "SamplingMode",
+    "NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES",
     "SPECULATIVE_MTP_INCOMPATIBLE_FIELDS",
     "SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS",
     "active_processor_names",

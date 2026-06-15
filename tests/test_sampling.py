@@ -8,6 +8,7 @@ import pytest
 from hipengine.generation.sampling import (
     ForcedTokenQueue,
     JsonObjectConstraintState,
+    NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     RowSamplingState,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
@@ -89,6 +90,32 @@ def _speculative_mtp_blocker_cases():
         "thinking_budget": _params(thinking_close_token_ids=(10, 11), thinking_hard_token_cap=2),
         "logprobs": _params(logprobs=True),
         "top_logprobs": _params(top_logprobs=2),
+    }
+
+
+def _native_gpu_sampler_guard_cases():
+    return {
+        "top_logprobs": _params(temperature=0.7, top_logprobs=1),
+        "suppress_token_ids": _params(temperature=0.7, suppress_token_ids=(7,)),
+        "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
+        "forced_tokens_pending": _params(temperature=0.7, forced_tokens_pending=(10,)),
+        "post_thinking_forced_tokens_pending": _params(
+            temperature=0.7,
+            thinking_close_token_ids=(10, 11),
+            thinking_hard_token_cap=4,
+            post_thinking_forced_tokens_pending=(12,),
+        ),
+        "force_sequence_completion_token_sequences": _params(
+            temperature=0.7,
+            force_sequence_completion_token_sequences=((10, 11),),
+        ),
+        "json_object_close_forcing": _params(temperature=0.7, json_object_close_forcing=True),
+        "thinking_budget": _params(
+            temperature=0.7,
+            thinking_close_token_ids=(10, 11),
+            thinking_hard_token_cap=2,
+        ),
+        "combined_top_k_with_top_p_or_min_p": _params(temperature=0.7, top_k=4, top_p=0.9),
     }
 
 
@@ -225,6 +252,22 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
         plan_sampler(_params(temperature=0.7, forced_tokens_pending=(1,)), native_gpu_available=True).mode
         is SamplingMode.HOST_LOGITS_SAMPLE
     )
+
+
+def test_native_gpu_unsupported_capabilities_match_guard_policy() -> None:
+    cases = _native_gpu_sampler_guard_cases()
+    advertised = set(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES)
+
+    assert set(cases) <= advertised
+    assert {"true_batched_c_gt_1", "gguf"} <= advertised
+    assert "logit_bias" not in advertised
+    assert "repetition_penalty" not in advertised
+
+    for params in cases.values():
+        assert supports_native_gpu_sampling(params) is False
+        plan = plan_sampler(params, native_gpu_available=True)
+        assert plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+        assert plan.fallback_reason == "native_gpu_unsupported_request"
 
 
 def test_sampler_plan_reports_requested_native_gpu_unavailable() -> None:

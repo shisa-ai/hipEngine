@@ -93564,3 +93564,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion_reports_strict_tool_schema_failure or streaming_chat_completion_reports_strict_tool_name_failure or streaming_chat_completion_rejects_malformed_tool_call or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call'` -> `2 passed`.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-15 - Native sampler capability guard source of truth
+
+Moved the native GPU sampler unsupported capability list into
+`hipengine.generation.sampling` next to `supports_native_gpu_sampling()` and
+made `/v1/hipengine/capabilities` consume that shared constant. Added a
+sampling regression that each request-visible unsupported native shape falls
+back through the guard with `native_gpu_unsupported_request`, while supported
+processors such as `logit_bias` and penalties are not mis-advertised as
+unsupported.
+
+Validation:
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q -k 'native_gpu_unsupported_capabilities_match_guard_policy or native_gpu_sampler_support_rejects_unwired_shapes or capabilities_endpoint_reports_manifest_and_auth'` -> `3 passed`.
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q -k 'speculative_verify_for_processed_sampling or sampler_params_block or native_gpu_unsupported_request'` -> `18 passed`.
+- `uv run ruff check hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.

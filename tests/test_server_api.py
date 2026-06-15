@@ -27,6 +27,7 @@ from hipengine.generation import (
     TokenLogprob,
 )
 from hipengine.generation.sampling import (
+    NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
 )
@@ -1256,19 +1257,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "stop_token_ids",
             "stop_token_sequences",
         ],
-        "unsupported": [
-            "true_batched_c_gt_1",
-            "gguf",
-            "top_logprobs",
-            "suppress_token_ids",
-            "min_tokens",
-            "forced_tokens_pending",
-            "post_thinking_forced_tokens_pending",
-            "force_sequence_completion_token_sequences",
-            "json_object_close_forcing",
-            "thinking_budget",
-            "combined_top_k_with_top_p_or_min_p",
-        ],
+        "unsupported": list(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES),
     }
     assert body["sampling"]["speculative_mtp"] == {
         "serving_route": False,
