@@ -153,6 +153,13 @@ Initial focused lanes from evidence:
 
 No-hold notes:
 
+- **G-P1 selected-down T16 prefill launch-bound=1 rejected (2026-06-15).**
+  Relaxing `gguf_k_t16_selected_prefill` (selected single-output/down WMMA
+  prefill) from `__launch_bounds__(32, 2)` to `__launch_bounds__(32, 1)`
+  preserved generated IDs and memory and improved the short gate
+  (`512/128` prefill/decode `1647.390 / 127.012 -> 1654.917 / 127.066 tok/s`),
+  but regressed the retained `4K/128` gate (`1855.806 / 115.805 ->
+  1850.369 / 115.758 tok/s`). Keep selected-down T16 WMMA prefill at `32,2`.
 - **G-P2 AOTriton prefill threshold=1024 rejected (2026-06-15).** Raising
   the default GGUF AOTriton prefill threshold from `512` to `1024` preserved
   memory and the `4K/128` generated ID, but changed the `512/128` final token
