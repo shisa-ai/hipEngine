@@ -93491,3 +93491,50 @@ Validation:
 - Prompt verifier passed: torch-free CPU reference scaffold only, four-axis
   registry key, no backend/quant branches, no attention/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference dense attention sublayer
+
+Implemented `mtp-gguf` multiloop iteration 21: a torch-free CPU-reference helper
+for the dense Qwen35 GGUF MTP attention sublayer.
+
+Scope note:
+- This is a CPU oracle for the MTP attention sublayer only, not the full M3
+  NextN forward and not a runtime dispatch path.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this helper models an already-materialized dense CPU cache for tests.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '616,669p'`
+- Confirmed order:
+  - `inpSA = cur` pre-attention residual.
+  - `cur = build_norm(cur, layer.attn_norm, ...)`.
+  - `Qcur_full = wq(cur)`.
+  - Q view uses stride `head_dim * 2` with offset `0`; gate view uses the same
+    stride with offset `head_dim`, so wq output is interleaved per head as
+    `[Q_head, gate_head]`, not `[all_Q, all_gate]`.
+  - Q/K RMSNorm, RoPE, dense attention, sigmoid gate multiply, `wo`, residual add.
+
+Changes:
+- Added `qwen35_gguf_mtp_attention_sublayer(...)` in
+  `hipengine/kernels/cpu_reference/ops.py`.
+  - Applies `attn_norm`, projects dense `wq/wk/wv`, splits interleaved Q/gate,
+    applies q/k RMSNorm, optional RoPE, dense causal GQA over a CPU cache,
+    sigmoid gate, `wo`, and residual add.
+  - Does not alter runtime attention/dispatch/KV behavior.
+- Added private `_dense_causal_gqa_attention(...)` for the dense CPU cache oracle.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_attention", "gguf_f32", "qwen35_dense")`.
+- Extended `tests/test_gguf_mtp_cpu_reference.py` with an interleaved Q/gate
+  layout fixture, shape validation, and registry assertion.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `9` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py` and
+  `hipengine/kernels/cpu_reference/__init__.py`.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
+  registry key, no backend/quant branches, no runtime KV path changes, explicit
+  KVLiveSpans reminder, and no performance claims.
