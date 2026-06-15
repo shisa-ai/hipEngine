@@ -137,6 +137,17 @@ summaries per bucket and per kernel.
 | decode | selected dual Q4_K T16 GEMV | `0 B` | `200` | `1024` | scratch-free but high VGPR; candidate only if ISA shows an easy pressure cut. |
 | decode | Q6 lm-head T16 GEMV | `0 B` | `72` | `512` | scratch-free; prior Q6 d-load/lb variants stayed no-hold. |
 
+G-P1 ISA audit for the selected dual Q4T16 WMMA prefill kernel is recorded in
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-isa-audit.json`.
+The active BF16 kernel metadata matches rocprof: `private_segment_fixed_size=676`,
+`vgpr_count=256`, `vgpr_spill_count=320`, and `42` scratch loads / `80` scratch
+stores in the disassembly. Building the same kernel with
+`HIPENGINE_DISABLE_UNROLL600=1` produced identical metadata, so do not spend more
+iterations on the global unroll-600 knob for this kernel. Next useful probes
+should reduce live state in the kernel itself (for example split the 32-column
+dual tile or shorten `b_reg`/accumulator lifetimes) and measure whether extra
+launches beat the spill cost.
+
 Retained notes:
 
 - **G-P1 launch-bound default retained (2026-06-15).** Lowering

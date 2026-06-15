@@ -1,0 +1,266 @@
+{
+  "schema": "hipengine_gguf_selected_wmma_isa_audit_v1",
+  "date": "2026-06-16",
+  "loop": "gguf-tuning/run-20260615-103446",
+  "iteration": 42,
+  "status": "diagnostic",
+  "performance_claim": false,
+  "target_kernel": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>",
+  "model_context": "Qwen3.6-35B-A3B GGUF Q4_K_S selected-MoE prefill; dominant 4K/16 prefill bucket from G-M2/G-M3",
+  "source_file": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip",
+  "build_family": "gguf_q4_k_t16_selected_prefill",
+  "headline": {
+    "active_private_segment_fixed_size_b": 676,
+    "active_vgpr_count": 256,
+    "active_vgpr_spill_count": 320,
+    "active_sgpr_count": 44,
+    "active_scratch_instruction_count": 122,
+    "active_scratch_load_store": [
+      42,
+      80
+    ],
+    "active_v_wmma_count": 32,
+    "disable_unroll600_same_metadata": {
+      "private_segment_fixed_size": true,
+      "vgpr_count": true,
+      "vgpr_spill_count": true,
+      "sgpr_count": true,
+      "sgpr_spill_count": true
+    },
+    "interpretation": "The active BF16 selected-dual Q4T16 WMMA prefill kernel is hard-clipped at 256 VGPR with 320 VGPR spills and 676 B private segment. Disabling the global unroll-600 flag does not change metadata or scratch instruction counts. Next useful code probes should reduce live state inside the kernel (e.g. split 32-column dual tile or restructure b/acc lifetimes), not re-run the unroll600 knob."
+  },
+  "builds": {
+    "default_unroll600_mcumode": {
+      "shared_object": "/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-bb67c6136258bf8d/gguf_q4_k_t16_selected_prefill.so",
+      "flags": [
+        "-mllvm",
+        "-amdgpu-unroll-threshold-local=600",
+        "-mcumode"
+      ],
+      "raw_dir": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q4t16-selected-wmma-isa",
+      "entries": [
+        {
+          "mangled_name": "_ZN12_GLOBAL__N_157gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+          "dtype": "bf16_out_uint16",
+          "private_segment_fixed_size": 676,
+          "sgpr_count": 44,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 256,
+          "vgpr_spill_count": 320,
+          "wavefront_size": 32,
+          "group_segment_fixed_size": 0,
+          "max_flat_workgroup_size": 32,
+          "disasm": {
+            "found": true,
+            "body_lines": 6654,
+            "scratch_instruction_count": 122,
+            "scratch_load_count": 42,
+            "scratch_store_count": 80,
+            "scratch_offsets_min_max": [
+              0,
+              656
+            ],
+            "scratch_offsets_unique_count": 42,
+            "v_wmma_count": 32,
+            "s_waitcnt_count": 408,
+            "global_load_count": 672,
+            "global_store_count": 16,
+            "flat_count": 0,
+            "ds_count": 0,
+            "first_scratch_lines": [
+              "scratch_load_b128 v[33:36], off, off                       // 0000000025EC: DC5D0000 217C0000",
+              "scratch_load_b128 v[37:40], off, off offset:16             // 0000000025F4: DC5D0010 257C0000",
+              "scratch_load_b128 v[170:173], off, off offset:32           // 0000000025FC: DC5D0020 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:48           // 000000002604: DC5D0030 AE7C0000",
+              "scratch_load_b128 v[170:173], off, off offset:96           // 000000002650: DC5D0060 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:112          // 000000002658: DC5D0070 AE7C0000",
+              "scratch_load_b128 v[33:36], off, off offset:64             // 000000002670: DC5D0040 217C0000",
+              "scratch_load_b128 v[37:40], off, off offset:80             // 000000002678: DC5D0050 257C0000",
+              "scratch_load_b128 v[170:173], off, off offset:160          // 000000002680: DC5D00A0 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:176          // 000000002688: DC5D00B0 AE7C0000",
+              "scratch_load_b128 v[170:173], off, off offset:128          // 0000000026A0: DC5D0080 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:144          // 0000000026A8: DC5D0090 AE7C0000"
+            ]
+          }
+        },
+        {
+          "mangled_name": "_ZN12_GLOBAL__N_157gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernelIDF16_EEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+          "dtype": "fp16",
+          "private_segment_fixed_size": 700,
+          "sgpr_count": 44,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 256,
+          "vgpr_spill_count": 346,
+          "wavefront_size": 32,
+          "disasm": {
+            "found": true,
+            "body_lines": 5899,
+            "scratch_instruction_count": 205,
+            "scratch_load_count": 114,
+            "scratch_store_count": 91,
+            "scratch_offsets_min_max": [
+              0,
+              692
+            ],
+            "scratch_offsets_unique_count": 47,
+            "v_wmma_count": 32,
+            "s_waitcnt_count": 466,
+            "global_load_count": 672,
+            "global_store_count": 16,
+            "flat_count": 0,
+            "ds_count": 0,
+            "first_scratch_lines": [
+              "scratch_store_b32 off, v0, off offset:692                  // 00000000CD98: DC6902B4 007C0000",
+              "scratch_store_b32 off, v0, off                             // 00000000CDA8: DC690000 007C0000",
+              "scratch_store_b64 off, v[0:1], off offset:684              // 00000000CE10: DC6D02AC 007C0000",
+              "scratch_store_b64 off, v[0:1], off offset:684              // 00000000CE1C: DC6D02AC 007C0000",
+              "scratch_load_b64 v[0:1], off, off offset:684               // 00000000CE78: DC5502AC 007C0000",
+              "scratch_load_b32 v7, off, off                              // 00000000CE80: DC510000 077C0000",
+              "scratch_store_b64 off, v[2:3], off offset:684              // 00000000CF1C: DC6D02AC 007C0200",
+              "scratch_load_b32 v4, off, off offset:692                   // 00000000D020: DC5102B4 047C0000",
+              "scratch_store_b32 off, v1, off offset:4                    // 00000000D048: DC690004 007C0100",
+              "scratch_store_b32 off, v0, off offset:680                  // 00000000D10C: DC6902A8 007C0000",
+              "scratch_load_b128 v[161:164], off, off offset:8            // 00000000D138: DC5D0008 A17C0000",
+              "scratch_load_b128 v[165:168], off, off offset:24           // 00000000D140: DC5D0018 A57C0000"
+            ]
+          }
+        }
+      ]
+    },
+    "diagnostic_disable_unroll600": {
+      "shared_object": "/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-452548e83eda0aab/gguf_q4_k_t16_selected_prefill.so",
+      "flags": [
+        "-mcumode"
+      ],
+      "raw_dir": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q4t16-selected-wmma-nounroll600-isa",
+      "entries": [
+        {
+          "mangled_name": "_ZN12_GLOBAL__N_157gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+          "dtype": "bf16_out_uint16",
+          "private_segment_fixed_size": 676,
+          "sgpr_count": 44,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 256,
+          "vgpr_spill_count": 320,
+          "wavefront_size": 32,
+          "group_segment_fixed_size": 0,
+          "max_flat_workgroup_size": 32,
+          "disasm": {
+            "found": true,
+            "body_lines": 6654,
+            "scratch_instruction_count": 122,
+            "scratch_load_count": 42,
+            "scratch_store_count": 80,
+            "scratch_offsets_min_max": [
+              0,
+              656
+            ],
+            "scratch_offsets_unique_count": 42,
+            "v_wmma_count": 32,
+            "s_waitcnt_count": 408,
+            "global_load_count": 672,
+            "global_store_count": 16,
+            "flat_count": 0,
+            "ds_count": 0,
+            "first_scratch_lines": [
+              "scratch_load_b128 v[33:36], off, off                       // 0000000025EC: DC5D0000 217C0000",
+              "scratch_load_b128 v[37:40], off, off offset:16             // 0000000025F4: DC5D0010 257C0000",
+              "scratch_load_b128 v[170:173], off, off offset:32           // 0000000025FC: DC5D0020 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:48           // 000000002604: DC5D0030 AE7C0000",
+              "scratch_load_b128 v[170:173], off, off offset:96           // 000000002650: DC5D0060 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:112          // 000000002658: DC5D0070 AE7C0000",
+              "scratch_load_b128 v[33:36], off, off offset:64             // 000000002670: DC5D0040 217C0000",
+              "scratch_load_b128 v[37:40], off, off offset:80             // 000000002678: DC5D0050 257C0000",
+              "scratch_load_b128 v[170:173], off, off offset:160          // 000000002680: DC5D00A0 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:176          // 000000002688: DC5D00B0 AE7C0000",
+              "scratch_load_b128 v[170:173], off, off offset:128          // 0000000026A0: DC5D0080 AA7C0000",
+              "scratch_load_b128 v[174:177], off, off offset:144          // 0000000026A8: DC5D0090 AE7C0000"
+            ]
+          }
+        },
+        {
+          "mangled_name": "_ZN12_GLOBAL__N_157gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernelIDF16_EEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+          "dtype": "fp16",
+          "private_segment_fixed_size": 700,
+          "sgpr_count": 44,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 256,
+          "vgpr_spill_count": 346,
+          "wavefront_size": 32,
+          "disasm": {
+            "found": true,
+            "body_lines": 5899,
+            "scratch_instruction_count": 205,
+            "scratch_load_count": 114,
+            "scratch_store_count": 91,
+            "scratch_offsets_min_max": [
+              0,
+              692
+            ],
+            "scratch_offsets_unique_count": 47,
+            "v_wmma_count": 32,
+            "s_waitcnt_count": 466,
+            "global_load_count": 672,
+            "global_store_count": 16,
+            "flat_count": 0,
+            "ds_count": 0,
+            "first_scratch_lines": [
+              "scratch_store_b32 off, v0, off offset:692                  // 00000000CD98: DC6902B4 007C0000",
+              "scratch_store_b32 off, v0, off                             // 00000000CDA8: DC690000 007C0000",
+              "scratch_store_b64 off, v[0:1], off offset:684              // 00000000CE10: DC6D02AC 007C0000",
+              "scratch_store_b64 off, v[0:1], off offset:684              // 00000000CE1C: DC6D02AC 007C0000",
+              "scratch_load_b64 v[0:1], off, off offset:684               // 00000000CE78: DC5502AC 007C0000",
+              "scratch_load_b32 v7, off, off                              // 00000000CE80: DC510000 077C0000",
+              "scratch_store_b64 off, v[2:3], off offset:684              // 00000000CF1C: DC6D02AC 007C0200",
+              "scratch_load_b32 v4, off, off offset:692                   // 00000000D020: DC5102B4 047C0000",
+              "scratch_store_b32 off, v1, off offset:4                    // 00000000D048: DC690004 007C0100",
+              "scratch_store_b32 off, v0, off offset:680                  // 00000000D10C: DC6902A8 007C0000",
+              "scratch_load_b128 v[161:164], off, off offset:8            // 00000000D138: DC5D0008 A17C0000",
+              "scratch_load_b128 v[165:168], off, off offset:24           // 00000000D140: DC5D0018 A57C0000"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "commands": {
+    "extract_default": "llvm-objcopy --dump-section .hip_fatbin=...; clang-offload-bundler -unbundle -type=o ...; llvm-readobj --notes; llvm-objdump -d --mcpu=gfx1100",
+    "extract_disable_unroll600": "HIPENGINE_DISABLE_UNROLL600=1 build_gguf_q4_k_t16_selected_prefill(load=False), then same extraction commands"
+  },
+  "notes": [
+    "This is an ISA/code-object audit only; it does not alter runtime dispatch or claim performance.",
+    "rocprofv3 reports Scratch_Size=676 B for this kernel; code-object metadata matches private_segment_fixed_size=676 and vgpr_spill_count=320."
+  ],
+  "verify": {
+    "json": "/tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "workloads": {
+      "512/128": {
+        "prefill_tok_s_median": 1641.72989606798,
+        "decode_tok_s_median": 127.04460939440634,
+        "tracked_peak_allocated_gib_median": 21.334858000278473,
+        "final_token_ids_stable": true,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ]
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 1855.9919563931696,
+        "decode_tok_s_median": 115.77678561677378,
+        "tracked_peak_allocated_gib_median": 21.334858000278473,
+        "final_token_ids_stable": true,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ]
+      }
+    },
+    "primary_metric_min_decode_tok_s": 115.77678561677378
+  },
+  "guard": {
+    "command": "python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "result": "154 passed"
+  }
+}

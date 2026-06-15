@@ -94065,3 +94065,22 @@ Validation and outcome:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a diagnostic/tooling-only change. The runtime path was not changed, generated IDs stayed stable, tracked peak stayed `21.334858 GiB`, no torch/llama.cpp hot-path dependency was introduced, and no promotion was claimed.
 - Decision: log/diagnostic. Next prefill work should inspect selected dual Q4_K WMMA ISA/codegen/register pressure before more launch-bound or fusion probes. Dense Q8_0 T16 decode is already scratch-free, so more blind launch-bound sweeps are lower priority.
+
+## 2026-06-16 - GGUF G-P1 selected WMMA ISA audit
+
+Audited the active Q4T16 selected dual WMMA prefill code object after the G-M3
+resource census showed the dominant prefill bucket spilling. This was a
+diagnostic/codegen-audit iteration only; no runtime math or dispatch path was
+changed.
+
+Validation and outcome:
+- Active build artifact: `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-bb67c6136258bf8d/gguf_q4_k_t16_selected_prefill.so` with flags `-mllvm -amdgpu-unroll-threshold-local=600 -mcumode`.
+- Extraction: dumped `.hip_fatbin`, unbundled `hipv4-amdgcn-amd-amdhsa--gfx1100`, then ran `llvm-readobj --notes` and `llvm-objdump -d --mcpu=gfx1100` under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q4t16-selected-wmma-isa`.
+- Compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-isa-audit.json`.
+- Active BF16 symbol result: `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>` has `private_segment_fixed_size=676`, `vgpr_count=256`, `vgpr_spill_count=320`, `sgpr_count=44`, `sgpr_spill_count=0`; disassembly count for the symbol is `122` scratch instructions (`42` loads / `80` stores), `32` WMMA instructions.
+- Diagnostic knob: rebuilding the same family with `HIPENGINE_DISABLE_UNROLL600=1` (`-mcumode` only) produced identical metadata and scratch counts, so the global unroll-600 knob is not the spill source for this kernel.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1641.729896 / 127.044609 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.991956 / 115.776786 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic/tooling-only iteration. IDs and memory stayed stable, no torch/llama.cpp hot-path dependency or residency change was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. Next useful G-P1 code probes should reduce live state in the kernel itself (for example a 16-column single-tile variant or shorter `b_reg`/accumulator lifetimes) and measure whether extra launches beat the spill cost. Do not spend more loop iterations on `HIPENGINE_DISABLE_UNROLL600` for this kernel.
