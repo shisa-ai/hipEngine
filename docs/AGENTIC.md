@@ -136,23 +136,24 @@ Known baseline limitations:
   `GenerationStreamChunk` payloads, and final telemetry reports scheduler
   execution path plus native-prefill/native-decode/serial-fallback state where
   the backend exposes those flags. Buffered completion
-  streams, plain buffered chat answer/reasoning streams without logprobs, and
-  plain chat content streams with logprobs, plus validated structured chat
+  streams, plain buffered chat answer/reasoning streams, plain chat content
+  streams with logprobs, reasoning streams with hipEngine-private logprob
+  metadata, plus validated structured chat
   content streams and validated tool-call argument spans, for a single HTTP
   request can forward those scheduler chunks as per-token public SSE deltas or
   `delta.tool_calls` argument fragments when the chunk text exactly reconstructs
   the public choice text; if separate HTTP requests were coalesced into one
   backend batch, the server withholds the backend row chunks instead of exposing
   ambiguous row ids. Invalid tool calls, tool outputs whose argument spans
-  cannot be mapped safely, structured-output validation failures, and reasoning
-  spans with requested logprobs keep the conservative buffered parser paths.
+  cannot be mapped safely, structured-output validation failures, and logprob
+  chunks that cannot be mapped to emitted content/reasoning deltas keep the
+  conservative buffered parser paths.
   Other buffered streaming paths preserve final backend
   telemetry on choice `done` chunks and, when tokenizer/counting hooks are
   available, emit server-derived per-delta token/decode-state snapshots for
   parsed answer/reasoning/tool/structured chunks while inheriting stable backend
   sampler/execution metadata such as processor blockers, sampler fallback,
-  logits-readback state, and scheduler execution flags. Backend-authored
-  reasoning-logprob scheduler chunks and canonical live
+  logits-readback state, and scheduler execution flags. Canonical live
   reasoning/tool-call/structured phases still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
@@ -1027,16 +1028,16 @@ Current code reality:
   snapshots, scheduler token-event chunks, or PARO/GGUF c>N engine/wrapped-
   generator `last_batch_generation.scheduler_token_chunks` diagnostics.
   Buffered `/v1/completions` streams, plain answer/reasoning buffered
-  `/v1/chat/completions` streams without logprobs, plain chat content logprob
-  streams, validated structured chat content streams, and validated tool-call
+  `/v1/chat/completions` streams, plain chat content logprob streams, reasoning
+  streams with hipEngine-private logprob metadata, validated structured chat
+  content streams, and validated tool-call
   argument spans now use PARO c>N and GGUF serial c>N scheduler token chunks as
   per-token public deltas for a single HTTP request when the chunks exactly
-  reconstruct the final choice text. Coalesced multi-request batches, invalid or
-  unmappable tool
-  outputs, structured-output validation failures, reasoning-logprob chunk
-  forwarding, public runtime-native live c>N stream chunk forwarding, canonical
-  tool/structured phases, and real continuation eligibility remain future
-  lower-loop work.
+  reconstruct the final choice text and logprob chunks can be mapped to emitted
+  content/reasoning deltas. Coalesced multi-request batches, invalid or
+  unmappable tool outputs, structured-output validation failures, public
+  runtime-native live c>N stream chunk forwarding, canonical tool/structured
+  phases, and real continuation eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -2879,13 +2880,14 @@ golden harness traces are now implemented. Good next logical units, in order:
    JSON-ready scheduler token chunks in `last_batch_generation`, and buffered
    completion plus plain buffered chat answer/reasoning streams can forward
    those chunks as per-token public deltas for a single HTTP request;
-   content-only chat logprob streams also use scheduler chunks when chunk
-   logprobs are present, and validated structured
-   chat content streams use scheduler chunks with `phase="structured"`.
+   content chat logprob streams and reasoning streams with hipEngine-private
+   logprob metadata also use scheduler chunks when chunk logprobs are present,
+   and validated structured chat content streams use scheduler chunks with
+   `phase="structured"`.
    Validated tool-call argument spans can likewise replay scheduler chunks as
    OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
    runtime-native live c>N stream forwarding, invalid/unmappable tool-call
-   chunk forwarding, reasoning-logprob per-token forwarding, and real
+   chunk forwarding, true live reasoning-logprob forwarding, and real
    continuation eligibility still need lower-loop work instead of relying on
    server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
@@ -2895,10 +2897,9 @@ golden harness traces are now implemented. Good next logical units, in order:
    c>N sampled batches record it in runtime diagnostics, including per-token
    scheduler chunk diagnostics that buffered completion and plain chat streams
    can expose for single-request batches. GGUF/native GPU sampler paths plus
-   chat reasoning-logprob and true live c>N stream surfaces still need emitted
-   chunk/final metadata and logprob semantics to match host AR sampling
-   everywhere; invalid tool calls and structured validation failures still
-   require full buffering.
+   true live c>N stream surfaces still need emitted chunk/final metadata and
+   logprob semantics to match host AR sampling everywhere; invalid tool calls
+   and structured validation failures still require full buffering.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path
    apply the same EOS finish, logit bias, penalties, suppressions, forced-token,

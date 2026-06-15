@@ -93071,3 +93071,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py::test_agentic_replay_failure_reasons_match_capability_contract -q` -> `1 passed`.
 - `uv run ruff check hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Buffered scheduler reasoning logprob deltas
+
+Forwarded mapped scheduler-token chunks for buffered chat reasoning streams
+when logprobs are requested. Public `logprobs.content` remains visible-content
+only; opt-in hipEngine stream metadata now carries
+`choices[].hipengine.reasoning_logprobs` for reasoning deltas, and unmappable
+logprob chunks still fall back to the conservative buffered parser path.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `4 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

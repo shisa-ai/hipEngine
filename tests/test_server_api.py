@@ -747,6 +747,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
                 "completion_delta",
                 "chat_answer_delta",
                 "chat_reasoning_delta_without_logprobs",
+                "chat_reasoning_delta_with_private_logprobs",
                 "chat_content_logprob_delta",
                 "chat_structured_delta_validated",
                 "chat_tool_argument_delta_validated",
@@ -757,7 +758,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
                 "invalid_tool_call",
                 "unmappable_tool_arguments",
                 "structured_validation_failure",
-                "reasoning_with_logprobs",
+                "unmappable_logprobs",
             ],
         },
         "routing": "stream_options.include_hipengine",
@@ -8199,7 +8200,7 @@ def test_streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_lo
     assert fake.stream_calls == []
 
 
-def test_streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser() -> None:
+def test_streaming_chat_completion_uses_scheduler_reasoning_private_logprobs() -> None:
     class SchedulerChunkFakeLLM(FakeLLM):
         def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
             prompt_tuple = tuple(str(prompt) for prompt in prompts)
@@ -8287,11 +8288,117 @@ def test_streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser()
         choice.get("hipengine", {}).get("decode_state", {}).get("execution_path")
         for choice in deltas
         if choice["delta"].get("content") or choice["delta"].get("reasoning_content")
-    } == {"buffered_final_metadata"}
+    } == {"scheduler_should_not_surface"}
+    reasoning = next(choice for choice in deltas if choice["delta"].get("reasoning_content"))
+    assert "logprobs" not in reasoning
+    assert reasoning["hipengine"]["decode_state"]["phase"] == "think"
+    assert reasoning["hipengine"]["reasoning_logprobs"] == {
+        "content": [
+            {
+                "token_id": 300,
+                "token": "<think>r0</think>",
+                "logprob": -0.1,
+                "bytes": None,
+                "top_logprobs": [],
+            }
+        ],
+        "public_text": "r0",
+        "refusal": None,
+    }
     content = next(choice for choice in deltas if choice["delta"].get("content"))
+    assert content["hipengine"]["decode_state"]["phase"] == "answer"
     assert content["logprobs"]["content"] == [
         {"token": "A", "logprob": -0.2, "bytes": None, "top_logprobs": []}
     ]
+    assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            text = "<think>r0</think>A"
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": 0,
+                        "token_index": 0,
+                        "token_id": 300,
+                        "finished": True,
+                        "chunk": {
+                            "text": text,
+                            "token_logprobs": [
+                                {
+                                    "token_id": 300,
+                                    "token_text": text,
+                                    "logprob": -0.1,
+                                }
+                            ],
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=1,
+                                row_index=0,
+                                request_id="0",
+                                phase="answer",
+                                sampler_mode="host_logits_sample",
+                                execution_path="scheduler_should_not_surface",
+                            ).to_json_dict(),
+                        },
+                    }
+                ]
+            }
+            return [
+                GenerationOutput(
+                    text=text,
+                    token_logprobs=(TokenLogprob(token_id=300, token_text=text, logprob=-0.1),),
+                    finish_details=FinishDetails(reason="stop", sampler_mode="host_logits_sample"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=1,
+                        row_index=0,
+                        phase="done",
+                        sampler_mode="host_logits_sample",
+                        execution_path="buffered_final_metadata",
+                    ),
+                )
+            ][: len(prompt_tuple)]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 1,
+            "stream": True,
+            "logprobs": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    deltas = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ]
+    assert [(choice["index"], choice["delta"]) for choice in deltas] == [
+        (0, {"role": "assistant"}),
+        (0, {"reasoning_content": "r0"}),
+        (0, {"content": "A"}),
+    ]
+    assert {
+        choice.get("hipengine", {}).get("decode_state", {}).get("execution_path")
+        for choice in deltas
+        if choice["delta"].get("content") or choice["delta"].get("reasoning_content")
+    } == {"buffered_final_metadata"}
+    content = next(choice for choice in deltas if choice["delta"].get("content"))
+    assert content["logprobs"]["content"] == []
     assert fake.stream_calls == []
 
 

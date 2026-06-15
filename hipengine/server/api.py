@@ -4111,6 +4111,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "completion_delta",
                             "chat_answer_delta",
                             "chat_reasoning_delta_without_logprobs",
+                            "chat_reasoning_delta_with_private_logprobs",
                             "chat_content_logprob_delta",
                             "chat_structured_delta_validated",
                             "chat_tool_argument_delta_validated",
@@ -4121,7 +4122,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "invalid_tool_call",
                             "unmappable_tool_arguments",
                             "structured_validation_failure",
-                            "reasoning_with_logprobs",
+                            "unmappable_logprobs",
                         ],
                     },
                     "routing": "stream_options.include_hipengine",
@@ -4828,7 +4829,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 scheduler_chunks = scheduler_chunks_by_index.get(index, ())
                 use_scheduler_logprobs = bool(request.logprobs)
                 scheduler_logprob_safe_text = (
-                    not use_scheduler_logprobs or _split_reasoning(text).content == text
+                    not use_scheduler_logprobs
+                    or _scheduler_chunks_support_chat_logprob_stream(text, scheduler_chunks)
                 )
                 scheduler_done_phase = (
                     "structured"
@@ -9731,6 +9733,42 @@ def _chat_stream_logprobs(stream_chunk: GenerationStreamChunk, text: str) -> dic
     return _chat_logprobs(GenerationOutput(text=text, token_logprobs=tokens), text)
 
 
+def _chat_reasoning_stream_logprobs(
+    stream_chunk: GenerationStreamChunk,
+    public_text: str,
+) -> dict[str, Any]:
+    tokens = _stream_token_logprobs_for_text(stream_chunk, stream_chunk.text)
+    if public_text and not tokens:
+        raise _unsupported_stream_logprobs_error()
+    content = [
+        {
+            "token_id": int(token.token_id),
+            "token": token.token_text,
+            "logprob": token.logprob,
+            "bytes": None,
+            "top_logprobs": [
+                {
+                    "token_id": int(top_id),
+                    "token": top_text,
+                    "logprob": float(top_logprob),
+                    "bytes": None,
+                }
+                for top_id, top_text, top_logprob in token.top_logprobs
+            ],
+        }
+        for token in tokens
+    ]
+    payload: dict[str, Any] = {
+        "content": content,
+        "public_text": str(public_text),
+        "refusal": None,
+    }
+    omitted = [_logprob_omission(token, index) for index, token in enumerate(tokens) if token.logprob is None]
+    if omitted:
+        payload["omitted_token_logprobs"] = omitted
+    return payload
+
+
 def _validate_stream_logprob_chunk(stream_chunk: GenerationStreamChunk) -> None:
     if stream_chunk.text and not stream_chunk.token_logprobs:
         raise _unsupported_stream_logprobs_error()
@@ -11595,6 +11633,40 @@ def _scheduler_chunks_match_completion_text(
     return "".join(pieces) == str(text)
 
 
+def _scheduler_chunks_support_chat_logprob_stream(
+    text: str,
+    chunks: Sequence[Mapping[str, Any]],
+) -> bool:
+    if not _scheduler_chunks_match_completion_text(text, chunks, require_logprobs=True):
+        return False
+    splitter = _ReasoningSplitter()
+    last_stream_chunk: GenerationStreamChunk | None = None
+    for raw_chunk in chunks:
+        stream_chunk = _scheduler_payload_stream_chunk(raw_chunk)
+        if stream_chunk is None:
+            return False
+        last_stream_chunk = stream_chunk
+        for delta_field, chunk in splitter.feed(stream_chunk.text):
+            if delta_field == "content" and not _stream_token_logprobs_for_text(stream_chunk, chunk):
+                return False
+            if delta_field == "reasoning_content" and not _stream_token_logprobs_for_text(
+                stream_chunk,
+                stream_chunk.text,
+            ):
+                return False
+    for delta_field, chunk in splitter.finish():
+        if last_stream_chunk is None:
+            return False
+        if delta_field == "content" and not _stream_token_logprobs_for_text(last_stream_chunk, chunk):
+            return False
+        if delta_field == "reasoning_content" and not _stream_token_logprobs_for_text(
+            last_stream_chunk,
+            last_stream_chunk.text,
+        ):
+            return False
+    return True
+
+
 def _chat_stream(
     response_id: str,
     created: int,
@@ -11654,6 +11726,7 @@ def _chat_stream_delta(
     *,
     index: int = 0,
     logprobs: Mapping[str, Any] | None = None,
+    reasoning_logprobs: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
@@ -11667,6 +11740,8 @@ def _chat_stream_delta(
     if include_hipengine:
         choice_phase = phase if phase is not None else "think" if field == "reasoning_content" else "answer"
         choice["hipengine"] = _choice_hipengine_payload(choice_phase, tokens=tokens, stream_chunk=stream_chunk)
+        if reasoning_logprobs is not None:
+            choice["hipengine"]["reasoning_logprobs"] = dict(reasoning_logprobs)
     return _sse(
         _attach_stream_hipengine(
             {
@@ -12018,32 +12093,20 @@ def _chat_stream_scheduler_text_chunks(
         if stream_chunk is None:
             continue
         last_stream_chunk = stream_chunk
-        if include_logprobs:
-            token_payload = (
-                token_accounting.observe(content_phase, stream_chunk.text)
-                if token_accounting is not None
-                else None
-            )
-            yield _chat_stream_delta(
-                response_id,
-                created,
-                model,
-                "content",
-                stream_chunk.text,
-                index=index,
-                logprobs=_chat_stream_logprobs(stream_chunk, stream_chunk.text),
-                tokens=token_payload,
-                stream_chunk=_stream_chunk_with_phase(stream_chunk, content_phase),
-                include_hipengine=include_hipengine,
-                stream_started_at=stream_started_at,
-                routing=routing,
-                phase=content_phase,
-            )
-            continue
         for delta_field, chunk in splitter.feed(stream_chunk.text):
             phase = "think" if delta_field == "reasoning_content" else content_phase
             token_payload = (
                 token_accounting.observe(phase, chunk) if token_accounting is not None else None
+            )
+            logprobs = (
+                _chat_stream_logprobs(stream_chunk, chunk)
+                if include_logprobs and delta_field == "content"
+                else None
+            )
+            reasoning_logprobs = (
+                _chat_reasoning_stream_logprobs(stream_chunk, chunk)
+                if include_logprobs and delta_field == "reasoning_content"
+                else None
             )
             yield _chat_stream_delta(
                 response_id,
@@ -12052,6 +12115,8 @@ def _chat_stream_scheduler_text_chunks(
                 delta_field,
                 chunk,
                 index=index,
+                logprobs=logprobs,
+                reasoning_logprobs=reasoning_logprobs,
                 tokens=token_payload,
                 stream_chunk=_stream_chunk_with_phase(stream_chunk, phase),
                 include_hipengine=include_hipengine,
@@ -12064,6 +12129,13 @@ def _chat_stream_scheduler_text_chunks(
         token_payload = (
             token_accounting.observe(phase, chunk) if token_accounting is not None else None
         )
+        logprobs = None
+        reasoning_logprobs = None
+        if include_logprobs and last_stream_chunk is not None:
+            if delta_field == "content":
+                logprobs = _chat_stream_logprobs(last_stream_chunk, chunk)
+            elif delta_field == "reasoning_content":
+                reasoning_logprobs = _chat_reasoning_stream_logprobs(last_stream_chunk, chunk)
         yield _chat_stream_delta(
             response_id,
             created,
@@ -12071,6 +12143,8 @@ def _chat_stream_scheduler_text_chunks(
             delta_field,
             chunk,
             index=index,
+            logprobs=logprobs,
+            reasoning_logprobs=reasoning_logprobs,
             tokens=token_payload,
             stream_chunk=(
                 None if last_stream_chunk is None else _stream_chunk_with_phase(last_stream_chunk, phase)

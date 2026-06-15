@@ -243,20 +243,24 @@ forced-token queues, sequence-completion repair policy, stop suffixes, budget
 pressure, and backend timing/usage remain final-chunk metadata unless the
 backend emits live `GenerationStreamChunk` telemetry for the token.
 For buffered `/v1/completions` streams, plain answer/reasoning buffered
-`/v1/chat/completions` streams without logprobs, and plain chat content streams
-with logprobs, validated structured chat content streams, and validated tool-call
-argument spans that can be mapped back to the raw tool-call block, if detailed
-backend generation reports
+`/v1/chat/completions` streams, plain chat content streams with logprobs,
+validated structured chat content streams, and validated tool-call argument
+spans that can be mapped back to the raw tool-call block, if detailed backend
+generation reports
 `engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks` for
 a single HTTP request and the scheduler chunk text exactly reconstructs each
 public choice text, the server emits those scheduler chunks as individual
-public SSE deltas or `delta.tool_calls` argument fragments. Chat requests with
-structured-output validation failures, invalid tool calls, tool outputs whose
-arguments cannot be mapped safely, or reasoning spans when logprobs are
-requested keep the conservative buffered parser path. If the server batcher
-coalesced separate HTTP requests into one backend batch, or if the scheduler
-chunks no longer match the public post-processed text, the stream falls back to
-the conservative one-delta-per-choice buffered behavior.
+public SSE deltas or `delta.tool_calls` argument fragments. Public
+OpenAI-compatible `logprobs.content` remains visible-content only; reasoning
+deltas with mapped scheduler logprobs carry hipEngine-private
+`choices[].hipengine.reasoning_logprobs` when `stream_options.include_hipengine`
+is enabled. Chat requests with structured-output validation failures, invalid
+tool calls, tool outputs whose arguments cannot be mapped safely, or scheduler
+logprob chunks that cannot be mapped to emitted content/reasoning deltas keep
+the conservative buffered parser path. If the server batcher coalesced separate
+HTTP requests into one backend batch, or if the scheduler chunks no longer match
+the public post-processed text, the stream falls back to the conservative
+one-delta-per-choice buffered behavior.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final
@@ -277,10 +281,11 @@ backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `GenerationOutput` telemetry. `features.stream_metadata.buffered_scheduler_chunks`
 lists the public surfaces where
 `engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks` can
-be replayed (`completion_delta`, answer/reasoning chat deltas without
-reasoning logprobs, visible chat content-logprob deltas, validated structured
-content deltas, and validated tool-call argument deltas), plus the fallback
-conditions that force conservative buffering. It also reports the optional
+be replayed (`completion_delta`, answer/reasoning chat deltas, reasoning chat
+deltas with private hipEngine logprobs, visible chat content-logprob deltas,
+validated structured content deltas, and validated tool-call argument deltas),
+plus the fallback conditions that force conservative buffering. It also reports
+the optional
 backend-authored field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
 
