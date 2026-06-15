@@ -93466,3 +93466,20 @@ Validation and outcome:
 - Result: `512/128` median prefill/decode `1657.147177 / 125.427105 tok/s`, stable IDs `[11, 11, 11]`; `4K/128` median prefill/decode `1857.392622 / 114.908052 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Decision: no-hold. `graph_steps_per_replay=4` changed the `512/128` final token from baseline `220` to `11`, so GGUF multi-step graph replay is correctness-blocked until a fixture proves the captured position/token state advances exactly across replay groups.
+
+## 2026-06-15 - GGUF G-P1 selected WMMA launch-bound retained
+
+Changed the default `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS` in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip` from
+`2` to `1` after an env-probe showed the top prefill bucket did not need the
+stricter minimum-block launch bound. This targets the selected dual Q4_K T16
+WMMA prefill bucket without changing math, dispatch keys, or residency.
+
+Validation and outcome:
+- Prebuilt the default cached object after the source change: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import build_gguf_q4_k_t16_selected_prefill; print(build_gguf_q4_k_t16_selected_prefill(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-bb67c6136258bf8d/gguf_q4_k_t16_selected_prefill.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-lb1-default.json`.
+- Result: `512/128` median prefill/decode `1658.695065 / 126.333886 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.310922 / 115.113564 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Compared to post-revert sanity, min-gate decode moved `114.901837 -> 115.113564 tok/s` (`+0.18%`); `512/128` prefill moved `1638.547794 -> 1658.695065 tok/s`, while `4K/128` prefill moved `1851.950000 -> 1850.310922 tok/s` (within gate noise).
+- Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-wmma-lb1-gate.json`.
+- Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.

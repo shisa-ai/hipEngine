@@ -97,11 +97,13 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1652.311` | `125.749` | `21.335 GiB` | `21.954 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `1857.743` | `114.602` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1658.695` | `126.334` | `21.335 GiB` | `21.954 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `1850.311` | `115.114` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `114.602 tok/s`.
+multiloop metric is the minimum gate decode rate, currently `115.114 tok/s` after
+G-P1 lowered the selected Q4_K T16 WMMA prefill launch-bound default from `2` to
+`1`.
 
 ## Active GPU1 profile findings
 
@@ -115,6 +117,15 @@ CSV/summary files are under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`.
 | 512/16 | decode | `131.242 ms` (`8.203 ms/token`) | dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`); selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`); lm-head Q6 T16 `10.158 ms` (`7.74%`) |
 | 4K/16 | prefill | `2104.962 ms` | selected dual Q4_K WMMA `808.629 ms` (`38.42%`); GDN prefill recurrent `354.059 ms` (`16.82%`); dense Q8_0 WMMA `329.123 ms` (`15.64%`); full-attn prefill `85.832 ms` (`4.08%`) |
 | 4K/16 | decode | `137.749 ms` (`8.609 ms/token`) | dense Q8_0 T16 GEMV `50.620 ms` (`36.75%`); selected dual Q4_K T16 GEMV `16.822 ms` (`12.21%`); full-attn decode `13.913 ms` (`10.10%`); lm-head Q6 T16 `10.137 ms` (`7.36%`) |
+
+Retained notes:
+
+- **G-P1 launch-bound default retained (2026-06-15).** Lowering
+  `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS` from `2` to `1` in the selected Q4_K
+  T16 WMMA prefill kernel kept gate IDs stable, kept tracked peak at
+  `21.335 GiB`, and moved the GPU1 gate medians to `1658.695 / 126.334 tok/s`
+  (`512/128`) and `1850.311 / 115.114 tok/s` (`4K/128`). Final promotion still
+  needs the `128K/128` memory/throughput check.
 
 Initial focused lanes from evidence:
 
