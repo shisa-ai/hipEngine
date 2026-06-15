@@ -94612,3 +94612,46 @@ Validation:
   path import, no runtime backend/quant dispatch branches, no GPU/kernel/KV path
   changes, no performance claims, and MTP runtime work remains documented as
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF fp32 hidden seed capture for prefill
+
+Implemented `mtp-gguf` multiloop iteration 44: extended the existing M2.5
+post-`output_norm` fp32 hidden-seed tap so prompt prefill can populate the same
+ready-for-MTP seed contract as decode `step()`.
+
+Scope note:
+- Runtime output-norm tap plumbing only. Default public generation behavior is
+  unchanged because `capture_hidden_seed_fp32` defaults to `False`.
+- No MTP draft execution, GPU attention/KV code, sampling, registry dispatch, or
+  performance path changed.
+
+Changes:
+- `Qwen35GGUFResidentSession.prefill(..., capture_hidden_seed_fp32=True)` now
+  captures the final prompt token's post-output_norm hidden row into the guarded
+  fp32 seed buffer.
+- The token-serial prefill path captures only the final prompt token; earlier
+  prompt rows leave the seed flag unpopulated.
+- The bulk prefill path forwards the capture request and uses the shared
+  `_run_output_norm_hidden()` helper so the BF16 lm-head input and optional fp32
+  seed tap stay tied to the same source row.
+- `fp32_hidden_seed_ptr()` error text now documents both prefill and step capture
+  entry points.
+- Added no-GPU unit tests for serial prefill capture, bulk prefill forwarding,
+  and the shared output-norm helper's BF16 + optional FP32 calls.
+- Updated `docs/MTP-gguf.md` M2.5 current status to mention the opt-in prefill
+  and step seed capture surface. The numeric fixture/oracle gate remains open.
+
+Validation:
+- Hidden seed contract tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `12` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_hidden_seed_contract.py` and
+  `git diff --check -- hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_hidden_seed_contract.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: no torch import, no backend/quant dispatch branch, no
+  attention/KV path change, future MTP attention/KV work remains KVLiveSpans-
+  gated, no math/perf claim, and the remaining M2.5 numeric fixture requirement
+  is explicitly left open in the plan.

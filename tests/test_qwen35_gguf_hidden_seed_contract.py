@@ -183,6 +183,143 @@ def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_reques
     assert session.fp32_hidden_seed_contract().ready_for_mtp
 
 
+def test_resident_prefill_capture_marks_only_final_serial_prompt_token() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=99))
+    )
+    session.scratch = SimpleNamespace(zero_states=lambda runtime: None)
+    session.runtime = object()
+    session._position = 17
+    session._hidden_seed_fp32_populated = True
+    calls: list[tuple[int, int, bool]] = []
+
+    def fake_run_token_to_final_hidden(
+        token_id: int,
+        *,
+        position: int,
+        capture_hidden_seed_fp32: bool = False,
+    ) -> int:
+        calls.append((token_id, position, capture_hidden_seed_fp32))
+        session._hidden_seed_fp32_populated = bool(capture_hidden_seed_fp32)
+        return 1000 + token_id
+
+    def fake_sample_from_hidden(hidden_ptr: int, *, return_logits: bool) -> SimpleNamespace:
+        return SimpleNamespace(
+            token_id=5,
+            hidden_ptr=hidden_ptr,
+            return_logits=return_logits,
+        )
+
+    session._run_token_to_final_hidden = fake_run_token_to_final_hidden
+    session._sample_from_hidden = fake_sample_from_hidden
+
+    result = session.prefill(
+        [3, 4, 7],
+        use_bulk=False,
+        return_logits=False,
+        capture_hidden_seed_fp32=True,
+    )
+
+    assert calls == [(3, 0, False), (4, 1, False), (7, 2, True)]
+    assert session._position == 3
+    assert session._hidden_seed_fp32_populated
+    assert result.hidden_ptr == 1007
+    assert result.return_logits is False
+
+
+def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2))
+    )
+    session.use_wmma_prefill = None
+    session.use_gemv_decode = None
+    bulk_calls: list[dict[str, object]] = []
+
+    def fake_bulk_prefill_and_sample(
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        bulk_attention_mode: str,
+        return_logits: bool,
+        capture_hidden_seed_fp32: bool,
+    ) -> SimpleNamespace:
+        bulk_calls.append(
+            {
+                "token_ids": tuple(token_ids),
+                "bulk_attention_mode": bulk_attention_mode,
+                "return_logits": return_logits,
+                "capture_hidden_seed_fp32": capture_hidden_seed_fp32,
+            }
+        )
+        return SimpleNamespace(token_id=8)
+
+    session._run_bulk_prefill_and_sample = fake_bulk_prefill_and_sample
+
+    result = session.prefill(
+        [10, 11],
+        use_bulk=True,
+        bulk_attention_mode="native",
+        return_logits=False,
+        capture_hidden_seed_fp32=True,
+    )
+
+    assert result.token_id == 8
+    assert bulk_calls == [
+        {
+            "token_ids": (10, 11),
+            "bulk_attention_mode": "native",
+            "return_logits": False,
+            "capture_hidden_seed_fp32": True,
+        }
+    ]
+
+
+def test_resident_output_norm_hidden_populates_fp32_seed_for_bulk_and_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, int, int, int]] = []
+
+    def fake_bf16(src_ptr: int, weight_ptr: int, out_ptr: int, **kwargs: object) -> None:
+        calls.append(("bf16", src_ptr, weight_ptr, out_ptr))
+
+    def fake_f32(src_ptr: int, weight_ptr: int, out_ptr: int, **kwargs: object) -> None:
+        calls.append(("f32", src_ptr, weight_ptr, out_ptr))
+
+    monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight", fake_bf16)
+    monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight_out_f32", fake_f32)
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=200)))
+    weights = SimpleNamespace(
+        config=SimpleNamespace(rms_norm_eps=1.0e-6),
+        root=lambda name: output_norm if name == "output_norm" else None,
+    )
+    session.runner = SimpleNamespace(weights=weights, hidden_size=8)
+    session.scratch = SimpleNamespace(hidden_seed_fp32=SimpleNamespace(ptr=400))
+    session.runtime = object()
+    session._hidden_seed_fp32_populated = True
+
+    ptr = session._run_output_norm_hidden(
+        100,
+        300,
+        capture_hidden_seed_fp32=False,
+    )
+
+    assert ptr == 300
+    assert calls == [("bf16", 100, 200, 300)]
+    assert not session._hidden_seed_fp32_populated
+
+    calls.clear()
+    ptr = session._run_output_norm_hidden(
+        101,
+        301,
+        capture_hidden_seed_fp32=True,
+    )
+
+    assert ptr == 301
+    assert calls == [("bf16", 101, 200, 301), ("f32", 101, 200, 400)]
+    assert session._hidden_seed_fp32_populated
+
+
 def test_resident_session_reset_clears_hidden_seed_populated_flag_without_gpu_init() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.scratch = SimpleNamespace(zero_states=lambda runtime: None)

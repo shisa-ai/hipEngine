@@ -3040,7 +3040,7 @@ class Qwen35GGUFResidentSession:
     def fp32_hidden_seed_ptr(self) -> int:
         """Return the populated fp32 hidden-seed device pointer.
 
-        The pointer is only valid after a decode step with
+        The pointer is only valid after a prefill/decode step with
         ``capture_hidden_seed_fp32=True``.  This guard prevents future MTP code
         from consuming the allocated scratch row before it is populated.
         """
@@ -3050,7 +3050,8 @@ class Qwen35GGUFResidentSession:
         if not self.fp32_hidden_seed_contract().ready_for_mtp:
             raise RuntimeError(
                 "GGUF fp32 hidden seed is not populated; "
-                "call step(..., capture_hidden_seed_fp32=True) first"
+                "call prefill(..., capture_hidden_seed_fp32=True) or "
+                "step(..., capture_hidden_seed_fp32=True) first"
             )
         return int(self.scratch.hidden_seed_fp32.ptr)
 
@@ -3131,6 +3132,7 @@ class Qwen35GGUFResidentSession:
         use_bulk: bool | None = None,
         bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
+        capture_hidden_seed_fp32: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
 
@@ -3142,6 +3144,8 @@ class Qwen35GGUFResidentSession:
         path as a correctness/bisect fallback. Set
         ``return_logits=False`` for public generation paths that only need the
         sampled token and should avoid copying full logits back to the host.
+        Set ``capture_hidden_seed_fp32=True`` to populate the M2.5
+        post-output_norm fp32 seed row for the final prompt token.
         """
 
         if not token_ids:
@@ -3161,12 +3165,18 @@ class Qwen35GGUFResidentSession:
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
                     return_logits=return_logits,
+                    capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
                 )
 
         self.reset()
         hidden_ptr = None
-        for token_id in token_ids:
-            hidden_ptr = self._run_token_to_final_hidden(int(token_id), position=self._position)
+        final_index = len(token_ids) - 1
+        for index, token_id in enumerate(token_ids):
+            hidden_ptr = self._run_token_to_final_hidden(
+                int(token_id),
+                position=self._position,
+                capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32) and index == final_index,
+            )
             self._position += 1
         assert hidden_ptr is not None
         return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
@@ -3178,6 +3188,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
+        capture_hidden_seed_fp32: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -3281,15 +3292,11 @@ class Qwen35GGUFResidentSession:
             rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
         )
         last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * 2
-        gguf_rmsnorm_bf16_f32_weight(
+        self._run_output_norm_hidden(
             last_src_ptr,
-            self.runner.weights.root("output_norm").allocation().tensor.ptr,
             last_bulk_scratch.norm.ptr,
-            rows=1,
-            hidden_size=self.runner.hidden_size,
-            eps=self.runner.weights.config.rms_norm_eps,
             stream=stream,
-            runtime=runtime,
+            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
         )
         self._position = rows
         self.scratch.position_host[0] = rows
@@ -3402,7 +3409,6 @@ class Qwen35GGUFResidentSession:
         if self._hidden_a is None or self._hidden_b is None:
             raise RuntimeError("GGUF resident session buffers are closed")
         assert self.runner.weights is not None
-        runtime = self.runtime or get_hip_runtime()
         self._hidden_seed_fp32_populated = False
         self.scratch.position_host[0] = int(position)
         self.scratch.context_host[0] = int(position) + 1
@@ -3416,11 +3422,30 @@ class Qwen35GGUFResidentSession:
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             src, dst = dst, src
+        return self._run_output_norm_hidden(
+            src.ptr,
+            self.scratch.norm.ptr,
+            stream=stream,
+            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+        )
+
+    def _run_output_norm_hidden(
+        self,
+        src_ptr: int,
+        out_ptr: int,
+        *,
+        stream: int = 0,
+        capture_hidden_seed_fp32: bool = False,
+    ) -> int:
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        self._hidden_seed_fp32_populated = False
         output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
         gguf_rmsnorm_bf16_f32_weight(
-            src.ptr,
+            src_ptr,
             output_norm_weight_ptr,
-            self.scratch.norm.ptr,
+            out_ptr,
             rows=1,
             hidden_size=self.runner.hidden_size,
             eps=self.runner.weights.config.rms_norm_eps,
@@ -3429,7 +3454,7 @@ class Qwen35GGUFResidentSession:
         )
         if capture_hidden_seed_fp32:
             gguf_rmsnorm_bf16_f32_weight_out_f32(
-                src.ptr,
+                src_ptr,
                 output_norm_weight_ptr,
                 self.scratch.hidden_seed_fp32.ptr,
                 rows=1,
@@ -3439,7 +3464,7 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
             self._hidden_seed_fp32_populated = True
-        return self.scratch.norm.ptr
+        return int(out_ptr)
 
     def _set_token_id_device(self, token_id: int, *, stream: int = 0) -> None:
         if self.runner is None or self._token_buf is None:

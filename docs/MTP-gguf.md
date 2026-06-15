@@ -430,6 +430,13 @@ Deliverables:
   chosen seed dtype in the parity artifact and treat BF16-vs-fp32 seed as a
   parity variable to ablate if top-k disagrees.
 
+Current status:
+
+- `Qwen35GGUFResidentSession.step(..., capture_hidden_seed_fp32=True)` and
+  `prefill(..., capture_hidden_seed_fp32=True)` populate a guarded fp32
+  post-`output_norm` device seed row and expose it via `mtp_draft_seed()`.
+  Default AR generation leaves the tap off.
+
 Acceptance:
 
 - A fixture asserts the captured seed is finite and matches the `cpu_reference`
