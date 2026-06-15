@@ -93377,6 +93377,27 @@ Validation:
 - `git diff -- docs/AGENTIC.md` -> doc-only P3 cleanup.
 - `git diff --check -- docs/AGENTIC.md` -> clean.
 
+## 2026-06-16 - GPU0 native sampler promotion smoke
+
+Ran the P3 native-sampler promotion check on GPU0/W7900. Standalone native GPU
+sampler coverage passed, and a retained diagnostic full-model c1 sampled smoke
+compared greedy fast path, host-logits sampling, and opt-in native GPU sampling
+on the same loaded PARO model/session. Native GPU sampling avoided full-vocab
+logits D2H and measured faster than host-logits sampling for this single
+45-token prompt / 64-generated-token shape, but the result is not default
+promotion evidence because it is a diagnostic single-shape run without profiler
+coverage and broader true batched c>N/GGUF/`top_logprobs` parity is still open.
+
+Validation:
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"` -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx' | head -n 40` -> GPU0 W7900 and GPU1 RX 7900 XTX visible as gfx1100.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+- Initial one-token `LLM.generate_detailed` sampled smoke failed before sampling with `native prefill requires at least linear_conv_kernel_dim tokens (4); got 1`; retained benchmark prompt uses 45 tokens.
+- Retained diagnostic command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY' ...` -> wrote `benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json`.
+- Retained diagnostic results: greedy `73.517 tok/s`, host-logits sample `29.360 tok/s`, opt-in native GPU sample `65.111 tok/s`; native/host `2.218x`, native/greedy `0.886x`; host route reported `full_vocab_logits_d2h=true` / `993280` bytes, native route reported `full_vocab_logits_d2h=false` / `0` bytes.
+- `python3 -m json.tool benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json >/dev/null` -> passed.
+- Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with diagnostic retained/no-promote row.
+
 ## 2026-06-15 - Scheduler logprob fallback diagnostics
 
 Added sanitized final-choice diagnostics when buffered chat streams request

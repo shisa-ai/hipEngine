@@ -1,0 +1,450 @@
+{
+  "backend": "hip_gfx1100",
+  "command": {
+    "env": {
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "PYTHONPATH": "."
+    },
+    "summary": "inline Python LLM.generate_detailed benchmark; lanes greedy_fast, host_cpu_logits_sample, native_gpu_sample",
+    "working_directory": "/home/lhl/hipEngine"
+  },
+  "correctness_and_route_checks": {
+    "failed_setup_adjustment": "one-token prompt smoke rejected native prefill with native prefill requires at least linear_conv_kernel_dim tokens (4); measured prompt has 45 tokens",
+    "gpu_sampler_kernel_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q -> 10 passed",
+    "host_route": "host_cpu_logits_sample reports sampler_mode=host_logits_sample, full_vocab_logits_d2h=true, logits_d2h_bytes=993280",
+    "native_route": "native_gpu_sample reports sampler_mode=gpu_sample, full_vocab_logits_d2h=false, logits_d2h_bytes=0"
+  },
+  "date": "2026-06-16",
+  "decision": "native_c1_sampled_route_green_but_not_default_promotion_ready",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100, HIP_VISIBLE_DEVICES=0",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+  "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+  "performance_claim": false,
+  "promotion_assessment": {
+    "blockers": [
+      "diagnostic single prompt only; not retained multi-shape benchmark suite",
+      "true batched c>N native sampling remains serial per-slot or unsupported by shape",
+      "GGUF native sampling not implemented",
+      "native top_logprobs parity not implemented",
+      "full default-path promotion needs broader workload and profiler evidence"
+    ],
+    "c1_supported_sampled_route": "green in this GPU0 smoke",
+    "default_promotion_ready": false
+  },
+  "quant": "w4_paro",
+  "results": {
+    "greedy_fast": {
+      "full_vocab_logits_d2h": [
+        "None"
+      ],
+      "logits_d2h_bytes": [
+        "None"
+      ],
+      "max_e2e_generated_tok_s": 74.26247970353597,
+      "median_e2e_generated_tok_s": 73.51721350808828,
+      "median_elapsed_s": 0.8705444200895727,
+      "min_e2e_generated_tok_s": 73.01161480682849,
+      "native_sampler_env": false,
+      "runs": [
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "generated_tokens": 64,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_mode": "greedy_fast",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 70.09215045868437,
+          "elapsed_s": 0.9130836988333613,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          "generated_tokens": 64,
+          "run_index": 0,
+          "text_len": 379,
+          "warmup": true
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "generated_tokens": 64,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_mode": "greedy_fast",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 73.01161480682849,
+          "elapsed_s": 0.8765728599391878,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          "generated_tokens": 64,
+          "run_index": 1,
+          "text_len": 379,
+          "warmup": false
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "generated_tokens": 64,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_mode": "greedy_fast",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 73.51721350808828,
+          "elapsed_s": 0.8705444200895727,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          "generated_tokens": 64,
+          "run_index": 2,
+          "text_len": 379,
+          "warmup": false
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "generated_tokens": 64,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_mode": "greedy_fast",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 74.26247970353597,
+          "elapsed_s": 0.8618080120068043,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          "generated_tokens": 64,
+          "run_index": 3,
+          "text_len": 379,
+          "warmup": false
+        }
+      ],
+      "sampler_modes": [
+        "greedy_fast"
+      ],
+      "sampling_params": {
+        "kv_storage": "bf16",
+        "max_tokens": 64,
+        "seed": 123,
+        "temperature": 0.0,
+        "top_k": 0,
+        "top_p": 1.0
+      }
+    },
+    "host_cpu_logits_sample": {
+      "full_vocab_logits_d2h": [
+        "True"
+      ],
+      "logits_d2h_bytes": [
+        "993280"
+      ],
+      "max_e2e_generated_tok_s": 29.856137054295647,
+      "median_e2e_generated_tok_s": 29.360481172056243,
+      "median_elapsed_s": 2.179800788173452,
+      "min_e2e_generated_tok_s": 29.076659493529835,
+      "native_sampler_env": false,
+      "runs": [
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": true,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 993280,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "host_logits_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 29.608770783587513,
+          "elapsed_s": 2.1615216811187565,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "host_logits_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 0,
+          "text_len": 132,
+          "warmup": true
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": true,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 993280,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "host_logits_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 29.856137054295647,
+          "elapsed_s": 2.1436128821223974,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "host_logits_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 1,
+          "text_len": 132,
+          "warmup": false
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": true,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 993280,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "host_logits_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 29.360481172056243,
+          "elapsed_s": 2.179800788173452,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "host_logits_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 2,
+          "text_len": 132,
+          "warmup": false
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": true,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 993280,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fallback_reason": "host_sampling_required",
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "host_logits_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 29.076659493529835,
+          "elapsed_s": 2.2010781539138407,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "host_logits_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 3,
+          "text_len": 132,
+          "warmup": false
+        }
+      ],
+      "sampler_modes": [
+        "host_logits_sample"
+      ],
+      "sampling_params": {
+        "kv_storage": "bf16",
+        "max_tokens": 64,
+        "seed": 123,
+        "temperature": 0.7,
+        "top_k": 4,
+        "top_p": 1.0
+      }
+    },
+    "native_gpu_sample": {
+      "full_vocab_logits_d2h": [
+        "False"
+      ],
+      "logits_d2h_bytes": [
+        "0"
+      ],
+      "max_e2e_generated_tok_s": 65.2704737010661,
+      "median_e2e_generated_tok_s": 65.11057896967117,
+      "median_elapsed_s": 0.9829431870020926,
+      "min_e2e_generated_tok_s": 64.17588628571312,
+      "native_sampler_env": true,
+      "runs": [
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": false,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 0,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "gpu_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 62.017362358017145,
+          "elapsed_s": 1.03196907392703,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "gpu_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 0,
+          "text_len": 146,
+          "warmup": true
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": false,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 0,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "gpu_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 65.11057896967117,
+          "elapsed_s": 0.9829431870020926,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "gpu_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 1,
+          "text_len": 146,
+          "warmup": false
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": false,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 0,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "gpu_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 65.2704737010661,
+          "elapsed_s": 0.9805352461989969,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "gpu_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 2,
+          "text_len": 146,
+          "warmup": false
+        },
+        {
+          "decode_state": {
+            "continuation_eligible": false,
+            "full_vocab_logits_d2h": false,
+            "generated_tokens": 64,
+            "logits_d2h_bytes": 0,
+            "phase": "done",
+            "prompt_tokens": 45,
+            "row_index": 0,
+            "sampler_fast_path_blockers": [
+              "temperature"
+            ],
+            "sampler_mode": "gpu_sample",
+            "step_index": 64
+          },
+          "e2e_generated_tok_s": 64.17588628571312,
+          "elapsed_s": 0.9972593088168651,
+          "finish": {
+            "length_limit": 64,
+            "reason": "length",
+            "sampler_mode": "gpu_sample"
+          },
+          "generated_tokens": 64,
+          "run_index": 3,
+          "text_len": 146,
+          "warmup": false
+        }
+      ],
+      "sampler_modes": [
+        "gpu_sample"
+      ],
+      "sampling_params": {
+        "kv_storage": "bf16",
+        "max_tokens": 64,
+        "seed": 123,
+        "temperature": 0.7,
+        "top_k": 4,
+        "top_p": 1.0
+      }
+    }
+  },
+  "run_policy": {
+    "graph_replay_decode": false,
+    "max_tokens": 64,
+    "measured_runs": 3,
+    "prepare_max_sequence_length": 256,
+    "prompt_token_count": 45,
+    "single_resident_llm": true,
+    "warmup_runs": 1
+  },
+  "schema": "hipengine.native_sampler_promotion_smoke.v1",
+  "software": {
+    "hipcc_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "hipengine_commit": "5989eab7",
+    "hipengine_dirty": true,
+    "hipengine_tracked_dirty": false,
+    "dirty_note": "Conservative dirty flag includes pre-existing untracked .handoff/ and uv.lock plus this generated artifact; tracked files were clean before the benchmark.",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3",
+    "python_version": "3.12.9"
+  },
+  "status": "diagnostic_retained_blocked",
+  "summary": {
+    "host_vs_greedy_ratio": 0.3993687977418518,
+    "native_vs_greedy_ratio": 0.885650800169511,
+    "native_vs_host_speedup": 2.2176264274456097
+  },
+  "task": "GPU0 greedy vs host-logits sampling vs opt-in native GPU sampling smoke"
+}

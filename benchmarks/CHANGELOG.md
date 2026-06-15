@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-16
+
+- [diagnostic no-promote] Qwen3.6-35B-A3B PARO / w4_paro BF16 KV / GPU0 c1 sampled 45/64: host-logits sampling `29.360 -> 65.111 tok/s` (+121.8%) with opt-in native GPU sampling, while greedy fast path measured `73.517 tok/s` and native/greedy was `0.886x`; native route reported `full_vocab_logits_d2h=false`, GPU sampler suite passed `10/10`, but default promotion remains blocked by single-shape diagnostic scope plus missing true batched c>N/GGUF/`top_logprobs` parity and broader profiler evidence; `benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json`.
+
 ## 2026-06-15
 
 - [diagnostic blocker] Qwen3.6-35B-A3B PARO / w4_paro + INT8 KV / GPU1 512/4K/128K direct streaming prefill: post-#88 prefill `2045.109/772.551/23.425 tok/s`, decode `120.075/117.868/68.118 tok/s`; 128K prefill `1020.723 -> 23.425 tok/s` (-97.7%) vs the old BF16-oracle/AOTriton INT8 row, while decode `60.404 -> 68.118 tok/s` (+12.8%); not promoted, retained as fast-INT8-prefill blocker evidence; `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json`.
