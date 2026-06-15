@@ -21,7 +21,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
-from hipengine.loading.qwen35_gguf import validate_qwen35_gguf_mtp_blocks  # noqa: E402
+from hipengine.loading.qwen35_gguf import (  # noqa: E402
+    build_qwen35_gguf_mtp_draft_tensor_plans,
+    validate_qwen35_gguf_mtp_blocks,
+)
 from scripts.gguf_mtp_parity_precheck import (  # noqa: E402
     build_parity_precheck,
     load_json,
@@ -66,6 +69,9 @@ def build_b1_prompt_suite_artifact(
     mtp_blocks = validate_qwen35_gguf_mtp_blocks(model_info)
     if not mtp_blocks:
         raise B1PromptSuitePreflightError(f"{model}: no validated MTP blocks found")
+    mtp_draft_tensor_plans = build_qwen35_gguf_mtp_draft_tensor_plans(model_info, strict=True)
+    if not mtp_draft_tensor_plans:
+        raise B1PromptSuitePreflightError(f"{model}: no MTP draft tensor plans found")
 
     parity = build_parity_precheck(
         hipengine_token_inventory=load_json(hipengine_token_inventory),
@@ -119,6 +125,10 @@ def build_b1_prompt_suite_artifact(
                 "optional_fallback_tensor_names": dict(block.optional_fallback_tensor_names),
             }
             for block in mtp_blocks
+        ],
+        "mtp_draft_tensor_plans": [plan.as_dict() for plan in mtp_draft_tensor_plans],
+        "mtp_draft_call_specs": [
+            plan.cpu_reference_call_spec.as_dict() for plan in mtp_draft_tensor_plans
         ],
         "parity_precheck": parity,
         "execution": {

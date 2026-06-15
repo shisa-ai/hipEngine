@@ -95313,3 +95313,46 @@ Validation:
   claim; the call spec now explicitly carries the KVLiveSpans-shaped
   `(base_offsets, live_counts, token_positions, evict_mask)` ABI for future
   M4/HIP work.
+
+## 2026-06-15 - MTP-GGUF B1 preflight call specs
+
+Implemented `mtp-gguf` multiloop iteration 59: wired the B1 GGUF MTP preflight
+child to embed validated MTP draft tensor/call specs in its blocked artifact.
+
+Scope note:
+- Preflight metadata/test/docs only. No hipEngine runtime generation, GGUF tensor
+  loading, MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- This connects the B1 prompt-suite child to the KVLiveSpans call-spec contract
+  added in iteration 58; native GGUF MTP execution remains blocked.
+
+Changes:
+- `scripts/gguf_mtp_b1_prompt_suite.py` now builds strict
+  `Qwen35GGUFMTPDraftTensorPlan` objects after validating MTP blocks.
+- The B1 preflight artifact now includes:
+  - `mtp_draft_tensor_plans` for the validated MTP block;
+  - `mtp_draft_call_specs` with the exact CPU-reference kernel, tensor bindings,
+    qtype kwargs, and dynamic inputs, including `kv_base_offsets`,
+    `kv_live_counts`, `kv_token_positions`, `kv_evict_mask`, and `block_size`.
+- Extended `tests/test_gguf_mtp_b1_prompt_suite.py` to pin those embedded call
+  spec rows and KVLiveSpans dynamic inputs.
+- Updated `docs/MTP-gguf.md` M5/backlog text to say the preflight child now
+  carries the MTP draft tensor/call specs in its blocked artifact.
+
+Validation:
+- B1 prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `4` passed.
+- Real local MTP GGUF CLI smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` -> `suite blocked plans 1 call_specs 1 kv_inputs True blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight metadata/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  the B1 preflight artifact now explicitly carries the KVLiveSpans-shaped call
+  spec for future native execution.

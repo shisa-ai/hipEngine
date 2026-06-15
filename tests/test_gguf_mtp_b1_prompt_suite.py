@@ -91,6 +91,34 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
             ),
         ),
     )
+    call_spec = {
+        "layer_id": 40,
+        "cpu_reference_kernel": [
+            "cpu_reference",
+            "mtp_nextn_layer",
+            "gguf_moe",
+            "qwen35_dense_logits",
+        ],
+        "dynamic_inputs": [
+            {"argument": "hidden_seed", "required": True, "shape": ["tokens", 2048]},
+            {"argument": "kv_base_offsets", "required": False, "shape": ["tokens", "logical_blocks"]},
+            {"argument": "kv_live_counts", "required": False, "shape": ["tokens"]},
+            {"argument": "kv_token_positions", "required": False, "shape": ["tokens"]},
+            {"argument": "kv_evict_mask", "required": False, "shape": ["tokens", "max_live_count"]},
+            {"argument": "block_size", "required": False, "shape": []},
+        ],
+    }
+    monkeypatch.setattr(
+        suite,
+        "build_qwen35_gguf_mtp_draft_tensor_plans",
+        lambda info, *, strict=True: (
+            SimpleNamespace(
+                layer_id=40,
+                as_dict=lambda: {"layer_id": 40, "cpu_reference_call_spec": call_spec},
+                cpu_reference_call_spec=SimpleNamespace(as_dict=lambda: call_spec),
+            ),
+        ),
+    )
 
 
 def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False) -> dict[str, Path]:
@@ -131,6 +159,18 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         }
     ]
     assert artifact["parity_precheck"]["all_pass"] is True
+    assert artifact["mtp_draft_tensor_plans"] == [
+        {"layer_id": 40, "cpu_reference_call_spec": artifact["mtp_draft_call_specs"][0]}
+    ]
+    dynamic_args = [item["argument"] for item in artifact["mtp_draft_call_specs"][0]["dynamic_inputs"]]
+    assert dynamic_args == [
+        "hidden_seed",
+        "kv_base_offsets",
+        "kv_live_counts",
+        "kv_token_positions",
+        "kv_evict_mask",
+        "block_size",
+    ]
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "not_run",
