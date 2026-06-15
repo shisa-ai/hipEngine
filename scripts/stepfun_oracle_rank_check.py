@@ -97,6 +97,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the artifact payload.",
     )
+    parser.add_argument(
+        "--verify-rank-check",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted oracle rank-check artifact with current "
+            f"oracle/prompt/tokenizer metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-rank-check, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-rank-check, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-rank-check, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -233,6 +259,57 @@ def build_oracle_rank_check(
     }
 
 
+def verify_oracle_rank_check(
+    rank_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted oracle rank-check artifact with current metadata."""
+
+    persisted = _load_json_object(rank_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "oracle_rank_check_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted oracle rank-check artifact differs from current "
+                    "oracle/prompt/tokenizer metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(rank_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_generated_token_in_host_top_tokens": persisted.get(
+            "generated_token_in_host_top_tokens"
+        ),
+        "current_generated_token_in_host_top_tokens": current_report.get(
+            "generated_token_in_host_top_tokens"
+        ),
+        "persisted_generated_token_host_rank": persisted.get(
+            "generated_token_host_rank"
+        ),
+        "current_generated_token_host_rank": current_report.get(
+            "generated_token_host_rank"
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -245,6 +322,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         tokenizer_timeout_s=args.tokenizer_timeout_s,
         artifact_date=args.artifact_date,
     )
+    if args.verify_rank_check is not None:
+        verification = verify_oracle_rank_check(
+            args.verify_rank_check,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.generated_in_top_list_only:

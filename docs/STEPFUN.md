@@ -923,7 +923,8 @@ reporting.
   `vulkan=executed_token_mismatch`, `hip=timeout`) with no parity/e2e/performance
   claim. `scripts/stepfun_oracle_rank_check.py --default-output --pretty` also retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json`,
-  showing generated token `671` is absent from the host top-5 token IDs `[369, 5, 15251, 223, 201]`.
+  showing generated token `671` is absent from the host top-5 token IDs `[369, 5, 15251, 223, 201]`; `python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-status-only`
+  is the drift check for that generated-token/top-list absence evidence.
   `scripts/stepfun_host_logit_margin.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json`, showing expected
   token `369` is host top-1 with top-1→top-2 visible logit margin `0.8150444030761719`; `python3 scripts/stepfun_host_logit_margin.py --verify-margin --verification-status-only`

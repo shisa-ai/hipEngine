@@ -42489,3 +42489,63 @@ python3 scripts/stepfun_oracle_next_action_manifest.py --sha-only
 ```
 
 Results: targeted host logit-margin tests passed (`6` tests); margin verifier status returns `"match"`, verifier failures `[]`, verifier digest `7373c94c7920a0e77aa8fc5df7424b768ceee81ca81cbd79c50e42d4996a3134`; status/final-blocker/handoff verification returned `"match"`; margin status remains `"passed"`; compact top-1 margin remains `0.8150444030761719`; compact expected-top1 output remains `true`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `944758ba2417adde62d83220c756e1b5bef241217a050461c1633b694e5d854b`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are host logit margin `db74c6252cab68c2f5acfde527b370692816a2daa69d60d60c221102857008ff`, oracle next-action `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `07c0791ceea07637840306c74ad5daccbe8cb0187691e3898ab976f61fac168b`, correctness-status `1cc620b81106b2ebfe2434edf9bfd15f644b2a9583a00f524a34e4a30bfebc83`, final-blocker `3641c471190c06face4eb743953079556795c4e118e6e27aa645e77563065d18`, handoff `7f141107692801100c759e1e76c4b293ae4da058d78359785cd6a0ad7c2bfac1`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle rank-check drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 535. Added an explicit verifier for the retained oracle rank-check artifact. `scripts/stepfun_oracle_rank_check.py --verify-rank-check` now rebuilds the generated-token host-top-list absence report from the current retained llama.cpp oracle, prompt top-token, and tokenizer inputs and compares it with the persisted `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json`, with compact status/failure/digest modes for handoff polling. This verifies the rank-check evidence before it feeds host-logit-margin, oracle evidence-consistency, next-action, remaining-blockers rollup, or final handoff artifacts; it does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json` remains `status=failed`, generated token is absent from the host top-token list, and generated token host rank remains `null`; its file SHA is `65e438721e638f1ac6b5b2f5536e9d0f4fa738ee335cc1c68130ff6238d949ff` and stable payload SHA is `2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba`. `--verify-rank-check --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `b9f5b61520852aa325e3ba6f9093770c177ce78c49469f619a6fa2c4b514bf80`. Refreshed `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json`, and `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` after documenting the new verifier. Downstream host margin, evidence-consistency, next-action manifest, and remaining-blockers rollup verifiers all return `"match"`; remaining-blockers rollup stays blocked with stable payload SHA `1798eeafac6b99288fcd91755fd1c4dbf95b6eb58bca9ba8e08705f7e066df2e`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_rank_check.py tests/test_stepfun_oracle_rank_check.py
+python3 -m pytest -q tests/test_stepfun_oracle_rank_check.py
+python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-status-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-failures-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-sha-only
+python3 scripts/stepfun_oracle_rank_check.py --sha-only
+python3 scripts/stepfun_host_logit_margin.py --default-output --pretty
+python3 scripts/stepfun_host_logit_margin.py --verify-margin --verification-status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty
+python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_oracle_rank_check.py --status-only
+python3 scripts/stepfun_oracle_rank_check.py --generated-in-top-list-only
+python3 scripts/stepfun_oracle_rank_check.py --generated-rank-only
+python3 scripts/stepfun_oracle_rank_check.py --sha-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-status-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-failures-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-sha-only
+python3 scripts/stepfun_host_logit_margin.py --verify-margin --verification-status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_oracle_rank_check.py tests/test_stepfun_oracle_rank_check.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-status-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-failures-only
+python3 scripts/stepfun_oracle_rank_check.py --verify-rank-check --verification-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
+python3 scripts/stepfun_host_logit_margin.py --sha-only
+```
+
+Results: targeted oracle rank-check tests passed (`4` tests); rank-check verifier status returns `"match"`, verifier failures `[]`, verifier digest `b9f5b61520852aa325e3ba6f9093770c177ce78c49469f619a6fa2c4b514bf80`; status/final-blocker/handoff verification returned `"match"`; rank-check status remains `"failed"`; compact generated-in-top-list output remains `false`; compact generated-rank output remains `null`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `ffa308ad66934c9f60d93b1f5aa0ece39b38ede60a2640671c9d2af5e0a10848`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are rank-check `65e438721e638f1ac6b5b2f5536e9d0f4fa738ee335cc1c68130ff6238d949ff`, host logit margin `db74c6252cab68c2f5acfde527b370692816a2daa69d60d60c221102857008ff`, evidence consistency `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c`, oracle next-action `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `da47e6bc0889e0cdd20db2961ec929cc1d56306cc84148f16562af5673819b40`, correctness-status `8b51b1e0176c42866acc68c7dd2c1ccfff28ad14278f18dc02c1ef461b7d4612`, final-blocker `1eb76fcab1a45b0845d9d6b332670056e05cfd50aa156c696d3ed920ec524043`, handoff `89b83de81698057b79e6bd5c12ad116bf9bf30283a453b05d578cbeb6cb333a5`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
