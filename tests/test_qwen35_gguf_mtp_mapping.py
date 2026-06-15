@@ -13,6 +13,7 @@ from hipengine.loading.gguf import (
 from hipengine.loading.qwen35_gguf import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
+    build_qwen35_gguf_mtp_block_maps,
     build_qwen35_gguf_tensor_map,
     qwen35_gguf_mtp_block_inventories,
     required_qwen35_gguf_tensor_names,
@@ -82,6 +83,50 @@ def test_qwen35moe_gguf_mtp_block_validation_passes_complete_inventory() -> None
 
     assert block.layer_id == 2
     assert block.passed
+
+
+def test_qwen35moe_gguf_mtp_block_map_resolves_target_fallbacks() -> None:
+    info = _synthetic_qwen35moe_mtp_info()
+
+    (block_map,) = build_qwen35_gguf_mtp_block_maps(info)
+
+    assert block_map.layer_id == 2
+    assert block_map.tensor("attn_q").name == "blk.2.attn_q.weight"
+    assert block_map.tensor("ffn_gate_exps").name == "blk.2.ffn_gate_exps.weight"
+    assert block_map.tensor("nextn.eh_proj").name == "blk.2.nextn.eh_proj.weight"
+    assert (
+        block_map.tensor("nextn.shared_head_norm").name
+        == "blk.2.nextn.shared_head_norm.weight"
+    )
+    assert block_map.tensor("nextn.embed_tokens").name == "token_embd.weight"
+    assert block_map.tensor("nextn.shared_head_head").name == "output.weight"
+    assert dict(block_map.fallback_slots) == {
+        "nextn.embed_tokens": "token_embedding",
+        "nextn.shared_head_head": "lm_head",
+    }
+    assert "token_embd.weight" in block_map.tensor_names
+    assert "output.weight" in block_map.tensor_names
+
+
+def test_qwen35moe_gguf_mtp_block_map_prefers_present_optional_tensors() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.nextn.embed_tokens.weight", (64, 8)),
+            _tensor("blk.2.nextn.shared_head_head.weight", (64, 8)),
+        ],
+    )
+
+    (block_map,) = build_qwen35_gguf_mtp_block_maps(info)
+
+    assert (
+        block_map.tensor("nextn.embed_tokens").name
+        == "blk.2.nextn.embed_tokens.weight"
+    )
+    assert (
+        block_map.tensor("nextn.shared_head_head").name
+        == "blk.2.nextn.shared_head_head.weight"
+    )
+    assert dict(block_map.fallback_slots) == {}
 
 
 def test_qwen35moe_gguf_mtp_block_validation_fails_missing_required_nextn() -> None:

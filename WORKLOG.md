@@ -93258,3 +93258,48 @@ Validation:
 - Prompt verifier passed: MTP draft-seed descriptor/API only, no torch hot-path
   import, no backend/quant dispatch branches, no attention/KV ABI changes, no
   NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF effective MTP block tensor map
+
+Implemented `mtp-gguf` multiloop iteration 15: a metadata-only effective tensor
+map for trailing GGUF MTP/NextN blocks.
+
+Changes:
+- Added `Qwen35GGUFMTPBlockMap`.
+  - Provides slot -> `GGUFTensorInfo` lookup for one trailing MTP block.
+  - Preserves unique effective tensor names.
+  - Records which optional slots resolved through target-model fallbacks.
+- Added `build_qwen35_gguf_mtp_block_maps(info, strict=True)`.
+  - Validates required MTP block metadata first.
+  - Maps full-attention/MoE layer slots for the trailing MTP block.
+  - Maps required NextN slots.
+  - Resolves absent optional `nextn.embed_tokens` and `nextn.shared_head_head`
+    through target `token_embedding` and `lm_head` fallbacks.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` for fallback resolution and
+  present-optional preference.
+
+Real GGUF smoke:
+- Command: `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import build_qwen35_gguf_mtp_block_maps
+p='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(p)
+(m,)=build_qwen35_gguf_mtp_block_maps(r.info)
+print(m.layer_id, len(m.tensor_names), m.tensor('nextn.eh_proj').name)
+print(dict(m.fallback_slots))
+print(m.tensor('nextn.embed_tokens').name, m.tensor('nextn.shared_head_head').name)
+PY`
+- Result: MTP layer `40`, `22` effective tensor names,
+  `blk.40.nextn.eh_proj.weight`, fallbacks `nextn.embed_tokens -> token_embedding`
+  and `nextn.shared_head_head -> lm_head`, resolving to `token_embd.weight` and
+  `output.weight`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `17` selected tests (`11` pass, `6` skip).
+- MTP block map tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `8` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py`.
+- Prompt verifier passed: metadata-only MTP tensor map resolution, no torch
+  hot-path import, no backend/quant dispatch branches, no attention/KV/runtime
+  behavior changes, no NextN math, and no performance claims.

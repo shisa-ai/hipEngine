@@ -176,6 +176,33 @@ class Qwen35GGUFMTPBlockInventory:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPBlockMap:
+    """Effective tensor slots for one trailing GGUF MTP/NextN block."""
+
+    layer_id: int
+    tensors: Mapping[str, GGUFTensorInfo]
+    fallback_slots: Mapping[str, str]
+
+    def tensor(self, slot: str) -> GGUFTensorInfo:
+        try:
+            return self.tensors[slot]
+        except KeyError as exc:
+            raise MissingGGUFTensorError(
+                f"MTP block {self.layer_id} has no GGUF tensor slot {slot!r}"
+            ) from exc
+
+    @property
+    def tensor_names(self) -> tuple[str, ...]:
+        names: list[str] = []
+        seen: set[str] = set()
+        for tensor in self.tensors.values():
+            if tensor.name not in seen:
+                seen.add(tensor.name)
+                names.append(tensor.name)
+        return tuple(names)
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFLayerMap:
     """Canonical tensor slots for one Qwen3.5 GGUF layer."""
 
@@ -375,6 +402,55 @@ def qwen35_gguf_mtp_block_inventories(info: GGUFModelInfo) -> tuple[Qwen35GGUFMT
             )
         )
     return tuple(inventories)
+
+
+def build_qwen35_gguf_mtp_block_maps(
+    info: GGUFModelInfo,
+    *,
+    strict: bool = True,
+) -> tuple[Qwen35GGUFMTPBlockMap, ...]:
+    """Return effective tensor maps for trailing MTP blocks.
+
+    Optional NextN tensors are resolved to target-model fallback tensors when
+    they are absent from the GGUF MTP block.
+    """
+
+    inventories = (
+        validate_qwen35_gguf_mtp_blocks(info)
+        if strict
+        else qwen35_gguf_mtp_block_inventories(info)
+    )
+    config = qwen35_gguf_config_from_metadata(info)
+    actual = {tensor.name: tensor for tensor in info.tensors}
+    root_slots = _root_slots_for_config(config)
+    maps: list[Qwen35GGUFMTPBlockMap] = []
+    for block in inventories:
+        prefix = f"blk.{block.layer_id}."
+        tensors: dict[str, GGUFTensorInfo] = {}
+        for slot, suffix in _layer_slot_suffixes(config, FULL_ATTENTION).items():
+            full_name = f"{prefix}{suffix}"
+            if full_name in actual:
+                tensors[slot] = actual[full_name]
+        for slot, suffix in _MTP_NEXTN_REQUIRED_SLOTS.items():
+            full_name = f"{prefix}{suffix}"
+            if full_name in actual:
+                tensors[slot] = actual[full_name]
+        fallback_slots: dict[str, str] = {}
+        for slot, (suffix, fallback_slot) in _MTP_NEXTN_OPTIONAL_FALLBACK_SLOTS.items():
+            full_name = f"{prefix}{suffix}"
+            if full_name in actual:
+                tensors[slot] = actual[full_name]
+            else:
+                tensors[slot] = actual[root_slots[fallback_slot]]
+                fallback_slots[slot] = fallback_slot
+        maps.append(
+            Qwen35GGUFMTPBlockMap(
+                layer_id=block.layer_id,
+                tensors=MappingProxyType(tensors),
+                fallback_slots=MappingProxyType(fallback_slots),
+            )
+        )
+    return tuple(maps)
 
 
 def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPBlockInventory, ...]:
@@ -606,8 +682,10 @@ __all__ = [
     "Qwen35GGUFConfig",
     "Qwen35GGUFLayerMap",
     "Qwen35GGUFMTPBlockInventory",
+    "Qwen35GGUFMTPBlockMap",
     "Qwen35GGUFMappingValidation",
     "Qwen35GGUFModelMap",
+    "build_qwen35_gguf_mtp_block_maps",
     "build_qwen35_gguf_tensor_map",
     "qwen35_gguf_config_from_metadata",
     "qwen35_gguf_mtp_block_inventories",
