@@ -94221,3 +94221,48 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU call spec JSON CLI
+
+Implemented `mtp-gguf` multiloop iteration 35: added a metadata-only CLI for
+exporting validated Qwen35 GGUF MTP CPU-reference call specs as JSON.
+
+Scope note:
+- This script reads GGUF metadata/tensor headers only. It does not materialize
+  weights, alter runtime generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; the CLI only exposes the existing loader call-spec metadata for future
+  CPU parity harnesses.
+
+Evidence:
+- Help smoke passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py --help`
+  documents metadata-only JSON dumping plus `--non-strict` and `--indent`.
+- Real GGUF smoke passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --indent 0 > /tmp/gguf_mtp_call_spec.json`
+  then parsed `/tmp/gguf_mtp_call_spec.json` and confirmed:
+  - architecture `qwen35moe`
+  - one MTP draft call spec
+  - CPU kernel `['cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits']`
+  - `wq_weight -> blk.40.attn_q.weight`
+  - qtypes `Q4_K/Q4_K/Q5_K/Q8_0`
+  - `num_heads=16`, `num_kv_heads=2`
+  - `hidden_seed` dynamic input shape `['tokens', 2048]`.
+
+Changes:
+- Added `scripts/gguf_mtp_call_spec.py`.
+  - Uses `GGUFReader`, `discover_gguf_files`, and
+    `build_qwen35_gguf_mtp_draft_tensor_plans(...)`.
+  - Emits JSON with path, architecture, tensor count, and
+    `mtp_draft_call_specs` from `plan.cpu_reference_call_spec.as_dict()`.
+  - Supports `--non-strict` and `--indent`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `scripts/gguf_mtp_call_spec.py`.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: metadata-only CLI, no torch import, no backend/quant
+  branches, no runtime generation/GPU/KV path changes, no performance claims.
