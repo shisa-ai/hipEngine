@@ -93538,3 +93538,49 @@ Validation:
 - Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
   registry key, no backend/quant branches, no runtime KV path changes, explicit
   KVLiveSpans reminder, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference MoE routing oracle
+
+Implemented `mtp-gguf` multiloop iteration 22: a torch-free CPU-reference helper
+for the Qwen35 GGUF MTP MoE router selection stage.
+
+Scope note:
+- This is only the router/weight selection piece that feeds the existing
+  selected-expert FFN oracle; it is not the full M3 NextN forward and does not
+  alter runtime dispatch.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '671,690p'; nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/llama-graph.cpp | sed -n '1491,1611p'`
+- Confirmed order:
+  - Qwen35MoE MTP calls `build_moe_ffn(cur, layer.ffn_gate_inp, ..., n_expert_used,
+    LLM_FFN_SILU, true, hparams.expert_weights_scale,
+    LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX, ...)`.
+  - `build_moe_ffn` computes dense router logits, softmax probabilities,
+    `argsort_top_k`, gathers selected weights, normalizes selected weights with
+    a `6.103515625e-5` clamp, then applies `w_scale`.
+
+Changes:
+- Added `qwen35_gguf_mtp_moe_routing(hidden, router_weight, *, experts_used,
+  expert_weights_scale=1.0)` in `hipengine/kernels/cpu_reference/ops.py`.
+  - Computes dense router logits and softmax over all experts.
+  - Selects top-k experts and gathers/renormalizes selected weights.
+  - Applies `expert_weights_scale` when it differs from `0.0`/`1.0`, matching
+    llama.cpp's `w_scale` branch.
+  - Returns `(selected_experts, routing_weights)` for the existing selected-FFN
+    oracle.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_moe_routing", "gguf_f32", "qwen35_softmax_topk")`.
+- Extended `tests/test_gguf_mtp_cpu_reference.py` with top-k/softmax/scale,
+  shape validation, and registry assertions.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `11` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py` and
+  `hipengine/kernels/cpu_reference/__init__.py`.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
+  registry key, no backend/quant branches, no runtime KV/dispatch path changes,
+  and no performance claims.

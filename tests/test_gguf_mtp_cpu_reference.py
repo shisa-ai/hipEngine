@@ -7,6 +7,7 @@ from hipengine.kernels.cpu_reference import (
     qwen35_gguf_mtp_attention_sublayer,
     qwen35_gguf_mtp_boundary_logits,
     qwen35_gguf_mtp_eh_proj,
+    qwen35_gguf_mtp_moe_routing,
     qwen35_gguf_mtp_shared_head_logits,
 )
 from hipengine.kernels.registry import resolve
@@ -244,6 +245,57 @@ def test_qwen35_gguf_mtp_attention_sublayer_validates_shapes() -> None:
         )
 
 
+def test_qwen35_gguf_mtp_moe_routing_selects_softmax_topk_and_scales() -> None:
+    hidden = np.asarray(
+        [
+            [2.0, 1.0],
+            [0.0, 3.0],
+        ],
+        dtype=np.float32,
+    )
+    router = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [-1.0, 2.0],
+        ],
+        dtype=np.float32,
+    )
+
+    experts, weights = qwen35_gguf_mtp_moe_routing(
+        hidden,
+        router,
+        experts_used=2,
+        expert_weights_scale=1.25,
+    )
+
+    logits = np.matmul(hidden, router.T).astype(np.float32)
+    probs = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
+    probs = (probs / np.sum(probs, axis=-1, keepdims=True)).astype(np.float32)
+    expected_experts = np.argsort(-probs, axis=-1, kind="stable")[:, :2]
+    expected_weights = np.take_along_axis(probs, expected_experts, axis=-1)
+    expected_weights = expected_weights / np.sum(expected_weights, axis=-1, keepdims=True)
+    expected_weights = (expected_weights * np.float32(1.25)).astype(np.float32)
+
+    np.testing.assert_array_equal(experts, expected_experts)
+    np.testing.assert_allclose(weights, expected_weights, rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_moe_routing_validates_shapes() -> None:
+    hidden = np.ones((2, 3), dtype=np.float32)
+    router = np.ones((4, 3), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="hidden must have shape"):
+        qwen35_gguf_mtp_moe_routing(hidden[0], router, experts_used=2)
+    with pytest.raises(ValueError, match="router_weight must have shape"):
+        qwen35_gguf_mtp_moe_routing(hidden, np.ones((4, 4), dtype=np.float32), experts_used=2)
+    with pytest.raises(ValueError, match="experts_used must be positive"):
+        qwen35_gguf_mtp_moe_routing(hidden, router, experts_used=0)
+    with pytest.raises(ValueError, match="experts_used must be <= number of experts"):
+        qwen35_gguf_mtp_moe_routing(hidden, router, experts_used=5)
+
+
 def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     eh_proj = resolve(
         backend="cpu_reference",
@@ -269,8 +321,15 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
         quant="gguf_f32",
         variant="qwen35_dense",
     )
+    moe_routing = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_moe_routing",
+        quant="gguf_f32",
+        variant="qwen35_softmax_topk",
+    )
 
     assert eh_proj is qwen35_gguf_mtp_eh_proj
     assert shared_head is qwen35_gguf_mtp_shared_head_logits
     assert boundary_logits is qwen35_gguf_mtp_boundary_logits
     assert attention is qwen35_gguf_mtp_attention_sublayer
+    assert moe_routing is qwen35_gguf_mtp_moe_routing

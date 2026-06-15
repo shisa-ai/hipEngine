@@ -349,6 +349,48 @@ def gguf_q4_k_pack8_gemv(
     return np.matmul(x_arr, weight.T).astype(np.float32)
 
 
+def qwen35_gguf_mtp_moe_routing(
+    hidden: ArrayLike,
+    router_weight: ArrayLike,
+    *,
+    experts_used: int,
+    expert_weights_scale: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """CPU reference for Qwen35 GGUF MTP MoE router selection.
+
+    llama.cpp's MTP FFN calls ``build_moe_ffn`` with ``ffn_gate_inp``,
+    ``LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX``, ``norm_w=true``, and
+    ``hparams.expert_weights_scale``.  This helper models the routing part only:
+    dense router logits, softmax over all experts, top-k expert IDs, selected
+    weight renormalization, and optional scaling.  The returned arrays feed the
+    existing selected-expert FFN oracle.
+    """
+
+    x = np.asarray(hidden, dtype=np.float32)
+    router = np.asarray(router_weight, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    if router.ndim != 2 or router.shape[1] != x.shape[1]:
+        raise ValueError("router_weight must have shape [experts, hidden]")
+    top_k = int(experts_used)
+    if top_k <= 0:
+        raise ValueError("experts_used must be positive")
+    experts = router.shape[0]
+    if top_k > experts:
+        raise ValueError("experts_used must be <= number of experts")
+
+    logits = np.matmul(x, router.T).astype(np.float32)
+    probs = _softmax(logits, axis=-1).astype(np.float32)
+    selected = np.argsort(-probs, axis=-1, kind="stable")[:, :top_k].astype(np.int64)
+    selected_weights = np.take_along_axis(probs, selected, axis=-1).astype(np.float32)
+    weight_sum = np.maximum(np.sum(selected_weights, axis=-1, keepdims=True), np.float32(6.103515625e-5))
+    selected_weights = (selected_weights / weight_sum).astype(np.float32)
+    scale_value = float(expert_weights_scale)
+    if scale_value != 0.0 and scale_value != 1.0:
+        selected_weights = (selected_weights * np.float32(scale_value)).astype(np.float32)
+    return selected, selected_weights
+
+
 def gguf_moe_selected_ffn(
     x: ArrayLike,
     selected_experts: ArrayLike,
@@ -1263,6 +1305,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "qwen35_gguf_mtp_shared_head_logits": qwen35_gguf_mtp_shared_head_logits,
         "qwen35_gguf_mtp_boundary_logits": qwen35_gguf_mtp_boundary_logits,
         "qwen35_gguf_mtp_attention_sublayer": qwen35_gguf_mtp_attention_sublayer,
+        "qwen35_gguf_mtp_moe_routing": qwen35_gguf_mtp_moe_routing,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1305,6 +1348,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "mtp_nextn_attention", "gguf_f32", "qwen35_dense"),
         qwen35_gguf_mtp_attention_sublayer,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_moe_routing", "gguf_f32", "qwen35_softmax_topk"),
+        qwen35_gguf_mtp_moe_routing,
         replace=replace,
     )
     register(
