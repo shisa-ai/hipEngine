@@ -93597,3 +93597,18 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-15 - Continuation resume lower-loop fail-closed coverage
+
+Added chat continuation-resume regressions for the P2 lower-loop/live parity
+gap: `stream=true` and `n>1` resume attempts now assert stable
+`unsupported_parameter` errors, advertised unsupported fields, no extra
+generation, and no continuation-handle consumption. A subsequent buffered resume
+still succeeds with the original handle.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'chat_continuation_resume_rejects_lower_loop_fields_without_consuming_handle'` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'chat_continuation_resume_rejects_lower_loop_fields_without_consuming_handle or chat_continuation_resume_rejects_messages_without_consuming_handle or chat_session_continuation_resumes_buffered_length_finish_once or chat_length_finish_with_n_gt_one_is_continuation_ineligible or completion_length_finish_with_n_gt_one_is_continuation_ineligible'` -> `6 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.

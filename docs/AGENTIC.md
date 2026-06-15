@@ -1944,7 +1944,8 @@ Current code reality:
   resumes. Those surfaces use the buffered path until live multi-row chunk/final
   metadata can preserve the same validation, logprob, stop, and tool-call
   semantics. Endpoint regressions pin this fail-closed gate even when an engine
-  advertises `stream_many_detailed`.
+  advertises `stream_many_detailed`, and continuation-resume regressions pin
+  `stream=true` / `n>1` rejection without consuming the saved handle.
 - final streaming chunks report `finish_reason="tool_calls"` and
   `finish_details.reason="tool_calls"` for parsed tool calls, or the same
   strict-result failure details as non-streaming when validation rejects the
@@ -3010,7 +3011,8 @@ withholds ambiguous backend chunks with diagnostics.
    Until then, buffering or withheld diagnostics is correct. Current endpoint
    tests pin that tools, logprobs, structured-output validation, and stop
    strings stay on the buffered path even when the engine advertises live
-   multi-row streaming.
+   multi-row streaming, and that streaming or `n>1` continuation resumes reject
+   without consuming the handle.
 2. **Native/scheduler controlled-decoding parity.** GGUF/native GPU sampler
    paths and live c>N surfaces should eventually match host AR sampling
    metadata and logprob semantics. Unsupported processor combinations may keep

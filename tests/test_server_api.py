@@ -5091,6 +5091,70 @@ def test_chat_continuation_resume_rejects_messages_without_consuming_handle() ->
     assert len(fake.calls) == 2
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "expected_param"),
+    [
+        ("stream", True, "stream"),
+        ("n", 2, "n"),
+    ],
+)
+def test_chat_continuation_resume_rejects_lower_loop_fields_without_consuming_handle(
+    field: str,
+    value: Any,
+    expected_param: str,
+) -> None:
+    fake = SequentialFakeLLM(
+        [
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1),
+            ),
+            GenerationOutput(text=" answer", finish_details=FinishDetails(reason="eos", eos_token_id=151645)),
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 1,
+        },
+    )
+    assert first.status_code == 200
+    continuation_id = first.json()["choices"][0]["continuation_id"]
+
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    assert expected_param in capabilities["sessions"]["continuations"]["unsupported_resume_fields"]
+    rejected = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "continuation_id": continuation_id,
+            "max_tokens": 4,
+            field: value,
+        },
+    )
+
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["code"] == "unsupported_parameter"
+    assert rejected.json()["error"]["param"] == expected_param
+    assert continuation_id in app.state.hipengine_continuations
+    assert len(fake.calls) == 1
+
+    resumed = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert resumed.status_code == 200
+    assert resumed.json()["choices"][0]["message"]["content"] == "partial answer"
+    assert continuation_id not in app.state.hipengine_continuations
+    assert len(fake.calls) == 2
+
+
 def test_chat_session_continuation_resumes_buffered_length_finish_once() -> None:
     fake = SequentialFakeLLM(
         [
