@@ -12614,6 +12614,8 @@ def test_replay_artifact_captures_guided_patch_result_validation_failure(tmp_pat
 
 def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) -> None:
     replay_dir = tmp_path / "replay"
+    prior_tool_arguments = '{"path":"secret previous path"}'
+    prior_tool_result = "secret previous tool result"
     app = create_app(
         ServerConfig(
             model="fake-path",
@@ -12630,7 +12632,28 @@ def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) ->
         "/v1/chat/completions",
         json={
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "secret tool task"}],
+            "messages": [
+                {"role": "user", "content": "secret tool task"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_secret_prev",
+                            "type": "function",
+                            "function": {
+                                "name": "read",
+                                "arguments": prior_tool_arguments,
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_secret_prev",
+                    "content": prior_tool_result,
+                },
+            ],
             "tool_choice": "required",
             "tools": [
                 {
@@ -12655,12 +12678,31 @@ def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) ->
     assert artifact["schema"] == "hipengine.replay.v1"
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["request"]["json"]["messages"][0]["content"]["redacted"] == "sha256"
+    assert (
+        artifact["request"]["json"]["messages"][1]["tool_calls"][0]["function"]["arguments"][
+            "redacted"
+        ]
+        == "sha256"
+    )
+    assert artifact["request"]["json"]["messages"][2]["content"]["redacted"] == "sha256"
     assert artifact["request"]["prompt_hashes"] == [
         {
             "path": "$.messages[0].content",
             "sha256": artifact["request"]["json"]["messages"][0]["content"]["sha256"],
             "length": len("secret tool task"),
-        }
+        },
+        {
+            "path": "$.messages[1].tool_calls[0].function.arguments",
+            "sha256": artifact["request"]["json"]["messages"][1]["tool_calls"][0]["function"][
+                "arguments"
+            ]["sha256"],
+            "length": len(prior_tool_arguments),
+        },
+        {
+            "path": "$.messages[2].content",
+            "sha256": artifact["request"]["json"]["messages"][2]["content"]["sha256"],
+            "length": len(prior_tool_result),
+        },
     ]
     assert artifact["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert artifact["error"] is None
@@ -12678,6 +12720,9 @@ def test_replay_artifact_captures_agentic_result_validation_failure(tmp_path) ->
     assert artifact["token_counts"]["available"] is True
     assert artifact["token_counts"]["source"] == "chat_prompt"
     assert "secret tool task" not in serialized
+    assert "secret previous path" not in serialized
+    assert prior_tool_arguments not in serialized
+    assert prior_tool_result not in serialized
     assert "ordinary answer" not in serialized
 
 

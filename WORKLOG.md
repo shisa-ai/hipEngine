@@ -92195,3 +92195,17 @@ Validation:
 - `python3 scripts/validate_local_agent_config.py --help` -> printed help successfully.
 - `python3 scripts/validate_pi_agent_models.py --help` -> printed help successfully.
 - `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC replay tool-result redaction coverage
+
+Expanded the agentic replay artifact failure test to include a prior assistant
+tool call plus tool-result transcript content. The artifact now asserts
+recursive request redaction and `prompt_hashes` entries for the user prompt,
+tool-call `function.arguments`, and tool-result message content, and verifies
+the raw sensitive strings and failed generated answer are absent from the
+serialized artifact.
+
+Validation:
+- `uv run pytest tests/test_server_api.py -q -k 'replay_artifact_captures_agentic_result_validation_failure'` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'replay_artifact'` -> `14 passed`.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
