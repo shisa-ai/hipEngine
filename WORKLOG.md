@@ -96529,3 +96529,47 @@ Validation:
   integration, native MTP execution, actual KV allocation, GPU kernel,
   attention/KV runtime path, or performance claim. Future MTP attention/KV-write
   execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF speculative package exports
+
+Implemented `mtp-gguf` multiloop iteration 85: exported the GGUF MTP contracts
+through `hipengine.speculative`.
+
+Scope note:
+- Package boundary/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- Future runtime and preflight callers can now import the tested GGUF MTP context,
+  proposal, KVLiveSpans, runtime-kernel, and verification contracts from the
+  speculative package boundary instead of reaching into module internals.
+
+Changes:
+- Added `hipengine.speculative` exports for GGUF MTP constants and contracts:
+  draft top-k constants, NextN kernel constants, `Qwen35GGUFMTPDraftProposal`,
+  `Qwen35GGUFMTPKVLiveSpansPlan`, `Qwen35GGUFMTPDraftExecutionPlan`,
+  `Qwen35GGUFMTPRuntimeKernelCheck`, `Qwen35GGUFMTPRuntimeKernelPlan`,
+  `Qwen35GGUFMTPVerificationResult`, and `Qwen35GGUFMTPVerificationMetrics`.
+- Added `tests/test_gguf_mtp_exports.py` to assert package exports, constants,
+  runtime-kernel readiness, KVLiveSpans plan construction, and metrics
+  denominators.
+- Updated `docs/MTP-gguf.md` to note that the GGUF MTP contracts are exported
+  through `hipengine.speculative`.
+
+Validation:
+- Focused export/context tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_context.py` -> `22` passed.
+- Export smoke passed:
+  importing `Qwen35GGUFMTPRuntimeKernelPlan` and `Qwen35GGUFMTPVerificationMetrics`
+  from `hipengine.speculative` -> `exports True {'accepted_per_draft': 'accepted_token_count / draft_token_count', 'accepted_per_output': 'accepted_token_count / output_token_count'}`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/__init__.py tests/test_gguf_mtp_exports.py` and
+  `git diff --check -- hipengine/speculative/__init__.py tests/test_gguf_mtp_exports.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: package boundary/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. Future MTP attention/KV-write execution remains
+  KVLiveSpans-gated.

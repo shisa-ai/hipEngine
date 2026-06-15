@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
+from hipengine.speculative import (
+    DEFAULT_DRAFT_SELECTION,
+    DEFAULT_DRAFT_TOPK,
+    DEFAULT_DRAFT_TOPK_KERNEL,
+    Qwen35GGUFMTPContext,
+    Qwen35GGUFMTPKVLiveSpansPlan,
+    Qwen35GGUFMTPRuntimeKernelPlan,
+    Qwen35GGUFMTPSeedRow,
+    Qwen35GGUFMTPVerificationMetrics,
+    Qwen35GGUFMTPVerificationResult,
+)
+from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext as ModuleContext
+
+
+def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
+    register_cpu_reference_kernels(replace=True)
+
+    assert Qwen35GGUFMTPContext is ModuleContext
+    assert DEFAULT_DRAFT_TOPK == 10
+    assert DEFAULT_DRAFT_SELECTION == "greedy_top1_from_topk"
+    assert DEFAULT_DRAFT_TOPK_KERNEL == ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
+
+    seed = Qwen35GGUFMTPSeedRow(token_id=1, position=2, hidden_ptr=0x1000, hidden_size=8)
+    plan = Qwen35GGUFMTPKVLiveSpansPlan.from_draft_batch(
+        Qwen35GGUFMTPContext(target_session=object()).build_draft_batch(
+            request_id=0,
+            token_ids=(5,),
+            seed_rows=(seed,),
+        ),
+        block_size=4,
+    )
+    metrics = Qwen35GGUFMTPVerificationMetrics.from_results(
+        (
+            Qwen35GGUFMTPVerificationResult(
+                proposed_token_ids=(5,),
+                target_token_ids=(5,),
+                n_accepted=1,
+                verify_seed_count=2,
+                reseed=Qwen35GGUFMTPSeedRow(token_id=5, position=3, hidden_ptr=0x2000, hidden_size=8),
+            ),
+        ),
+        output_token_count=1,
+    )
+    runtime_plan = Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend="hip_gfx1100")
+
+    assert plan.as_dict()["token_positions"] == [3]
+    assert metrics.as_dict()["denominators"] == {
+        "accepted_per_draft": "accepted_token_count / draft_token_count",
+        "accepted_per_output": "accepted_token_count / output_token_count",
+    }
+    assert runtime_plan.exactness_oracles_ready is True
