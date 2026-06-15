@@ -25,6 +25,10 @@ from hipengine.loading.qwen35_gguf import (  # noqa: E402
     build_qwen35_gguf_mtp_draft_tensor_plans,
     validate_qwen35_gguf_mtp_blocks,
 )
+from scripts.gguf_mtp_oracle_gate import (  # noqa: E402
+    DEFAULT_FIXTURE as DEFAULT_ORACLE_FIXTURE,
+    run_oracle_gate,
+)
 from scripts.gguf_mtp_parity_precheck import (  # noqa: E402
     build_parity_precheck,
     load_json,
@@ -56,6 +60,7 @@ def build_b1_prompt_suite_artifact(
     llamacpp_token_inventory: Path,
     hipengine_sampling: Path,
     llamacpp_sampling: Path,
+    oracle_fixture: Path = DEFAULT_ORACLE_FIXTURE,
     prompt_limit: int | None = None,
 ) -> dict[str, Any]:
     prompts_payload = load_prompt_suite(prompts_file)
@@ -80,6 +85,7 @@ def build_b1_prompt_suite_artifact(
         llamacpp_sampling=load_sampling_settings(llamacpp_sampling),
         require_sampling=True,
     )
+    oracle_gate = run_oracle_gate(oracle_fixture)
     blockers: list[dict[str, Any]] = []
     if not parity["all_pass"]:
         blockers.append(
@@ -90,7 +96,16 @@ def build_b1_prompt_suite_artifact(
                 "sampling_match": bool(parity["sampling"]["passed"]),
             }
         )
-    if parity["all_pass"]:
+    if not oracle_gate["passed"]:
+        blockers.append(
+            {
+                "code": "oracle_gate_failed",
+                "detail": "CPU-reference GGUF MTP oracle KL/top-1 gate must pass before B1 metrics are comparable",
+                "max_kl": float(oracle_gate["metrics"]["max_kl"]),
+                "top1_agreement": float(oracle_gate["metrics"]["top1_agreement"]),
+            }
+        )
+    if parity["all_pass"] and oracle_gate["passed"]:
         blockers.append(
             {
                 "code": "native_gguf_mtp_runtime_missing",
@@ -131,9 +146,10 @@ def build_b1_prompt_suite_artifact(
             plan.cpu_reference_call_spec.as_dict() for plan in mtp_draft_tensor_plans
         ],
         "parity_precheck": parity,
+        "oracle_gate": oracle_gate,
         "execution": {
             "implemented": False,
-            "exactness_gate": "not_run",
+            "exactness_gate": "passed" if oracle_gate["passed"] else "failed",
             "accepted_output_metrics": "not_run",
             "next_action": "implement native GGUF MTP draft execution and re-run this harness",
         },
@@ -149,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llamacpp-token-inventory", type=Path, default=DEFAULT_LLAMACPP_TOKENS)
     parser.add_argument("--hipengine-sampling", type=Path, default=DEFAULT_SAMPLING)
     parser.add_argument("--llamacpp-sampling", type=Path, default=DEFAULT_SAMPLING)
+    parser.add_argument("--oracle-fixture", type=Path, default=DEFAULT_ORACLE_FIXTURE)
     parser.add_argument("--prompt-limit", type=int)
     parser.add_argument("--out", type=Path, help="write JSON artifact to this path")
     parser.add_argument(
@@ -165,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         llamacpp_token_inventory=args.llamacpp_token_inventory,
         hipengine_sampling=args.hipengine_sampling,
         llamacpp_sampling=args.llamacpp_sampling,
+        oracle_fixture=args.oracle_fixture,
         prompt_limit=args.prompt_limit,
     )
     payload = json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n"

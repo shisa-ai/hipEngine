@@ -119,6 +119,15 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
             ),
         ),
     )
+    monkeypatch.setattr(
+        suite,
+        "run_oracle_gate",
+        lambda fixture: {
+            "passed": True,
+            "fixture": str(fixture),
+            "metrics": {"max_kl": 0.0, "top1_agreement": 1.0},
+        },
+    )
 
 
 def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False) -> dict[str, Path]:
@@ -171,9 +180,10 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "kv_evict_mask",
         "block_size",
     ]
+    assert artifact["oracle_gate"]["passed"] is True
     assert artifact["execution"] == {
         "implemented": False,
-        "exactness_gate": "not_run",
+        "exactness_gate": "passed",
         "accepted_output_metrics": "not_run",
         "next_action": "implement native GGUF MTP draft execution and re-run this harness",
     }
@@ -184,6 +194,37 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
                 "Native GGUF MTP draft execution is not implemented yet; this harness "
                 "stops after metadata/token/sampling preflight instead of reporting metrics."
             ),
+        }
+    ]
+
+
+def test_b1_prompt_suite_preflight_reports_oracle_gate_blocker_before_runtime_blocker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "run_oracle_gate",
+        lambda fixture: {
+            "passed": False,
+            "fixture": str(fixture),
+            "metrics": {"max_kl": 0.25, "top1_agreement": 0.0},
+        },
+    )
+
+    artifact = suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path))
+
+    assert artifact["status"] == "blocked"
+    assert artifact["parity_precheck"]["all_pass"] is True
+    assert artifact["oracle_gate"]["passed"] is False
+    assert artifact["execution"]["exactness_gate"] == "failed"
+    assert artifact["blockers"] == [
+        {
+            "code": "oracle_gate_failed",
+            "detail": "CPU-reference GGUF MTP oracle KL/top-1 gate must pass before B1 metrics are comparable",
+            "max_kl": 0.25,
+            "top1_agreement": 0.0,
         }
     ]
 

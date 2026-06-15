@@ -95489,3 +95489,47 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF B1 preflight oracle gate
+
+Implemented `mtp-gguf` multiloop iteration 63: wired the fixture-driven
+GGUF MTP oracle exactness gate into the B1 preflight child artifact.
+
+Scope note:
+- Preflight script/test/docs only. No hipEngine runtime generation, GGUF tensor
+  loading, MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- The preflight child still blocks on `native_gguf_mtp_runtime_missing`; it now
+  records token/sampling parity, MTP call specs, and CPU-reference KL/top-1 gate
+  status before reporting that runtime blocker.
+
+Changes:
+- `scripts/gguf_mtp_b1_prompt_suite.py` now runs `run_oracle_gate(...)` against
+  the committed CPU-reference NextN fixture and embeds the resulting
+  `oracle_gate` JSON in its preflight artifact.
+- The preflight artifact's `execution.exactness_gate` is now `passed`/`failed`
+  based on the oracle gate instead of `not_run`.
+- Added an `oracle_gate_failed` blocker path that fires before the runtime-missing
+  blocker when KL/top-1 exactness fails.
+- Added `--oracle-fixture` CLI plumbing for alternate exactness fixtures.
+- Extended `tests/test_gguf_mtp_b1_prompt_suite.py` to cover passing oracle output
+  embedded in the artifact and a tampered/failing oracle blocker path.
+- Updated `docs/MTP-gguf.md` M5/backlog text to state the preflight child embeds
+  CPU-reference oracle gate output.
+
+Validation:
+- B1 preflight + oracle gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py` -> `8` passed.
+- Real local MTP GGUF CLI smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` -> `suite blocked parity True oracle True exactness passed blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight script/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

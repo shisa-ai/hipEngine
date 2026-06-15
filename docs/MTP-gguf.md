@@ -637,8 +637,8 @@ Deliverables:
   runner, not a flag flip on the wrapper. Current preflight child:
   `scripts/gguf_mtp_b1_prompt_suite.py`, which validates MTP metadata plus
   token/sampling parity, embeds the MTP draft tensor/call specs (including
-  KVLiveSpans dynamic inputs), and emits a blocked artifact until native GGUF MTP
-  draft execution is implemented.
+  KVLiveSpans dynamic inputs), runs the CPU-reference oracle exactness gate, and
+  emits a blocked artifact until native GGUF MTP draft execution is implemented.
 - Run matched prompt/token suite against:
   - hipEngine GGUF AR;
   - hipEngine GGUF MTP B1-B4;
@@ -826,7 +826,8 @@ is now answered by the M1 required/optional table.)
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
-      specs; B1 exactness/execution remains in the next backlog row.
+      specs and CPU-reference oracle gate output; B1 runtime execution remains in
+      the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the
