@@ -181,6 +181,9 @@ def _generator_commands() -> dict[str, str]:
         "oracle_source_map": (
             "python3 scripts/stepfun_oracle_source_map.py --default-output --pretty"
         ),
+        "llamacpp_logits_preflight": (
+            "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -279,6 +282,8 @@ def build_remaining_blockers_rollup(
                 "next_action_manifest_generator_command": commands["oracle_next_action_manifest"],
                 "source_map_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json",
                 "source_map_generator_command": commands["oracle_source_map"],
+                "llamacpp_logits_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
+                "llamacpp_logits_preflight_generator_command": commands["llamacpp_logits_preflight"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

@@ -41117,3 +41117,34 @@ git diff --check
 ```
 
 Results: targeted source-map/rollup tests passed (`8` tests); compact outputs were `"mapped"`, `["host_prompt_logit_smoke", "llamacpp_oracle_runner", "oracle_blocker_handoff"]`, and `[]`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `16e25b57021c0f6b7a5b59057645a8f86fe8d402792ab6b0e95b43f8bc00af7e`; remaining-blockers file SHA `08986ce456bbcd649b8c382c19053cad05fe8171ce215517e54e0b35a44d5fab`; correctness-status file SHA `e395dcea718433937fcbe74a2b119a6b4054f575de7ae2e12f1a4095ced5e339`; final-blocker file SHA `3f6e31271a8e020928e33171877ff3d5c78b44766c9fd192a6645e4033eb4823`; handoff file SHA `a362cc51bbba5463056867a01ed2c28f895c8b41df244dba6927282418b2f105`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp logits preflight
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 498. Added `scripts/stepfun_llamacpp_logits_preflight.py`, a retained availability preflight for the next same-prompt llama.cpp logits comparison, plus `tests/test_stepfun_llamacpp_logits_preflight.py`. The preflight reads the oracle next-action manifest, source map, and host top-logit margin artifacts; inspects the local Vulkan `llama-cli --help`; and records whether the expected same-prompt llama.cpp logits artifact exists before any logits/backend parity comparison. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the preflight artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json` reports `status=blocked`, `ready=false`, and `oracle_parity_ready=false`. Missing evidence is `llama_cpp_same_prompt_logits_artifact_present` and `llama_cpp_logits_dump_entrypoint_identified`; the expected future logits artifact is `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json` and is absent. The local Vulkan `llama-cli` exists and is executable, but its help only exposes `--logit-bias` among logit-related options and no obvious logits dump marker (`--logits`, `--logits-file`, `--dump-logits`, `--logprobs`, or `--top-logprobs`). This is a preflight blocker for the next logits/backend parity investigation only; canonical missing evidence remains `generated_text_matches_target`. Preflight file SHA is `d87ae7553a3e7ebff777a8bad1be580b18a158ac8fccec84e69f4ed97f84560c`; stable payload SHA from `scripts/stepfun_llamacpp_logits_preflight.py --sha-only` is `82c5ad55ab685614a543fe2d602fa07f544371ab522362d95e88873c27d5ec67`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_preflight.py tests/test_stepfun_llamacpp_logits_preflight.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_preflight.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_preflight.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --status-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --logits-artifact-present-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --missing-evidence-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted logits-preflight/rollup tests passed (`8` tests); compact outputs were `"blocked"`, `false`, and `["llama_cpp_same_prompt_logits_artifact_present", "llama_cpp_logits_dump_entrypoint_identified"]`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `867d8ffcc2c7f4813da77ca3b346ab6de6ab3571792a02eb52c772778b40ac30`; remaining-blockers file SHA `38b814eaf06f757253a62f554775b2c730d7ba639cace7421ef137c6420ac1b8`; correctness-status file SHA `cc73e91b4bd7b4b364ea223694a17e1e31657ca716a5fdcdde747c63a0804400`; final-blocker file SHA `cb671e3bb952294b7c85f7d8a94019bc4b8bda10ae06d0d8ec4b9fe39a21c391`; handoff file SHA `9cb7435255d075a009dd4eb9166ce73081a3cd50dbae440213a1d76fddbbaa94`; full StepFun guard passed; `git diff --check` passed.
