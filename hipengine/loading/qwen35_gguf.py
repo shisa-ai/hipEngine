@@ -253,6 +253,31 @@ class Qwen35GGUFMTPDraftTensorBinding:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftDynamicInput:
+    """Runtime-provided input needed by the CPU-reference MTP oracle."""
+
+    argument: str
+    required: bool
+    shape: tuple[object, ...]
+    description: str
+    source_tensor_argument: str | None = None
+    paired_with: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "argument": self.argument,
+            "required": self.required,
+            "shape": list(self.shape),
+            "description": self.description,
+        }
+        if self.source_tensor_argument is not None:
+            result["source_tensor_argument"] = self.source_tensor_argument
+        if self.paired_with is not None:
+            result["paired_with"] = self.paired_with
+        return result
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftCPUCallSpec:
     """Metadata-only call spec for a Qwen35 GGUF MTP CPU-reference oracle."""
 
@@ -261,6 +286,7 @@ class Qwen35GGUFMTPDraftCPUCallSpec:
     tensor_arguments: Mapping[str, str]
     qtype_arguments: Mapping[str, GGMLQuantizationType]
     keyword_arguments: Mapping[str, object]
+    dynamic_inputs: tuple[Qwen35GGUFMTPDraftDynamicInput, ...]
     tensor_bindings: tuple[Qwen35GGUFMTPDraftTensorBinding, ...]
     fallback_slots: Mapping[str, str]
 
@@ -273,6 +299,7 @@ class Qwen35GGUFMTPDraftCPUCallSpec:
                 argument: qtype.name for argument, qtype in self.qtype_arguments.items()
             },
             "keyword_arguments": dict(self.keyword_arguments),
+            "dynamic_inputs": [item.as_dict() for item in self.dynamic_inputs],
             "tensor_bindings": [binding.as_dict() for binding in self.tensor_bindings],
             "fallback_slots": dict(self.fallback_slots),
         }
@@ -383,6 +410,64 @@ class Qwen35GGUFMTPDraftTensorPlan:
         )
 
     @property
+    def dynamic_inputs(self) -> tuple[Qwen35GGUFMTPDraftDynamicInput, ...]:
+        """Runtime values the harness must provide in addition to GGUF tensors."""
+
+        return (
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="hidden_seed",
+                required=True,
+                shape=("tokens", self.hidden_size),
+                description="Post-output_norm target hidden state used as the MTP hidden seed.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="token_embedding",
+                required=True,
+                shape=("tokens", self.hidden_size),
+                description="Embedding rows for the target token(s), gathered by the harness.",
+                source_tensor_argument="token_embedding",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="positions",
+                required=False,
+                shape=("tokens",),
+                description="Dense CPU-cache token positions; defaults to arange(tokens).",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="context_counts",
+                required=False,
+                shape=("tokens",),
+                description="Visible dense CPU-cache lengths; defaults to positions + 1.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="key_cache",
+                required=False,
+                shape=("cache_tokens", self.num_kv_heads, self.qk_head_dim),
+                description="Already-materialized dense CPU key cache for MTP attention.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="value_cache",
+                required=False,
+                shape=("cache_tokens", self.num_kv_heads, self.value_head_dim),
+                description="Already-materialized dense CPU value cache for MTP attention.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="rope_cos",
+                required=False,
+                shape=("broadcastable", self.rotary_dim),
+                description="RoPE cosine table broadcastable to Q/K rotary dimensions.",
+                paired_with="rope_sin",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="rope_sin",
+                required=False,
+                shape=("broadcastable", self.rotary_dim),
+                description="RoPE sine table broadcastable to Q/K rotary dimensions.",
+                paired_with="rope_cos",
+            ),
+        )
+
+    @property
     def cpu_reference_call_spec(self) -> Qwen35GGUFMTPDraftCPUCallSpec:
         """Return the metadata needed to invoke the CPU-reference NextN oracle."""
 
@@ -392,6 +477,7 @@ class Qwen35GGUFMTPDraftTensorPlan:
             tensor_arguments=self.tensor_argument_map,
             qtype_arguments=self.qtype_enum_argument_map,
             keyword_arguments=self.kernel_kwargs,
+            dynamic_inputs=self.dynamic_inputs,
             tensor_bindings=self.tensor_bindings,
             fallback_slots=self.fallback_slots,
         )
@@ -414,6 +500,7 @@ class Qwen35GGUFMTPDraftTensorPlan:
             "rope_dimension_sections": list(self.rope_dimension_sections),
             "attention_scale": self.attention_scale,
             "kernel_kwargs": dict(self.kernel_kwargs),
+            "dynamic_inputs": [item.as_dict() for item in self.dynamic_inputs],
             "cpu_reference_call_spec": self.cpu_reference_call_spec.as_dict(),
             "tensor_argument_map": dict(self.tensor_argument_map),
             "qtype_argument_map": dict(self.qtype_argument_map),
@@ -1186,6 +1273,7 @@ __all__ = [
     "Qwen35GGUFMTPBlockInventory",
     "Qwen35GGUFMTPBlockMap",
     "Qwen35GGUFMTPDraftCPUCallSpec",
+    "Qwen35GGUFMTPDraftDynamicInput",
     "Qwen35GGUFMTPDraftTensorBinding",
     "Qwen35GGUFMTPDraftTensorPlan",
     "Qwen35GGUFMTPDraftTensorSlot",

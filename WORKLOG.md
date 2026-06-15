@@ -94174,3 +94174,50 @@ Validation:
 - Forbidden-pattern and diff checks passed.
 - Prompt verifier passed: test-only loader metadata coverage, no backend/quant
   branches, no runtime generation/GPU/KV path changes, no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU call spec dynamic inputs
+
+Implemented `mtp-gguf` multiloop iteration 34: added runtime dynamic-input
+metadata to the GGUF MTP draft CPU call spec.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; dense key/value cache descriptors here are CPU-oracle-only.
+
+Evidence:
+- Real GGUF smoke over `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` reported:
+  - `hidden_seed`, required, shape `('tokens', 2048)`
+  - `token_embedding`, required, shape `('tokens', 2048)`, sourced from tensor
+    argument `token_embedding`
+  - optional `positions` and `context_counts`, shape `('tokens',)`
+  - optional dense CPU `key_cache`, shape `('cache_tokens', 2, 256)`
+  - optional dense CPU `value_cache`, shape `('cache_tokens', 2, 256)`
+  - optional paired `rope_cos`/`rope_sin`, shape `('broadcastable', 64)`.
+- Signature check confirmed all dynamic input names are accepted by
+  `qwen35_gguf_mtp_nextn_layer_logits(...)` and no required signature arguments
+  are left uncovered by dynamic inputs, tensor args, qtype args, or scalar kwargs.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftDynamicInput`.
+- Added `Qwen35GGUFMTPDraftTensorPlan.dynamic_inputs`.
+- Added `Qwen35GGUFMTPDraftCPUCallSpec.dynamic_inputs`.
+- Added JSON-friendly dynamic-input serialization to both the plan and call spec.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to assert dynamic input order,
+  shapes, token-embedding provenance, paired RoPE descriptors, serialization,
+  and signature coverage.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Focused call-spec/tensor-plan tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py -k 'call_spec_matches_reference_signature or tensor_plan'` -> `5` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.

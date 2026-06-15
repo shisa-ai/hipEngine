@@ -303,6 +303,23 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     assert dict(call_spec.tensor_arguments)["wq_weight"] == "blk.2.attn_q.weight"
     assert dict(call_spec.qtype_arguments)["gate_qtype"] is GGMLQuantizationType.F32
     assert dict(call_spec.keyword_arguments) == dict(plan.kernel_kwargs)
+    assert call_spec.dynamic_inputs == plan.dynamic_inputs
+    assert [item.argument for item in plan.dynamic_inputs] == [
+        "hidden_seed",
+        "token_embedding",
+        "positions",
+        "context_counts",
+        "key_cache",
+        "value_cache",
+        "rope_cos",
+        "rope_sin",
+    ]
+    assert plan.dynamic_inputs[0].required is True
+    assert plan.dynamic_inputs[0].shape == ("tokens", 8)
+    assert plan.dynamic_inputs[1].source_tensor_argument == "token_embedding"
+    assert plan.dynamic_inputs[4].shape == ("cache_tokens", 1, 4)
+    assert plan.dynamic_inputs[5].shape == ("cache_tokens", 1, 4)
+    assert plan.dynamic_inputs[6].paired_with == "rope_sin"
     assert call_spec.tensor_bindings == plan.tensor_bindings
     assert dict(call_spec.fallback_slots) == dict(plan.fallback_slots)
     assert plan.tensor_bindings[0].fallback_slot == "token_embedding"
@@ -317,7 +334,15 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "expert_weights_scale": 0.0,
         "eps": 1.0e-6,
     }
+    assert plan_dict["dynamic_inputs"][1] == {
+        "argument": "token_embedding",
+        "required": True,
+        "shape": ["tokens", 8],
+        "description": "Embedding rows for the target token(s), gathered by the harness.",
+        "source_tensor_argument": "token_embedding",
+    }
     assert plan_dict["cpu_reference_call_spec"] == call_spec.as_dict()
+    assert plan_dict["cpu_reference_call_spec"]["dynamic_inputs"] == plan_dict["dynamic_inputs"]
     assert plan_dict["cpu_reference_call_spec"]["tensor_arguments"]["wq_weight"] == "blk.2.attn_q.weight"
     assert plan_dict["cpu_reference_call_spec"]["qtype_arguments"] == {
         "gate_qtype": "F32",
@@ -364,11 +389,15 @@ def test_qwen35moe_gguf_mtp_cpu_call_spec_matches_reference_signature() -> None:
     tensor_args = tuple(call_spec.tensor_arguments)
     qtype_args = tuple(call_spec.qtype_arguments)
     keyword_args = tuple(call_spec.keyword_arguments)
+    dynamic_args = tuple(item.argument for item in call_spec.dynamic_inputs)
 
     assert tuple(name for name in parameter_names if name in tensor_args) == tensor_args
     assert tuple(name for name in parameter_names if name in qtype_args) == qtype_args
     assert set(keyword_args).issubset(parameters)
-    bound_args = {"hidden_seed", *tensor_args, *qtype_args, *keyword_args}
+    assert set(dynamic_args).issubset(parameters)
+    assert call_spec.dynamic_inputs[0].argument == "hidden_seed"
+    assert call_spec.dynamic_inputs[1].argument == "token_embedding"
+    bound_args = {*dynamic_args, *tensor_args, *qtype_args, *keyword_args}
     missing_required = [
         name
         for name, parameter in parameters.items()
