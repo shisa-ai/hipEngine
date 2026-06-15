@@ -692,6 +692,27 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "buffered_delta_safe_decode_state",
             "buffered_done",
         ],
+        "buffered_scheduler_chunks": {
+            "source": "last_batch_generation.scheduler_token_chunks",
+            "requires_single_http_request_batch": True,
+            "text_must_reconstruct_public_choice": True,
+            "public_surfaces": [
+                "completion_delta",
+                "chat_answer_delta",
+                "chat_reasoning_delta_without_logprobs",
+                "chat_content_logprob_delta",
+                "chat_structured_delta_validated",
+                "chat_tool_argument_delta_validated",
+            ],
+            "fallback_surfaces": [
+                "coalesced_multi_request_batch",
+                "raw_text_mismatch",
+                "invalid_tool_call",
+                "unmappable_tool_arguments",
+                "structured_validation_failure",
+                "reasoning_with_logprobs",
+            ],
+        },
         "routing": "stream_options.include_hipengine",
         "kv_pool": "done_and_usage_events_when_engine_exposes_kv_pool_stats",
     }

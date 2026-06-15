@@ -271,8 +271,13 @@ token-accounting/decode-state scopes (`live_delta`, `buffered_delta`, and
 `final_choice` when tokenizer counting is available), and
 backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `buffered_done`) for engines that emit `GenerationStreamChunk` or
-`GenerationOutput` telemetry. It also reports the optional backend-authored
-field vocabulary under
+`GenerationOutput` telemetry. `features.stream_metadata.buffered_scheduler_chunks`
+lists the public surfaces where `last_batch_generation.scheduler_token_chunks`
+can be replayed (`completion_delta`, answer/reasoning chat deltas without
+reasoning logprobs, visible chat content-logprob deltas, validated structured
+content deltas, and validated tool-call argument deltas), plus the fallback
+conditions that force conservative buffering. It also reports the optional
+backend-authored field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
 
 Cache hit/miss, budget pressure, per-request KV-byte deltas, and

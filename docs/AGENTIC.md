@@ -1125,7 +1125,10 @@ Current code reality:
   token-accounting/decode-state scopes cover `live_delta`, `buffered_delta`, and
   `final_choice` when tokenizer counting is available, while backend telemetry
   scopes cover `live_chunk`, `buffered_delta_safe_decode_state`, and
-  `buffered_done` when generation telemetry is emitted.
+  `buffered_done` when generation telemetry is emitted. It also reports
+  `features.stream_metadata.buffered_scheduler_chunks` so clients can see which
+  buffered c>N surfaces may replay `last_batch_generation.scheduler_token_chunks`
+  and which conditions force conservative buffering.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.

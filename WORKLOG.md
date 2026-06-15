@@ -92762,3 +92762,18 @@ Validation:
 - `uv run pytest tests/test_agentic_server_conformance.py -q -k 'streaming_parallel_tool_loop'` -> `1 passed`.
 - `uv run pytest tests/test_agentic_server_conformance.py -q` -> `11 passed`.
 - `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.
+
+## 2026-06-15 - AGENTIC scheduler chunk capability contract
+
+Made the `/v1/hipengine/capabilities` stream metadata contract explicit for
+buffered c>N scheduler chunk replay. The manifest now reports
+`features.stream_metadata.buffered_scheduler_chunks` with the
+`last_batch_generation.scheduler_token_chunks` source, single-HTTP-request and
+exact-text-match requirements, public replay surfaces, and conservative fallback
+surfaces. Updated `docs/API.md` and `docs/AGENTIC.md` so client harnesses do not
+have to infer scheduler replay support from individual tests.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata'` -> `2 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
