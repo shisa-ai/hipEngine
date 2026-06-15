@@ -92810,3 +92810,62 @@ chunks, not generic per-token scheduler metadata.
 Validation:
 - Re-read `docs/AGENTIC.md` P1.1 edited section.
 - `git diff --check -- docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - GPU1 post-#88 INT8 throughput diagnostic
+
+Ran the requested basic GPU1 speed check for Qwen3.6-35B-A3B PARO packed
+`w4_paro` with retained `int8_per_token_head` KV after #88 removed the BF16
+INT8-prefill oracle. This is retained as a blocker diagnostic, not a promoted
+throughput row: it used one measured run per shape, no KL/top-1 gate, and exists
+to answer whether the new direct streaming INT8 prefill path changed speed.
+
+Command shape:
+```bash
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$("$PY" -m rocm_sdk path --root)
+env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" SHELL="$SHELL" \
+  PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+  LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-20260615-gpu1-int8-basic-031950/hipcc-version.txt PYTHONPATH=. \
+  "$PY" scripts/qwen35_readme_sweep.py \
+    --engine paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+    --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 \
+    --workloads 512/128 4K/128 128K/128 \
+    --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 4 \
+    --compiler-version-file /tmp/hipengine-20260615-gpu1-int8-basic-031950/hipcc-version.txt --require-cached-build \
+    --attn-aotriton-min-tokens 512 --graph-replay-decode \
+    --kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head \
+    --json /tmp/hipengine-20260615-gpu1-int8-basic-031950/sweep.json
+```
+
+Environment/evidence:
+- Device: `HIP_VISIBLE_DEVICES=1`, visible HIP device `AMD Radeon RX 7900 XTX`, gfx1100.
+- TheRock hipcc: `HIP version: 7.13.26162-1140233ffe`.
+- Source JSON/log: `/tmp/hipengine-20260615-gpu1-int8-basic-031950/sweep.json` and `.log`.
+- Compact artifact: `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json`.
+- Resident `max_sequence_length=131205`; one shared session load `27.199s`; cached builds required.
+
+Results (single measured run):
+
+| Workload | Prefill tok/s | Decode tok/s | Prefill seconds | Decode seconds excl. graph capture | Tracked peak | Notes |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 512/128 | 2045.109 | 120.075 | 0.250 | 1.066 | 19.790 GiB | direct streaming INT8 prefill, no BF16 oracle |
+| 4K/128 | 772.551 | 117.868 | 5.302 | 1.086 | 20.759 GiB | direct streaming INT8 prefill, 1024/4096 chunks |
+| 128K/128 | 23.425 | 68.118 | 5595.289 | 1.879 | 20.910 GiB | direct streaming INT8 prefill, 1024/4096 chunks |
+
+Comparison:
+- Prior RX 7900 XTX INT8 128K/128 oracle/AOTriton row
+  `benchmarks/results/2026-05-23-rx7900xtx-hipengine-paro-int8kv-131072-128.json`:
+  prefill `1020.723 -> 23.425 tok/s` (`-97.7%`), decode
+  `60.404 -> 68.118 tok/s` (`+12.8%`).
+- The direct #88 streaming INT8 prefill path solves the 262K transient BF16
+  oracle memory gate but is **not** a throughput replacement for the old oracle
+  + AOTriton INT8 path. Next work should find a memory-safe fast INT8 prefill
+  path rather than accept the current long-context streaming path as default for
+  speed-sensitive 128K prefill.
+
+Validation/docs:
+- `python3 -m json.tool benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json >/dev/null` -> passed.
+- Updated `benchmarks/README.md` diagnostic history and `benchmarks/CHANGELOG.md` with `performance_claim=false` blocker status.

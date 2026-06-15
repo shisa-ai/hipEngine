@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-15
 
+- [diagnostic blocker] Qwen3.6-35B-A3B PARO / w4_paro + INT8 KV / GPU1 512/4K/128K direct streaming prefill: post-#88 prefill `2045.109/772.551/23.425 tok/s`, decode `120.075/117.868/68.118 tok/s`; 128K prefill `1020.723 -> 23.425 tok/s` (-97.7%) vs the old BF16-oracle/AOTriton INT8 row, while decode `60.404 -> 68.118 tok/s` (+12.8%); not promoted, retained as fast-INT8-prefill blocker evidence; `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json`.
 - [memory gate] Qwen3.6-35B-A3B PARO / w4_paro + INT8 KV / GPU1 262K direct scratch: `int8_oracle_bytes 536870912 -> 0` (-0.5 GiB), min-free `0.664 -> 1.139 GiB` (+71.5%), peak used `23.320 -> 22.846 GiB` (-2.0%), scratch probe `0.115 -> 0.096s` (-16.8%) due to #88 streaming INT8 prefill attention replacing the temporary BF16 oracle; `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`.
 
 ## 2026-06-14
