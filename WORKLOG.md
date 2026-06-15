@@ -92394,3 +92394,24 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC pi streaming smoke validation
+
+Extended `scripts/validate_pi_agent_models.py` with a `--streaming-smoke`
+mode for the checked-in pi config. The new smoke sends the same Qwen
+`record_result` tool request as `stream=true` with
+`stream_options.include_usage=true`, parses SSE `data:` payloads, reconstructs
+fragmented `delta.tool_calls`, rejects raw `<tool_call>` leakage in streamed
+assistant text fields, and requires both a usage SSE payload and final
+`data: [DONE]`. Updated API/AGENTIC docs and local-agent tests so the pi
+config's `supportsUsageInStreaming=true` flag is backed by an executable
+server round trip, not only manifest inspection.
+
+Validation:
+- `uv run pytest tests/test_local_agent_config.py -q -k 'pi_agent_streaming or pi_agent_chat_smoke_payload_round_trips or pi_agent_reasoning_smoke_payload_round_trips'` -> `7 passed`.
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
+- `uv run ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
+- `uv run pytest tests/test_local_agent_config.py -q` -> `41 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.

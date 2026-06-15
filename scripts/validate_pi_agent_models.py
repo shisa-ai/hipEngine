@@ -190,6 +190,15 @@ def build_pi_chat_smoke_payload(config: dict[str, Any], capabilities: dict[str, 
     }
 
 
+def build_pi_streaming_chat_smoke_payload(
+    config: dict[str, Any], capabilities: dict[str, Any]
+) -> dict[str, Any]:
+    payload = build_pi_chat_smoke_payload(config, capabilities)
+    payload["stream"] = True
+    payload["stream_options"] = {"include_usage": True}
+    return payload
+
+
 def build_pi_reasoning_smoke_payload(
     config: dict[str, Any], capabilities: dict[str, Any]
 ) -> dict[str, Any]:
@@ -237,6 +246,25 @@ def run_pi_chat_smoke(
     )
     validate_pi_chat_smoke_response(response)
     return response
+
+
+def run_pi_streaming_chat_smoke(
+    base_url: str,
+    config: dict[str, Any],
+    capabilities: dict[str, Any],
+    *,
+    api_key: str | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    response_text = _request_text(
+        "POST",
+        _join_url(base_url, "/chat/completions"),
+        api_key=api_key,
+        payload=build_pi_streaming_chat_smoke_payload(config, capabilities),
+        timeout=timeout,
+        accept="text/event-stream",
+    )
+    return validate_pi_streaming_chat_smoke_response(response_text)
 
 
 def run_pi_reasoning_smoke(
@@ -311,6 +339,104 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_pi_streaming_chat_smoke_response(response_text: str) -> dict[str, Any]:
+    payloads, done_seen = _parse_sse_payloads(response_text)
+    if not done_seen:
+        raise PiConfigValidationError("streaming chat smoke did not end with data: [DONE]")
+    return validate_pi_streaming_chat_smoke_payloads(payloads)
+
+
+def validate_pi_streaming_chat_smoke_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    if not payloads:
+        raise PiConfigValidationError("streaming chat smoke response did not include SSE payloads")
+
+    usage_seen = False
+    finish_reason: str | None = None
+    calls: dict[int, dict[str, Any]] = {}
+    for payload_index, payload in enumerate(payloads):
+        choices = payload.get("choices")
+        if choices == [] and isinstance(payload.get("usage"), dict):
+            usage_seen = True
+            continue
+        if not isinstance(choices, list):
+            raise PiConfigValidationError(
+                f"streaming chat smoke SSE payload {payload_index} choices must be an array"
+            )
+        for choice_index, raw_choice in enumerate(choices):
+            choice = _object_value(
+                raw_choice,
+                f"streaming chat smoke SSE payload {payload_index} choices[{choice_index}]",
+            )
+            choice_finish = choice.get("finish_reason")
+            if choice_finish is not None:
+                finish_reason = str(choice_finish)
+            delta = choice.get("delta")
+            if delta is None:
+                continue
+            delta_obj = _object_value(
+                delta,
+                f"streaming chat smoke SSE payload {payload_index} choices[{choice_index}].delta",
+            )
+            raw_tool_field = _first_message_field_containing(delta_obj, "<tool_call>")
+            if raw_tool_field is not None:
+                raise PiConfigValidationError(
+                    f"streaming chat smoke returned raw <tool_call> text in delta.{raw_tool_field} "
+                    "instead of parsed delta.tool_calls"
+                )
+            tool_call_deltas = delta_obj.get("tool_calls")
+            if tool_call_deltas is None:
+                continue
+            for raw_call in _list(tool_call_deltas, "streaming chat smoke delta.tool_calls"):
+                call_delta = _object_value(raw_call, "streaming chat smoke delta.tool_calls[]")
+                raw_index = call_delta.get("index", 0)
+                if isinstance(raw_index, bool) or not isinstance(raw_index, int) or raw_index < 0:
+                    raise PiConfigValidationError("streaming chat smoke tool_call index must be a non-negative integer")
+                call = calls.setdefault(
+                    int(raw_index),
+                    {
+                        "id": call_delta.get("id") or f"call_stream_{raw_index}",
+                        "type": call_delta.get("type") or "function",
+                        "function": {"name": "", "arguments": ""},
+                    },
+                )
+                if call_delta.get("id") is not None:
+                    call["id"] = call_delta["id"]
+                if call_delta.get("type") is not None:
+                    call["type"] = call_delta["type"]
+                function_delta = call_delta.get("function")
+                if function_delta is not None:
+                    function = _object_value(function_delta, "streaming chat smoke tool_call.function")
+                    if function.get("name") is not None:
+                        call["function"]["name"] = str(function["name"])
+                    if function.get("arguments") is not None:
+                        call["function"]["arguments"] += str(function["arguments"])
+
+    if not usage_seen:
+        raise PiConfigValidationError("streaming chat smoke did not include a usage SSE payload")
+    if not calls:
+        raise PiConfigValidationError("streaming chat smoke did not include parsed delta.tool_calls")
+    reconstructed = {
+        "object": "chat.completion",
+        "choices": [
+            {
+                "finish_reason": finish_reason,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [calls[index] for index in sorted(calls)],
+                },
+            }
+        ],
+    }
+    summary = validate_pi_chat_smoke_response(reconstructed)
+    return {
+        **summary,
+        "sse_payloads": len(payloads),
+        "usage_chunk": True,
+        "done": True,
+    }
+
+
 def validate_pi_reasoning_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
     choices = _list(response.get("choices"), "reasoning smoke response.choices")
     if not choices:
@@ -361,6 +487,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Also POST a small Qwen tool-call smoke request to the running server.",
     )
     parser.add_argument(
+        "--streaming-smoke",
+        action="store_true",
+        help="Also POST the Qwen tool-call smoke request as stream=true SSE and require usage metadata.",
+    )
+    parser.add_argument(
         "--reasoning-smoke",
         action="store_true",
         help="Also POST a small Qwen thinking smoke request to the running server.",
@@ -389,6 +520,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 summary["chat_smoke_object"] = response.get("object")
                 summary["chat_smoke"] = validate_pi_chat_smoke_response(response)
+            if args.streaming_smoke:
+                summary["streaming_smoke"] = run_pi_streaming_chat_smoke(
+                    base_url,
+                    config,
+                    capabilities,
+                    api_key=api_key,
+                    timeout=max(args.timeout, 30.0),
+                )
             if args.reasoning_smoke:
                 response = run_pi_reasoning_smoke(
                     base_url,
@@ -508,6 +647,56 @@ def _request_json(
     if not isinstance(decoded, dict):
         raise PiConfigValidationError(f"{method} {url} did not return a JSON object")
     return decoded
+
+
+def _request_text(
+    method: str,
+    url: str,
+    *,
+    api_key: str | None = None,
+    payload: dict[str, Any] | None = None,
+    timeout: float,
+    accept: str = "text/plain",
+) -> str:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Accept": accept}
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = Request(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            body = response.read()
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise PiConfigValidationError(f"{method} {url} failed with HTTP {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise PiConfigValidationError(f"{method} {url} failed: {exc}") from exc
+    return body.decode("utf-8", errors="replace")
+
+
+def _parse_sse_payloads(response_text: str) -> tuple[list[dict[str, Any]], bool]:
+    payloads: list[dict[str, Any]] = []
+    done_seen = False
+    for line_number, raw_line in enumerate(response_text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith(":"):
+            continue
+        if not line.startswith("data: "):
+            continue
+        data = line[6:]
+        if data == "[DONE]":
+            done_seen = True
+            continue
+        try:
+            decoded = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise PiConfigValidationError(f"SSE data line {line_number} is not valid JSON: {exc}") from exc
+        if not isinstance(decoded, dict):
+            raise PiConfigValidationError(f"SSE data line {line_number} must decode to a JSON object")
+        payloads.append(decoded)
+    return payloads, done_seen
 
 
 def _join_url(base_url: str, path: Any) -> str:

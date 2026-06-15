@@ -55,6 +55,10 @@ class _PiToolSmokeLLM(_FakeLLM):
             for _ in prompts
         ]
 
+    def stream(self, prompt, sampling_params):
+        self.calls.append(((str(prompt),), sampling_params))
+        yield '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>'
+
 
 class _PiReasoningSmokeLLM(_FakeLLM):
     def __init__(self) -> None:
@@ -487,6 +491,24 @@ def test_pi_agent_chat_smoke_payload_uses_qwen_tool_shape() -> None:
     assert payload["tools"][0]["function"]["name"] == "record_result"
 
 
+def test_pi_agent_streaming_chat_smoke_payload_uses_usage_sse() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+
+    payload = validate_pi_agent_models.build_pi_streaming_chat_smoke_payload(
+        config,
+        {"model": {"id": model_id}},
+    )
+
+    assert payload["model"] == model_id
+    assert payload["stream"] is True
+    assert payload["stream_options"] == {"include_usage": True}
+    assert payload["temperature"] == 0
+    assert payload["enable_thinking"] is False
+    assert payload["tool_choice"] == {"type": "function", "function": {"name": "record_result"}}
+    assert payload["tools"][0]["function"]["name"] == "record_result"
+
+
 def test_pi_agent_reasoning_smoke_payload_uses_qwen_thinking() -> None:
     config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
     model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
@@ -542,6 +564,44 @@ def test_pi_agent_chat_smoke_payload_round_trips_through_server() -> None:
     }
     assert choice["message"]["content"] == ""
     assert "<tool_call>" not in json.dumps(choice["message"])
+    assert len(llm.calls) == 1
+    prompt = llm.calls[0][0][0]
+    assert "record_result" in prompt
+    assert "You must call the function named 'record_result'." in prompt
+    assert "<think>\n\n</think>" in prompt
+
+
+def test_pi_agent_streaming_chat_smoke_payload_round_trips_through_server() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+    llm = _PiToolSmokeLLM()
+    client = TestClient(
+        create_app(
+            ServerConfig(
+                model="/models/fake",
+                served_model_name=model_id,
+                eager_load=False,
+            ),
+            llm=llm,
+        )
+    )
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    payload = validate_pi_agent_models.build_pi_streaming_chat_smoke_payload(config, capabilities)
+
+    response = client.post("/v1/chat/completions", json=payload)
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    assert validate_pi_agent_models.validate_pi_streaming_chat_smoke_response(response.text) == {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": ["result"],
+        "result": "ok",
+        "sse_payloads": 4,
+        "usage_chunk": True,
+        "done": True,
+    }
+    assert "<tool_call>" not in response.text
     assert len(llm.calls) == 1
     prompt = llm.calls[0][0][0]
     assert "record_result" in prompt
@@ -623,6 +683,30 @@ def test_pi_agent_chat_smoke_response_requires_tool_call() -> None:
     }
 
 
+def test_pi_agent_streaming_chat_smoke_response_reconstructs_tool_call() -> None:
+    summary = validate_pi_agent_models.validate_pi_streaming_chat_smoke_response(
+        "\n".join(
+            [
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"record_result","arguments":"{\\"result\\""}}]},"finish_reason":null}]}',
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"ok\\"}"}}]},"finish_reason":null}]}',
+                'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+                'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+                "data: [DONE]",
+            ]
+        )
+    )
+
+    assert summary == {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": ["result"],
+        "result": "ok",
+        "sse_payloads": 4,
+        "usage_chunk": True,
+        "done": True,
+    }
+
+
 def test_pi_agent_reasoning_smoke_response_requires_reasoning_content() -> None:
     summary = validate_pi_agent_models.validate_pi_reasoning_smoke_response(
         {
@@ -659,6 +743,32 @@ def test_pi_agent_chat_smoke_response_rejects_missing_tool_call() -> None:
                     }
                 ],
             }
+        )
+
+
+def test_pi_agent_streaming_chat_smoke_response_rejects_missing_usage() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="usage SSE payload"):
+        validate_pi_agent_models.validate_pi_streaming_chat_smoke_response(
+            "\n".join(
+                [
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"record_result","arguments":"{\\"result\\":\\"ok\\"}"}}]},"finish_reason":null}]}',
+                    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+                    "data: [DONE]",
+                ]
+            )
+        )
+
+
+def test_pi_agent_streaming_chat_smoke_response_rejects_raw_tool_call_markup() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="raw <tool_call> text"):
+        validate_pi_agent_models.validate_pi_streaming_chat_smoke_response(
+            "\n".join(
+                [
+                    'data: {"choices":[{"delta":{"content":"<tool_call>{}"},"finish_reason":null}]}',
+                    'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+                    "data: [DONE]",
+                ]
+            )
         )
 
 

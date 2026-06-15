@@ -2372,14 +2372,18 @@ Current code reality:
   arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
   including a doubled start-marker form or assistant `content` /
   `reasoning_content` leakage alongside parsed `tool_calls`, is rejected as a
-  tool-calling mismatch.
+  tool-calling mismatch. `--streaming-smoke` sends the same tool request as
+  `stream=true` with `stream_options.include_usage=true`, reconstructs streamed
+  `delta.tool_calls` fragments, rejects raw `<tool_call>` leakage, and requires
+  both a usage SSE payload and final `data: [DONE]`.
   `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
   parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
   in assistant text fields as a Qwen thinking/parser mismatch.
 - `tests/test_local_agent_config.py` posts that exact pi smoke payload through a
   FastAPI `create_app()` test server with fake Qwen `<tool_call>` output and
   asserts the response is parsed OpenAI `message.tool_calls`, not raw markup. It
-  also posts the pi reasoning-smoke payload through the fake server and asserts
+  also posts the pi streaming-smoke and reasoning-smoke payloads through the fake
+  server, asserting streamed tool-call deltas plus usage metadata round-trip and
   Qwen `<think>` output is split into OpenAI-compatible `message.reasoning_content`.
 - Existing server fake-session tests and the P5.3 golden trace harness cover
   parsed Qwen tool calls in non-streaming and streaming responses, including

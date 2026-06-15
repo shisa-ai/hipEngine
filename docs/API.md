@@ -673,13 +673,15 @@ python3 scripts/validate_pi_agent_models.py \
 ```
 
 Validate the same snippet against a running server capability manifest, and
-optionally POST small Qwen tool-call and thinking smoke requests, with:
+optionally POST small Qwen tool-call, streaming tool-call, and thinking smoke
+requests, with:
 
 ```bash
 python3 scripts/validate_pi_agent_models.py \
   --config docs/examples/pi-agent/models.json \
   --base-url http://127.0.0.1:8000/v1 \
   --chat-smoke \
+  --streaming-smoke \
   --reasoning-smoke
 ```
 
@@ -688,7 +690,10 @@ The `--chat-smoke` check requires the response to finish with a parsed
 ordinary assistant text, raw `<tool_call>` markup, a missing `tool_calls`
 payload, raw `<tool_call>` leakage in assistant `content` or
 `reasoning_content` alongside parsed tool calls, or the wrong tool argument
-fails validation. The
+fails validation. The `--streaming-smoke` check sends the same tool request as
+`stream=true` with `stream_options.include_usage=true`, reconstructs streamed
+`delta.tool_calls` fragments, rejects raw `<tool_call>` leakage, and requires
+both a usage SSE payload and final `data: [DONE]`. The
 `--reasoning-smoke` check sends `enable_thinking=true`, requires a non-empty
 parsed `message.reasoning_content`, and fails if raw `<think>` markup leaks into
 assistant text fields.
