@@ -1553,17 +1553,18 @@ Current state:
   `parallel_tool_calls` is explicitly supplied. It validates selected tool
   names, malformed tool-call blocks, and a minimal function `parameters` JSON
   schema subset: scalar types, `enum`, `const`, object `properties` /
-  `required` / `additionalProperties=false` or a supported subschema /
-  `minProperties` / `maxProperties`, array `items` / `minItems` / `maxItems` /
-  `uniqueItems`, string `minLength` / `maxLength` / `pattern`, and numeric
-  min/max / `multipleOf` bounds. Array `uniqueItems` uses JSON value equality
-  after generation. String `pattern` uses Python regular-expression search
-  semantics after generation, and invalid regexes are rejected before
-  generation. Numeric `multipleOf` uses decimal divisibility semantics after
-  generation, and invalid divisors are rejected before generation. Unsupported
-  validation keywords are rejected before generation when strict validation
-  would use the schema; annotation keys such as `title`, `description`, and
-  `default`, plus schema `format`, are accepted but ignored by validation.
+  `patternProperties` / `required` / `additionalProperties=false` or a
+  supported subschema / `minProperties` / `maxProperties`, array `items` /
+  `minItems` / `maxItems` / `uniqueItems`, string `minLength` / `maxLength` /
+  `pattern`, and numeric min/max / `multipleOf` bounds. Array `uniqueItems`
+  uses JSON value equality after generation. String `pattern` and object
+  `patternProperties` use Python regular-expression search semantics after
+  generation, and invalid regexes are rejected before generation. Numeric
+  `multipleOf` uses decimal divisibility semantics after generation, and invalid
+  divisors are rejected before generation. Unsupported validation keywords are
+  rejected before generation when strict validation would use the schema;
+  annotation keys such as `title`, `description`, and `default`, plus schema
+  `format`, are accepted but ignored by validation.
 - Tool-policy and strict-validation failures return normal chat responses with
   no successful `tool_calls`, stable `finish_details.reason` values
   (`invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`),
@@ -1688,8 +1689,8 @@ Current code reality:
 - post-generation strict validation covers selected tool names, malformed tool
   blocks, required/extra arguments, scalar types, `enum`, `const`, nested
   objects, object property-count bounds, object-valued additional-property
-  schemas, arrays, array length bounds, string length bounds/patterns, array
-  uniqueness, and numeric bounds/multiples;
+  schemas, pattern-property schemas, arrays, array length bounds, string length
+  bounds/patterns, array uniqueness, and numeric bounds/multiples;
 - strict schemas reject unsupported validation keywords before generation rather
   than silently ignoring constraints;
 - decode-time schema constraints and retry/repair remain future grammar work.

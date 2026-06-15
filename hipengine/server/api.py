@@ -168,6 +168,7 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "enum",
         "const",
         "properties",
+        "patternProperties",
         "required",
         "additionalProperties",
         "minProperties",
@@ -862,6 +863,7 @@ def _tool_schema_subset() -> list[str]:
         "enum",
         "const",
         "object.properties",
+        "object.patternProperties",
         "object.required",
         "object.additionalProperties=false",
         "object.additionalProperties=schema",
@@ -9653,6 +9655,24 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             if error is not None:
                 return error
 
+    pattern_properties = schema.get("patternProperties")
+    if pattern_properties is not None:
+        if not isinstance(pattern_properties, Mapping):
+            return (f"{path}.patternProperties", f"{path}.patternProperties must be an object")
+        for raw_pattern, subschema in pattern_properties.items():
+            pattern_path = f"{path}.patternProperties.{raw_pattern}"
+            if not isinstance(raw_pattern, str):
+                return (f"{path}.patternProperties", f"{path}.patternProperties keys must be strings")
+            try:
+                re.compile(raw_pattern)
+            except re.error as exc:
+                return (pattern_path, f"{pattern_path} must be a valid regular expression: {exc}")
+            if not isinstance(subschema, Mapping):
+                return (pattern_path, f"{pattern_path} must be an object")
+            error = _validate_json_schema_subset(subschema, path=pattern_path)
+            if error is not None:
+                return error
+
     required = schema.get("required")
     if required is not None:
         if not isinstance(required, Sequence) or isinstance(required, (str, bytes)):
@@ -9737,10 +9757,32 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
                 error = _validate_json_schema_value(value[key], subschema, path=f"{path}.{key}")
                 if error is not None:
                     return error
+        pattern_properties = schema.get("patternProperties")
+        pattern_map = pattern_properties if isinstance(pattern_properties, Mapping) else {}
+        matched_by_pattern: set[str] = set()
+        for raw_pattern, subschema in pattern_map.items():
+            if not isinstance(raw_pattern, str) or not isinstance(subschema, Mapping):
+                continue
+            for raw_key, item in value.items():
+                key = str(raw_key)
+                try:
+                    matches = re.search(raw_pattern, key) is not None
+                except re.error:
+                    matches = False
+                if not matches:
+                    continue
+                matched_by_pattern.add(key)
+                error = _validate_json_schema_value(item, subschema, path=f"{path}.{key}")
+                if error is not None:
+                    return error
         additional_properties = schema.get("additionalProperties")
         if additional_properties is False:
             allowed = {str(key) for key in property_map}
-            extra = sorted(str(key) for key in value.keys() if str(key) not in allowed)
+            extra = sorted(
+                str(key)
+                for key in value.keys()
+                if str(key) not in allowed and str(key) not in matched_by_pattern
+            )
             if extra:
                 return f"{path}.{extra[0]} is not allowed"
         elif isinstance(additional_properties, Mapping):
@@ -9748,7 +9790,7 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
             extra_items = sorted(
                 (str(key), key)
                 for key in value.keys()
-                if str(key) not in allowed
+                if str(key) not in allowed and str(key) not in matched_by_pattern
             )
             for key, raw_key in extra_items:
                 error = _validate_json_schema_value(

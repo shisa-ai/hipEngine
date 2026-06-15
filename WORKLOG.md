@@ -91946,3 +91946,20 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema pattern properties
+
+Strict tool schemas and structured-output JSON Schema validation now support
+object `patternProperties`. Request validation rejects invalid pattern regexes
+before generation, matched object keys validate against every matching pattern
+schema, and `additionalProperties` applies only to keys not covered by explicit
+`properties` or `patternProperties`. The capability manifest advertises
+`object.patternProperties`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_pattern_properties tests/test_server_api.py::test_completions_response_format_rejects_invalid_pattern_properties_schema tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_pattern_properties tests/test_server_api.py::test_completions_response_format_json_schema_validates_result -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `145 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
