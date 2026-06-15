@@ -6,10 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from scripts.stepfun_correctness_status import SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
 from scripts.stepfun_kv_session_contract import (
     build_kv_session_contract_artifact,
     main,
     stepfun_gguf_paths,
+    verify_kv_session_contract_artifact,
 )
 
 
@@ -214,3 +216,72 @@ def test_stepfun_kv_session_contract_cli_compact_modes(tmp_path: Path) -> None:
     assert json.loads(output.read_text()) == "streaming_decode_loop_not_wired"
     assert main([*base_args, "--sha-only", "--output", str(output)]) == 0
     assert isinstance(json.loads(output.read_text()), str)
+
+
+def test_stepfun_kv_session_contract_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    gguf_dir = _available_stepfun_gguf_dir()
+    artifact_path = tmp_path / "kv-session-contract.json"
+    output = tmp_path / "verify.json"
+    base_args = ["--gguf-dir", str(gguf_dir)]
+    current = build_kv_session_contract_artifact(gguf_dir=gguf_dir)
+    artifact_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_kv_session_contract_artifact(
+        artifact_path,
+        current_artifact=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == verification[
+        "current_artifact_sha256"
+    ]
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_blocked_by"] == "streaming_decode_loop_not_wired"
+    assert verification["current_blocked_by"] == "streaming_decode_loop_not_wired"
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-session-contract",
+                str(artifact_path),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["status"] = "ready"
+    artifact_path.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_kv_session_contract_artifact(
+        artifact_path,
+        current_artifact=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "kv_session_contract_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-session-contract",
+                str(artifact_path),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "kv_session_contract_drift"

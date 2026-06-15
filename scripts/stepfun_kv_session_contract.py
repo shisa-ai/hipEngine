@@ -9,6 +9,7 @@ or generate a token. It is blocker/implementation-contract evidence only.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -113,6 +114,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the artifact payload.",
     )
+    parser.add_argument(
+        "--verify-session-contract",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted KV session-contract artifact with current "
+            f"planner/session metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-session-contract, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-session-contract, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-session-contract, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -205,6 +232,51 @@ def build_kv_session_contract_artifact(
     }
 
 
+def verify_kv_session_contract_artifact(
+    session_artifact: Path,
+    *,
+    current_artifact: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted KV session-contract artifact with current metadata."""
+
+    persisted = json.loads(session_artifact.read_text())
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_artifact)
+    failures: list[dict[str, object]] = []
+    if persisted != current_artifact:
+        failures.append(
+            {
+                "name": "kv_session_contract_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted KV session-contract artifact differs from current "
+                    "StepFun planner/session metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    persisted_contract = persisted.get("contract") if isinstance(persisted, dict) else None
+    persisted_contract = persisted_contract if isinstance(persisted_contract, dict) else {}
+    current_contract = current_artifact.get("contract")
+    current_contract = current_contract if isinstance(current_contract, dict) else {}
+    return {
+        "schema_version": 1,
+        "artifact_path": str(session_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status") if isinstance(persisted, dict) else None,
+        "current_status": current_artifact.get("status"),
+        "persisted_blocked_by": persisted_contract.get("blocked_by"),
+        "current_blocked_by": current_contract.get("blocked_by"),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -220,6 +292,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         page_size=args.page_size,
         artifact_date=args.artifact_date,
     )
+    if args.verify_session_contract is not None:
+        verification = verify_kv_session_contract_artifact(
+            args.verify_session_contract,
+            current_artifact=artifact,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
+        return (
+            status_mod.READY_EXIT_CODE
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = artifact["status"]
     elif args.blocked_by_only:
