@@ -748,6 +748,20 @@ def _has_partial_llamacpp_trace_budget_coverage(artifact: dict[str, Any]) -> boo
     return isinstance(coverage, str) and coverage != FULL_TRACE_BUDGET_COVERAGE
 
 
+def _has_noncomparable_accepted_output_metrics(artifact: dict[str, Any]) -> bool:
+    noncomparable_budgets = artifact.get("noncomparable_accepted_per_output_budgets")
+    if isinstance(noncomparable_budgets, list):
+        return bool(noncomparable_budgets)
+    trace_oracle = artifact.get("llamacpp_trace_oracle")
+    if not isinstance(trace_oracle, dict):
+        return False
+    denominator_metrics = trace_oracle.get("denominator_metrics")
+    if not isinstance(denominator_metrics, dict):
+        return False
+    status = denominator_metrics.get("accepted_per_output_status")
+    return isinstance(status, str) and status != ACCEPTED_OUTPUT_COMPARABLE
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -797,6 +811,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="return exit code 3 when the llama.cpp trace did not exercise the requested draft budget",
     )
+    parser.add_argument(
+        "--fail-on-noncomparable-accepted-output",
+        action="store_true",
+        help="return exit code 4 when accepted_per_output denominators are not comparable",
+    )
     args = parser.parse_args(argv)
 
     if args.compact_matrix and not args.all_budgets:
@@ -838,6 +857,10 @@ def main(argv: list[str] | None = None) -> int:
         print(payload, end="")
     if args.fail_on_partial_trace_budget and _has_partial_llamacpp_trace_budget_coverage(artifact):
         return 3
+    if args.fail_on_noncomparable_accepted_output and _has_noncomparable_accepted_output_metrics(
+        artifact
+    ):
+        return 4
     if args.fail_on_blocked and artifact["status"] == "blocked":
         return 2
     return 0

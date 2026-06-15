@@ -615,6 +615,114 @@ def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_rejects_compact_matrix
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
 
 
+def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_output_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-noncomparable-accepted-output",
+        ]
+    )
+
+    assert rc == 4
+    artifact = json.loads(out.read_text())
+    assert (
+        artifact["llamacpp_trace_oracle"]["denominator_metrics"]["accepted_per_output_status"]
+        == suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE
+    )
+
+
+def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_output_allows_comparable_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    trace_payload = json.loads(suite.DEFAULT_LLAMACPP_TRACE_FIXTURE.read_text())
+    trace_payload["visible_output_token_count"] = 2
+    trace_fixture = _write_json(tmp_path / "llamacpp-trace.json", trace_payload)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--llamacpp-trace-fixture",
+            str(trace_fixture),
+            "--out",
+            str(out),
+            "--fail-on-noncomparable-accepted-output",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert (
+        artifact["llamacpp_trace_oracle"]["denominator_metrics"]["accepted_per_output_status"]
+        == suite.ACCEPTED_OUTPUT_COMPARABLE
+    )
+
+
+def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_output_rejects_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-noncomparable-accepted-output",
+        ]
+    )
+
+    assert rc == 4
+    matrix = json.loads(out.read_text())
+    assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
+
+
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

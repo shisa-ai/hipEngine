@@ -346,6 +346,9 @@ full child artifacts for compact benchmark evidence. Use
 `--fail-on-partial-trace-budget` to return exit code `3` when a single-budget or
 matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
+Use `--fail-on-noncomparable-accepted-output` to return exit code `4` when the
+trace artifact lacks visible output-token counts and therefore cannot support
+`accepted_per_output` comparisons.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -921,7 +924,8 @@ is now answered by the M1 required/optional table.)
       denominator comparability (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
-      trace provenance); actual B2-B4
+      trace provenance, and `--fail-on-noncomparable-accepted-output` exits `4`
+      when accepted/output denominators are not comparable); actual B2-B4
       execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
