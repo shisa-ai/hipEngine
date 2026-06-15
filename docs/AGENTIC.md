@@ -2498,10 +2498,13 @@ Current code reality:
   list and prove the generated smoke payload strips every `do_not_send` field.
   When tools are enabled, the local-agent `--chat-smoke` request forces the
   `record_result` function and requires a parsed tool call with valid JSON
-  arguments that set `result` to `"ok"`; raw `<tool_call>` assistant text,
-  including leakage in assistant `content` or `reasoning_content` alongside a
-  parsed `tool_calls` payload, or wrong tool arguments are rejected as a
-  config/server mismatch.
+  arguments that set `result` to `"ok"` plus the exact OpenAI function-call
+  envelope (`id`, `type="function"`, and `function.name` / JSON-string
+  `function.arguments` with no unexpected keys); non-assistant messages,
+  ordinary assistant content alongside tool calls, raw `<tool_call>` assistant
+  text, leakage in assistant `content` or `reasoning_content`, malformed
+  `tool_calls` objects, or wrong tool arguments are rejected as a config/server
+  mismatch.
   When tools are disabled, it only validates a normal chat response.
 - `scripts/validate_pi_agent_models.py` validates the checked-in pi
   `models.json` shape offline and fails on the common `reasoning=false` or
@@ -2515,15 +2518,18 @@ Current code reality:
   streaming usage, Qwen thinking control, and tool support against
   `/v1/hipengine/capabilities`; `--chat-smoke` additionally POSTs a small Qwen
   tool-call request and requires a parsed `record_result` tool call with JSON
-  arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
-  including a doubled start-marker form or assistant `content` /
-  `reasoning_content` leakage alongside parsed `tool_calls`, is rejected as a
-  tool-calling mismatch. `--streaming-smoke` sends the same tool request as
-  `stream=true` with `stream_options.include_usage=true`, reconstructs streamed
-  `delta.tool_calls` fragments, rejects raw `<tool_call>` leakage, and requires
-  both a usage SSE payload and final `data: [DONE]`; the helper that performs
-  the live streaming smoke POST is regression-tested directly for the
-  `/chat/completions` SSE request shape.
+  arguments that set `result` to `"ok"` and the exact OpenAI function-call
+  envelope. Raw `<tool_call>` assistant text, including a doubled start-marker
+  form or assistant `content` / `reasoning_content` leakage alongside parsed
+  `tool_calls`, non-assistant messages, ordinary assistant content beside a
+  tool call, and malformed `tool_calls` objects are rejected as tool-calling
+  mismatches. `--streaming-smoke` sends the same tool request as `stream=true`
+  with `stream_options.include_usage=true`, requires each first
+  `delta.tool_calls[]` fragment to carry a valid OpenAI `id` / `type` /
+  `function.name` envelope, reconstructs streamed argument fragments, rejects
+  raw `<tool_call>` leakage, and requires both a usage SSE payload and final
+  `data: [DONE]`; the helper that performs the live streaming smoke POST is
+  regression-tested directly for the `/chat/completions` SSE request shape.
   `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
   parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
   in assistant text fields as a Qwen thinking/parser mismatch.

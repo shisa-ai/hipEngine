@@ -93430,3 +93430,25 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Pi tool-call smoke envelope validation
+
+Tightened the local-agent and pi-agent smoke validators to require exact
+OpenAI-compatible function tool-call envelopes instead of only checking that raw
+`<tool_call>` markup disappeared. The validators now require assistant chat
+messages, no ordinary assistant content alongside tool calls, one
+`tool_calls[]` object with exactly `id`, `type="function"`, and `function`
+keys, a function object with exactly `name` and JSON-string `arguments`, and
+valid first streaming `delta.tool_calls[]` fragments carrying the OpenAI
+`id`/`type`/`function.name` envelope. Added direct malformed-envelope tests for
+both local-agent and pi-agent smoke paths, plus streaming malformed-fragment
+tests, so a pi-like client cannot pass validation with raw or malformed tool
+call shapes.
+
+Validation:
+- `python3 -m pytest tests/test_local_agent_config.py -q -k 'chat_smoke_response or streaming_chat_smoke_response or round_trips_through_server or streaming_smoke_runner'` -> `37 passed`.
+- `python3 -m py_compile scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `60 passed`.
+- `uv run ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

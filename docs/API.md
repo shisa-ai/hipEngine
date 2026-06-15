@@ -775,14 +775,17 @@ python3 scripts/validate_pi_agent_models.py \
 ```
 
 The `--chat-smoke` check requires the response to finish with a parsed
-`record_result` tool call whose JSON arguments set `result` to `"ok"`;
-ordinary assistant text, raw `<tool_call>` markup, a missing `tool_calls`
-payload, raw `<tool_call>` leakage in assistant `content` or
-`reasoning_content` alongside parsed tool calls, or the wrong tool argument
-fails validation. The `--streaming-smoke` check sends the same tool request as
-`stream=true` with `stream_options.include_usage=true`, reconstructs streamed
-`delta.tool_calls` fragments, rejects raw `<tool_call>` leakage, and requires
-both a usage SSE payload and final `data: [DONE]`. The
+`record_result` tool call whose OpenAI envelope has `id`, `type: "function"`,
+and `function.name` / JSON-string `function.arguments` only, with arguments
+that set `result` to `"ok"`. Ordinary assistant text, raw `<tool_call>` markup,
+a missing or malformed `tool_calls` payload, raw `<tool_call>` leakage in
+assistant `content` or `reasoning_content` alongside parsed tool calls, or the
+wrong tool argument fails validation. The `--streaming-smoke` check sends the
+same tool request as `stream=true` with `stream_options.include_usage=true`,
+requires the first `delta.tool_calls[]` fragment for a call to carry a valid
+OpenAI `id` / `type` / `function.name` envelope, reconstructs streamed argument
+fragments, rejects raw `<tool_call>` leakage, and requires both a usage SSE
+payload and final `data: [DONE]`. The
 `--reasoning-smoke` check sends `enable_thinking=true`, requires a non-empty
 parsed `message.reasoning_content`, and fails if raw `<think>` markup leaks into
 assistant text fields.

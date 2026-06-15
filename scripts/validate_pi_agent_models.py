@@ -292,6 +292,8 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
         raise PiConfigValidationError("chat smoke response.choices must contain at least one choice")
     choice = _object_value(choices[0], "chat smoke response.choices[0]")
     message = _object(choice, "message", label="chat smoke response.choices[0].message")
+    if message.get("role") != "assistant":
+        raise PiConfigValidationError("chat smoke response message.role must be 'assistant'")
     raw_tool_field = _first_message_field_containing(message, "<tool_call>")
     if raw_tool_field is not None:
         raise PiConfigValidationError(
@@ -304,13 +306,22 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
             "chat smoke did not finish with tool_calls; "
             f"finish_reason={choice.get('finish_reason')!r}"
         )
+    content = message.get("content")
+    if content not in (None, ""):
+        raise PiConfigValidationError(
+            "chat smoke tool-call response must not include assistant content; "
+            "expected parsed message.tool_calls only"
+        )
     tool_calls = _list(message.get("tool_calls"), "chat smoke response message.tool_calls")
     if len(tool_calls) != 1:
         raise PiConfigValidationError(
             f"chat smoke expected exactly one tool call, got {len(tool_calls)}"
         )
-    call = _object_value(tool_calls[0], "chat smoke response message.tool_calls[0]")
-    function = _object(call, "function", label="chat smoke response tool call function")
+    call = _openai_function_tool_call(
+        tool_calls[0],
+        "chat smoke response message.tool_calls[0]",
+    )
+    function = call["function"]
     name = function.get("name")
     if name != "record_result":
         raise PiConfigValidationError(f"chat smoke selected unexpected tool {name!r}")
@@ -388,14 +399,25 @@ def validate_pi_streaming_chat_smoke_payloads(payloads: list[dict[str, Any]]) ->
                 continue
             for raw_call in _list(tool_call_deltas, "streaming chat smoke delta.tool_calls"):
                 call_delta = _object_value(raw_call, "streaming chat smoke delta.tool_calls[]")
+                _require_subset_keys(
+                    call_delta,
+                    {"index", "id", "type", "function"},
+                    "streaming chat smoke delta.tool_calls[]",
+                )
                 raw_index = call_delta.get("index", 0)
                 if isinstance(raw_index, bool) or not isinstance(raw_index, int) or raw_index < 0:
                     raise PiConfigValidationError("streaming chat smoke tool_call index must be a non-negative integer")
+                first_delta = int(raw_index) not in calls
+                if first_delta:
+                    _validate_stream_tool_call_start(
+                        call_delta,
+                        "streaming chat smoke delta.tool_calls[]",
+                    )
                 call = calls.setdefault(
                     int(raw_index),
                     {
-                        "id": call_delta.get("id") or f"call_stream_{raw_index}",
-                        "type": call_delta.get("type") or "function",
+                        "id": call_delta.get("id"),
+                        "type": call_delta.get("type"),
                         "function": {"name": "", "arguments": ""},
                     },
                 )
@@ -406,10 +428,25 @@ def validate_pi_streaming_chat_smoke_payloads(payloads: list[dict[str, Any]]) ->
                 function_delta = call_delta.get("function")
                 if function_delta is not None:
                     function = _object_value(function_delta, "streaming chat smoke tool_call.function")
+                    _require_subset_keys(
+                        function,
+                        {"name", "arguments"},
+                        "streaming chat smoke tool_call.function",
+                    )
                     if function.get("name") is not None:
-                        call["function"]["name"] = str(function["name"])
+                        name = function["name"]
+                        if not isinstance(name, str) or not name.strip():
+                            raise PiConfigValidationError(
+                                "streaming chat smoke tool_call.function.name must be a non-empty string"
+                            )
+                        call["function"]["name"] = name
                     if function.get("arguments") is not None:
-                        call["function"]["arguments"] += str(function["arguments"])
+                        arguments = function["arguments"]
+                        if not isinstance(arguments, str):
+                            raise PiConfigValidationError(
+                                "streaming chat smoke tool_call.function.arguments must be a string"
+                            )
+                        call["function"]["arguments"] += arguments
 
     if not usage_seen:
         raise PiConfigValidationError("streaming chat smoke did not include a usage SSE payload")
@@ -469,6 +506,62 @@ def validate_pi_reasoning_smoke_response(response: dict[str, Any]) -> dict[str, 
         "reasoning_chars": len(reasoning),
         "answer_chars": len(content),
     }
+
+
+def _openai_function_tool_call(raw: Any, label: str) -> dict[str, Any]:
+    call = _object_value(raw, label)
+    _require_exact_keys(call, {"id", "type", "function"}, label)
+    call_id = call.get("id")
+    if not isinstance(call_id, str) or not call_id.strip():
+        raise PiConfigValidationError(f"{label}.id must be a non-empty string")
+    if call.get("type") != "function":
+        raise PiConfigValidationError(f"{label}.type must be 'function'")
+    function = _object_value(call.get("function"), f"{label}.function")
+    _require_exact_keys(function, {"name", "arguments"}, f"{label}.function")
+    name = function.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise PiConfigValidationError(f"{label}.function.name must be a non-empty string")
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        raise PiConfigValidationError(f"{label}.function.arguments must be a JSON string")
+    return {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+
+
+def _validate_stream_tool_call_start(call_delta: dict[str, Any], label: str) -> None:
+    missing = sorted({"id", "type", "function"} - set(call_delta))
+    if missing:
+        raise PiConfigValidationError(
+            f"{label} first fragment must include id, type, and function; missing={missing}"
+        )
+    call_id = call_delta.get("id")
+    if not isinstance(call_id, str) or not call_id.strip():
+        raise PiConfigValidationError(f"{label}.id must be a non-empty string")
+    if call_delta.get("type") != "function":
+        raise PiConfigValidationError(f"{label}.type must be 'function'")
+    function = _object_value(call_delta.get("function"), f"{label}.function")
+    if function.get("name") is None:
+        raise PiConfigValidationError(f"{label}.function.name is required on the first fragment")
+    if function.get("arguments") is not None and not isinstance(function.get("arguments"), str):
+        raise PiConfigValidationError(f"{label}.function.arguments must be a string")
+
+
+def _require_exact_keys(mapping: dict[str, Any], expected: set[str], label: str) -> None:
+    actual = set(mapping)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise PiConfigValidationError(
+            f"{label} must have exactly keys {sorted(expected)}; "
+            f"missing={missing}, extra={extra}"
+        )
+
+
+def _require_subset_keys(mapping: dict[str, Any], allowed: set[str], label: str) -> None:
+    extra = sorted(set(mapping) - allowed)
+    if extra:
+        raise PiConfigValidationError(
+            f"{label} contains unsupported OpenAI tool-call fields: {extra}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

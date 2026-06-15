@@ -385,6 +385,113 @@ def test_local_agent_chat_smoke_response_rejects_wrong_tool_argument() -> None:
         )
 
 
+def test_local_agent_chat_smoke_response_rejects_non_assistant_message() -> None:
+    with pytest.raises(validate_local_agent_config.ConfigValidationError, match="message.role"):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {"role": "tool", "tool_calls": []},
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
+
+
+def test_local_agent_chat_smoke_response_rejects_content_with_tool_call() -> None:
+    with pytest.raises(validate_local_agent_config.ConfigValidationError, match="assistant content"):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": "I will call the tool.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "record_result",
+                                        "arguments": json.dumps({"result": "ok"}),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("tool_call", "match"),
+    [
+        (
+            {
+                "type": "function",
+                "function": {"name": "record_result", "arguments": json.dumps({"result": "ok"})},
+            },
+            "missing=.*id",
+        ),
+        (
+            {
+                "id": "call_1",
+                "type": "custom",
+                "function": {"name": "record_result", "arguments": json.dumps({"result": "ok"})},
+            },
+            r"\.type must be 'function'",
+        ),
+        (
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "record_result",
+                    "arguments": json.dumps({"result": "ok"}),
+                    "extra": True,
+                },
+            },
+            "extra=.*extra",
+        ),
+        (
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "record_result", "arguments": {"result": "ok"}},
+            },
+            r"\.function\.arguments must be a JSON string",
+        ),
+    ],
+)
+def test_local_agent_chat_smoke_response_rejects_malformed_tool_call_shape(
+    tool_call: dict[str, Any],
+    match: str,
+) -> None:
+    with pytest.raises(validate_local_agent_config.ConfigValidationError, match=match):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [tool_call],
+                        },
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
+
+
 def test_local_agent_config_rejects_missing_unsupported_blocklist() -> None:
     config = validate_local_agent_config.load_config(CONFIG_PATH)
     config["chat_completions"]["do_not_send"] = []
@@ -817,7 +924,7 @@ def test_pi_agent_streaming_chat_smoke_response_rejects_missing_usage() -> None:
         validate_pi_agent_models.validate_pi_streaming_chat_smoke_response(
             "\n".join(
                 [
-                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"record_result","arguments":"{\\"result\\":\\"ok\\"}"}}]},"finish_reason":null}]}',
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"record_result","arguments":"{\\"result\\":\\"ok\\"}"}}]},"finish_reason":null}]}',
                     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
                     "data: [DONE]",
                 ]
@@ -1065,6 +1172,186 @@ def test_pi_agent_chat_smoke_response_rejects_wrong_tool_argument() -> None:
                 ],
             }
         )
+
+
+def test_pi_agent_chat_smoke_response_rejects_non_assistant_message() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="message.role"):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {"role": "tool", "tool_calls": []},
+                    }
+                ],
+            }
+        )
+
+
+def test_pi_agent_chat_smoke_response_rejects_content_with_tool_call() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="assistant content"):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": "I will call the tool.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "record_result",
+                                        "arguments": json.dumps({"result": "ok"}),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("tool_call", "match"),
+    [
+        (
+            {
+                "type": "function",
+                "function": {"name": "record_result", "arguments": json.dumps({"result": "ok"})},
+            },
+            "missing=.*id",
+        ),
+        (
+            {
+                "id": "call_1",
+                "type": "custom",
+                "function": {"name": "record_result", "arguments": json.dumps({"result": "ok"})},
+            },
+            r"\.type must be 'function'",
+        ),
+        (
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "record_result",
+                    "arguments": json.dumps({"result": "ok"}),
+                    "extra": True,
+                },
+            },
+            "extra=.*extra",
+        ),
+        (
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "record_result", "arguments": {"result": "ok"}},
+            },
+            r"\.function\.arguments must be a JSON string",
+        ),
+    ],
+)
+def test_pi_agent_chat_smoke_response_rejects_malformed_tool_call_shape(
+    tool_call: dict[str, Any],
+    match: str,
+) -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match=match):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [tool_call],
+                        },
+                    }
+                ],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("tool_delta", "match"),
+    [
+        (
+            {
+                "index": 0,
+                "type": "function",
+                "function": {"name": "record_result", "arguments": '{"result":"ok"}'},
+            },
+            "first fragment.*id",
+        ),
+        (
+            {
+                "index": 0,
+                "id": "call_1",
+                "type": "custom",
+                "function": {"name": "record_result", "arguments": '{"result":"ok"}'},
+            },
+            r"\.type must be 'function'",
+        ),
+        (
+            {
+                "index": 0,
+                "id": "call_1",
+                "type": "function",
+                "function": {"arguments": '{"result":"ok"}'},
+            },
+            r"\.function\.name is required",
+        ),
+        (
+            {
+                "index": 0,
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "record_result", "arguments": {"result": "ok"}},
+            },
+            r"\.function\.arguments must be a string",
+        ),
+        (
+            {
+                "index": 0,
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "record_result", "arguments": '{"result":"ok"}'},
+                "unexpected": True,
+            },
+            "unsupported OpenAI tool-call fields",
+        ),
+    ],
+)
+def test_pi_agent_streaming_chat_smoke_response_rejects_malformed_tool_call_delta(
+    tool_delta: dict[str, Any],
+    match: str,
+) -> None:
+    response = "\n".join(
+        [
+            "data: "
+            + json.dumps(
+                {
+                    "choices": [
+                        {
+                            "delta": {"tool_calls": [tool_delta]},
+                            "finish_reason": None,
+                        }
+                    ]
+                },
+                separators=(",", ":"),
+            ),
+            'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+            "data: [DONE]",
+        ]
+    )
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match=match):
+        validate_pi_agent_models.validate_pi_streaming_chat_smoke_response(response)
 
 
 def test_pi_agent_models_validator_rejects_reasoning_disabled() -> None:

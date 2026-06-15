@@ -198,6 +198,8 @@ def validate_chat_smoke_response(
     choice = _object_value(choices[0], "chat smoke response.choices[0]")
     message = _object(choice, "message")
     finish_reason = choice.get("finish_reason")
+    if message.get("role") != "assistant":
+        raise ConfigValidationError("chat smoke response message.role must be 'assistant'")
     raw_tool_field = _first_message_field_containing(message, "<tool_call>")
     if raw_tool_field is not None:
         raise ConfigValidationError(
@@ -212,13 +214,22 @@ def validate_chat_smoke_response(
             "chat smoke did not finish with tool_calls; "
             f"finish_reason={finish_reason!r}"
         )
+    content = message.get("content")
+    if content not in (None, ""):
+        raise ConfigValidationError(
+            "chat smoke tool-call response must not include assistant content; "
+            "expected parsed message.tool_calls only"
+        )
     tool_calls = _list(message.get("tool_calls"), "chat smoke response message.tool_calls")
     if len(tool_calls) != 1:
         raise ConfigValidationError(
             f"chat smoke expected exactly one tool call, got {len(tool_calls)}"
         )
-    call = _object_value(tool_calls[0], "chat smoke response message.tool_calls[0]")
-    function = _object_value(call.get("function"), "chat smoke response tool call function")
+    call = _openai_function_tool_call(
+        tool_calls[0],
+        "chat smoke response message.tool_calls[0]",
+    )
+    function = call["function"]
     name = function.get("name")
     if name != "record_result":
         raise ConfigValidationError(f"chat smoke selected unexpected tool {name!r}")
@@ -245,6 +256,36 @@ def validate_chat_smoke_response(
         "argument_keys": sorted(str(key) for key in decoded_args),
         "result": result,
     }
+
+
+def _openai_function_tool_call(raw: Any, label: str) -> dict[str, Any]:
+    call = _object_value(raw, label)
+    _require_exact_keys(call, {"id", "type", "function"}, label)
+    call_id = call.get("id")
+    if not isinstance(call_id, str) or not call_id.strip():
+        raise ConfigValidationError(f"{label}.id must be a non-empty string")
+    if call.get("type") != "function":
+        raise ConfigValidationError(f"{label}.type must be 'function'")
+    function = _object_value(call.get("function"), f"{label}.function")
+    _require_exact_keys(function, {"name", "arguments"}, f"{label}.function")
+    name = function.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ConfigValidationError(f"{label}.function.name must be a non-empty string")
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        raise ConfigValidationError(f"{label}.function.arguments must be a JSON string")
+    return {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+
+
+def _require_exact_keys(mapping: dict[str, Any], expected: set[str], label: str) -> None:
+    actual = set(mapping)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ConfigValidationError(
+            f"{label} must have exactly keys {sorted(expected)}; "
+            f"missing={missing}, extra={extra}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
