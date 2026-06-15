@@ -93230,3 +93230,31 @@ Validation:
 - Prompt verifier passed: guarded pointer accessor only, no torch hot-path import,
   no backend/quant dispatch branches, no attention/KV ABI changes, no NextN
   execution, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF draft seed descriptor
+
+Implemented `mtp-gguf` multiloop iteration 14: a ready fp32 hidden-seed package
+for future GGUF NextN draft execution.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftSeed`.
+  - Packages `token_id`, `position`, `hidden_ptr`, and the ready hidden-seed
+    contract.
+  - Validates non-negative token/position, non-zero device pointer, ready fp32
+    hidden contract, and one-row seed shape.
+- Added `Qwen35GGUFResidentSession.mtp_draft_seed(token_id=..., position=...)`.
+  - Uses `fp32_hidden_seed_ptr()` and `fp32_hidden_seed_contract(rows=1)` so M3
+    code cannot consume an unpopulated or non-fp32 seed.
+- Extended `tests/test_qwen35_gguf_hidden_seed_contract.py` to cover ready seed
+  packaging from a session, unready contract rejection, invalid token/position /
+  pointer rejection, and serialization.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Hidden-seed/draft-seed tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `9` passed.
+- `py_compile` passed for `hipengine/runtime/qwen35_gguf_runner.py`.
+- Prompt verifier passed: MTP draft-seed descriptor/API only, no torch hot-path
+  import, no backend/quant dispatch branches, no attention/KV ABI changes, no
+  NextN math, and no performance claims.

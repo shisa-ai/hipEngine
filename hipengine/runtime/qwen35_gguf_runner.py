@@ -181,6 +181,38 @@ class Qwen35GGUFNextTokenProbeResult:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftSeed:
+    """Ready target seed descriptor for one GGUF MTP draft step."""
+
+    token_id: int
+    position: int
+    hidden_ptr: int
+    hidden_contract: "Qwen35GGUFHiddenSeedContract"
+
+    def __post_init__(self) -> None:
+        if self.token_id < 0:
+            raise ValueError("MTP draft seed token_id must be non-negative")
+        if self.position < 0:
+            raise ValueError("MTP draft seed position must be non-negative")
+        if self.hidden_ptr <= 0:
+            raise ValueError(
+                "MTP draft seed hidden_ptr must be a non-zero device pointer"
+            )
+        if not self.hidden_contract.ready_for_mtp:
+            raise ValueError("MTP draft seed requires a ready fp32 hidden contract")
+        if self.hidden_contract.rows != 1:
+            raise ValueError("MTP draft seed currently supports exactly one hidden row")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "token_id": self.token_id,
+            "position": self.position,
+            "hidden_ptr": self.hidden_ptr,
+            "hidden_contract": self.hidden_contract.as_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFHiddenSeedContract:
     """Contract for GGUF MTP target hidden seeds.
 
@@ -3021,6 +3053,16 @@ class Qwen35GGUFResidentSession:
                 "call step(..., capture_hidden_seed_fp32=True) first"
             )
         return int(self.scratch.hidden_seed_fp32.ptr)
+
+    def mtp_draft_seed(self, *, token_id: int, position: int) -> Qwen35GGUFMTPDraftSeed:
+        """Package the populated fp32 hidden seed for future NextN draft work."""
+
+        return Qwen35GGUFMTPDraftSeed(
+            token_id=int(token_id),
+            position=int(position),
+            hidden_ptr=self.fp32_hidden_seed_ptr(),
+            hidden_contract=self.fp32_hidden_seed_contract(rows=1),
+        )
 
     def reset(self) -> None:
         """Reset sequence state without freeing resident weights or scratch."""
@@ -5994,6 +6036,7 @@ __all__ = [
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFHiddenSeedContract",
+    "Qwen35GGUFMTPDraftSeed",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFFastPathSafety",

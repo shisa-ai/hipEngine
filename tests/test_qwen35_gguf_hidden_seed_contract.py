@@ -9,6 +9,7 @@ from hipengine.core.dtype import DType
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFHiddenSeedContract,
+    Qwen35GGUFMTPDraftSeed,
     Qwen35GGUFResidentSession,
     qwen35_gguf_current_hidden_seed_contract,
     qwen35_gguf_fp32_hidden_seed_contract,
@@ -84,6 +85,56 @@ def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without
     assert populated.llama_cpp_compatible
     assert populated.ready_for_mtp
     assert session.fp32_hidden_seed_ptr() == 12345
+    seed = session.mtp_draft_seed(token_id=99, position=7)
+    assert seed.token_id == 99
+    assert seed.position == 7
+    assert seed.hidden_ptr == 12345
+    assert seed.hidden_contract.ready_for_mtp
+
+
+def test_mtp_draft_seed_rejects_unready_contract_or_invalid_fields() -> None:
+    ready = qwen35_gguf_fp32_hidden_seed_contract(
+        hidden_size=4096,
+        populated_by_decode=True,
+    )
+    unready = qwen35_gguf_fp32_hidden_seed_contract(hidden_size=4096)
+
+    with pytest.raises(ValueError, match="requires a ready fp32 hidden contract"):
+        Qwen35GGUFMTPDraftSeed(
+            token_id=1,
+            position=2,
+            hidden_ptr=123,
+            hidden_contract=unready,
+        )
+    with pytest.raises(ValueError, match="token_id must be non-negative"):
+        Qwen35GGUFMTPDraftSeed(
+            token_id=-1,
+            position=2,
+            hidden_ptr=123,
+            hidden_contract=ready,
+        )
+    with pytest.raises(ValueError, match="position must be non-negative"):
+        Qwen35GGUFMTPDraftSeed(
+            token_id=1,
+            position=-2,
+            hidden_ptr=123,
+            hidden_contract=ready,
+        )
+    with pytest.raises(ValueError, match="hidden_ptr must be a non-zero"):
+        Qwen35GGUFMTPDraftSeed(
+            token_id=1,
+            position=2,
+            hidden_ptr=0,
+            hidden_contract=ready,
+        )
+
+    seed = Qwen35GGUFMTPDraftSeed(
+        token_id=1,
+        position=2,
+        hidden_ptr=123,
+        hidden_contract=ready,
+    )
+    assert seed.as_dict()["hidden_contract"] == ready.as_dict()
 
 
 def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_requested(monkeypatch: pytest.MonkeyPatch) -> None:
