@@ -668,6 +668,24 @@ def build_b1_prompt_suite_artifact(
     }
 
 
+def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": artifact["status"],
+        "draft_max": artifact["draft_max"],
+        "parity_precheck": artifact["parity_precheck"]["all_pass"],
+        "draft_budget_precheck": artifact["draft_budget_precheck"]["passed"],
+        "draft_sampling_contract_precheck": artifact["draft_sampling_contract_precheck"]["passed"],
+        "hidden_seed_contract_precheck": artifact["hidden_seed_contract_precheck"]["passed"],
+        "exactness_gate": artifact["execution"]["exactness_gate"],
+        "native_runtime_kernels_ready": artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"],
+        "optimization_kernels_ready": artifact["runtime_kernel_precheck"]["optimization_kernels_ready"],
+        "missing_native_runtime_keys": artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"],
+        "missing_optimization_keys": artifact["runtime_kernel_precheck"]["missing_optimization_keys"],
+        "metrics_contract_status": artifact["hipengine_metrics_contract"]["status"],
+        "blocker_codes": [blocker["code"] for blocker in artifact["blockers"]],
+    }
+
+
 def build_b1_b4_prompt_suite_matrix(
     *,
     model: Path,
@@ -695,6 +713,7 @@ def build_b1_b4_prompt_suite_matrix(
         )
         for draft_max in (1, 2, 3, 4)
     ]
+    readiness_by_budget = {item["budget"]: _matrix_budget_readiness(item) for item in artifacts}
     return {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
@@ -709,9 +728,19 @@ def build_b1_b4_prompt_suite_matrix(
         "all_sampling_contract_prechecks_pass": all(
             item["draft_sampling_contract_precheck"]["passed"] for item in artifacts
         ),
+        "all_hidden_seed_contract_prechecks_pass": all(
+            item["hidden_seed_contract_precheck"]["passed"] for item in artifacts
+        ),
         "all_exactness_gates_pass": all(item["execution"]["exactness_gate"] == "passed" for item in artifacts),
+        "all_native_runtime_kernels_ready": all(
+            item["runtime_kernel_precheck"]["native_runtime_kernels_ready"] for item in artifacts
+        ),
+        "all_optimization_kernels_ready": all(
+            item["runtime_kernel_precheck"]["optimization_kernels_ready"] for item in artifacts
+        ),
+        "readiness_by_budget": readiness_by_budget,
         "blocker_codes_by_budget": {
-            item["budget"]: [blocker["code"] for blocker in item["blockers"]] for item in artifacts
+            budget: readiness["blocker_codes"] for budget, readiness in readiness_by_budget.items()
         },
         "artifacts": artifacts,
     }

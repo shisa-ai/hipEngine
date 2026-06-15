@@ -96392,3 +96392,45 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Matrix mode only aggregates blocked B1-B4 preflight artifacts; future
   MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF matrix readiness summary
+
+Implemented `mtp-gguf` multiloop iteration 82: added a compact per-budget
+readiness summary to the GGUF MTP B1-B4 matrix artifact.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This makes the `--all-budgets` artifact reviewable without digging through the
+  full child artifact for each draft cap.
+
+Changes:
+- Added `_matrix_budget_readiness(...)` in `scripts/gguf_mtp_b1_prompt_suite.py`.
+- B1-B4 matrix artifacts now include `readiness_by_budget` with each budget's:
+  precheck booleans, exactness gate, native/optimization kernel readiness,
+  missing native keys, metrics contract status, and blocker codes.
+- Added aggregate `all_hidden_seed_contract_prechecks_pass`,
+  `all_native_runtime_kernels_ready`, and `all_optimization_kernels_ready` flags.
+- `blocker_codes_by_budget` now derives from the compact readiness summary.
+- Extended B1 preflight tests to assert B1/B4 readiness summary fields.
+- Updated `docs/MTP-gguf.md` to document the compact matrix readiness section.
+
+Validation:
+- Focused B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `14` passed.
+- Real local B1-B4 matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --out <tmp>` ->
+  `matrix blocked True False ['native_gguf_mtp_runtime_missing'] [['hip_gfx1100', 'mtp_nextn_layer', 'w4_gguf', 'qwen35_dense_logits']]`, meaning hidden-seed prechecks pass, native runtime kernels are still missing, and B4 reports the expected runtime blocker/key.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Readiness summary only aggregates existing blocked preflight status;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

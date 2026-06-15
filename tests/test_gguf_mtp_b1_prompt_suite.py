@@ -414,7 +414,31 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["all_parity_prechecks_pass"] is True
     assert matrix["all_budget_prechecks_pass"] is True
     assert matrix["all_sampling_contract_prechecks_pass"] is True
+    assert matrix["all_hidden_seed_contract_prechecks_pass"] is True
     assert matrix["all_exactness_gates_pass"] is True
+    assert matrix["all_native_runtime_kernels_ready"] is False
+    assert matrix["all_optimization_kernels_ready"] is False
+    assert matrix["readiness_by_budget"]["B1"] == {
+        "status": "blocked",
+        "draft_max": 1,
+        "parity_precheck": True,
+        "draft_budget_precheck": True,
+        "draft_sampling_contract_precheck": True,
+        "hidden_seed_contract_precheck": True,
+        "exactness_gate": "passed",
+        "native_runtime_kernels_ready": False,
+        "optimization_kernels_ready": False,
+        "missing_native_runtime_keys": [
+            ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+        ],
+        "missing_optimization_keys": [
+            ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+        ],
+        "metrics_contract_status": "not_run",
+        "blocker_codes": ["native_gguf_mtp_runtime_missing"],
+    }
+    assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
+    assert matrix["readiness_by_budget"]["B4"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["blocker_codes_by_budget"] == {
         "B1": ["native_gguf_mtp_runtime_missing"],
         "B2": ["native_gguf_mtp_runtime_missing"],
