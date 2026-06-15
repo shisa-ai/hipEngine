@@ -3082,24 +3082,59 @@ above and in P3/P4 until the server advertises those capabilities.
 
 These items should not displace P1 hardening or P2 fail-closed correctness work:
 
+Status: the app-local single-model agent surface is implemented enough for
+local harness use. P3 now means resident-state reuse, performance promotion, or
+larger serving topology, not correctness of the current prompt/replay contract.
+
+Already done at app-local transcript level:
+
+1. **Session safety and explicit commit policy.** Stateless no-retain behavior,
+   `append_visible_only`, `append_prompt_only`, `append_none`, debug
+   `append_all`, unsafe-finish downgrade to prompt-only, final
+   `cache_action`, metadata-only session list/delete, and visible-only
+   reasoning stripping are implemented for buffered chat `n=1` sessions.
+2. **Branching and recovery without resident KV reuse.** App-local session fork,
+   rollback by message count, snapshot export/restore, transcript deep-copy
+   guarantees, cap handling, route metadata, and snapshot compatibility checks
+   are implemented. These paths all report `resident_state_reuse=false` and
+   re-render through the normal prompt path.
+3. **Context fitting policies.** Explicit `reject`/`fail`,
+   `auto_clear_transient`, `new_session`, and `truncate_oldest_visible`
+   policies are implemented for stateful buffered chat, with `/fit_context`
+   parity and actionable generation-time overflow payloads. No current policy
+   drops request content.
+4. **Harness/ops support.** Capabilities, pi/local-agent config snippets,
+   golden harness traces, error taxonomy, health/readiness diagnostics, replay
+   artifacts, queue/session caps, and basic routing metadata are implemented for
+   the current single-model server.
+
+Remaining P3 work:
+
 1. **Resident KV session/cache work.** Visible-only KV re-prefill, forkable
    resident prefix/cache handles, resident rollback/delete semantics,
    resident-state continuation reuse, full tokenizer/decode/sampling state
-   snapshots, and prefix-vs-turn-history eviction policy.
-2. **Native sampler promotion and full sampler polish.** Performance promotion,
-   true batched c>N/GGUF native sampling, exact GPU top-p on every shape, and
-   `top_logprobs` parity are P3 while host fallback remains explicit and
-   correct.
-3. **Multi-model routing, model-family fallback, and TP runtime.** Build these
-   after the single-model contract stays green. `docs/TENSOR_PARALLEL.md`
-   remains the TP design gate.
+   snapshots, and prefix-vs-turn-history eviction policy are not implemented.
+   Do this only when avoiding re-prefill is a measured bottleneck for real
+   agent sessions.
+2. **Native sampler promotion and full sampler polish.** The opt-in PARO native
+   sampler route exists, but promotion still needs retained GPU evidence that
+   supported sampled shapes are correct, non-regressive, and operationally worth
+   making default. True batched c>N/GGUF native sampling and native
+   `top_logprobs` parity remain unimplemented while host fallback is explicit.
+3. **Multi-model routing, model-family fallback, and TP runtime.** Current
+   routing metadata is single-model exact-match only. Multiple resident models,
+   capability-aware fallback, model-family substitution, and tensor parallel
+   runtime remain deferred; `docs/TENSOR_PARALLEL.md` is still the TP design
+   gate.
 4. **Patch/tool/JSON grammar completeness and retry/repair policies.** Full
    token-level patch grammar enforcement, broad JSON Schema decoding, and
    automatic retry/repair are later policies unless a concrete agent harness
-   cannot operate with current fail-closed validation.
+   cannot operate with current fail-closed validation and narrow JSON
+   close-suffix forcing.
 5. **Production-serving polish.** True mid-kernel or mid-graph preemption,
-   richer cache/KV byte accounting, advanced fair-share routing, and other
-   production multi-tenant server features remain later work.
+   richer cache/KV byte accounting, advanced fair-share routing beyond the
+   current FIFO-compatible batcher policy, and other production multi-tenant
+   server features remain later work.
 
 ## Validation expectations
 

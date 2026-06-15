@@ -93360,6 +93360,23 @@ Validation:
 - `python3 -m pytest tests/test_sampling.py -q -k 'speculative_mtp_sampling_allows_only_greedy_fast_policy or speculative_mtp_incompatible_fields_match_blocker_policy or native_gpu_sampler_support_rejects_unwired_shapes or native_gpu_unsupported_capabilities_match_guard_policy'` -> `4 passed`.
 - `python3 -m pytest tests/test_generation_batch_scheduler.py -q -k 'speculative_verify_for_processed_sampling or emits_speculative_verify_work or per_row_sampler_block_keeps_incompatible_rows_together or record_generated_events_emit_decode_telemetry'` -> `21 passed`.
 
+## 2026-06-16 - AGENTIC P3 done-vs-left cleanup
+
+Cleaned up the final `docs/AGENTIC.md` P3 priority bucket to distinguish the
+implemented app-local single-model agent surface from deferred resident-state,
+native-sampler promotion, routing/TP, grammar/retry, and production-serving
+work. The detailed subsystem sections already had current-code reality notes;
+the summary bucket now states that session commit/fork/rollback/snapshot,
+context fitting, capabilities, pi/local-agent snippets, golden traces, error
+taxonomy, readiness, replay artifacts, queue/session caps, and basic routing
+metadata are done at app-local transcript scope, while resident KV reuse and
+performance/topology work remain later.
+
+Validation:
+- `sed -n '3060,3135p' docs/AGENTIC.md` -> re-read updated P3 bucket.
+- `git diff -- docs/AGENTIC.md` -> doc-only P3 cleanup.
+- `git diff --check -- docs/AGENTIC.md` -> clean.
+
 ## 2026-06-15 - Scheduler logprob fallback diagnostics
 
 Added sanitized final-choice diagnostics when buffered chat streams request
