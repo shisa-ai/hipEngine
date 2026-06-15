@@ -93517,3 +93517,19 @@ Validation:
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-15 - Tool-transcript context truncation regression
+
+Added endpoint-level coverage for
+`session.context_overflow_policy="truncate_oldest_visible"` with stored tool
+transcripts. The regression forces an orphan `tool`-message suffix to fit the
+token budget and asserts the policy skips it, keeps only a validated suffix,
+reports the dropped prefix in `/v1/hipengine/fit_context`, and commits the same
+validated suffix after generation.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'truncate_oldest_visible'` -> `2 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q -k 'truncate_oldest_visible or context_overflow_policy_requires_known_stateful_mode or chat_context_overflow_reports_session_fit_context'` -> `4 passed`.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.

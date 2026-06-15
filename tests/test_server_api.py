@@ -1989,6 +1989,118 @@ def test_chat_context_truncate_oldest_visible_policy_keeps_fitting_suffix() -> N
     )
 
 
+def test_chat_context_truncate_oldest_visible_policy_skips_orphan_tool_suffix() -> None:
+    class WeightedToolTranscriptFakeLLM(SequentialFakeLLM):
+        def count_tokens(self, text: str) -> int:
+            prompt = str(text)
+            if "new beta" not in prompt:
+                return 1
+            score = 1
+            if "README.md" in prompt:
+                score += 20
+            if "alpha file text" in prompt:
+                score += 1
+            if "alpha summary" in prompt:
+                score += 1
+            return score
+
+    fake = WeightedToolTranscriptFakeLLM(
+        [
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+            "alpha summary",
+            "after truncate",
+        ]
+    )
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=10,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "alpha read"}],
+            "tools": tools,
+            "max_tokens": 1,
+            "session": {"id": "truncate_tool_session"},
+        },
+    )
+    assert first.status_code == 200
+    tool_call_id = first.json()["choices"][0]["message"]["tool_calls"][0]["id"]
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "tool", "tool_call_id": tool_call_id, "content": "alpha file text"}],
+            "tools": tools,
+            "max_tokens": 1,
+            "session": {"id": "truncate_tool_session"},
+        },
+    )
+    assert second.status_code == 200
+    original_prefix = app.state.hipengine_chat_sessions["truncate_tool_session"].messages
+    payload = {
+        "messages": [{"role": "user", "content": "new beta"}],
+        "max_tokens": 1,
+        "session": {
+            "id": "truncate_tool_session",
+            "context_overflow_policy": "truncate_oldest_visible",
+        },
+    }
+
+    fit = client.post("/v1/hipengine/fit_context", json=payload)
+    third = client.post("/v1/chat/completions", json={"model": "fake-model", **payload})
+
+    assert fit.status_code == 200
+    assert third.status_code == 200
+    fit_body = fit.json()
+    assert fit_body["fits"] is True
+    assert fit_body["clear_policy"] == "truncate_oldest_visible"
+    assert fit_body["would_truncate"] is True
+    assert fit_body["would_reset_session"] is False
+    dropped_messages = fit_body["would_drop"][0]["message_count"]
+    assert dropped_messages >= 3
+    assert fit_body["kept_segments"] == [
+        {
+            "kind": "session_prefix",
+            "session_id": "truncate_tool_session",
+            "storage": "app_local_transcript",
+            "message_count": len(original_prefix) - dropped_messages,
+        },
+        {"kind": "request_messages", "message_count": 1},
+    ]
+    serialized = json.dumps(fit_body)
+    assert "new beta" in serialized
+    assert "alpha file text" not in serialized
+    prompt = fake.calls[2][0][0]
+    assert "new beta" in prompt
+    assert "alpha file text" not in prompt
+    assert "<tool_response>" not in prompt
+    expected_messages = (
+        *original_prefix[dropped_messages:],
+        {"role": "user", "content": "new beta"},
+        {"role": "assistant", "content": "after truncate"},
+    )
+    assert app.state.hipengine_chat_sessions["truncate_tool_session"].messages == expected_messages
+
+
 def test_chat_context_overflow_policy_requires_known_stateful_mode() -> None:
     fake = FakeLLM(outputs=["unused"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
