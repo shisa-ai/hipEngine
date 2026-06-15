@@ -93085,3 +93085,35 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `4 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Refine INT8 prefill gate to require memory pressure
+
+Refined the direct streaming INT8 prefill auto policy after review: it should be
+used only for very-long prompts **and** genuine memory pressure, not merely
+because a prompt is long. The default auto rule is now:
+
+- keep fast temporary BF16-oracle/AOTriton INT8-KV prefill unless prompt rows are
+  at least `224 * 1024 = 229376` tokens;
+- even above that cutoff, use direct streaming INT8 only when HIP meminfo shows
+  a 24GB-class device (`total <= 26 GiB`) or current free memory cannot cover
+  the BF16 oracle bytes plus a 1 GiB reserve;
+- W7900 / large-memory Strix-style runs therefore stay on the fast path by
+  default even at 262K, unless they are genuinely memory-fragmented/pressure-hit;
+- env overrides remain for diagnostics: `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION=streaming|oracle`,
+  `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS`,
+  `HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB`, and
+  `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB`.
+
+Cutoff rationale: the retained GPU1 24GB scratch table showed the BF16-oracle
+path still had `1.238 GiB` min-free at `196608`, but only `0.664 GiB` at
+`262144`; linear interpolation puts the 1 GiB guardrail crossing near ~224K
+prompt rows. The new `229376` default is therefore close to the observed 24GB
+breakpoint while keeping `128K` and `196K` on the faster BF16-oracle path.
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py` -> passed.
+- `uv run pytest tests/test_qwen35_prefill_workspace_policy.py -q` -> `6 passed`.
+- `uv run pytest tests/test_qwen35_resident_batch_layout.py -q -k 'prefill or int8 or native'` -> `49 passed`.
+- `uv run pytest tests/test_qwen35_resident_batch_layout.py -q` -> passed.
+- `uv run ruff check hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py docs/REFACTOR.md` -> clean.

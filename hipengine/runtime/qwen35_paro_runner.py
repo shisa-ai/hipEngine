@@ -127,7 +127,11 @@ from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitP
 _PREFILL_OVERLAP_MIN_TOKENS = 32768
 _INT8_PREFILL_ATTENTION_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION"
 _INT8_PREFILL_STREAMING_MIN_TOKENS_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS"
-_INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT = 200_000
+_INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT = 224 * 1024
+_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB"
+_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT = 26.0
+_INT8_PREFILL_ORACLE_RESERVE_MIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB"
+_INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT = 1024
 _LOGGER = logging.getLogger(__name__)
 _VERIFY_DYNAMIC_METADATA_FIELDS = 5
 
@@ -144,6 +148,13 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None or value.strip() == "":
         return bool(default)
     return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return float(default)
+    return float(value)
 
 
 def _native_sampler_needs_processors(params: Any) -> bool:
@@ -2316,6 +2327,27 @@ class Qwen35ParoResidentSession:
                     if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
                     else None
                 ),
+                "int8_prefill_memory_pressure": (
+                    self._prefill_int8_memory_pressure(len(tokens))
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_low_memory_total_gib": (
+                    _env_float(
+                        _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_ENV,
+                        _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT,
+                    )
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_oracle_reserve_mib": (
+                    _env_int(
+                        _INT8_PREFILL_ORACLE_RESERVE_MIB_ENV,
+                        _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT,
+                    )
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             if not sample:
@@ -3043,6 +3075,43 @@ class Qwen35ParoResidentSession:
         threshold = int(self.prefill_config.attn_aotriton_min_tokens)
         return threshold > 0 and int(tokens) >= threshold
 
+    def _prefill_int8_oracle_bytes(self, tokens: int) -> int:
+        blocks = max(1, (int(tokens) + self.block_size - 1) // self.block_size)
+        return int(
+            2
+            * blocks
+            * self.block_size
+            * int(self.config.num_key_value_heads)
+            * int(self.config.head_dim)
+            * DType.BF16.itemsize
+        )
+
+    def _prefill_int8_memory_pressure(self, tokens: int) -> bool:
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return False
+        try:
+            free_bytes, total_bytes = self.runtime.mem_get_info()
+        except Exception:
+            return False
+        total_limit_gib = max(
+            0.0,
+            _env_float(
+                _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_ENV,
+                _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT,
+            ),
+        )
+        if total_limit_gib > 0.0 and int(total_bytes) <= int(total_limit_gib * 1024**3):
+            return True
+        reserve_mib = max(
+            0,
+            _env_int(
+                _INT8_PREFILL_ORACLE_RESERVE_MIB_ENV,
+                _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT,
+            ),
+        )
+        oracle_plus_reserve = self._prefill_int8_oracle_bytes(tokens) + reserve_mib * 1024**2
+        return int(free_bytes) <= int(oracle_plus_reserve)
+
     def _prefill_int8_attention_path(self, tokens: int) -> str | None:
         if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
             return None
@@ -3055,7 +3124,9 @@ class Qwen35ParoResidentSession:
                     _INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT,
                 ),
             )
-            return "streaming_direct" if int(tokens) >= min_tokens else "oracle_bf16"
+            if int(tokens) < min_tokens:
+                return "oracle_bf16"
+            return "streaming_direct" if self._prefill_int8_memory_pressure(tokens) else "oracle_bf16"
         if value in {"streaming", "streaming_direct", "direct", "direct_streaming"}:
             return "streaming_direct"
         if value in {"oracle", "bf16_oracle", "aotriton", "oracle_aotriton"}:
@@ -3645,6 +3716,27 @@ class Qwen35ParoResidentSession:
                     _env_int(
                         _INT8_PREFILL_STREAMING_MIN_TOKENS_ENV,
                         _INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT,
+                    )
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_memory_pressure": (
+                    self._prefill_int8_memory_pressure(prompt_rows)
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_low_memory_total_gib": (
+                    _env_float(
+                        _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_ENV,
+                        _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT,
+                    )
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_oracle_reserve_mib": (
+                    _env_int(
+                        _INT8_PREFILL_ORACLE_RESERVE_MIB_ENV,
+                        _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT,
                     )
                     if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
                     else None
