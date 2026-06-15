@@ -150,6 +150,12 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
         "implement_resident_kv_streaming_decode_loop"
     )
     assert kv_runner_handoff["decode_entrypoint_no_kernel_launches"] is True
+    assert kv_runner_handoff["decode_entrypoint_pre_run_upload_plan_sha256"]
+    assert kv_runner_handoff["decode_entrypoint_pre_run_upload_entry_count"] == 6
+    assert kv_runner_handoff["decode_entrypoint_pre_run_upload_total_nbytes"] == 484
+    assert kv_runner_handoff["decode_entrypoint_pre_run_upload_checks_passed"] is True
+    assert kv_runner_handoff["decode_entrypoint_launch_operation_sequence_sha256"]
+    assert kv_runner_handoff["decode_entrypoint_launch_operation_records_sha256"]
     assert kv_runner_handoff["evidence_preflight_status"] == "blocked"
     assert kv_runner_handoff["evidence_preflight_next_action"] == (
         "wire_streaming_decode_loop"

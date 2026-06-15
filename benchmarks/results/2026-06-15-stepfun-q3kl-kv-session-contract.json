@@ -129,6 +129,8 @@
     "kv_cache_nbytes": 94371840,
     "kv_cache_page_size": 512,
     "kv_cache_tokens": 512,
+    "launch_operation_records_sha256": "92a34ac5ef9cdd00df33da1e6ab72adb2e269be03346a2259316209a00bafafe",
+    "launch_operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
     "next_action": "implement_resident_kv_streaming_decode_loop",
     "no_claim_policy": {
       "e2e_inference_claim_allowed": false,
@@ -143,6 +145,26 @@
       "decode_kv_write",
       "decode_attention"
     ],
+    "pre_run_cleanup_order": [
+      "decode_attention_live_counts",
+      "decode_kv_write_position",
+      "decode_base_offsets",
+      "prompt_live_counts",
+      "prompt_base_offsets",
+      "input_ids"
+    ],
+    "pre_run_upload_checks_passed": true,
+    "pre_run_upload_entry_count": 6,
+    "pre_run_upload_order": [
+      "input_ids",
+      "prompt_base_offsets",
+      "prompt_live_counts",
+      "decode_base_offsets",
+      "decode_kv_write_position",
+      "decode_attention_live_counts"
+    ],
+    "pre_run_upload_plan_sha256": "b3f9e94d49b59caf8b4239ae04437d42045f8ec73d21d1eed6cd55d64e91a1d6",
+    "pre_run_upload_total_nbytes": 484,
     "ready": false,
     "required_artifacts": [
       "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",

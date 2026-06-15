@@ -83,6 +83,24 @@ def test_stepfun_kv_session_contract_artifact_binds_session_contract() -> None:
     assert decode_entrypoint["kv_cache_buffer_count"] == 0
     assert decode_entrypoint["kv_cache_layer_nbytes_match_expected"] is True
     assert decode_entrypoint["kv_cache_layer_nbytes_sha256"]
+    assert decode_entrypoint["pre_run_upload_plan_sha256"]
+    assert decode_entrypoint["pre_run_upload_entry_count"] == contract[
+        "pre_run_upload_entry_count"
+    ]
+    assert decode_entrypoint["pre_run_upload_total_nbytes"] == contract[
+        "pre_run_upload_total_nbytes"
+    ]
+    assert decode_entrypoint["pre_run_upload_order"] == contract["pre_run_upload_order"]
+    assert decode_entrypoint["pre_run_cleanup_order"] == contract[
+        "pre_run_cleanup_order"
+    ]
+    assert decode_entrypoint["pre_run_upload_checks_passed"] is True
+    assert decode_entrypoint["launch_operation_sequence_sha256"] == contract[
+        "launch_operation_sequence_sha256"
+    ]
+    assert decode_entrypoint["launch_operation_records_sha256"] == contract[
+        "launch_operation_records_sha256"
+    ]
     assert decode_entrypoint["planned_launch_operation_count"] == 135
     assert decode_entrypoint["all_planned_launches_ready"] is True
     assert decode_entrypoint["no_kernel_launches"] is True

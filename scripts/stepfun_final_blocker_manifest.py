@@ -375,6 +375,24 @@ def _kv_runner_prerequisite_handoff() -> dict[str, object]:
         "decode_entrypoint_no_kernel_launches": decode_entrypoint.get(
             "no_kernel_launches"
         ),
+        "decode_entrypoint_pre_run_upload_plan_sha256": decode_entrypoint.get(
+            "pre_run_upload_plan_sha256"
+        ),
+        "decode_entrypoint_pre_run_upload_entry_count": decode_entrypoint.get(
+            "pre_run_upload_entry_count"
+        ),
+        "decode_entrypoint_pre_run_upload_total_nbytes": decode_entrypoint.get(
+            "pre_run_upload_total_nbytes"
+        ),
+        "decode_entrypoint_pre_run_upload_checks_passed": decode_entrypoint.get(
+            "pre_run_upload_checks_passed"
+        ),
+        "decode_entrypoint_launch_operation_sequence_sha256": decode_entrypoint.get(
+            "launch_operation_sequence_sha256"
+        ),
+        "decode_entrypoint_launch_operation_records_sha256": decode_entrypoint.get(
+            "launch_operation_records_sha256"
+        ),
         "evidence_preflight_artifact": str(preflight_path),
         "evidence_preflight_artifact_present": preflight_file.exists(),
         "evidence_preflight_artifact_sha256": _file_sha256_if_present(

@@ -810,6 +810,22 @@ def test_stepfun_resident_session_decode_one_token_kv_bf16_reports_blocker() -> 
     assert blocker["decode_live_count"] == run_plan.decode_live_count
     assert blocker["stream"] == 7
     assert blocker["runtime_provided"] is False
+    expected_upload_plan = run_plan.decode_input_upload_plan
+    expected_launch_trace = run_plan.streaming_decode_launch_trace
+    assert blocker["pre_run_upload_plan_sha256"] == hashlib.sha256(
+        json.dumps(expected_upload_plan, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert blocker["pre_run_upload_entry_count"] == expected_upload_plan["entry_count"]
+    assert blocker["pre_run_upload_total_nbytes"] == expected_upload_plan["total_nbytes"]
+    assert blocker["pre_run_upload_order"] == expected_upload_plan["upload_order"]
+    assert blocker["pre_run_cleanup_order"] == expected_upload_plan["cleanup_order"]
+    assert blocker["pre_run_upload_checks_passed"] is True
+    assert blocker["launch_operation_sequence_sha256"] == expected_launch_trace[
+        "operation_sequence_sha256"
+    ]
+    assert blocker["launch_operation_records_sha256"] == expected_launch_trace[
+        "operation_records_sha256"
+    ]
     assert blocker["required_runtime_steps"] == [
         "validate the run_plan backend/layer count with kv_streaming_decode_contract",
         "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",

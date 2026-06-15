@@ -1638,6 +1638,11 @@ class StepFunResidentSession:
         """
 
         contract = self.kv_streaming_decode_contract(run_plan)
+        upload_plan = run_plan.decode_input_upload_plan
+        launch_trace = run_plan.streaming_decode_launch_trace
+        upload_plan_sha256 = hashlib.sha256(
+            json.dumps(upload_plan, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         session_layer_count = int(self.model_map.config.block_count)
         cache_layer_count = len(kv_cache.layer_nbytes)
         if cache_layer_count != session_layer_count:
@@ -1697,6 +1702,20 @@ class StepFunResidentSession:
             "decode_live_count": run_plan.decode_live_count,
             "stream": int(stream),
             "runtime_provided": runtime is not None,
+            "pre_run_upload_plan_sha256": upload_plan_sha256,
+            "pre_run_upload_entry_count": upload_plan["entry_count"],
+            "pre_run_upload_total_nbytes": upload_plan["total_nbytes"],
+            "pre_run_upload_order": list(upload_plan["upload_order"]),
+            "pre_run_cleanup_order": list(upload_plan["cleanup_order"]),
+            "pre_run_upload_checks_passed": upload_plan[
+                "all_consistency_checks_passed"
+            ],
+            "launch_operation_sequence_sha256": launch_trace[
+                "operation_sequence_sha256"
+            ],
+            "launch_operation_records_sha256": launch_trace[
+                "operation_records_sha256"
+            ],
             "required_runtime_steps": required_runtime_steps,
             "required_artifacts": contract["required_artifacts"],
             "planned_launch_operation_count": contract["launch_operation_count"],
