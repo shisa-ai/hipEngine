@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import logging
@@ -181,6 +182,7 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "maximum",
         "exclusiveMinimum",
         "exclusiveMaximum",
+        "multipleOf",
         *_JSON_SCHEMA_ANNOTATION_KEYWORDS,
     }
 )
@@ -873,6 +875,7 @@ def _tool_schema_subset() -> list[str]:
         "number.maximum",
         "number.exclusiveMinimum",
         "number.exclusiveMaximum",
+        "number.multipleOf",
     ]
 
 
@@ -9682,6 +9685,8 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     for key in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
         if key in schema and _schema_finite_number(schema.get(key)) is None:
             return (f"{path}.{key}", f"{path}.{key} must be a finite number")
+    if "multipleOf" in schema and _schema_positive_finite_number(schema.get("multipleOf")) is None:
+        return (f"{path}.multipleOf", f"{path}.multipleOf must be a positive finite number")
     return None
 
 
@@ -9762,6 +9767,10 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
             exclusive_maximum = _schema_finite_number(schema.get("exclusiveMaximum"))
             if exclusive_maximum is not None and numeric >= exclusive_maximum:
                 return f"{path} must be < {exclusive_maximum:g}"
+            multiple_of = schema.get("multipleOf")
+            if not _schema_number_is_multiple_of(value, multiple_of):
+                assert isinstance(multiple_of, (int, float))
+                return f"{path} must be a multiple of {float(multiple_of):g}"
     return None
 
 
@@ -9776,6 +9785,33 @@ def _schema_finite_number(value: Any) -> float | None:
         return None
     numeric = float(value)
     return numeric if math.isfinite(numeric) else None
+
+
+def _schema_positive_finite_number(value: Any) -> float | None:
+    numeric = _schema_finite_number(value)
+    if numeric is None or numeric <= 0:
+        return None
+    return numeric
+
+
+def _schema_decimal_number(value: Any) -> Decimal | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        numeric = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return numeric if numeric.is_finite() else None
+
+
+def _schema_number_is_multiple_of(value: Any, multiple_of: Any) -> bool:
+    divisor = _schema_decimal_number(multiple_of)
+    if divisor is None or divisor <= 0:
+        return True
+    numeric = _schema_decimal_number(value)
+    if numeric is None:
+        return True
+    return numeric % divisor == 0
 
 
 def _json_schema_type_matches(value: Any, expected: Any) -> bool:

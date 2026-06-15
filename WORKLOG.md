@@ -91859,3 +91859,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema numeric multiples
+
+Strict tool schemas and structured-output JSON Schema validation now support
+numeric `multipleOf`. The request schema validator rejects non-positive or
+non-finite divisors before generation, the capabilities manifest advertises
+`number.multipleOf`, and result validation uses Decimal-based divisibility so
+simple decimal constraints such as `0.25` avoid binary-float modulo surprises.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_numeric_multiple_of tests/test_server_api.py::test_completions_response_format_rejects_invalid_multiple_of_bound tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_multiple_of tests/test_server_api.py::test_completions_response_format_json_schema_validates_result -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `140 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
