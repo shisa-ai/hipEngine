@@ -40650,3 +40650,29 @@ git diff --check
 ```
 
 Results: targeted oracle token mismatch generator tests passed (`3` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `47a53c5ae8420b25e59a8fa60b21784fd9daa83fc76d96b89bac59e92802315b`; final-blocker file SHA `d5b56d460d862559ec3cadf5d6cc02008ecca6299a6f083da1ae058d5627e05b`; handoff file SHA `bde398f910ce151085dd1f34dbe7d8ffc11193dd7b4dd9787c2d482a860b8b93`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L KV blocker artifact includes runtime wiring map
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 481. Extended `scripts/stepfun_kv_blocker_status.py` so the retained KV-backed decode blocker artifact includes a `runtime_wiring_map` section in addition to missing artifact and source `kv_decode_run_plan` status. The map records the concrete in-tree entrypoints for the next implementation step: `StepFunShortContextDecodePlanner.plan_kv_decode_chat` binds prompts to `StepFunKVDecodeRunPlan`; `StepFunTextDecodeResourcePlan.kv_decode_launch_schedule` defines the per-layer launch order; `StepFunKVDecodeRunPlan.upload_decode_inputs` and `decode_input_upload_plan` cover the pre-run input uploads; `StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint`, `streaming_decode_launch_trace`, and `streaming_decode_loop_status` are metadata-only trace/status providers; `StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16` is the current host-composed prompt smoke; and the missing executable owner is `StepFunResidentSession`, which must launch resident prompt KV writes, one-token decode KV writes, and gated paged attention before the KV artifacts can be produced.
+
+The regenerated KV blocker artifact still records `status=blocked`, `blocked_count=2`, missing `benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json`, and no KV/e2e/performance claim. File SHA is `948b9878db356773fb56e9e333bc71b4b819c888276a1c0919f55c5445c13468`; stable JSON payload SHA is `a0fd040cfae5de071a20479db963d0aa7859de65a7392ceac173951b1808af56`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_kv_blocker_status.py tests/test_stepfun_kv_blocker_status.py
+python3 -m pytest -q tests/test_stepfun_kv_blocker_status.py
+python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty
+python3 scripts/stepfun_kv_blocker_status.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted KV blocker generator tests passed (`2` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `42a6b4f7cce6a2d28e15565e5c22ea73663a0dad5ee96af686d61d973f9f01fe`; final-blocker file SHA `5d3b5d791f7f1123df9e47dc0e3000395687561c701c9e8371686ba151b42f1c`; handoff file SHA `9817a5e8ad9593de3e24bb093fba89d3b90cbdd1ac5bf4bf8cf701e57a6a629e`; full StepFun guard passed; `git diff --check` passed.

@@ -167,6 +167,79 @@ def _dict_or_empty(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
+def _runtime_wiring_map() -> dict[str, object]:
+    """Return the current in-tree entrypoint map for wiring KV-backed decode."""
+
+    runner_file = "hipengine/runtime/stepfun_gguf_runner.py"
+    return {
+        "schema_version": 1,
+        "source": "static_runtime_symbol_map",
+        "runner_file": runner_file,
+        "planner_entrypoint": {
+            "symbol": "StepFunShortContextDecodePlanner.plan_kv_decode_chat",
+            "file": runner_file,
+            "role": "Bind the rendered StepFun chat prompt to a StepFunKVDecodeRunPlan.",
+        },
+        "resource_plan_entrypoint": {
+            "symbol": "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule",
+            "file": runner_file,
+            "role": "Define the planned per-layer order: prompt_kv_write, decode_kv_write, decode_attention.",
+        },
+        "device_input_entrypoints": [
+            {
+                "symbol": "StepFunKVDecodeRunPlan.upload_decode_inputs",
+                "file": runner_file,
+                "role": "Allocate/copy input IDs and KVLiveSpans-compatible span metadata before launches.",
+            },
+            {
+                "symbol": "StepFunKVDecodeRunPlan.decode_input_upload_plan",
+                "file": runner_file,
+                "role": "Metadata-only manifest for pre-run upload order and cleanup order.",
+            },
+        ],
+        "metadata_only_trace_entrypoints": [
+            {
+                "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint",
+                "file": runner_file,
+                "role": "Records upload and launch contract for the future streaming loop.",
+            },
+            {
+                "symbol": "StepFunKVDecodeRunPlan.streaming_decode_launch_trace",
+                "file": runner_file,
+                "role": "Records the 45-layer × 3-operation launch trace without launching kernels.",
+            },
+            {
+                "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_status",
+                "file": runner_file,
+                "role": "Reports blocked_by=streaming_decode_loop_not_wired until an executable loop exists.",
+            },
+        ],
+        "current_host_composed_prompt_smoke": {
+            "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16",
+            "file": runner_file,
+            "role": "Current all-layer prompt smoke path; it is host-composed and not KV-backed decode.",
+        },
+        "missing_execution_entrypoint": {
+            "owner": "StepFunResidentSession",
+            "expected_role": (
+                "Launch resident prompt KV writes, one-token decode KV writes, and gated paged attention "
+                "from the uploaded StepFunKVDecodeRunPlan inputs, then emit the KV-backed next-token artifact."
+            ),
+            "required_artifacts": [
+                "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+                "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+            ],
+        },
+        "next_action": "wire_streaming_decode_loop",
+        "no_claim_policy": {
+            "kv_backed_decode_claim_allowed": False,
+            "e2e_inference_claim_allowed": False,
+            "performance_claim_allowed": False,
+            "reason": "This is an entrypoint map, not an executable KV-backed decode run.",
+        },
+    }
+
+
 def _streaming_runner_source_status(resource_artifact: Path) -> dict[str, object]:
     resource = _load_json_object(resource_artifact)
     run_plan = _dict_or_empty(resource.get("kv_decode_run_plan"))
@@ -258,6 +331,7 @@ def build_kv_blocker_status(
             }
         ),
         "streaming_runner_source_status": _streaming_runner_source_status(resource_artifact),
+        "runtime_wiring_map": _runtime_wiring_map(),
         "blocked_records": blocked,
         "no_claim_policy": {
             "kv_backed_decode_claim_allowed": False,

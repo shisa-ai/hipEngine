@@ -77,6 +77,40 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "kv_backed_next_token_artifact",
     ]
     assert source_status["no_kernel_launches"] is True
+    wiring_map = artifact["runtime_wiring_map"]
+    assert wiring_map["schema_version"] == 1
+    assert wiring_map["source"] == "static_runtime_symbol_map"
+    assert wiring_map["runner_file"] == "hipengine/runtime/stepfun_gguf_runner.py"
+    assert wiring_map["planner_entrypoint"]["symbol"] == (
+        "StepFunShortContextDecodePlanner.plan_kv_decode_chat"
+    )
+    assert wiring_map["resource_plan_entrypoint"]["symbol"] == (
+        "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule"
+    )
+    assert [entry["symbol"] for entry in wiring_map["device_input_entrypoints"]] == [
+        "StepFunKVDecodeRunPlan.upload_decode_inputs",
+        "StepFunKVDecodeRunPlan.decode_input_upload_plan",
+    ]
+    assert [entry["symbol"] for entry in wiring_map["metadata_only_trace_entrypoints"]] == [
+        "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint",
+        "StepFunKVDecodeRunPlan.streaming_decode_launch_trace",
+        "StepFunKVDecodeRunPlan.streaming_decode_loop_status",
+    ]
+    assert wiring_map["current_host_composed_prompt_smoke"]["symbol"] == (
+        "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+    )
+    assert wiring_map["missing_execution_entrypoint"]["owner"] == "StepFunResidentSession"
+    assert wiring_map["missing_execution_entrypoint"]["required_artifacts"] == [
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
+    assert wiring_map["next_action"] == "wire_streaming_decode_loop"
+    assert wiring_map["no_claim_policy"] == {
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": "This is an entrypoint map, not an executable KV-backed decode run.",
+    }
     assert artifact["no_claim_policy"] == {
         "kv_backed_decode_claim_allowed": False,
         "e2e_inference_claim_allowed": False,
@@ -129,6 +163,10 @@ def test_stepfun_kv_blocker_status_cli_writes_artifact(tmp_path: Path) -> None:
     assert payload["streaming_runner_source_status"]["next_action"] == (
         "wire_streaming_decode_loop"
     )
+    assert payload["runtime_wiring_map"]["missing_execution_entrypoint"]["owner"] == (
+        "StepFunResidentSession"
+    )
+    assert payload["runtime_wiring_map"]["next_action"] == "wire_streaming_decode_loop"
     assert payload["missing_artifact_paths"] == [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",

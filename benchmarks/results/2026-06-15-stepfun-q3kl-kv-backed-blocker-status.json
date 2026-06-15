@@ -79,9 +79,73 @@
     "resource_plan_refresh_command"
   ],
   "readiness_gate": "kv_backed_decode",
+  "runtime_wiring_map": {
+    "current_host_composed_prompt_smoke": {
+      "file": "hipengine/runtime/stepfun_gguf_runner.py",
+      "role": "Current all-layer prompt smoke path; it is host-composed and not KV-backed decode.",
+      "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+    },
+    "device_input_entrypoints": [
+      {
+        "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "role": "Allocate/copy input IDs and KVLiveSpans-compatible span metadata before launches.",
+        "symbol": "StepFunKVDecodeRunPlan.upload_decode_inputs"
+      },
+      {
+        "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "role": "Metadata-only manifest for pre-run upload order and cleanup order.",
+        "symbol": "StepFunKVDecodeRunPlan.decode_input_upload_plan"
+      }
+    ],
+    "metadata_only_trace_entrypoints": [
+      {
+        "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "role": "Records upload and launch contract for the future streaming loop.",
+        "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint"
+      },
+      {
+        "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "role": "Records the 45-layer \u00d7 3-operation launch trace without launching kernels.",
+        "symbol": "StepFunKVDecodeRunPlan.streaming_decode_launch_trace"
+      },
+      {
+        "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "role": "Reports blocked_by=streaming_decode_loop_not_wired until an executable loop exists.",
+        "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_status"
+      }
+    ],
+    "missing_execution_entrypoint": {
+      "expected_role": "Launch resident prompt KV writes, one-token decode KV writes, and gated paged attention from the uploaded StepFunKVDecodeRunPlan inputs, then emit the KV-backed next-token artifact.",
+      "owner": "StepFunResidentSession",
+      "required_artifacts": [
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+      ]
+    },
+    "next_action": "wire_streaming_decode_loop",
+    "no_claim_policy": {
+      "e2e_inference_claim_allowed": false,
+      "kv_backed_decode_claim_allowed": false,
+      "performance_claim_allowed": false,
+      "reason": "This is an entrypoint map, not an executable KV-backed decode run."
+    },
+    "planner_entrypoint": {
+      "file": "hipengine/runtime/stepfun_gguf_runner.py",
+      "role": "Bind the rendered StepFun chat prompt to a StepFunKVDecodeRunPlan.",
+      "symbol": "StepFunShortContextDecodePlanner.plan_kv_decode_chat"
+    },
+    "resource_plan_entrypoint": {
+      "file": "hipengine/runtime/stepfun_gguf_runner.py",
+      "role": "Define the planned per-layer order: prompt_kv_write, decode_kv_write, decode_attention.",
+      "symbol": "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule"
+    },
+    "runner_file": "hipengine/runtime/stepfun_gguf_runner.py",
+    "schema_version": 1,
+    "source": "static_runtime_symbol_map"
+  },
   "schema_version": 1,
-  "source_correctness_status_sha256": "0df3b550df9c9ea578697071f46f03702e17ff985d28c0ac6e921c9f6646de75",
-  "source_validator_status_sha256": "732778afc71f93a5efab5e2083ff98856445a6198455689d92ef868ac8321bdd",
+  "source_correctness_status_sha256": "3557b3889bb77e8b59ccb5bbfda293f04b9f57367dfa2c9b06d8d1f4872069b4",
+  "source_validator_status_sha256": "ef113b9cc5c4182d9c67c9c497a97e906167de53a4ff408734512071d69568c8",
   "status": "blocked",
   "streaming_runner_source_status": {
     "blocked_by": "streaming_decode_loop_not_wired",
