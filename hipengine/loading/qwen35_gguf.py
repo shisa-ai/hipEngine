@@ -927,6 +927,10 @@ def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPB
                 else f" (+{len(block.unexpected_tensor_names) - 8} more)"
             )
             errors.append(f"MTP block {block.layer_id} unexpected tensors: {preview}{more}")
+    if not errors:
+        config = qwen35_gguf_config_from_metadata(info)
+        for block_map in build_qwen35_gguf_mtp_block_maps(info, strict=False):
+            errors.extend(_mtp_draft_shape_errors(block_map, config=config))
     if errors:
         raise MissingGGUFTensorError("; ".join(errors))
     return inventories

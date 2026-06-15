@@ -90,6 +90,30 @@ def test_qwen35moe_gguf_mtp_block_validation_passes_complete_inventory() -> None
     assert block.passed
 
 
+def test_qwen35moe_gguf_mtp_block_validation_rejects_bad_required_shape() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[_tensor("blk.2.attn_q.weight", (8, 8))],
+    )
+
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="MTP block 2 slot attn_q has shape \\(8, 8\\), expected \\(16, 8\\)",
+    ):
+        validate_qwen35_gguf_mtp_blocks(info)
+
+
+def test_qwen35moe_gguf_mtp_block_validation_rejects_bad_present_optional_shape() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[_tensor("blk.2.nextn.embed_tokens.weight", (10, 8))],
+    )
+
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="MTP block 2 slot nextn\\.embed_tokens has shape \\(10, 8\\), expected \\(11, 8\\)",
+    ):
+        validate_qwen35_gguf_mtp_blocks(info)
+
+
 def test_qwen35moe_gguf_mtp_block_map_resolves_target_fallbacks() -> None:
     info = _synthetic_qwen35moe_mtp_info()
 

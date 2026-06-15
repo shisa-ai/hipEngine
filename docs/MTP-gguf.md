@@ -387,6 +387,14 @@ Deliverables:
   (only `shared_head_norm` present), so the draft head/embedding reuse target
   weights and their shape checks **must be optional**.
 
+Current status:
+
+- `Qwen35GGUFModelMap.mtp_blocks`, `qwen35_gguf_mtp_block_inventories()`, and
+  `validate_qwen35_gguf_mtp_blocks()` expose the AR-ignored trailing block as a
+  separate metadata gate. The validation gate now fails missing required tensors,
+  unexpected trailing-block tensors, and mis-shaped effective MTP slots while
+  tolerating absent optional embed/head tensors through target-weight fallbacks.
+
 Acceptance:
 
 - Existing AR-block-exclusion coverage is **extended**, not added:
@@ -732,9 +740,9 @@ is now answered by the M1 required/optional table.)
 - [ ] **Capture a llama.cpp draft logits/top-k trace for one short prompt
       (required M0 oracle, not "if possible").**
 - [ ] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a)).
-- [ ] Extend `Qwen35GGUFModelMap` with an MTP block descriptor + required/optional
+- [x] Extend `Qwen35GGUFModelMap` with an MTP block descriptor + required/optional
       fallback table.
-- [ ] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation
+- [x] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation
       (missing/mis-shaped required, tolerated optional).
 - [ ] **M2.5:** expose the fp32 post-`output_norm` per-token hidden seed from the
       GGUF decode path (per-token tap; `run_prompt_hidden` returns BF16 today).

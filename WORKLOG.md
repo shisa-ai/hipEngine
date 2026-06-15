@@ -94655,3 +94655,44 @@ Validation:
   attention/KV path change, future MTP attention/KV work remains KVLiveSpans-
   gated, no math/perf claim, and the remaining M2.5 numeric fixture requirement
   is explicitly left open in the plan.
+
+## 2026-06-15 - MTP-GGUF block shape validation gate
+
+Implemented `mtp-gguf` multiloop iteration 45: tightened the M1 metadata gate so
+`validate_qwen35_gguf_mtp_blocks()` catches mis-shaped MTP slots before draft
+runtime work consumes them.
+
+Scope note:
+- GGUF metadata validation only. No tensor payload loading, runtime generation,
+  GPU kernels, attention/KV paths, MTP draft execution, sampling, or performance
+  path changed.
+- Absent optional `nextn.embed_tokens` / `nextn.shared_head_head` tensors remain
+  valid through target-weight fallbacks.
+
+Changes:
+- `validate_qwen35_gguf_mtp_blocks()` now extends its missing/unexpected tensor
+  checks with the effective MTP draft shape contract when the block inventory is
+  structurally complete.
+- Added tests that validation rejects a mis-shaped required attention tensor and
+  rejects a mis-shaped present optional `nextn.embed_tokens` tensor while the
+  existing complete-inventory test continues to cover tolerated absent optional
+  embed/head fallbacks.
+- Updated `docs/MTP-gguf.md` M1 current status and checked off the completed
+  MTP block descriptor and validation-test backlog rows.
+
+Validation:
+- Focused mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `19` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py` and
+  `git diff --check -- hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py docs/MTP-gguf.md`.
+- Real MTP-bearing GGUF validation smoke passed:
+  `validate_qwen35_gguf_mtp_blocks(scan_gguf('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'))` -> `validated_blocks 1 layer 40 tensors 20 nextn 4`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata-only validation change, no torch import, no
+  runtime backend/quant dispatch branch, no attention/KV path change, no MTP
+  execution or performance claim, and future MTP attention/KV-write work remains
+  KVLiveSpans-gated.
