@@ -280,6 +280,12 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["llamacpp_trace_oracle"]["passed"] is True
     assert artifact["llamacpp_trace_oracle"]["selected_token_ids"] == [8068, 271]
     assert artifact["llamacpp_trace_oracle"]["observed_top_k"] == 3
+    assert artifact["llamacpp_trace_oracle"]["requested_draft_max"] == 1
+    assert artifact["llamacpp_trace_oracle"]["max_generated_per_call"] == 1
+    assert (
+        artifact["llamacpp_trace_oracle"]["budget_coverage"]
+        == "full_requested_budget_exercised"
+    )
     assert artifact["llamacpp_trace_oracle"]["denominator_metrics"] == {
         "accepted_draft_tokens": 0,
         "generated_draft_tokens": 2,
@@ -429,6 +435,7 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "draft_sampling_contract_precheck": True,
         "hidden_seed_contract_precheck": True,
         "exactness_gate": "passed",
+        "llamacpp_trace_budget_coverage": "full_requested_budget_exercised",
         "native_runtime_kernels_ready": False,
         "optimization_kernels_ready": False,
         "missing_native_runtime_keys": [
@@ -441,6 +448,10 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "blocker_codes": ["native_gguf_mtp_runtime_missing"],
     }
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
+    assert (
+        matrix["readiness_by_budget"]["B4"]["llamacpp_trace_budget_coverage"]
+        == "partial_trace_did_not_exercise_full_budget"
+    )
     assert matrix["readiness_by_budget"]["B4"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["blocker_codes_by_budget"] == {
         "B1": ["native_gguf_mtp_runtime_missing"],
@@ -477,6 +488,10 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert "artifacts" not in matrix
     assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
+    assert (
+        matrix["readiness_by_budget"]["B4"]["llamacpp_trace_budget_coverage"]
+        == "partial_trace_did_not_exercise_full_budget"
+    )
 
 
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(

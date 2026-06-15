@@ -281,6 +281,7 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
     candidate_count = 0
     generated_draft_tokens = 0
     accepted_draft_tokens = 0
+    max_generated_per_call = 0
     selected_token_ids: list[int] = []
     max_candidates = 0
     calls_valid = True
@@ -306,6 +307,7 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
             calls_valid = False
             continue
         generated_draft_tokens += generated
+        max_generated_per_call = max(max_generated_per_call, generated)
         if generated > draft_max:
             calls_valid = False
             check(
@@ -367,6 +369,11 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
     visible_output_token_count = trace.get("visible_output_token_count")
     if not isinstance(visible_output_token_count, int) or visible_output_token_count <= 0:
         visible_output_token_count = None
+    budget_coverage = (
+        "full_requested_budget_exercised"
+        if max_generated_per_call >= draft_max
+        else "partial_trace_did_not_exercise_full_budget"
+    )
     denominator_metrics = {
         "accepted_draft_tokens": accepted_draft_tokens,
         "generated_draft_tokens": generated_draft_tokens,
@@ -389,6 +396,9 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
         "fixture": str(trace_fixture),
         "passed": passed,
         "kind": trace.get("kind"),
+        "requested_draft_max": int(draft_max),
+        "max_generated_per_call": max_generated_per_call,
+        "budget_coverage": budget_coverage,
         "prompt_name": request.get("prompt_name"),
         "prompt_tokens": trace.get("prompt_tokens"),
         "draft_call_count": len(call_items),
@@ -621,6 +631,7 @@ def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
         "draft_sampling_contract_precheck": artifact["draft_sampling_contract_precheck"]["passed"],
         "hidden_seed_contract_precheck": artifact["hidden_seed_contract_precheck"]["passed"],
         "exactness_gate": artifact["execution"]["exactness_gate"],
+        "llamacpp_trace_budget_coverage": artifact["llamacpp_trace_oracle"]["budget_coverage"],
         "native_runtime_kernels_ready": artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"],
         "optimization_kernels_ready": artifact["runtime_kernel_precheck"]["optimization_kernels_ready"],
         "missing_native_runtime_keys": artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"],

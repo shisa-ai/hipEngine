@@ -333,9 +333,10 @@ from the top-k set). Matching B2-B4 deterministic fixtures are also committed as
 preflight child can pick a budget-matched fixture for `--draft-max {1,2,3,4}` by
 default or emit a consolidated B1-B4 blocked matrix with `--all-budgets`. The
 matrix includes a compact `readiness_by_budget` section for precheck booleans,
-missing native keys, exactness status, metrics-contract status, and blocker codes
-without requiring reviewers to inspect each full child artifact; add
-`--compact-matrix` to omit full child artifacts for compact benchmark evidence.
+missing native keys, exactness status, llama.cpp trace budget coverage,
+metrics-contract status, and blocker codes without requiring reviewers to inspect
+each full child artifact; add `--compact-matrix` to omit full child artifacts
+for compact benchmark evidence.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -586,7 +587,9 @@ Current status:
   only to expose candidate probabilities in the log; it is an oracle/debug
   fixture, not a performance benchmark. The B1 preflight child validates and
   embeds a compact `llamacpp_trace_oracle` summary from this fixture, including
-  draft-denominator checks for `draft_n` / `draft_n_accepted` and an explicit
+  draft-denominator checks for `draft_n` / `draft_n_accepted`, trace budget
+  coverage (`full_requested_budget_exercised` vs
+  `partial_trace_did_not_exercise_full_budget`), and an explicit
   `accepted_per_output` status of not-comparable until visible output tokens are
   available, so blocked artifacts carry both CPU-reference and captured llama.cpp
   oracle provenance.
@@ -904,8 +907,9 @@ is now answered by the M1 required/optional table.)
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
-      `readiness_by_budget` parity/preflight/native-key status (`--compact-matrix`
-      omits full child artifacts for compact evidence); actual B2-B4
+      `readiness_by_budget` parity/preflight/native-key status plus llama.cpp
+      trace budget coverage (`--compact-matrix` omits full child artifacts for
+      compact evidence); actual B2-B4
       execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU

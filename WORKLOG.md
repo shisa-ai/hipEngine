@@ -96615,3 +96615,46 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. Future MTP attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF trace budget coverage annotation
+
+Implemented `mtp-gguf` multiloop iteration 87: annotated the llama.cpp draft-trace
+oracle summary with requested-budget coverage.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This prevents B2-B4 preflight artifacts from implying the current short debug
+  trace exercised full B2-B4 draft depth; it still validates as oracle provenance,
+  but readiness now labels coverage as partial when appropriate.
+
+Changes:
+- `scripts/gguf_mtp_b1_prompt_suite.py` now reports
+  `llamacpp_trace_oracle.requested_draft_max`, `max_generated_per_call`, and
+  `budget_coverage` (`full_requested_budget_exercised` or
+  `partial_trace_did_not_exercise_full_budget`).
+- Matrix `readiness_by_budget` now surfaces `llamacpp_trace_budget_coverage` for
+  compact review.
+- Extended preflight tests to assert B1 full coverage and B4 partial coverage.
+- Updated `docs/MTP-gguf.md` to document trace budget coverage in the
+  `llamacpp_trace_oracle` and B1-B4 matrix readiness summaries.
+
+Validation:
+- Focused B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `15` passed.
+- Real local compact B1-B4 matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `coverage full_requested_budget_exercised partial_trace_did_not_exercise_full_budget ['native_gguf_mtp_runtime_missing']`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Coverage annotation only labels existing debug trace evidence; future
+  MTP attention/KV-write execution remains KVLiveSpans-gated.
