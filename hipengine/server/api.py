@@ -180,8 +180,11 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "minProperties",
         "maxProperties",
         "items",
+        "contains",
         "minItems",
         "maxItems",
+        "minContains",
+        "maxContains",
         "uniqueItems",
         "minLength",
         "maxLength",
@@ -882,8 +885,11 @@ def _tool_schema_subset() -> list[str]:
         "object.minProperties",
         "object.maxProperties",
         "array.items",
+        "array.contains",
         "array.minItems",
         "array.maxItems",
+        "array.minContains",
+        "array.maxContains",
         "array.uniqueItems",
         "string.minLength",
         "string.maxLength",
@@ -9760,7 +9766,24 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
         if error is not None:
             return error
 
-    for key in ("minProperties", "maxProperties", "minItems", "maxItems", "minLength", "maxLength"):
+    contains = schema.get("contains")
+    if contains is not None:
+        if not isinstance(contains, Mapping):
+            return (f"{path}.contains", f"{path}.contains must be an object")
+        error = _validate_json_schema_subset(contains, path=f"{path}.contains")
+        if error is not None:
+            return error
+
+    for key in (
+        "minProperties",
+        "maxProperties",
+        "minItems",
+        "maxItems",
+        "minContains",
+        "maxContains",
+        "minLength",
+        "maxLength",
+    ):
         if key in schema and _schema_nonnegative_int(schema.get(key)) is None:
             return (f"{path}.{key}", f"{path}.{key} must be a non-negative integer")
     if "uniqueItems" in schema and not isinstance(schema.get("uniqueItems"), bool):
@@ -9915,6 +9938,18 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
             return f"{path} must have at most {max_items} items"
         if schema.get("uniqueItems") is True and not _schema_array_items_unique(value):
             return f"{path} must contain unique items"
+        contains = schema.get("contains")
+        if isinstance(contains, Mapping):
+            match_count = sum(
+                1 for item in value if _validate_json_schema_value(item, contains, path=path) is None
+            )
+            min_contains = _schema_nonnegative_int(schema.get("minContains"))
+            min_contains = 1 if min_contains is None else min_contains
+            if match_count < min_contains:
+                return f"{path} must contain at least {min_contains} matching items"
+            max_contains = _schema_nonnegative_int(schema.get("maxContains"))
+            if max_contains is not None and match_count > max_contains:
+                return f"{path} must contain at most {max_contains} matching items"
         items = schema.get("items")
         if isinstance(items, Mapping):
             for index, item in enumerate(value):

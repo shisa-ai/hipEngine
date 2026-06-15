@@ -92032,3 +92032,20 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema array contains
+
+Strict tool schemas and structured-output JSON Schema validation now support
+array `contains`, `minContains`, and `maxContains`. Request validation rejects
+malformed `contains` schemas and non-negative count bounds before generation,
+the capability manifest advertises the array contains subset, and result
+validation counts matching array items after generation.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_array_contains tests/test_server_api.py::test_completions_response_format_rejects_invalid_contains_schema tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_array_contains -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `145 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

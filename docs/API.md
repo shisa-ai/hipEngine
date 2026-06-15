@@ -469,8 +469,9 @@ schema composition with `allOf` / `anyOf` / `oneOf` / `not`, object
 `properties` / `patternProperties` / `propertyNames` / `required` /
 `dependentRequired` /
 `additionalProperties: false` or a schema / `minProperties` / `maxProperties`,
-array `items` with `minItems` / `maxItems`, `uniqueItems`, string `minLength` /
-`maxLength` / `pattern`, and numeric `minimum` / `maximum` /
+array `items` / `contains` with `minItems` / `maxItems` / `minContains` /
+`maxContains`, `uniqueItems`, string `minLength` / `maxLength` / `pattern`,
+and numeric `minimum` / `maximum` /
 `exclusiveMinimum` / `exclusiveMaximum` / `multipleOf`. `enum`, `const`, and
 array `uniqueItems` use JSON-typed value equality after generation, so booleans
 are distinct from numbers while numeric `1` and `1.0` compare equal. String
@@ -518,13 +519,14 @@ JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` /
 `patternProperties` / `propertyNames` / `required` / `dependentRequired` /
 `additionalProperties: false` or a supported subschema /
-`minProperties` / `maxProperties`, array `items` / `minItems` / `maxItems` /
-`uniqueItems`, string `minLength` / `maxLength` / `pattern`, numeric min/max
-/ `multipleOf` bounds, and schema composition with `allOf` / `anyOf` / `oneOf`
-/ `not`. Unsupported validation keywords are rejected before generation instead
-of being silently ignored; annotation keys, including `format`, are accepted but
-ignored by validation. This is result validation plus object close-suffix
-forcing, not grammar-constrained decoding.
+`minProperties` / `maxProperties`, array `items` / `contains` / `minItems` /
+`maxItems` / `minContains` / `maxContains` / `uniqueItems`, string `minLength`
+/ `maxLength` / `pattern`, numeric min/max / `multipleOf` bounds, and schema
+composition with `allOf` / `anyOf` / `oneOf` / `not`. Unsupported validation
+keywords are rejected before generation instead of being silently ignored;
+annotation keys, including `format`, are accepted but ignored by validation.
+This is result validation plus object close-suffix forcing, not
+grammar-constrained decoding.
 
 `guided_json` uses the same JSON result paths and object-root close-forcing
 behavior as `response_format`. It accepts `true` for JSON-object validation, a

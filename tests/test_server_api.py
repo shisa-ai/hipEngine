@@ -770,8 +770,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "object.minProperties",
             "object.maxProperties",
             "array.items",
+            "array.contains",
             "array.minItems",
             "array.maxItems",
+            "array.minContains",
+            "array.maxContains",
             "array.uniqueItems",
             "string.minLength",
             "string.maxLength",
@@ -848,8 +851,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "object.minProperties",
             "object.maxProperties",
             "array.items",
+            "array.contains",
             "array.minItems",
             "array.maxItems",
+            "array.minContains",
+            "array.maxContains",
             "array.uniqueItems",
             "string.minLength",
             "string.maxLength",
@@ -5136,6 +5142,62 @@ def test_completions_response_format_json_schema_validates_unique_items() -> Non
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_json_schema_validates_array_contains() -> None:
+    schema = {
+        "name": "agent_result",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "scores": {
+                    "type": "array",
+                    "contains": {"type": "number", "minimum": 0.9},
+                    "minContains": 1,
+                    "maxContains": 2,
+                }
+            },
+            "required": ["scores"],
+            "additionalProperties": False,
+        },
+    }
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"scores":[0.1,0.95,0.99]}']),
+        )
+    )
+    too_few_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"scores":[0.1,0.2]}']),
+        )
+    )
+    too_many_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"scores":[0.9,0.95,0.99]}']),
+        )
+    )
+
+    valid = valid_client.post("/v1/completions", json=payload)
+    too_few = too_few_client.post("/v1/completions", json=payload)
+    too_many = too_many_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"scores":[0.1,0.95,0.99]}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    for response in (too_few, too_many):
+        assert response.status_code == 200
+        choice = response.json()["choices"][0]
+        assert choice["text"] == ""
+        assert choice["finish_reason"] == "stop"
+        assert choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_json_schema_uses_json_typed_equality() -> None:
     schema = {
         "name": "agent_result",
@@ -5735,6 +5797,51 @@ def test_completions_response_format_rejects_invalid_unique_items_bound() -> Non
     error = response.json()["error"]
     assert error["code"] == "invalid_request"
     assert error["param"] == "response_format.json_schema.schema.properties.tags.uniqueItems"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("schema", "param"),
+    [
+        (
+            {"type": "array", "contains": "number"},
+            "response_format.json_schema.schema.contains",
+        ),
+        (
+            {"type": "array", "contains": {"type": "number"}, "minContains": -1},
+            "response_format.json_schema.schema.minContains",
+        ),
+    ],
+)
+def test_completions_response_format_rejects_invalid_contains_schema(
+    schema: dict[str, Any],
+    param: str,
+) -> None:
+    fake = FakeLLM(outputs=["[]"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_result",
+                    "schema": schema,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == param
     assert error["hipengine"]["code"] == "schema_violation"
     assert error["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
@@ -9746,6 +9853,57 @@ def test_chat_completion_strict_tool_schema_validates_unique_items() -> None:
         "messages": [{"role": "user", "content": "record tags"}],
         "tools": tools,
     }
+
+    valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
+    invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["finish_reason"] == "tool_calls"
+    assert valid_choice["finish_details"]["reason"] == "tool_calls"
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "tool_calls" not in invalid_choice["message"]
+
+
+def test_chat_completion_strict_tool_schema_validates_array_contains() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "record",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "scores": {
+                            "type": "array",
+                            "contains": {"type": "number", "minimum": 0.9},
+                            "minContains": 1,
+                            "maxContains": 2,
+                        }
+                    },
+                    "required": ["scores"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "record score"}],
+        "tools": tools,
+    }
+    valid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=['<tool_call>{"name":"record","arguments":{"scores":[0.1,0.95]}}</tool_call>']),
+    )
+    invalid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=['<tool_call>{"name":"record","arguments":{"scores":[0.1,0.2]}}</tool_call>']),
+    )
 
     valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
     invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
