@@ -5604,6 +5604,51 @@ def test_completions_guided_json_schema_validates_result() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_guided_json_schema_validates_local_refs() -> None:
+    schema = {
+        "type": "object",
+        "$defs": {
+            "file_ref": {"type": "string", "pattern": r"^[A-Z]+[.]md$"},
+            "result_tag": {"enum": ["ok", "skip"]},
+        },
+        "properties": {
+            "path": {"$ref": "#/$defs/file_ref"},
+            "result": {"$ref": "#/$defs/result_tag"},
+        },
+        "required": ["path", "result"],
+        "additionalProperties": False,
+    }
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"path":"README.md","result":"ok"}']),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"path":"readme.md","result":"ok"}']),
+        )
+    )
+    payload = {
+        "model": "fake-model",
+        "prompt": "return json",
+        "guided_json": {"schema": schema},
+    }
+
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"path":"README.md","result":"ok"}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_guided_json_schema_length_rejects_invalid_json_continuation() -> None:
     schema = _response_json_schema()["schema"]
     client = TestClient(
@@ -8345,6 +8390,50 @@ def test_chat_completion_guided_json_schema_validates_visible_content() -> None:
     assert valid.status_code == 200
     valid_choice = valid.json()["choices"][0]
     assert valid_choice["message"]["content"] == '{"ok":true,"path":"README.md"}'
+    assert valid_choice["message"]["reasoning_content"] == "check"
+    assert valid_choice["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["message"] == {"role": "assistant", "content": ""}
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "Return only JSON that satisfies this JSON schema" in valid_fake.calls[0][0][0]
+
+
+def test_chat_completion_guided_json_schema_validates_local_refs() -> None:
+    schema = {
+        "type": "object",
+        "$defs": {
+            "file_ref": {"type": "string", "pattern": r"^[A-Z]+[.]md$"},
+            "result_tag": {"enum": ["ok", "skip"]},
+        },
+        "properties": {
+            "path": {"$ref": "#/$defs/file_ref"},
+            "result": {"$ref": "#/$defs/result_tag"},
+        },
+        "required": ["path", "result"],
+        "additionalProperties": False,
+    }
+    valid_fake = FakeLLM(outputs=['<think>check</think>{"path":"README.md","result":"ok"}'])
+    invalid_fake = FakeLLM(outputs=['{"path":"README.md","result":"done"}'])
+    valid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=valid_fake)
+    )
+    invalid_client = TestClient(
+        create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=invalid_fake)
+    )
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "return json"}],
+        "guided_json": json.dumps(schema),
+    }
+
+    valid = valid_client.post("/v1/chat/completions", json=payload)
+    invalid = invalid_client.post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["message"]["content"] == '{"path":"README.md","result":"ok"}'
     assert valid_choice["message"]["reasoning_content"] == "check"
     assert valid_choice["finish_details"] == _stateless_finish_details("stop")
     assert invalid.status_code == 200

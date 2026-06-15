@@ -92146,3 +92146,17 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> passed.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+
+## 2026-06-15 - AGENTIC guided JSON local-ref fixtures
+
+Added focused server fixtures proving `guided_json` uses the same local
+JSON Schema `$ref` subset as `response_format` and strict tool validation.
+Coverage now includes completion `{"schema": ...}` wrappers and chat schema
+strings with local `$defs` references, plus invalid generated values that fail
+closed with `schema_violation`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completions_guided_json_schema_validates_local_refs tests/test_server_api.py::test_chat_completion_guided_json_schema_validates_local_refs tests/test_server_api.py::test_guided_output_request_validation_fails_before_generation -q` -> `25 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
