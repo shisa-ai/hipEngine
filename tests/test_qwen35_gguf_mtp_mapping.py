@@ -224,7 +224,7 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "expert_weights_scale": 0.0,
         "eps": 1.0e-6,
     }
-    assert [slot.slot for slot in plan.slots] == [
+    expected_slots = [
         "nextn.embed_tokens",
         "nextn.eh_proj",
         "nextn.hnorm",
@@ -248,12 +248,48 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "nextn.shared_head_norm",
         "nextn.shared_head_head",
     ]
+    assert [slot.slot for slot in plan.slots] == expected_slots
     assert plan.slot("nextn.embed_tokens").tensor_name == "token_embd.weight"
     assert plan.slot("nextn.embed_tokens").fallback_slot == "token_embedding"
     assert plan.slot("nextn.shared_head_head").tensor_name == "output.weight"
     assert plan.slot("nextn.shared_head_head").fallback_slot == "lm_head"
     assert plan.slot("ffn_gate_exps").shape == (3, 5, 8)
     assert plan.slot("ffn_gate_exps").ggml_type_name == "F32"
+    assert [binding.argument for binding in plan.tensor_bindings] == [
+        "token_embedding",
+        "eh_proj_weight",
+        "hnorm_weight",
+        "enorm_weight",
+        "attn_norm_weight",
+        "wq_weight",
+        "wk_weight",
+        "wv_weight",
+        "wo_weight",
+        "q_norm_weight",
+        "k_norm_weight",
+        "attn_post_norm_weight",
+        "router_weight",
+        "gate_qweight",
+        "up_qweight",
+        "down_qweight",
+        "shared_gate_logit_weight",
+        "shared_gate_qweight",
+        "shared_up_qweight",
+        "shared_down_qweight",
+        "shared_head_norm_weight",
+        "shared_head_weight",
+    ]
+    assert [binding.slot for binding in plan.tensor_bindings] == expected_slots
+    assert dict(plan.tensor_argument_map)["token_embedding"] == "token_embd.weight"
+    assert dict(plan.tensor_argument_map)["shared_head_weight"] == "output.weight"
+    assert dict(plan.qtype_argument_map) == {
+        "gate_qtype": "F32",
+        "up_qtype": "F32",
+        "down_qtype": "F32",
+        "shared_qtype": "F32",
+    }
+    assert plan.tensor_bindings[0].fallback_slot == "token_embedding"
+    assert plan.tensor_bindings[13].qtype_argument == "gate_qtype"
     plan_dict = plan.as_dict()
     assert plan_dict["kernel_kwargs"] == {
         "num_heads": 2,
@@ -264,12 +300,27 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "expert_weights_scale": 0.0,
         "eps": 1.0e-6,
     }
+    assert plan_dict["tensor_argument_map"]["wq_weight"] == "blk.2.attn_q.weight"
+    assert plan_dict["qtype_argument_map"] == {
+        "gate_qtype": "F32",
+        "up_qtype": "F32",
+        "down_qtype": "F32",
+        "shared_qtype": "F32",
+    }
     assert plan_dict["slots"][0] == {
         "slot": "nextn.embed_tokens",
         "tensor_name": "token_embd.weight",
         "shape": [11, 8],
         "ggml_type_name": "F32",
         "fallback_slot": "token_embedding",
+    }
+    assert plan_dict["tensor_bindings"][13] == {
+        "argument": "gate_qweight",
+        "slot": "ffn_gate_exps",
+        "tensor_name": "blk.2.ffn_gate_exps.weight",
+        "shape": [3, 5, 8],
+        "ggml_type_name": "F32",
+        "qtype_argument": "gate_qtype",
     }
 
 

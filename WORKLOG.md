@@ -93913,3 +93913,65 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU oracle tensor argument bindings
+
+Implemented `mtp-gguf` multiloop iteration 29: added explicit parameter
+bindings from resolved GGUF MTP draft tensor slots to the
+`qwen35_gguf_mtp_nextn_layer_logits(...)` CPU-reference tensor arguments.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this bridge only records tensor and qtype argument names for future CPU
+  parity harnesses.
+
+Evidence:
+- Real GGUF smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... build_qwen35_gguf_mtp_draft_tensor_plans(GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf').info) ... PY`
+  passed and reported 22 CPU-oracle tensor bindings, including:
+  - `token_embedding -> token_embd.weight`
+  - `eh_proj_weight -> blk.40.nextn.eh_proj.weight`
+  - `wq_weight -> blk.40.attn_q.weight`
+  - `gate_qweight -> blk.40.ffn_gate_exps.weight`
+  - `down_qweight -> blk.40.ffn_down_exps.weight`
+  - `shared_down_qweight -> blk.40.ffn_down_shexp.weight`
+  - `shared_head_weight -> output.weight`.
+  The qtype map was `gate_qtype=Q4_K`, `up_qtype=Q4_K`, `down_qtype=Q5_K`,
+  `shared_qtype=Q8_0`.
+- Signature drift check:
+  `inspect.signature(qwen35_gguf_mtp_nextn_layer_logits)` filtered to tensor
+  arguments exactly matched the plan binding order (`token_embedding` first,
+  `shared_head_weight` last).
+- llama.cpp source check:
+  `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '604,735p'`
+  matches the binding order: embedding/hidden norms + `eh_proj`, attention,
+  post-attention routed/shared FFN, then shared-head norm/head fallback.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftTensorBinding`.
+- Added `Qwen35GGUFMTPDraftTensorPlan.tensor_bindings`.
+  - Each binding records CPU argument name, logical slot, resolved GGUF tensor
+    name, shape, GGML type name, fallback provenance, and optional qtype
+    argument name.
+- Added `tensor_argument_map` and `qtype_argument_map` properties.
+  - `qtype_argument_map` guards against inconsistent GGUF types for any shared
+    qtype argument group instead of silently taking the last one.
+- Added binding/map serialization to `as_dict()`.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to assert binding order,
+  qtype maps, serialization, and fallback propagation.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `23` selected tests (`17` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `14` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.

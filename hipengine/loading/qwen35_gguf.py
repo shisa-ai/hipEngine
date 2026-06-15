@@ -225,6 +225,33 @@ class Qwen35GGUFMTPDraftTensorSlot:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftTensorBinding:
+    """CPU-reference argument binding for one resolved GGUF tensor slot."""
+
+    argument: str
+    slot: str
+    tensor_name: str
+    shape: tuple[int, ...]
+    ggml_type_name: str
+    fallback_slot: str | None = None
+    qtype_argument: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "argument": self.argument,
+            "slot": self.slot,
+            "tensor_name": self.tensor_name,
+            "shape": list(self.shape),
+            "ggml_type_name": self.ggml_type_name,
+        }
+        if self.fallback_slot is not None:
+            result["fallback_slot"] = self.fallback_slot
+        if self.qtype_argument is not None:
+            result["qtype_argument"] = self.qtype_argument
+        return result
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftTensorPlan:
     """Ordered tensor plan for feeding one GGUF MTP draft layer CPU oracle."""
 
@@ -260,6 +287,46 @@ class Qwen35GGUFMTPDraftTensorPlan:
         return tuple(item.tensor_name for item in self.slots)
 
     @property
+    def tensor_bindings(self) -> tuple[Qwen35GGUFMTPDraftTensorBinding, ...]:
+        bindings: list[Qwen35GGUFMTPDraftTensorBinding] = []
+        for argument, slot, qtype_argument in _MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS:
+            tensor = self.slot(slot)
+            bindings.append(
+                Qwen35GGUFMTPDraftTensorBinding(
+                    argument=argument,
+                    slot=slot,
+                    tensor_name=tensor.tensor_name,
+                    shape=tensor.shape,
+                    ggml_type_name=tensor.ggml_type_name,
+                    fallback_slot=tensor.fallback_slot,
+                    qtype_argument=qtype_argument,
+                )
+            )
+        return tuple(bindings)
+
+    @property
+    def tensor_argument_map(self) -> Mapping[str, str]:
+        return MappingProxyType(
+            {binding.argument: binding.tensor_name for binding in self.tensor_bindings}
+        )
+
+    @property
+    def qtype_argument_map(self) -> Mapping[str, str]:
+        result: dict[str, str] = {}
+        for binding in self.tensor_bindings:
+            if binding.qtype_argument is None:
+                continue
+            previous = result.get(binding.qtype_argument)
+            if previous is not None and previous != binding.ggml_type_name:
+                raise MissingGGUFTensorError(
+                    f"MTP draft tensor plan for block {self.layer_id} maps "
+                    f"{binding.qtype_argument} to both {previous} and "
+                    f"{binding.ggml_type_name}"
+                )
+            result[binding.qtype_argument] = binding.ggml_type_name
+        return MappingProxyType(result)
+
+    @property
     def kernel_kwargs(self) -> Mapping[str, object]:
         """Scalar kwargs for ``qwen35_gguf_mtp_nextn_layer_logits``."""
 
@@ -293,8 +360,11 @@ class Qwen35GGUFMTPDraftTensorPlan:
             "rope_dimension_sections": list(self.rope_dimension_sections),
             "attention_scale": self.attention_scale,
             "kernel_kwargs": dict(self.kernel_kwargs),
+            "tensor_argument_map": dict(self.tensor_argument_map),
+            "qtype_argument_map": dict(self.qtype_argument_map),
             "cpu_reference_kernel": list(self.cpu_reference_kernel),
             "slots": [slot.as_dict() for slot in self.slots],
+            "tensor_bindings": [binding.as_dict() for binding in self.tensor_bindings],
             "fallback_slots": dict(self.fallback_slots),
         }
 
@@ -711,6 +781,31 @@ _MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL = (
     "qwen35_dense_logits",
 )
 
+_MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
+    ("token_embedding", "nextn.embed_tokens", None),
+    ("eh_proj_weight", "nextn.eh_proj", None),
+    ("hnorm_weight", "nextn.hnorm", None),
+    ("enorm_weight", "nextn.enorm", None),
+    ("attn_norm_weight", "attn_norm", None),
+    ("wq_weight", "attn_q", None),
+    ("wk_weight", "attn_k", None),
+    ("wv_weight", "attn_v", None),
+    ("wo_weight", "attn_output", None),
+    ("q_norm_weight", "attn_q_norm", None),
+    ("k_norm_weight", "attn_k_norm", None),
+    ("attn_post_norm_weight", "post_attention_norm", None),
+    ("router_weight", "ffn_gate_inp", None),
+    ("gate_qweight", "ffn_gate_exps", "gate_qtype"),
+    ("up_qweight", "ffn_up_exps", "up_qtype"),
+    ("down_qweight", "ffn_down_exps", "down_qtype"),
+    ("shared_gate_logit_weight", "ffn_gate_inp_shexp", None),
+    ("shared_gate_qweight", "ffn_gate_shexp", "shared_qtype"),
+    ("shared_up_qweight", "ffn_up_shexp", "shared_qtype"),
+    ("shared_down_qweight", "ffn_down_shexp", "shared_qtype"),
+    ("shared_head_norm_weight", "nextn.shared_head_norm", None),
+    ("shared_head_weight", "nextn.shared_head_head", None),
+)
+
 _MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
     "nextn.embed_tokens",
     "nextn.eh_proj",
@@ -1031,6 +1126,7 @@ __all__ = [
     "Qwen35GGUFLayerMap",
     "Qwen35GGUFMTPBlockInventory",
     "Qwen35GGUFMTPBlockMap",
+    "Qwen35GGUFMTPDraftTensorBinding",
     "Qwen35GGUFMTPDraftTensorPlan",
     "Qwen35GGUFMTPDraftTensorSlot",
     "Qwen35GGUFMappingValidation",
