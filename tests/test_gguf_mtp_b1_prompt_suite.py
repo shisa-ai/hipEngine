@@ -443,6 +443,25 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_native_runtime_kernels_ready"] is False
     assert matrix["all_optimization_kernels_ready"] is False
+    assert matrix["all_performance_comparisons_ready"] is False
+    assert matrix["performance_comparison_ready_by_budget"] == {
+        "B1": False,
+        "B2": False,
+        "B3": False,
+        "B4": False,
+    }
+    assert matrix["performance_unready_budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["performance_comparison_blockers_by_budget"]["B1"] == [
+        "accepted_output_denominator_not_comparable",
+        "native_runtime_kernels_missing",
+        "hipengine_metrics_not_ready",
+    ]
+    assert matrix["performance_comparison_blockers_by_budget"]["B4"] == [
+        "partial_llamacpp_trace_budget_coverage",
+        "accepted_output_denominator_not_comparable",
+        "native_runtime_kernels_missing",
+        "hipengine_metrics_not_ready",
+    ]
     assert matrix["readiness_by_budget"]["B1"] == {
         "status": "blocked",
         "draft_max": 1,
@@ -463,6 +482,12 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         ],
         "metrics_contract_status": "not_run",
         "blocker_codes": ["native_gguf_mtp_runtime_missing"],
+        "performance_comparison_blockers": [
+            "accepted_output_denominator_not_comparable",
+            "native_runtime_kernels_missing",
+            "hipengine_metrics_not_ready",
+        ],
+        "performance_comparison_ready": False,
     }
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
     assert (
@@ -507,6 +532,8 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
     assert matrix["all_accepted_per_output_metrics_comparable"] is False
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["all_performance_comparisons_ready"] is False
+    assert matrix["performance_unready_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
     assert (
@@ -721,6 +748,80 @@ def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_output_rejects_matri
     assert rc == 4
     matrix = json.loads(out.read_text())
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
+
+
+def test_b1_prompt_suite_cli_fail_on_performance_unready_rejects_b1_until_runtime_metrics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    trace_payload = json.loads(suite.DEFAULT_LLAMACPP_TRACE_FIXTURE.read_text())
+    trace_payload["visible_output_token_count"] = 2
+    trace_fixture = _write_json(tmp_path / "llamacpp-trace.json", trace_payload)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--llamacpp-trace-fixture",
+            str(trace_fixture),
+            "--out",
+            str(out),
+            "--fail-on-performance-unready",
+        ]
+    )
+
+    assert rc == 5
+    artifact = json.loads(out.read_text())
+    readiness = suite._matrix_budget_readiness(artifact)
+    assert readiness["performance_comparison_blockers"] == [
+        "native_runtime_kernels_missing",
+        "hipengine_metrics_not_ready",
+    ]
+
+
+def test_b1_prompt_suite_cli_fail_on_performance_unready_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-performance-unready",
+        ]
+    )
+
+    assert rc == 5
+    matrix = json.loads(out.read_text())
+    assert matrix["performance_unready_budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["all_performance_comparisons_ready"] is False
 
 
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(

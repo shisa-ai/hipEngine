@@ -96829,3 +96829,52 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. The new exit gate summarizes existing denominator comparability; future
   MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF M6 performance readiness gate
+
+Implemented `mtp-gguf` multiloop iteration 92: added a combined M6
+performance-comparison readiness rollup and CLI gate for B1-B4 GGUF MTP
+preflight artifacts.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This is defensive M6 evidence plumbing: a future benchmark row must not be
+  treated as performance-comparable until parity/exactness, full llama.cpp trace
+  budget coverage, comparable accepted/output denominators, native runtime keys,
+  and hipEngine metrics are all ready.
+
+Changes:
+- Added `METRICS_CONTRACT_READY` and a shared performance-comparison blocker
+  derivation to `scripts/gguf_mtp_b1_prompt_suite.py`.
+- Each budget readiness row now reports `performance_comparison_ready` and
+  `performance_comparison_blockers`.
+- B1-B4 matrix artifacts now report `performance_comparison_ready_by_budget`,
+  `performance_comparison_blockers_by_budget`, `performance_unready_budgets`,
+  and `all_performance_comparisons_ready`.
+- Added `--fail-on-performance-unready`, returning exit code `5` for either a
+  single artifact or matrix until the combined M6 readiness rollup is clean.
+- Extended prompt-suite tests to cover single-budget and compact-matrix
+  performance-unready gates.
+- Updated `docs/MTP-gguf.md` to document the M6 readiness rollup and exit code.
+
+Validation:
+- Focused B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `23` passed.
+- Real local compact B1-B4 matrix gate smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --fail-on-performance-unready --out <tmp>` ->
+  exit code `5`, `performance_ready False`, `unready B1,B2,B3,B4`, and B1 blockers
+  `accepted_output_denominator_not_comparable,native_runtime_kernels_missing,hipengine_metrics_not_ready`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. The new readiness gate only summarizes existing preflight evidence;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

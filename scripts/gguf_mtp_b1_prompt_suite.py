@@ -66,6 +66,7 @@ FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
 PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
 ACCEPTED_OUTPUT_COMPARABLE = "computed"
 ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = "not_comparable_debug_trace_missing_visible_output_count"
+METRICS_CONTRACT_READY = "ready"
 
 
 class B1PromptSuitePreflightError(RuntimeError):
@@ -626,8 +627,31 @@ def build_b1_prompt_suite_artifact(
     }
 
 
+def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if not readiness["parity_precheck"]:
+        blockers.append("parity_precheck_failed")
+    if not readiness["draft_budget_precheck"]:
+        blockers.append("draft_budget_precheck_failed")
+    if not readiness["draft_sampling_contract_precheck"]:
+        blockers.append("draft_sampling_contract_precheck_failed")
+    if not readiness["hidden_seed_contract_precheck"]:
+        blockers.append("hidden_seed_contract_precheck_failed")
+    if readiness["exactness_gate"] != "passed":
+        blockers.append("exactness_gate_failed")
+    if readiness["llamacpp_trace_budget_coverage"] != FULL_TRACE_BUDGET_COVERAGE:
+        blockers.append("partial_llamacpp_trace_budget_coverage")
+    if readiness["accepted_per_output_status"] != ACCEPTED_OUTPUT_COMPARABLE:
+        blockers.append("accepted_output_denominator_not_comparable")
+    if not readiness["native_runtime_kernels_ready"]:
+        blockers.append("native_runtime_kernels_missing")
+    if readiness["metrics_contract_status"] != METRICS_CONTRACT_READY:
+        blockers.append("hipengine_metrics_not_ready")
+    return blockers
+
+
 def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
-    return {
+    readiness = {
         "status": artifact["status"],
         "draft_max": artifact["draft_max"],
         "parity_precheck": artifact["parity_precheck"]["all_pass"],
@@ -646,6 +670,9 @@ def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
         "metrics_contract_status": artifact["hipengine_metrics_contract"]["status"],
         "blocker_codes": [blocker["code"] for blocker in artifact["blockers"]],
     }
+    readiness["performance_comparison_blockers"] = _performance_comparison_blockers(readiness)
+    readiness["performance_comparison_ready"] = not readiness["performance_comparison_blockers"]
+    return readiness
 
 
 def build_b1_b4_prompt_suite_matrix(
@@ -695,6 +722,19 @@ def build_b1_b4_prompt_suite_matrix(
         for budget, status in accepted_per_output_status_by_budget.items()
         if status != ACCEPTED_OUTPUT_COMPARABLE
     ]
+    performance_comparison_ready_by_budget = {
+        budget: readiness["performance_comparison_ready"]
+        for budget, readiness in readiness_by_budget.items()
+    }
+    performance_comparison_blockers_by_budget = {
+        budget: readiness["performance_comparison_blockers"]
+        for budget, readiness in readiness_by_budget.items()
+    }
+    performance_unready_budgets = [
+        budget
+        for budget, ready in performance_comparison_ready_by_budget.items()
+        if not ready
+    ]
     matrix = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
@@ -727,6 +767,10 @@ def build_b1_b4_prompt_suite_matrix(
         "all_optimization_kernels_ready": all(
             item["runtime_kernel_precheck"]["optimization_kernels_ready"] for item in artifacts
         ),
+        "all_performance_comparisons_ready": not performance_unready_budgets,
+        "performance_comparison_ready_by_budget": performance_comparison_ready_by_budget,
+        "performance_comparison_blockers_by_budget": performance_comparison_blockers_by_budget,
+        "performance_unready_budgets": performance_unready_budgets,
         "readiness_by_budget": readiness_by_budget,
         "blocker_codes_by_budget": {
             budget: readiness["blocker_codes"] for budget, readiness in readiness_by_budget.items()
@@ -760,6 +804,15 @@ def _has_noncomparable_accepted_output_metrics(artifact: dict[str, Any]) -> bool
         return False
     status = denominator_metrics.get("accepted_per_output_status")
     return isinstance(status, str) and status != ACCEPTED_OUTPUT_COMPARABLE
+
+
+def _has_unready_performance_comparisons(artifact: dict[str, Any]) -> bool:
+    unready_budgets = artifact.get("performance_unready_budgets")
+    if isinstance(unready_budgets, list):
+        return bool(unready_budgets)
+    if "llamacpp_trace_oracle" not in artifact:
+        return False
+    return bool(_matrix_budget_readiness(artifact)["performance_comparison_blockers"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -816,6 +869,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="return exit code 4 when accepted_per_output denominators are not comparable",
     )
+    parser.add_argument(
+        "--fail-on-performance-unready",
+        action="store_true",
+        help="return exit code 5 when M6 performance comparison readiness is incomplete",
+    )
     args = parser.parse_args(argv)
 
     if args.compact_matrix and not args.all_budgets:
@@ -861,6 +919,8 @@ def main(argv: list[str] | None = None) -> int:
         artifact
     ):
         return 4
+    if args.fail_on_performance_unready and _has_unready_performance_comparisons(artifact):
+        return 5
     if args.fail_on_blocked and artifact["status"] == "blocked":
         return 2
     return 0

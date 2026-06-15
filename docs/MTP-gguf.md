@@ -348,7 +348,12 @@ matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
 Use `--fail-on-noncomparable-accepted-output` to return exit code `4` when the
 trace artifact lacks visible output-token counts and therefore cannot support
-`accepted_per_output` comparisons.
+`accepted_per_output` comparisons. Matrix artifacts also carry an M6
+performance-comparison readiness rollup (`performance_comparison_ready_by_budget`,
+`performance_comparison_blockers_by_budget`, `performance_unready_budgets`, and
+`all_performance_comparisons_ready`); `--fail-on-performance-unready` returns
+exit code `5` until parity, exactness, full trace-budget coverage, comparable
+denominators, native runtime kernels, and hipEngine metrics are all present.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -924,8 +929,10 @@ is now answered by the M1 required/optional table.)
       denominator comparability (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
-      trace provenance, and `--fail-on-noncomparable-accepted-output` exits `4`
-      when accepted/output denominators are not comparable); actual B2-B4
+      trace provenance, `--fail-on-noncomparable-accepted-output` exits `4`
+      when accepted/output denominators are not comparable, and
+      `--fail-on-performance-unready` exits `5` until the combined M6 readiness
+      rollup is clean); actual B2-B4
       execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
