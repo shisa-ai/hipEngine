@@ -6448,6 +6448,13 @@ def _validate_chat_message_tool_transcript_entry(
     pending_tool_call_ids: set[str],
     seen_tool_call_ids: set[str],
 ) -> None:
+    if pending_tool_call_ids and role != "tool":
+        raise OpenAIHTTPError(
+            400,
+            f"{context} messages[{message_index}].role must be 'tool' until prior assistant tool calls are resolved",
+            code="invalid_request",
+            param=f"messages[{message_index}].role",
+        )
     if role == "assistant":
         for tool_index, tool_call in enumerate(tool_calls):
             call_id = str(tool_call.get("id") or "")

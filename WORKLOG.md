@@ -92356,3 +92356,22 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/fixtures/agentic_traces/golden_traces.json docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC pending tool-result ordering
+
+Extended chat transcript validation so once an assistant message opens one or
+more tool calls, only `role: "tool"` messages may follow until all pending
+tool-call ids have been consumed. Transcripts may still end with pending tool
+calls for session-backed tool-result requests, but they can no longer skip a
+tool result and continue with ordinary user/assistant messages. The same rule
+applies to restored chat-session snapshots. Updated the API and AGENTIC docs
+with the ordering rule and added live/snapshot regression cases.
+
+Validation:
+- `uv run pytest tests/test_server_api.py::test_chat_completion_rejects_invalid_tool_transcript_before_generation tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_fields -q` -> `20 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'tool_transcript or role_specific_tool_fields or prior_assistant_tool_call_shape or snapshot_restore_rejects_corrupted_message_fields or snapshot_restore_rejects_corrupted_tool_call_shape or token_diagnostics_use_session_prefix_for_chat or chat_completion_renders_messages_to_prompt'` -> `42 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

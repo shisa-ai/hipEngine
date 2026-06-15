@@ -2511,6 +2511,7 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
         ("tool_unknown_tool_call_id", "messages[2].tool_call_id"),
         ("duplicate_tool_result", "messages[3].tool_call_id"),
         ("duplicate_tool_call_id", "messages[1].tool_calls[1].id"),
+        ("tool_result_skipped_by_user", "messages[2].role"),
         ("empty_name", "messages[0].name"),
         ("non_string_tool_call_id", "messages[0].tool_call_id"),
     ],
@@ -2591,6 +2592,8 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_fields(
                 "function": {"name": "write", "arguments": "{}"},
             }
         )
+    elif corruption == "tool_result_skipped_by_user":
+        snapshot["messages"].insert(2, {"role": "user", "content": "skip the tool"})
     elif corruption == "empty_name":
         snapshot["messages"][0]["name"] = ""
     elif corruption == "non_string_tool_call_id":
@@ -7871,6 +7874,46 @@ def test_chat_completion_rejects_invalid_role_specific_tool_fields_before_genera
                 {"role": "tool", "tool_call_id": "call_1", "content": "duplicate result"},
             ],
             "messages[2].tool_call_id",
+        ),
+        (
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "user", "content": "skip the tool"},
+            ],
+            "messages[1].role",
+        ),
+        (
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": "{}"},
+                        },
+                        {
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {"name": "write", "arguments": "{}"},
+                        },
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": "first result"},
+                {"role": "user", "content": "skip the second tool"},
+            ],
+            "messages[2].role",
         ),
     ],
 )

@@ -2386,7 +2386,9 @@ Current code reality:
   prompt rendering. Live prior messages and restored snapshots also validate
   transcript-level tool-result matching: assistant tool-call ids must be unique,
   and every `role: "tool"` result must reference a prior unconsumed assistant
-  tool-call id.
+  tool-call id. Once an assistant tool call is pending, only tool-result
+  messages may follow until the pending ids are consumed, though transcripts may
+  still end with pending calls for the next session-backed request.
 
 Exit gates:
 
@@ -2440,8 +2442,8 @@ Current code reality:
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
   rendering exactly once, live and snapshot prior-assistant tool-call shape
-  rejection plus orphan/duplicate tool-result rejection before generation,
-  reasoning-only final-answer responses, reasoning plus structured JSON
+  rejection plus orphan/duplicate/skipped tool-result rejection before
+  generation, reasoning-only final-answer responses, reasoning plus structured JSON
   responses, `enable_thinking=false` pre-close rendering,
   duplicated-start tool-call recovery, malformed tool JSON fail-closed behavior,
   streamed malformed tool JSON fail-closed behavior,
