@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_kv_blocker_status import build_kv_blocker_status, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_kv_blocker_status import (
+    build_kv_blocker_status,
+    main,
+    verify_kv_blocker_status_artifact,
+)
 from test_stepfun_correctness_status import (  # type: ignore[import-not-found]
     _write_docs,
     _write_oracle_artifact,
@@ -244,3 +252,92 @@ def test_stepfun_kv_blocker_status_cli_writes_artifact(tmp_path: Path) -> None:
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
     ]
+
+
+def test_stepfun_kv_blocker_status_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, docs, resource = _write_inputs(tmp_path)
+    artifact_path = tmp_path / "kv-blocker.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--prompt-artifact",
+        str(prompt),
+        "--oracle-artifact",
+        str(oracle),
+        "--docs",
+        str(docs),
+        "--resource-artifact",
+        str(resource),
+        "--artifact-date",
+        "2030-01-04",
+    ]
+    current = build_kv_blocker_status(
+        prompt_artifact=prompt,
+        oracle_artifact=oracle,
+        docs=docs,
+        resource_artifact=resource,
+        artifact_date="2030-01-04",
+    )
+    artifact_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_kv_blocker_status_artifact(
+        artifact_path,
+        current_artifact=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_blocked_count"] == 2
+    assert verification["current_blocked_count"] == 2
+    assert verification["persisted_missing_artifact_paths"] == current[
+        "missing_artifact_paths"
+    ]
+    assert verification["current_missing_artifact_paths"] == current[
+        "missing_artifact_paths"
+    ]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-blocker-status",
+                str(artifact_path),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["blocked_count"] = 1
+    artifact_path.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_kv_blocker_status_artifact(
+        artifact_path,
+        current_artifact=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == "kv_blocker_status_drift"
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-blocker-status",
+                str(artifact_path),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "kv_blocker_status_drift"

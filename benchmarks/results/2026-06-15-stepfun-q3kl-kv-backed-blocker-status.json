@@ -279,8 +279,8 @@
     ]
   },
   "schema_version": 1,
-  "source_correctness_status_sha256": "692d3729e2353e64bd6f79d6f286e289d02e58ce894a0a2534a00f2caa4d6bbb",
-  "source_validator_status_sha256": "0f3a0a5a9e27858107584de8409c22496d2fe8ed6c6cab6bd30f869e44a6cbc7",
+  "source_correctness_status_sha256": "c21eb7f22c13b0484c4fc706edccff9b5b49d557de04f23cc87facef0c8ba853",
+  "source_validator_status_sha256": "e7b29d178bc5445fb1adb17b85205f01dd5d737491ec4c0825b0f32e3e8375a4",
   "status": "blocked",
   "streaming_runner_source_status": {
     "blocked_by": "streaming_decode_loop_not_wired",

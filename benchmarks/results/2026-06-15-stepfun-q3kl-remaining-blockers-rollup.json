@@ -48,13 +48,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 871,
+        "line": 872,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ],
     "last_item": {
-      "line": 871,
+      "line": 872,
       "state": "partial",
       "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
     },
@@ -363,11 +363,11 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "a164ac36d226e2df3cade248ff813e7ac0bc3fe76c588658c3e61cfae134945e",
+    "kv_blocker_status": "e28f3d9d26970e849d7b8abcf1233a1ed21e37970ddf531e46e924a97deb575e",
     "kv_session_contract": "501fb1f2fdc27ac12e8c1166be9738a503bdb015ee8d4d3b7c0f9f81a07ec23c",
     "llamacpp_logits_helper_readiness": "8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "398fd6984c2b35264208b49e33220115fe50a37862c42af48188b691774fe125"
+    "status": "c21eb7f22c13b0484c4fc706edccff9b5b49d557de04f23cc87facef0c8ba853"
   },
   "status": "blocked"
 }

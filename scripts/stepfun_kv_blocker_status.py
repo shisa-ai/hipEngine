@@ -106,6 +106,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable JSON SHA-256 digest of the artifact payload.",
     )
+    parser.add_argument(
+        "--verify-blocker-status",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted KV blocker-status artifact with current "
+            f"status/resource metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-blocker-status, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-blocker-status, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-blocker-status, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -482,6 +508,66 @@ def build_kv_blocker_status(
     }
 
 
+def verify_kv_blocker_status_artifact(
+    blocker_artifact: Path,
+    *,
+    current_artifact: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted KV blocker-status artifact with current metadata."""
+
+    persisted = _load_json_object(blocker_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_artifact)
+    normalized_fields = ["source_validator_status_sha256"]
+    normalized_persisted = dict(persisted)
+    normalized_current = dict(current_artifact)
+    for field in normalized_fields:
+        if field in normalized_persisted or field in normalized_current:
+            normalized_current[field] = normalized_persisted.get(field)
+    normalized_persisted_sha256 = status_mod._stable_json_sha256(normalized_persisted)
+    normalized_current_sha256 = status_mod._stable_json_sha256(normalized_current)
+    failures: list[dict[str, object]] = []
+    if normalized_persisted != normalized_current:
+        failures.append(
+            {
+                "name": "kv_blocker_status_drift",
+                "expected_sha256": normalized_current_sha256,
+                "actual_sha256": normalized_persisted_sha256,
+                "raw_expected_sha256": current_sha256,
+                "raw_actual_sha256": persisted_sha256,
+                "normalized_fields": normalized_fields,
+                "evidence": (
+                    "Persisted KV blocker-status artifact differs from current "
+                    "final-blocker/resource/runtime-wiring metadata after self-referential "
+                    "source-validator fields are normalized."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(blocker_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "normalized_persisted_artifact_sha256": normalized_persisted_sha256,
+        "normalized_current_artifact_sha256": normalized_current_sha256,
+        "normalized_fields": normalized_fields,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_artifact.get("status"),
+        "persisted_blocked_count": persisted.get("blocked_count"),
+        "current_blocked_count": current_artifact.get("blocked_count"),
+        "persisted_missing_artifact_paths": persisted.get("missing_artifact_paths"),
+        "current_missing_artifact_paths": current_artifact.get(
+            "missing_artifact_paths"
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -494,6 +580,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         readiness_gate=args.readiness_gate,
         artifact_date=args.artifact_date,
     )
+    if args.verify_blocker_status is not None:
+        verification = verify_kv_blocker_status_artifact(
+            args.verify_blocker_status,
+            current_artifact=artifact,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = artifact["status"]
     elif args.blocked_count_only:

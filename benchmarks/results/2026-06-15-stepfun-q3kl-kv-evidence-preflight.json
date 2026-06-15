@@ -8,7 +8,7 @@
   "kv_backed_decode_ready": false,
   "kv_blocker_status": {
     "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json",
-    "artifact_sha256": "4b2767163a3d77fe80787eddb39d04c235646af7b55c4835c497b6783cdf624d",
+    "artifact_sha256": "77cf22067814c903a8fbbcac7ba91171d3f04c7b7ac79fbce78c13e37cbcdf11",
     "blocked_count": 2,
     "missing_artifact_paths": [
       "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
