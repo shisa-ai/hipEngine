@@ -4701,6 +4701,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         try:
             n = _request_n(request)
             batch = await generate_with_request_control(tuple(prompt for _ in range(n)), request, control)
+            scheduler_chunks_by_index = _scheduler_token_chunks_by_request(batch.scheduler_token_chunks)
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
                     config,
@@ -4792,32 +4793,68 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
                 )
-                for event in _chat_stream_parsed(
-                    response_id,
-                    created,
-                    config.model_id,
-                    parsed,
-                    finish_reason,
-                    index=index,
-                    logprobs=logprobs,
-                    finish_details=finish_details,
-                    token_accounting=token_accounting,
-                    stream_chunk=_stream_chunk_from_detail("", detail),
-                    include_hipengine=include_hipengine,
-                    stream_started_at=stream_started_at,
-                    routing=routing_metadata,
-                    kv_pool=(
-                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
-                        if include_hipengine
-                        else None
-                    ),
-                    done_phase=(
-                        "structured"
-                        if _structured_result_validation(request) and not parsed.tool_calls
-                        else "done"
-                    ),
-                ):
-                    yield event
+                scheduler_chunks = scheduler_chunks_by_index.get(index, ())
+                use_scheduler_chunks = (
+                    not request.tools
+                    and not request.logprobs
+                    and not _structured_result_validation(request)
+                    and not parsed.tool_calls
+                    and not tool_validation.failed
+                    and structured_failure is None
+                    and structured_length_failure is None
+                    and _scheduler_chunks_match_completion_text(
+                        text,
+                        scheduler_chunks,
+                        require_logprobs=False,
+                    )
+                )
+                if use_scheduler_chunks:
+                    for event in _chat_stream_scheduler_text_chunks(
+                        response_id,
+                        created,
+                        config.model_id,
+                        scheduler_chunks,
+                        finish_reason,
+                        index=index,
+                        finish_details=finish_details,
+                        token_accounting=token_accounting,
+                        include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at,
+                        routing=routing_metadata,
+                        kv_pool=(
+                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            if include_hipengine
+                            else None
+                        ),
+                    ):
+                        yield event
+                else:
+                    for event in _chat_stream_parsed(
+                        response_id,
+                        created,
+                        config.model_id,
+                        parsed,
+                        finish_reason,
+                        index=index,
+                        logprobs=logprobs,
+                        finish_details=finish_details,
+                        token_accounting=token_accounting,
+                        stream_chunk=_stream_chunk_from_detail("", detail),
+                        include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at,
+                        routing=routing_metadata,
+                        kv_pool=(
+                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            if include_hipengine
+                            else None
+                        ),
+                        done_phase=(
+                            "structured"
+                            if _structured_result_validation(request) and not parsed.tool_calls
+                            else "done"
+                        ),
+                    ):
+                        yield event
             if _stream_include_usage(request):
                 yield _chat_stream_usage(
                     response_id,
@@ -11318,6 +11355,23 @@ def _scheduler_payload_stream_chunk(payload: Mapping[str, Any]) -> GenerationStr
     return _coerce_generation_stream_chunk(raw_chunk)
 
 
+def _stream_chunk_with_phase(
+    stream_chunk: GenerationStreamChunk,
+    phase: str,
+) -> GenerationStreamChunk:
+    if stream_chunk.telemetry is None:
+        return stream_chunk
+    return GenerationStreamChunk(
+        text=stream_chunk.text,
+        token_logprobs=stream_chunk.token_logprobs,
+        finish_details=stream_chunk.finish_details,
+        telemetry=replace(
+            stream_chunk.telemetry,
+            decode_state=replace(stream_chunk.telemetry.decode_state, phase=phase),
+        ),
+    )
+
+
 def _scheduler_chunks_match_completion_text(
     text: str,
     chunks: Sequence[Mapping[str, Any]],
@@ -11612,6 +11666,89 @@ def _chat_stream_parsed(
         finish_details=finish_details,
         tokens=final_tokens,
         stream_chunk=stream_chunk,
+        include_hipengine=include_hipengine,
+        stream_started_at=stream_started_at,
+        routing=routing,
+        kv_pool=kv_pool,
+        phase=done_phase,
+    )
+
+
+def _chat_stream_scheduler_text_chunks(
+    response_id: str,
+    created: int,
+    model: str,
+    scheduler_chunks: Sequence[Mapping[str, Any]],
+    finish_reason: str,
+    *,
+    index: int = 0,
+    finish_details: Mapping[str, Any] | None = None,
+    token_accounting: _StreamTokenAccounting | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
+    done_phase: str = "done",
+) -> Iterator[str]:
+    splitter = _ReasoningSplitter()
+    last_stream_chunk: GenerationStreamChunk | None = None
+    for raw_chunk in scheduler_chunks:
+        stream_chunk = _scheduler_payload_stream_chunk(raw_chunk)
+        if stream_chunk is None:
+            continue
+        last_stream_chunk = stream_chunk
+        for delta_field, chunk in splitter.feed(stream_chunk.text):
+            phase = "think" if delta_field == "reasoning_content" else "answer"
+            token_payload = (
+                token_accounting.observe(phase, chunk) if token_accounting is not None else None
+            )
+            yield _chat_stream_delta(
+                response_id,
+                created,
+                model,
+                delta_field,
+                chunk,
+                index=index,
+                tokens=token_payload,
+                stream_chunk=_stream_chunk_with_phase(stream_chunk, phase),
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing,
+                phase=phase,
+            )
+    for delta_field, chunk in splitter.finish():
+        phase = "think" if delta_field == "reasoning_content" else "answer"
+        token_payload = (
+            token_accounting.observe(phase, chunk) if token_accounting is not None else None
+        )
+        yield _chat_stream_delta(
+            response_id,
+            created,
+            model,
+            delta_field,
+            chunk,
+            index=index,
+            tokens=token_payload,
+            stream_chunk=(
+                None if last_stream_chunk is None else _stream_chunk_with_phase(last_stream_chunk, phase)
+            ),
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+            routing=routing,
+            phase=phase,
+        )
+    final_tokens = None
+    if token_accounting is not None and token_accounting.streamed_tokens > 0:
+        final_tokens = token_accounting.snapshot()
+    yield _chat_stream_done(
+        response_id,
+        created,
+        model,
+        finish_reason,
+        index=index,
+        finish_details=finish_details,
+        tokens=final_tokens,
+        stream_chunk=last_stream_chunk,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,

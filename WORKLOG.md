@@ -92619,3 +92619,23 @@ Validation so far:
 - `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_completion_can_include_hipengine_metadata or streaming_completion_prefers_backend_chunk_decode_state or streaming_completion_prefers_backend_chunk_finish_details or completions_endpoint_calls_llm_and_applies_stop'` -> `17 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC buffered chat c>N scheduler chunks
+
+Buffered `/v1/chat/completions` streams for plain answer/reasoning output now
+use `last_batch_generation.scheduler_token_chunks` as public SSE deltas when a
+single HTTP request generated the backend batch and the scheduler chunk text
+exactly reconstructs the public post-processed choice text. The chat path keeps
+tools, structured-output result validation, and logprob requests on the
+conservative buffered parser path. Scheduler-derived chat deltas preserve
+backend decode-state metadata, including the scheduler execution path, while
+overriding the public delta phase after incremental `<think>` splitting so
+reasoning chunks report `think` and answer chunks report `answer`. Updated
+`docs/AGENTIC.md` / `docs/API.md` to match the implemented scope.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher_returns_scheduler_chunks_for_single_metadata_submission or generation_batcher_drops_scheduler_chunks_for_coalesced_metadata_submissions or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas'` -> `4 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_completion_can_include_hipengine_metadata or streaming_completion_prefers_backend_chunk_decode_state or streaming_completion_prefers_backend_chunk_finish_details or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_can_include_hipengine_metadata or streaming_chat_completion_prefers_backend_chunk_decode_state or streaming_chat_completion_prefers_backend_chunk_finish_details or streaming_chat_completion_returns_tool_call_deltas'` -> `21 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

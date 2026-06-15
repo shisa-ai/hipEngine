@@ -12153,6 +12153,146 @@ def test_streaming_chat_completion_can_include_hipengine_metadata() -> None:
     assert isinstance(payloads[-1]["hipengine"]["timing"]["decode_tokens_per_second"], float)
 
 
+def test_streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            outputs = [
+                GenerationOutput(
+                    text="<think>r0</think>A",
+                    finish_details=FinishDetails(reason="length", length_limit=2, sampler_mode="greedy_fast"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=4,
+                        row_index=0,
+                        phase="done",
+                        sampler_mode="greedy_fast",
+                    ),
+                ),
+                GenerationOutput(
+                    text="BC",
+                    finish_details=FinishDetails(reason="length", length_limit=2, sampler_mode="greedy_fast"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=1,
+                        phase="done",
+                        sampler_mode="greedy_fast",
+                    ),
+                ),
+            ]
+            chunk_texts = (("<thi", "nk>r0</think>", "A"), ("B", "C"))
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": request_id,
+                        "token_index": token_index,
+                        "token_id": 200 + request_id * 10 + token_index,
+                        "finished": token_index == len(row) - 1,
+                        "chunk": {
+                            "text": text,
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=token_index + 1,
+                                row_index=request_id,
+                                request_id=str(request_id),
+                                phase="answer",
+                                sampler_mode="greedy_fast",
+                                execution_path="scheduler_native_packed_prefill_serial_decode",
+                            ).to_json_dict(),
+                        },
+                    }
+                    for request_id, row in enumerate(chunk_texts)
+                    for token_index, text in enumerate(row)
+                ]
+            }
+            return outputs[: len(prompt_tuple)]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "n": 2,
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    deltas = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ]
+    assert [(choice["index"], choice["delta"]) for choice in deltas] == [
+        (0, {"role": "assistant"}),
+        (0, {"reasoning_content": "r0"}),
+        (0, {"content": "A"}),
+        (1, {"role": "assistant"}),
+        (1, {"content": "B"}),
+        (1, {"content": "C"}),
+    ]
+    chunk_deltas = [choice for choice in deltas if "role" not in choice["delta"]]
+    assert [
+        choice["hipengine"]["decode_state"]["generated_tokens"]
+        for choice in chunk_deltas
+    ] == [2, 3, 1, 2]
+    assert {
+        choice["hipengine"]["decode_state"]["execution_path"]
+        for choice in chunk_deltas
+    } == {"scheduler_native_packed_prefill_serial_decode"}
+    assert [
+        choice["hipengine"]["phase"]
+        for choice in chunk_deltas
+    ] == ["think", "answer", "answer", "answer"]
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "length"
+    ]
+    assert [(choice["index"], choice["finish_details"]) for choice in done] == [
+        (
+            0,
+            {
+                "reason": "length",
+                "length_limit": 2,
+                "cache_action": "append_none",
+                "sampler_mode": "greedy_fast",
+                "phase": "answer",
+                "continuation_eligible": False,
+            },
+        ),
+        (
+            1,
+            {
+                "reason": "length",
+                "length_limit": 2,
+                "cache_action": "append_none",
+                "sampler_mode": "greedy_fast",
+                "phase": "answer",
+                "continuation_eligible": False,
+            },
+        ),
+    ]
+    prompt_tokens = sum(fake.count_tokens(prompt) for prompt in fake.calls[0][0])
+    assert payloads[-1]["usage"] == {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": 2,
+        "total_tokens": prompt_tokens + 2,
+    }
+    assert "data: [DONE]" in response.text
+    assert len(fake.calls) == 1
+    assert fake.stream_calls == []
+
+
 def test_streaming_chat_completion_can_include_kv_pool_metadata() -> None:
     fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["streamed reply"])
     fake.kv_pool_stats = _fake_kv_pool_stats()
