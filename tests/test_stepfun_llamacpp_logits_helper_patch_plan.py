@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_llamacpp_logits_helper_patch_plan import (
     build_llamacpp_logits_helper_patch_plan,
     main,
+    verify_llamacpp_logits_helper_patch_plan,
 )
 
 
@@ -179,3 +184,143 @@ def test_stepfun_llamacpp_logits_helper_patch_plan_cli_modes(tmp_path: Path) -> 
     assert json.loads(output.read_text())[0]["key"] == "add_helper_local_cli_state"
     assert main([*base_args, "--sha-only", "--output", str(output)]) == 0
     assert isinstance(json.loads(output.read_text()), str)
+
+
+def test_stepfun_llamacpp_logits_helper_patch_plan_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "llama.cpp"
+    prompt = tmp_path / "prompt.json"
+    build_dir = tmp_path / "build"
+    artifact = tmp_path / "patch-plan.json"
+    output = tmp_path / "verify.json"
+    _write_llamacpp_source_tree(root)
+    _write_prompt_artifact(prompt)
+    base_args = [
+        "--llama-cpp-root",
+        str(root),
+        "--prompt-artifact",
+        str(prompt),
+        "--build-dir",
+        str(build_dir),
+        "--artifact-date",
+        "2030-04-09",
+    ]
+    current = build_llamacpp_logits_helper_patch_plan(
+        llama_cpp_root=root,
+        prompt_artifact=prompt,
+        build_dir=build_dir,
+        artifact_date="2030-04-09",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_helper_patch_plan(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_anchors_ready"] is True
+    assert verification["current_anchors_ready"] is True
+    assert verification["persisted_missing_anchors"] == []
+    assert verification["current_missing_anchors"] == []
+    assert verification["persisted_missing_evidence"] == [
+        "llama_cpp_token_ids_helper_patch_applied",
+        "same_prompt_logits_helper_built",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    assert verification["current_missing_evidence"] == [
+        "llama_cpp_token_ids_helper_patch_applied",
+        "same_prompt_logits_helper_built",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    assert verification["persisted_patch_step_keys"] == [
+        "add_helper_local_cli_state",
+        "decode_retained_tokens",
+        "save_exact_prompt_tokens",
+        "wire_main_to_helper_args",
+    ]
+    assert verification["current_patch_step_keys"] == [
+        "add_helper_local_cli_state",
+        "decode_retained_tokens",
+        "save_exact_prompt_tokens",
+        "wire_main_to_helper_args",
+    ]
+    assert verification["persisted_expected_probe_token_ids_argument"] == "0,128006,201"
+    assert verification["current_expected_probe_token_ids_argument"] == "0,128006,201"
+    assert verification["persisted_expected_probe_command_shape"] == [
+        "--prompt-token-source retained-input-ids",
+        "--token-ids",
+        "0,128006,201",
+        "--save-logits",
+        "--logits-output-dir",
+    ]
+    assert verification["current_expected_probe_command_shape"] == [
+        "--prompt-token-source retained-input-ids",
+        "--token-ids",
+        "0,128006,201",
+        "--save-logits",
+        "--logits-output-dir",
+    ]
+    assert verification["persisted_prompt_input_ids"] == [0, 128006, 201]
+    assert verification["current_prompt_input_ids"] == [0, 128006, 201]
+    assert verification["persisted_build_command"] == f"cmake --build {build_dir} --target llama-debug -j"
+    assert verification["current_build_command"] == f"cmake --build {build_dir} --target llama-debug -j"
+    assert verification["persisted_probe_command_after_build"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py "
+        "--prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+    assert verification["current_probe_command_after_build"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py "
+        "--prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-patch-plan",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["anchors_ready"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_helper_patch_plan(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "llamacpp_logits_helper_patch_plan_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-patch-plan",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "llamacpp_logits_helper_patch_plan_drift"
+    )

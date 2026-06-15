@@ -990,7 +990,9 @@ reporting.
   current `/home/lhl/llama.cpp/llama.cpp-vulkan` anchors and emits the exact reviewed patch recipe without editing the
   external tree: add a debug-local `--token-ids`/`--parse-special` pre-parser, select retained IDs before decode, thread
   those decoded tokens into `output_data`, rebuild with `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j`,
-  then rerun the retained-token probe. `scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty`
+  then rerun the retained-token probe; `python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --verify-patch-plan --verification-status-only`
+  is the drift check for the source-anchor readiness, retained prompt token IDs, patch step keys, expected probe command
+  shape, and build/probe command metadata. `scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json`, which generates the
   debug.cpp unified diff in memory and runs `git apply --check -` against the external checkout without applying it;
   it now also materializes the exact apply input at
