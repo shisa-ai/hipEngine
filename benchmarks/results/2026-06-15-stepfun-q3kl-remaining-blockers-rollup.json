@@ -4,6 +4,7 @@
   "generator_commands": {
     "final_blocker_refresh": "python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json",
     "handoff_refresh": "python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json",
+    "host_logit_margin": "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty",
     "kv_blocker_status": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
     "kv_evidence_preflight": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
     "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
@@ -90,6 +91,8 @@
       "evidence_consistency_generator_command": "python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty",
       "generator_command": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
       "generator_command_kind": "oracle_backend_matrix",
+      "host_logit_margin_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json",
+      "host_logit_margin_generator_command": "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty",
       "oracle_parity_ready": false,
       "primary_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
       "prompt_token_roundtrip_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
@@ -246,9 +249,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "f80bc752483be76547462a9172d27393adfc03bf43cd122c35e69c6d9a7fce77",
+    "kv_blocker_status": "617a76ef3934e59b843c835b63c322aa98c11c646508056371fd7d51c15070c4",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "8cb3b737f6a57b9cf4c2529c5564b76b9a6bde81bb0b01675986e6d76cfff893"
+    "status": "ddffe69d83bb937b98b4788c9fb8453488ec778d774bfe23d49a0fe6e5d1ab94"
   },
   "status": "blocked"
 }

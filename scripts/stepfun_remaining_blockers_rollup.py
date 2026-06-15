@@ -160,6 +160,9 @@ def _generator_commands() -> dict[str, str]:
         "oracle_rank_check": (
             "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty"
         ),
+        "host_logit_margin": (
+            "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty"
+        ),
         "top_token_roundtrip": (
             "python3 scripts/stepfun_top_token_roundtrip.py --default-output --pretty"
         ),
@@ -256,6 +259,8 @@ def build_remaining_blockers_rollup(
                 "oracle_parity_ready": oracle_matrix.get("oracle_parity_ready"),
                 "rank_check_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
                 "rank_check_generator_command": commands["oracle_rank_check"],
+                "host_logit_margin_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json",
+                "host_logit_margin_generator_command": commands["host_logit_margin"],
                 "top_token_roundtrip_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json",
                 "top_token_roundtrip_generator_command": commands["top_token_roundtrip"],
                 "prompt_token_roundtrip_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",

@@ -1,0 +1,120 @@
+{
+  "adjacent_visible_margins": [
+    {
+      "higher_rank": 1,
+      "lower_rank": 2,
+      "margin": 0.8150444030761719
+    },
+    {
+      "higher_rank": 2,
+      "lower_rank": 3,
+      "margin": 1.4358100891113281
+    },
+    {
+      "higher_rank": 3,
+      "lower_rank": 4,
+      "margin": 0.11408805847167969
+    },
+    {
+      "higher_rank": 4,
+      "lower_rank": 5,
+      "margin": 1.1406669616699219
+    }
+  ],
+  "artifact_kind": "stepfun_host_top_logit_margin",
+  "conclusion": "expected token is retained host top-1 with a positive visible logit margin",
+  "date": "2026-06-15",
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "generated_token_context": {
+    "generated_first_token_id": 671,
+    "generated_token_host_rank": null,
+    "generated_token_in_host_top_tokens": false,
+    "rank_check_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+    "rank_check_present": true
+  },
+  "host_top_logits": [
+    19.158626556396484,
+    18.343582153320312,
+    16.907772064208984,
+    16.793684005737305,
+    15.653017044067383
+  ],
+  "host_top_token_count": 5,
+  "host_top_token_ids": [
+    369,
+    5,
+    15251,
+    223,
+    201
+  ],
+  "host_top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ],
+  "missing_evidence": [],
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact only summarizes retained host top-token logits; generated_text_matches_target remains unresolved."
+  },
+  "oracle_blocker_interpretation": "the retained host logits make the expected token a clear visible top-1; the llama.cpp generated-token mismatch should be investigated as logits/backend parity rather than a near-tie in the retained host top list",
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "prompt_artifact_sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+  "ready": true,
+  "schema_version": 1,
+  "status": "passed",
+  "top1_matches_expected_id": true,
+  "top1_record": {
+    "logit": 19.158626556396484,
+    "rank": 1,
+    "token_id": 369,
+    "token_text": " |"
+  },
+  "top1_to_top2_margin": 0.8150444030761719,
+  "top1_to_top5_margin": 3.5056095123291016,
+  "top2_record": {
+    "logit": 18.343582153320312,
+    "rank": 2,
+    "token_id": 5,
+    "token_text": "#"
+  },
+  "top5_record": {
+    "logit": 15.653017044067383,
+    "rank": 5,
+    "token_id": 201,
+    "token_text": "\n"
+  },
+  "top_tokens_sorted_by_logit_desc": true
+}

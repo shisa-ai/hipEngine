@@ -41024,3 +41024,34 @@ git diff --check
 ```
 
 Results: targeted evidence-consistency/rollup tests passed (`8` tests); status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `70c650c9b240f5a67adc77b6151af88785ac378888c6f94d11394d2fcd60a8f4`; remaining-blockers file SHA `031b140800aa819c672b9eebd4198b4a80dda78803712630573c4da0fb2e1d3e`; correctness-status file SHA `01d3e9bfd8689693842485156b0f7ea39e14acb3a5200c526a6f3ea908f7fd51`; final-blocker file SHA `6db095b02eb6943ef5d5ef35ee3091264e8845d65dac97f5bef94372dc98e1ee`; handoff file SHA `8cd37ab73fbdb2cd0efe49d845c50b406df736b0756d55ee947dfbb376e2a6da`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun host top-logit margin evidence
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 494. Added `scripts/stepfun_host_logit_margin.py`, a retained host top-logit margin reporter for the oracle prompt-smoke artifact, plus `tests/test_stepfun_host_logit_margin.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the host-logit-margin artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json` reports `status=passed`, `top1_matches_expected_id=true`, and host top-token IDs `[369, 5, 15251, 223, 201]`. Expected token `369` / `" |"` is host top-1 with visible top-1→top-2 logit margin `0.8150444030761719` and top-1→top-5 margin `3.5056095123291016`; generated token context still reports `generated_first_token_id=671`, `generated_token_in_host_top_tokens=false`, and `generated_token_host_rank=null`. This rules out an ambiguous retained host top-1 near-tie as the explanation for the llama.cpp generated-token mismatch, but it does not resolve oracle parity: canonical missing evidence remains `generated_text_matches_target`. Host-logit-margin file SHA is `db74c6252cab68c2f5acfde527b370692816a2daa69d60d60c221102857008ff`; stable payload SHA from `scripts/stepfun_host_logit_margin.py --sha-only` is `7a2b5aa06a93d7394925752c4b4b16cd8e7b7ec039574e607747cf21d49da8c1`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_host_logit_margin.py tests/test_stepfun_host_logit_margin.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_host_logit_margin.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_host_logit_margin.py --default-output --pretty
+python3 scripts/stepfun_host_logit_margin.py --sha-only
+python3 scripts/stepfun_host_logit_margin.py --status-only
+python3 scripts/stepfun_host_logit_margin.py --top1-margin-only
+python3 scripts/stepfun_host_logit_margin.py --expected-top1-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted host-logit-margin/rollup tests passed (`8` tests); host-logit-margin compact outputs were `"passed"`, `0.8150444030761719`, and `true`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `08dc92edf02480bff1341fdacc7fbc251705a357e948f8108027bd1e05d46c43`; remaining-blockers file SHA `b693bd5325213d1cd84a16aa6face6fed2016175f309e956a3c8dbf386e62e80`; correctness-status file SHA `ba3ffa9ffb0b8e145dcb859befd2584e34987e8a4e2df1e96c891c5d5b886d8c`; final-blocker file SHA `1b2cd54c832945ebe4af6868817e55b3050484a68dc046e5c985b92415395b3d`; handoff file SHA `b71d56b70513b0d5e405fa34f40134ca5c775e7ae3b7e479a1111328ba592e27`; full StepFun guard passed; `git diff --check` passed.
