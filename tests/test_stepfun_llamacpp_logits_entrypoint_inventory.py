@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_llamacpp_logits_entrypoint_inventory import (
     build_llamacpp_logits_entrypoint_inventory,
     main,
+    verify_llamacpp_logits_entrypoint_inventory,
 )
 
 
@@ -294,3 +299,143 @@ def test_stepfun_llamacpp_logits_entrypoint_inventory_cli_compact_modes(tmp_path
     assert len(json.loads(output.read_text())) == 4
     assert main([*base_args, "--build-readiness-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()) == "ready_to_build"
+
+
+def test_stepfun_llamacpp_logits_entrypoint_inventory_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "llama.cpp"
+    build_dir = root / "build"
+    bin_dir = build_dir / "bin"
+    fake_cmake = tmp_path / "fake-cmake"
+    _write_source_tree(root)
+    _write_fake_cmake(fake_cmake, targets=["llama-cli", "llama-debug", "llama-batched"])
+    _write_exe(bin_dir / "llama-cli", help_text="--logit-bias TOKEN")
+    preflight, plan = _write_artifacts(tmp_path)
+    artifact = tmp_path / "inventory.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--llama-cpp-root",
+        str(root),
+        "--build-dir",
+        str(build_dir),
+        "--bin-dir",
+        str(bin_dir),
+        "--cmake",
+        str(fake_cmake),
+        "--preflight-artifact",
+        str(preflight),
+        "--plan-artifact",
+        str(plan),
+        "--artifact-date",
+        "2030-02-06",
+    ]
+    current = build_llamacpp_logits_entrypoint_inventory(
+        llama_cpp_root=root,
+        build_dir=build_dir,
+        bin_dir=bin_dir,
+        preflight_artifact=preflight,
+        plan_artifact=plan,
+        cmake=str(fake_cmake),
+        artifact_date="2030-02-06",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_entrypoint_inventory(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_ready"] is False
+    assert verification["current_ready"] is False
+    assert verification["persisted_built_logits_dump_binary_present"] is False
+    assert verification["current_built_logits_dump_binary_present"] is False
+    assert verification["persisted_build_readiness_status"] == "ready_to_build"
+    assert verification["current_build_readiness_status"] == "ready_to_build"
+    assert verification["persisted_missing_evidence"] == [
+        "built_llamacpp_logits_dump_binary_present",
+        "llama_debug_binary_built",
+    ]
+    assert verification["current_missing_evidence"] == [
+        "built_llamacpp_logits_dump_binary_present",
+        "llama_debug_binary_built",
+    ]
+    assert verification["persisted_source_logits_candidate_count"] == 4
+    assert verification["current_source_logits_candidate_count"] == 4
+    assert verification["persisted_source_candidate_paths"] == [
+        "examples/debug/debug.cpp",
+        "common/arg.cpp",
+        "include/llama.h",
+        "examples/batched/batched.cpp",
+    ]
+    assert verification["current_source_candidate_paths"] == [
+        "examples/debug/debug.cpp",
+        "common/arg.cpp",
+        "include/llama.h",
+        "examples/batched/batched.cpp",
+    ]
+    assert verification["persisted_built_logits_dump_binaries"] == []
+    assert verification["current_built_logits_dump_binaries"] == []
+    assert verification["persisted_preflight_sha256"] == _stable_json_sha256(
+        json.loads(preflight.read_text())
+    )
+    assert verification["current_preflight_sha256"] == _stable_json_sha256(
+        json.loads(preflight.read_text())
+    )
+    assert verification["persisted_plan_sha256"] == _stable_json_sha256(
+        json.loads(plan.read_text())
+    )
+    assert verification["current_plan_sha256"] == _stable_json_sha256(
+        json.loads(plan.read_text())
+    )
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-inventory",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["build_readiness_status"] = "blocked"
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_entrypoint_inventory(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "llamacpp_logits_entrypoint_inventory_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-inventory",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "llamacpp_logits_entrypoint_inventory_drift"
+    )

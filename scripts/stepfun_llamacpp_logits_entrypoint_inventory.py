@@ -165,6 +165,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the artifact payload.",
     )
+    parser.add_argument(
+        "--verify-inventory",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted llama.cpp logits entrypoint inventory artifact with current "
+            f"binary/source/plan metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-inventory, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-inventory, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-inventory, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -482,6 +508,106 @@ def build_llamacpp_logits_entrypoint_inventory(
     }
 
 
+def verify_llamacpp_logits_entrypoint_inventory(
+    inventory_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted llama.cpp logits entrypoint inventory with current metadata."""
+
+    persisted_payload = _load_json_object(inventory_artifact)
+    persisted: dict[str, object] = (
+        persisted_payload if persisted_payload is not None else {"exists": False}
+    )
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_entrypoint_inventory_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted llama.cpp logits entrypoint inventory artifact differs "
+                    "from current binary/source/plan metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(inventory_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_ready": persisted.get("ready"),
+        "current_ready": current_report.get("ready"),
+        "persisted_built_logits_dump_binary_present": persisted.get(
+            "built_logits_dump_binary_present"
+        ),
+        "current_built_logits_dump_binary_present": current_report.get(
+            "built_logits_dump_binary_present"
+        ),
+        "persisted_build_readiness_status": persisted.get("build_readiness_status"),
+        "current_build_readiness_status": current_report.get("build_readiness_status"),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+        "persisted_source_logits_candidate_count": persisted.get(
+            "source_logits_candidate_count"
+        ),
+        "current_source_logits_candidate_count": current_report.get(
+            "source_logits_candidate_count"
+        ),
+        "persisted_source_candidate_paths": [
+            record.get("path")
+            for record in persisted.get("source_logits_candidates", [])
+            if isinstance(record, dict)
+        ],
+        "current_source_candidate_paths": [
+            record.get("path")
+            for record in current_report.get("source_logits_candidates", [])
+            if isinstance(record, dict)
+        ],
+        "persisted_built_logits_dump_binaries": [
+            record.get("name")
+            for record in persisted.get("built_logits_dump_binaries", [])
+            if isinstance(record, dict)
+        ],
+        "current_built_logits_dump_binaries": [
+            record.get("name")
+            for record in current_report.get("built_logits_dump_binaries", [])
+            if isinstance(record, dict)
+        ],
+        "persisted_preflight_sha256": (
+            persisted.get("preflight_artifact", {}).get("sha256")
+            if isinstance(persisted.get("preflight_artifact"), dict)
+            else None
+        ),
+        "current_preflight_sha256": (
+            current_report.get("preflight_artifact", {}).get("sha256")
+            if isinstance(current_report.get("preflight_artifact"), dict)
+            else None
+        ),
+        "persisted_plan_sha256": (
+            persisted.get("plan_artifact", {}).get("sha256")
+            if isinstance(persisted.get("plan_artifact"), dict)
+            else None
+        ),
+        "current_plan_sha256": (
+            current_report.get("plan_artifact", {}).get("sha256")
+            if isinstance(current_report.get("plan_artifact"), dict)
+            else None
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -497,6 +623,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         target_help_timeout_s=args.target_help_timeout_s,
         artifact_date=args.artifact_date,
     )
+    if args.verify_inventory is not None:
+        verification = verify_llamacpp_logits_entrypoint_inventory(
+            args.verify_inventory,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.built_logits_binary_only:

@@ -971,7 +971,9 @@ reporting.
   and upstream preflight/source-map/next-action artifact hashes. `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json`,
   showing source-level candidates (`examples/debug/debug.cpp`, `include/llama.h`, `examples/batched/batched.cpp`)
-  exist and the local Vulkan CMake build has built `llama-debug` (`build_readiness_status=built`).
+  exist and the local Vulkan CMake build has built `llama-debug` (`build_readiness_status=built`);
+  `python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --verify-inventory --verification-status-only`
+  is the drift check for executable/help capability, plan linkage, source candidate, and missing-capability metadata.
   `scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json`, an implementation contract for
   the next source patch: it pins the retained 23-token prompt IDs to
