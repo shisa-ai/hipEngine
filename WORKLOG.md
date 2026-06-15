@@ -91981,3 +91981,20 @@ Validation:
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema scalar constraint inference
+
+JSON Schema result validation now infers scalar JSON value types when a
+subschema omits an explicit `type`, so type-specific constraints such as
+`minimum`, `maximum`, `minLength`, and `maxLength` still apply inside generated
+composition schemas like `allOf`. Focused structured-output and strict-tool
+composition tests now exercise type-less numeric and string constraint branches.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_completions_response_format_json_schema_validates_composition_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_composition_keywords tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_rejects_invalid_composition_schema -q` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `145 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py` -> clean.

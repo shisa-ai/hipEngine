@@ -9988,6 +9988,16 @@ def _primary_json_schema_type(expected: Any, value: Any) -> str | None:
         return "object"
     if isinstance(value, list):
         return "array"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float) and math.isfinite(value):
+        return "number"
+    if value is None:
+        return "null"
     return None
 
 

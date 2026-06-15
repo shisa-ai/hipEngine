@@ -5091,11 +5091,12 @@ def test_completions_response_format_json_schema_validates_composition_keywords(
             "type": "object",
             "properties": {
                 "target": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
-                "score": {"allOf": [{"type": "number", "minimum": 0}, {"type": "number", "maximum": 1}]},
+                "score": {"type": "number", "allOf": [{"minimum": 0}, {"maximum": 1}]},
+                "label": {"type": "string", "allOf": [{"minLength": 2}, {"maxLength": 4}]},
                 "ambiguous": {"oneOf": [{"type": "number"}, {"type": "integer"}]},
                 "debug": {"not": {"const": True}},
             },
-            "required": ["target", "score", "ambiguous", "debug"],
+            "required": ["target", "score", "label", "ambiguous", "debug"],
             "additionalProperties": False,
         },
     }
@@ -5107,18 +5108,21 @@ def test_completions_response_format_json_schema_validates_composition_keywords(
     valid = TestClient(
         create_app(
             ServerConfig(model="fake-path", served_model_name="fake-model"),
-            llm=FakeLLM(outputs=['{"target":null,"score":0.5,"ambiguous":1.5,"debug":false}']),
+            llm=FakeLLM(outputs=['{"target":null,"score":0.5,"label":"ok","ambiguous":1.5,"debug":false}']),
         )
     ).post("/v1/completions", json=payload)
     invalid_outputs = [
-        '{"target":7,"score":0.5,"ambiguous":1.5,"debug":false}',
-        '{"target":null,"score":2,"ambiguous":1.5,"debug":false}',
-        '{"target":null,"score":0.5,"ambiguous":1,"debug":false}',
-        '{"target":null,"score":0.5,"ambiguous":1.5,"debug":true}',
+        '{"target":7,"score":0.5,"label":"ok","ambiguous":1.5,"debug":false}',
+        '{"target":null,"score":2,"label":"ok","ambiguous":1.5,"debug":false}',
+        '{"target":null,"score":0.5,"label":"x","ambiguous":1.5,"debug":false}',
+        '{"target":null,"score":0.5,"label":"ok","ambiguous":1,"debug":false}',
+        '{"target":null,"score":0.5,"label":"ok","ambiguous":1.5,"debug":true}',
     ]
 
     assert valid.status_code == 200
-    assert valid.json()["choices"][0]["text"] == '{"target":null,"score":0.5,"ambiguous":1.5,"debug":false}'
+    assert valid.json()["choices"][0]["text"] == (
+        '{"target":null,"score":0.5,"label":"ok","ambiguous":1.5,"debug":false}'
+    )
     assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
     for generated in invalid_outputs:
         invalid = TestClient(
@@ -9573,15 +9577,17 @@ def test_chat_completion_strict_tool_schema_validates_composition_keywords() -> 
                     "properties": {
                         "target": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
                         "score": {
-                            "allOf": [
-                                {"type": "number", "minimum": 0},
-                                {"type": "number", "maximum": 1},
-                            ]
+                            "type": "number",
+                            "allOf": [{"minimum": 0}, {"maximum": 1}],
+                        },
+                        "label": {
+                            "type": "string",
+                            "allOf": [{"minLength": 2}, {"maxLength": 4}],
                         },
                         "ambiguous": {"oneOf": [{"type": "number"}, {"type": "integer"}]},
                         "debug": {"not": {"const": True}},
                     },
-                    "required": ["target", "score", "ambiguous", "debug"],
+                    "required": ["target", "score", "label", "ambiguous", "debug"],
                     "additionalProperties": False,
                 },
             },
@@ -9593,7 +9599,7 @@ def test_chat_completion_strict_tool_schema_validates_composition_keywords() -> 
             outputs=[
                 (
                     '<tool_call>{"name":"record","arguments":'
-                    '{"target":null,"score":0.5,"ambiguous":1.5,"debug":false}}</tool_call>'
+                    '{"target":null,"score":0.5,"label":"ok","ambiguous":1.5,"debug":false}}</tool_call>'
                 )
             ]
         ),
@@ -9604,7 +9610,7 @@ def test_chat_completion_strict_tool_schema_validates_composition_keywords() -> 
             outputs=[
                 (
                     '<tool_call>{"name":"record","arguments":'
-                    '{"target":null,"score":0.5,"ambiguous":1,"debug":false}}</tool_call>'
+                    '{"target":null,"score":0.5,"label":"x","ambiguous":1.5,"debug":false}}</tool_call>'
                 )
             ]
         ),
