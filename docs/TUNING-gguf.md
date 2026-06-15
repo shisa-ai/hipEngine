@@ -215,6 +215,12 @@ No-hold notes:
   generated IDs and memory, but regressed the current lb1 gate metric
   (`115.114 -> 115.013 tok/s`) and lowered `512/128` prefill to `1635.484 tok/s`.
   Keep Q6_K T16 GEMV at `128,4`.
+- **G-D4 split decode threshold=8192 rejected (2026-06-15).** Raising the
+  full-attention split/gate fused decode threshold from `1024` to `8192` forced
+  the `4K/128` gate onto the direct context + gate-mul path and looked faster
+  (`115.805 -> 125.592 tok/s`), but changed the final token (`570 -> 263`).
+  Keep the split threshold default at `1024`; direct 4K decode is
+  correctness-invalid until fixed.
 - **G-D4 split decode threshold=512 rejected (2026-06-15).** Lowering the
   full-attention split/gate fused decode threshold from `1024` to `512` routed
   the short gate through the warp-split path and preserved memory, but changed
