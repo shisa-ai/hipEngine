@@ -95356,3 +95356,48 @@ Validation:
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   the B1 preflight artifact now explicitly carries the KVLiveSpans-shaped call
   spec for future native execution.
+
+## 2026-06-15 - MTP-GGUF w4_gguf CPU oracle key
+
+Implemented `mtp-gguf` multiloop iteration 60: registered and advertised the
+GGUF MTP full NextN CPU oracle under the production-facing `w4_gguf` quant key.
+
+Scope note:
+- Registry metadata/spec/test/docs only. No hipEngine runtime generation, GGUF
+  tensor loading, MTP draft execution, sampling implementation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- The previous `gguf_moe` key is retained as a legacy CPU-reference alias so
+  older local callers continue to resolve, but the call spec and fixture now use
+  `w4_gguf`, matching the quant-axis plugin expected by future native GGUF MTP
+  dispatch.
+
+Changes:
+- `_MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL` now advertises
+  `("cpu_reference", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits")`.
+- `register_cpu_reference_kernels()` registers `qwen35_gguf_mtp_nextn_layer_logits`
+  under both `w4_gguf` and legacy `gguf_moe` quant keys.
+- Updated the deterministic NextN CPU-reference fixture and call-spec / preflight
+  / CPU-reference tests to expect the `w4_gguf` key.
+- Updated `docs/MTP-gguf.md` M3/current/backlog text to document the `w4_gguf`
+  CPU oracle key plus legacy alias.
+
+Validation:
+- Focused tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_mtp_call_spec_cli.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_cpu_reference.py` -> `49` passed.
+- Real MTP-bearing GGUF call-spec + registry smoke passed:
+  `scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --require-mtp --layer 40 --indent 2` -> kernel
+  `['cpu_reference', 'mtp_nextn_layer', 'w4_gguf', 'qwen35_dense_logits']`;
+  resolving `backend='hip_gfx1100', layer='mtp_nextn_layer', quant='w4_gguf', variant='qwen35_dense_logits'`
+  fell back to the CPU-reference oracle, and the legacy `gguf_moe` key still
+  resolved to the same function.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/loading/qwen35_gguf.py hipengine/kernels/cpu_reference/ops.py tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_mtp_call_spec_cli.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_cpu_reference.py` and
+  `git diff --check -- hipengine/loading/qwen35_gguf.py hipengine/kernels/cpu_reference/ops.py tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_mtp_call_spec_cli.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_cpu_reference.py docs/MTP-gguf.md benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: registry metadata/spec/test/docs only; no torch import;
+  no runtime backend/quant dispatch branch; no generation, MTP execution,
+  sampling implementation, GPU kernel, attention/KV runtime path, or performance
+  claim; future MTP attention/KV-write execution remains KVLiveSpans-gated.

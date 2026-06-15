@@ -765,13 +765,13 @@ def test_qwen35_gguf_mtp_nextn_fixture_produces_finite_logits_and_topk() -> None
     assert fixture["cpu_reference_kernel"] == [
         "cpu_reference",
         "mtp_nextn_layer",
-        "gguf_moe",
+        "w4_gguf",
         "qwen35_dense_logits",
     ]
     kernel = resolve(
         backend="cpu_reference",
         layer="mtp_nextn_layer",
-        quant="gguf_moe",
+        quant="w4_gguf",
         variant="qwen35_dense_logits",
     )
     inputs = fixture["inputs"]
@@ -864,6 +864,12 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     nextn_layer = resolve(
         backend="cpu_reference",
         layer="mtp_nextn_layer",
+        quant="w4_gguf",
+        variant="qwen35_dense_logits",
+    )
+    legacy_nextn_layer = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_layer",
         quant="gguf_moe",
         variant="qwen35_dense_logits",
     )
@@ -875,3 +881,4 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     assert moe_routing is qwen35_gguf_mtp_moe_routing
     assert ffn is qwen35_gguf_mtp_ffn_sublayer
     assert nextn_layer is qwen35_gguf_mtp_nextn_layer_logits
+    assert legacy_nextn_layer is qwen35_gguf_mtp_nextn_layer_logits

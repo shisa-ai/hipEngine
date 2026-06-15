@@ -969,7 +969,7 @@ def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPB
 _MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL = (
     "cpu_reference",
     "mtp_nextn_layer",
-    "gguf_moe",
+    "w4_gguf",
     "qwen35_dense_logits",
 )
 

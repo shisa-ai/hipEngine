@@ -96,7 +96,7 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
         "cpu_reference_kernel": [
             "cpu_reference",
             "mtp_nextn_layer",
-            "gguf_moe",
+            "w4_gguf",
             "qwen35_dense_logits",
         ],
         "dynamic_inputs": [

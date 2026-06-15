@@ -1580,11 +1580,12 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         qwen35_gguf_mtp_ffn_sublayer,
         replace=replace,
     )
-    register(
-        KernelKey("cpu_reference", "mtp_nextn_layer", "gguf_moe", "qwen35_dense_logits"),
-        qwen35_gguf_mtp_nextn_layer_logits,
-        replace=replace,
-    )
+    for quant in ("w4_gguf", "gguf_moe"):
+        register(
+            KernelKey("cpu_reference", "mtp_nextn_layer", quant, "qwen35_dense_logits"),
+            qwen35_gguf_mtp_nextn_layer_logits,
+            replace=replace,
+        )
     register(
         KernelKey("cpu_reference", "linear", "gguf_q8_0", "gemv_f32_f32_out"),
         gguf_q8_0_gemv,

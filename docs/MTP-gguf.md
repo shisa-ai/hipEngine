@@ -527,7 +527,7 @@ validated GGUF tensor names, qtypes, scalar kwargs, and runtime inputs for the
 Expected local shape:
 
 - one `mtp_draft_call_specs[]` entry for `layer_id: 40`;
-- `cpu_reference_kernel == ["cpu_reference", "mtp_nextn_layer", "gguf_moe",
+- `cpu_reference_kernel == ["cpu_reference", "mtp_nextn_layer", "w4_gguf",
   "qwen35_dense_logits"]`;
 - direct tensor args include `wq_weight -> blk.40.attn_q.weight` and
   `shared_head_weight -> output.weight`;
@@ -546,7 +546,8 @@ of emitting an empty spec list.
 Current status:
 
 - The NumPy `cpu_reference` full NextN layer is registered as
-  `KernelKey("cpu_reference", "mtp_nextn_layer", "gguf_moe", "qwen35_dense_logits")`.
+  `KernelKey("cpu_reference", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits")`
+  with a legacy `gguf_moe` alias for older fixtures/tests.
   Fixture `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`
   pins a deterministic hidden/token row, finite logits, and top-k IDs for the
   full `eh_proj -> attention -> MoE/shared expert -> shared head` oracle.
@@ -808,8 +809,9 @@ is now answered by the M1 required/optional table.)
       GGUF decode path (per-token tap; `run_prompt_hidden` returns BF16 today).
       Fixture: `benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json`.
 - [x] **Add a `cpu_reference` NextN forward** in `kernels/cpu_reference/ops.py`
-      registered under `(cpu_reference, mtp_nextn_layer, gguf_moe,
-      qwen35_dense_logits)` as the offline oracle, with a deterministic fixture:
+      registered under `(cpu_reference, mtp_nextn_layer, w4_gguf,
+      qwen35_dense_logits)` (plus legacy `gguf_moe` alias) as the offline oracle,
+      with a deterministic fixture:
       `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
 - [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
       attention path and dense fallback; CPU-reference coverage and call specs

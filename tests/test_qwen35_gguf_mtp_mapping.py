@@ -227,7 +227,7 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     assert plan.cpu_reference_kernel == (
         "cpu_reference",
         "mtp_nextn_layer",
-        "gguf_moe",
+        "w4_gguf",
         "qwen35_dense_logits",
     )
     assert plan.num_heads == 2

@@ -38,7 +38,7 @@ def test_gguf_mtp_call_spec_cli_emits_json_and_propagates_non_strict(
                     "cpu_reference_kernel": [
                         "cpu_reference",
                         "mtp_nextn_layer",
-                        "gguf_moe",
+                        "w4_gguf",
                         "qwen35_dense_logits",
                     ],
                     "tensor_arguments": {"wq_weight": f"{path.stem}.attn_q.weight"},
@@ -85,7 +85,7 @@ def test_gguf_mtp_call_spec_cli_emits_json_and_propagates_non_strict(
     assert payload[0]["mtp_draft_call_specs"][0]["cpu_reference_kernel"] == [
         "cpu_reference",
         "mtp_nextn_layer",
-        "gguf_moe",
+        "w4_gguf",
         "qwen35_dense_logits",
     ]
     assert payload[1]["mtp_draft_call_specs"][0]["tensor_arguments"] == {

@@ -2,7 +2,7 @@
   "cpu_reference_kernel": [
     "cpu_reference",
     "mtp_nextn_layer",
-    "gguf_moe",
+    "w4_gguf",
     "qwen35_dense_logits"
   ],
   "description": "Synthetic Qwen35 GGUF MTP NextN CPU-reference oracle: one hidden/token row, full eh_proj + dense attention + MoE/shared expert + shared head.",
