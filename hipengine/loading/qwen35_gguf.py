@@ -231,6 +231,18 @@ class Qwen35GGUFMTPDraftTensorPlan:
     layer_id: int
     hidden_size: int
     vocab_size: int
+    num_heads: int
+    num_kv_heads: int
+    qk_head_dim: int
+    value_head_dim: int
+    attention_width: int
+    experts_used: int
+    expert_weights_scale: float
+    rms_norm_eps: float
+    rotary_dim: int
+    rope_freq_base: float
+    rope_dimension_sections: tuple[int, ...]
+    attention_scale: float
     cpu_reference_kernel: tuple[str, str, str, str]
     slots: tuple[Qwen35GGUFMTPDraftTensorSlot, ...]
     fallback_slots: Mapping[str, str]
@@ -247,11 +259,40 @@ class Qwen35GGUFMTPDraftTensorPlan:
     def tensor_names(self) -> tuple[str, ...]:
         return tuple(item.tensor_name for item in self.slots)
 
+    @property
+    def kernel_kwargs(self) -> Mapping[str, object]:
+        """Scalar kwargs for ``qwen35_gguf_mtp_nextn_layer_logits``."""
+
+        return MappingProxyType(
+            {
+                "num_heads": self.num_heads,
+                "num_kv_heads": self.num_kv_heads,
+                "experts_used": self.experts_used,
+                "rotary_dim": self.rotary_dim,
+                "scale": self.attention_scale,
+                "expert_weights_scale": self.expert_weights_scale,
+                "eps": self.rms_norm_eps,
+            }
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "layer_id": self.layer_id,
             "hidden_size": self.hidden_size,
             "vocab_size": self.vocab_size,
+            "num_heads": self.num_heads,
+            "num_kv_heads": self.num_kv_heads,
+            "qk_head_dim": self.qk_head_dim,
+            "value_head_dim": self.value_head_dim,
+            "attention_width": self.attention_width,
+            "experts_used": self.experts_used,
+            "expert_weights_scale": self.expert_weights_scale,
+            "rms_norm_eps": self.rms_norm_eps,
+            "rotary_dim": self.rotary_dim,
+            "rope_freq_base": self.rope_freq_base,
+            "rope_dimension_sections": list(self.rope_dimension_sections),
+            "attention_scale": self.attention_scale,
+            "kernel_kwargs": dict(self.kernel_kwargs),
             "cpu_reference_kernel": list(self.cpu_reference_kernel),
             "slots": [slot.as_dict() for slot in self.slots],
             "fallback_slots": dict(self.fallback_slots),
@@ -546,6 +587,7 @@ def build_qwen35_gguf_mtp_draft_tensor_plans(
 ) -> tuple[Qwen35GGUFMTPDraftTensorPlan, ...]:
     """Return ordered GGUF tensor plans for CPU-reference MTP draft oracles."""
 
+    config = qwen35_gguf_config_from_metadata(info)
     specs = build_qwen35_gguf_mtp_draft_specs(info, strict=strict)
     block_maps = build_qwen35_gguf_mtp_block_maps(info, strict=strict)
     spec_by_layer = {spec.layer_id: spec for spec in specs}
@@ -569,6 +611,18 @@ def build_qwen35_gguf_mtp_draft_tensor_plans(
                 layer_id=block_map.layer_id,
                 hidden_size=spec.hidden_size,
                 vocab_size=spec.vocab_size,
+                num_heads=config.head_count,
+                num_kv_heads=config.head_count_kv,
+                qk_head_dim=config.key_length,
+                value_head_dim=config.value_length,
+                attention_width=_attention_output_width(config),
+                experts_used=config.expert_used_count,
+                expert_weights_scale=_expert_weights_scale(config),
+                rms_norm_eps=config.rms_norm_eps,
+                rotary_dim=config.rope_dimension_count,
+                rope_freq_base=config.rope_freq_base,
+                rope_dimension_sections=config.rope_dimension_sections,
+                attention_scale=_effective_attention_scale(config),
                 cpu_reference_kernel=_MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL,
                 slots=tuple(slots),
                 fallback_slots=block_map.fallback_slots,
@@ -945,6 +999,18 @@ def _mtp_required_tensor_names(config: Qwen35GGUFConfig, layer_id: int) -> tuple
 
 def _attention_output_width(config: Qwen35GGUFConfig) -> int:
     return config.head_count * config.value_length
+
+
+def _effective_attention_scale(config: Qwen35GGUFConfig) -> float:
+    return config.key_length ** -0.5
+
+
+def _expert_weights_scale(config: Qwen35GGUFConfig) -> float:
+    del config
+    # Qwen35MoE does not currently load LLM_KV_EXPERT_WEIGHTS_SCALE in llama.cpp;
+    # llama-hparams.h therefore leaves the scale at 0.0f. build_moe_ffn treats
+    # both 0.0 and 1.0 as no-op scale values.
+    return 0.0
 
 
 def _linear_qkv_width(config: Qwen35GGUFConfig) -> int:

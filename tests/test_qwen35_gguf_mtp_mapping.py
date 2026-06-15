@@ -203,6 +203,27 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "gguf_moe",
         "qwen35_dense_logits",
     )
+    assert plan.num_heads == 2
+    assert plan.num_kv_heads == 1
+    assert plan.qk_head_dim == 4
+    assert plan.value_head_dim == 4
+    assert plan.attention_width == 8
+    assert plan.experts_used == 1
+    assert plan.expert_weights_scale == 0.0
+    assert plan.rms_norm_eps == 1.0e-6
+    assert plan.rotary_dim == 4
+    assert plan.rope_freq_base == 10000000.0
+    assert plan.rope_dimension_sections == ()
+    assert plan.attention_scale == 0.5
+    assert dict(plan.kernel_kwargs) == {
+        "num_heads": 2,
+        "num_kv_heads": 1,
+        "experts_used": 1,
+        "rotary_dim": 4,
+        "scale": 0.5,
+        "expert_weights_scale": 0.0,
+        "eps": 1.0e-6,
+    }
     assert [slot.slot for slot in plan.slots] == [
         "nextn.embed_tokens",
         "nextn.eh_proj",
@@ -233,7 +254,17 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     assert plan.slot("nextn.shared_head_head").fallback_slot == "lm_head"
     assert plan.slot("ffn_gate_exps").shape == (3, 5, 8)
     assert plan.slot("ffn_gate_exps").ggml_type_name == "F32"
-    assert plan.as_dict()["slots"][0] == {
+    plan_dict = plan.as_dict()
+    assert plan_dict["kernel_kwargs"] == {
+        "num_heads": 2,
+        "num_kv_heads": 1,
+        "experts_used": 1,
+        "rotary_dim": 4,
+        "scale": 0.5,
+        "expert_weights_scale": 0.0,
+        "eps": 1.0e-6,
+    }
+    assert plan_dict["slots"][0] == {
         "slot": "nextn.embed_tokens",
         "tensor_name": "token_embd.weight",
         "shape": [11, 8],

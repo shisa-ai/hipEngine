@@ -93851,3 +93851,65 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU oracle scalar tensor plan bridge
+
+Implemented `mtp-gguf` multiloop iteration 28: enriched the loader-side ordered
+GGUF MTP draft tensor plan with the scalar kwargs needed to call the
+CPU-reference NextN layer oracle deterministically.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this plan only records scalar CPU-oracle kwargs for future parity
+  harnesses.
+
+Evidence:
+- Real GGUF smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... build_qwen35_gguf_mtp_draft_tensor_plans(GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf').info) ... PY`
+  passed and reported:
+  - kernel key `('cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits')`
+  - `num_heads=16`, `num_kv_heads=2`
+  - `qk_head_dim=256`, `value_head_dim=256`, `attention_width=4096`
+  - `experts_used=8`, `expert_weights_scale=0.0`
+  - `rotary_dim=64`, `rope_dimension_sections=(11, 11, 10, 0)`,
+    `rope_freq_base=10000000.0`
+  - `attention_scale=0.0625`, `rms_norm_eps≈1e-6`
+  - `kernel_kwargs={'num_heads': 16, 'num_kv_heads': 2, 'experts_used': 8,
+    'rotary_dim': 64, 'scale': 0.0625, 'expert_weights_scale': 0.0,
+    'eps': 9.999999974752427e-07}`.
+- llama.cpp source check:
+  - `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '554,657p'`
+  - `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/llama-hparams.h | sed -n '92,101p'`
+  confirms `n_embd_head` drives q/k/v head width, RoPE sections are used, and
+  `kq_scale = 1/sqrt(n_embd_head)` when `f_attention_scale == 0.0f`; Qwen35MoE
+  does not load `LLM_KV_EXPERT_WEIGHTS_SCALE`, so llama-hparams keeps
+  `expert_weights_scale = 0.0f`.
+
+Changes:
+- Added scalar fields to `Qwen35GGUFMTPDraftTensorPlan`:
+  `num_heads`, `num_kv_heads`, `qk_head_dim`, `value_head_dim`,
+  `attention_width`, `experts_used`, `expert_weights_scale`, `rms_norm_eps`,
+  `rotary_dim`, `rope_freq_base`, `rope_dimension_sections`, and
+  `attention_scale`.
+- Added `kernel_kwargs` property for `qwen35_gguf_mtp_nextn_layer_logits(...)`:
+  `num_heads`, `num_kv_heads`, `experts_used`, `rotary_dim`, `scale`,
+  `expert_weights_scale`, and `eps`.
+- Added scalar fields and `kernel_kwargs` to `as_dict()`.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to assert synthetic scalar
+  values and serialized kernel kwargs.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `23` selected tests (`17` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `14` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
