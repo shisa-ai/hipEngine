@@ -230,6 +230,15 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "w4_gguf",
         "qwen35_dense_logits",
     )
+    assert plan.draft_topk.kernel == (
+        "cpu_reference",
+        "mtp_draft_topk",
+        "w4_gguf",
+        "full_vocab_d2h",
+    )
+    assert plan.draft_topk.top_k == 10
+    assert plan.draft_topk.selection == "greedy_top1_from_topk"
+    assert plan.draft_topk.selected_index == 0
     assert plan.num_heads == 2
     assert plan.num_kv_heads == 1
     assert plan.qk_head_dim == 4
@@ -324,6 +333,7 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     call_spec = plan.cpu_reference_call_spec
     assert call_spec.layer_id == 2
     assert call_spec.cpu_reference_kernel == plan.cpu_reference_kernel
+    assert call_spec.draft_topk == plan.draft_topk
     assert dict(call_spec.tensor_arguments)["token_embedding"] == "token_embd.weight"
     assert dict(call_spec.tensor_arguments)["wq_weight"] == "blk.2.attn_q.weight"
     assert "token_embedding" not in dict(call_spec.direct_tensor_arguments)
@@ -378,7 +388,14 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "description": "Embedding rows for the target token(s), gathered by the harness.",
         "source_tensor_argument": "token_embedding",
     }
+    assert plan_dict["draft_topk"] == {
+        "kernel": ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"],
+        "top_k": 10,
+        "selection": "greedy_top1_from_topk",
+        "selected_index": 0,
+    }
     assert plan_dict["cpu_reference_call_spec"] == call_spec.as_dict()
+    assert plan_dict["cpu_reference_call_spec"]["draft_topk"] == plan_dict["draft_topk"]
     assert plan_dict["cpu_reference_call_spec"]["dynamic_inputs"] == plan_dict["dynamic_inputs"]
     assert plan_dict["cpu_reference_call_spec"]["tensor_arguments"]["wq_weight"] == "blk.2.attn_q.weight"
     assert plan_dict["cpu_reference_call_spec"]["direct_tensor_arguments"]["wq_weight"] == "blk.2.attn_q.weight"

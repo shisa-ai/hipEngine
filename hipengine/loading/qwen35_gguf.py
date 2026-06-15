@@ -278,11 +278,40 @@ class Qwen35GGUFMTPDraftDynamicInput:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftTopKSpec:
+    """Draft-token top-k selection contract for GGUF MTP parity."""
+
+    kernel: tuple[str, str, str, str]
+    top_k: int
+    selection: str = "greedy_top1_from_topk"
+    selected_index: int = 0
+
+    def __post_init__(self) -> None:
+        if len(self.kernel) != 4:
+            raise ValueError("draft top-k kernel must be a four-axis registry key")
+        if self.top_k <= 0:
+            raise ValueError("draft top_k must be positive")
+        if not self.selection:
+            raise ValueError("draft top-k selection must be non-empty")
+        if self.selected_index < 0 or self.selected_index >= self.top_k:
+            raise ValueError("selected_index must be within the top-k window")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "kernel": list(self.kernel),
+            "top_k": self.top_k,
+            "selection": self.selection,
+            "selected_index": self.selected_index,
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftCPUCallSpec:
     """Metadata-only call spec for a Qwen35 GGUF MTP CPU-reference oracle."""
 
     layer_id: int
     cpu_reference_kernel: tuple[str, str, str, str]
+    draft_topk: Qwen35GGUFMTPDraftTopKSpec
     tensor_arguments: Mapping[str, str]
     qtype_arguments: Mapping[str, GGMLQuantizationType]
     keyword_arguments: Mapping[str, object]
@@ -305,6 +334,7 @@ class Qwen35GGUFMTPDraftCPUCallSpec:
         return {
             "layer_id": self.layer_id,
             "cpu_reference_kernel": list(self.cpu_reference_kernel),
+            "draft_topk": self.draft_topk.as_dict(),
             "tensor_arguments": dict(self.tensor_arguments),
             "direct_tensor_arguments": dict(self.direct_tensor_arguments),
             "qtype_arguments": {
@@ -404,6 +434,22 @@ class Qwen35GGUFMTPDraftTensorPlan:
                     f"{argument} to unsupported GGML type {ggml_type_name!r}"
                 ) from exc
         return MappingProxyType(result)
+
+    @property
+    def draft_topk(self) -> Qwen35GGUFMTPDraftTopKSpec:
+        """Draft sampler contract used by llama.cpp B1 parity.
+
+        The native backend should eventually replace the CPU `full_vocab_d2h`
+        fallback with a device `topk_device` kernel, but the visible selection
+        contract remains greedy top-1 from a top-k window of 10 candidates.
+        """
+
+        return Qwen35GGUFMTPDraftTopKSpec(
+            kernel=_MTP_DRAFT_TOPK_FALLBACK_KERNEL,
+            top_k=_MTP_DRAFT_TOPK_K,
+            selection=_MTP_DRAFT_TOPK_SELECTION,
+            selected_index=0,
+        )
 
     @property
     def kernel_kwargs(self) -> Mapping[str, object]:
@@ -516,6 +562,7 @@ class Qwen35GGUFMTPDraftTensorPlan:
         return Qwen35GGUFMTPDraftCPUCallSpec(
             layer_id=self.layer_id,
             cpu_reference_kernel=self.cpu_reference_kernel,
+            draft_topk=self.draft_topk,
             tensor_arguments=self.tensor_argument_map,
             qtype_arguments=self.qtype_enum_argument_map,
             keyword_arguments=self.kernel_kwargs,
@@ -551,6 +598,7 @@ class Qwen35GGUFMTPDraftTensorPlan:
                 for argument, qtype in self.qtype_enum_argument_map.items()
             },
             "cpu_reference_kernel": list(self.cpu_reference_kernel),
+            "draft_topk": self.draft_topk.as_dict(),
             "slots": [slot.as_dict() for slot in self.slots],
             "tensor_bindings": [binding.as_dict() for binding in self.tensor_bindings],
             "fallback_slots": dict(self.fallback_slots),
@@ -972,6 +1020,15 @@ _MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL = (
     "w4_gguf",
     "qwen35_dense_logits",
 )
+
+_MTP_DRAFT_TOPK_FALLBACK_KERNEL = (
+    "cpu_reference",
+    "mtp_draft_topk",
+    "w4_gguf",
+    "full_vocab_d2h",
+)
+_MTP_DRAFT_TOPK_K = 10
+_MTP_DRAFT_TOPK_SELECTION = "greedy_top1_from_topk"
 
 _MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
     ("token_embedding", "nextn.embed_tokens", None),

@@ -557,7 +557,12 @@ Current status:
   M4 ABI can be exercised before HIP kernels exist. The metadata-only draft call
   spec emitted by `scripts/gguf_mtp_call_spec.py` now advertises those
   KVLiveSpans dynamic inputs plus `block_size` in addition to the dense-cache
-  placeholders. `scripts/gguf_mtp_oracle_gate.py` turns that fixture into a
+  placeholders. The metadata-only draft tensor plan/call spec also advertises
+  the draft-token selection contract used for llama.cpp parity: greedy top-1
+  from `top_k=10` candidates via the registered
+  `KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")`
+  fallback until a backend `topk_device` variant exists.
+  `scripts/gguf_mtp_oracle_gate.py` turns that fixture into a
   reusable mechanical artifact with KL/top-1 metrics before any performance
   comparison is allowed, and uses the registered
   `KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")`
@@ -839,8 +844,9 @@ is now answered by the M1 required/optional table.)
 - [ ] Extend to B2-B4 after B1 is exact.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
-      `full_vocab_d2h` fallback/oracle is registered; backend `topk_device`
-      remains open.
+      `full_vocab_d2h` fallback/oracle is registered and advertised in MTP
+      draft tensor plans/call specs with the llama.cpp parity contract
+      (`top_k=10`, greedy top-1); backend `topk_device` remains open.
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 

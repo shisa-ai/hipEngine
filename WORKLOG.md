@@ -95580,3 +95580,47 @@ Validation:
   no runtime backend/quant dispatch branch; no generation, MTP execution,
   sampling implementation, GPU kernel, attention/KV runtime path, or performance
   claim; future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF draft top-k contract in call specs
+
+Implemented `mtp-gguf` multiloop iteration 65: advertised the registered GGUF
+MTP draft top-k fallback and llama.cpp parity sampling contract in metadata-only
+draft tensor plans and CPU call specs.
+
+Scope note:
+- Metadata/docs/tests only. No GGUF tensor payload loading, hipEngine generation,
+  MTP draft execution, sampling implementation, GPU kernel, attention/KV runtime
+  path, or performance path changed.
+- The B1 preflight artifact still blocks on `native_gguf_mtp_runtime_missing`;
+  it now carries the draft-token selection contract that runtime execution must
+  honor: `top_k=10`, `selection=greedy_top1_from_topk`, `selected_index=0`, via
+  the registered CPU fallback `cpu_reference/mtp_draft_topk/w4_gguf/full_vocab_d2h`.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftTopKSpec` and `Qwen35GGUFMTPDraftTensorPlan.draft_topk`
+  in `hipengine/loading/qwen35_gguf.py`.
+- Included `draft_topk` in `Qwen35GGUFMTPDraftCPUCallSpec.as_dict()` and
+  `Qwen35GGUFMTPDraftTensorPlan.as_dict()` so `scripts/gguf_mtp_call_spec.py`
+  and the B1 preflight artifact expose the sampler contract.
+- Extended MTP mapping and B1 preflight tests to assert the `full_vocab_d2h`
+  fallback key plus llama.cpp parity top-k settings.
+- Updated `docs/MTP-gguf.md` to describe the metadata-advertised fallback and
+  clarify that backend `topk_device` remains open.
+
+Validation:
+- Focused mapping/B1 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_mtp_b1_prompt_suite.py` -> `24` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `suite blocked topk {'kernel': ['cpu_reference', 'mtp_draft_topk', 'w4_gguf', 'full_vocab_d2h'], 'selected_index': 0, 'selection': 'greedy_top1_from_topk', 'top_k': 10} blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/loading/qwen35_gguf.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/test/docs only; no torch import; no runtime
+  backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

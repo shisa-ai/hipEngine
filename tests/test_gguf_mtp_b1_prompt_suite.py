@@ -91,6 +91,12 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
             ),
         ),
     )
+    draft_topk = {
+        "kernel": ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"],
+        "top_k": 10,
+        "selection": "greedy_top1_from_topk",
+        "selected_index": 0,
+    }
     call_spec = {
         "layer_id": 40,
         "cpu_reference_kernel": [
@@ -99,6 +105,7 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
             "w4_gguf",
             "qwen35_dense_logits",
         ],
+        "draft_topk": draft_topk,
         "dynamic_inputs": [
             {"argument": "hidden_seed", "required": True, "shape": ["tokens", 2048]},
             {"argument": "kv_base_offsets", "required": False, "shape": ["tokens", "logical_blocks"]},
@@ -114,7 +121,11 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda info, *, strict=True: (
             SimpleNamespace(
                 layer_id=40,
-                as_dict=lambda: {"layer_id": 40, "cpu_reference_call_spec": call_spec},
+                as_dict=lambda: {
+                    "layer_id": 40,
+                    "draft_topk": draft_topk,
+                    "cpu_reference_call_spec": call_spec,
+                },
                 cpu_reference_call_spec=SimpleNamespace(as_dict=lambda: call_spec),
             ),
         ),
@@ -169,8 +180,18 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     ]
     assert artifact["parity_precheck"]["all_pass"] is True
     assert artifact["mtp_draft_tensor_plans"] == [
-        {"layer_id": 40, "cpu_reference_call_spec": artifact["mtp_draft_call_specs"][0]}
+        {
+            "layer_id": 40,
+            "draft_topk": artifact["mtp_draft_call_specs"][0]["draft_topk"],
+            "cpu_reference_call_spec": artifact["mtp_draft_call_specs"][0],
+        }
     ]
+    assert artifact["mtp_draft_call_specs"][0]["draft_topk"] == {
+        "kernel": ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"],
+        "top_k": 10,
+        "selection": "greedy_top1_from_topk",
+        "selected_index": 0,
+    }
     dynamic_args = [item["argument"] for item in artifact["mtp_draft_call_specs"][0]["dynamic_inputs"]]
     assert dynamic_args == [
         "hidden_seed",
