@@ -122,11 +122,15 @@ Known baseline limitations:
   generation loops emit final decode-state telemetry snapshots. PARO and GGUF
   c=1 true streaming also emit live `GenerationStreamChunk` snapshots for
   greedy and sampled answer tokens, including sampler mode and
-  fallback/blocker metadata. PARO scheduler-owned c>N final telemetry reports
-  scheduler execution path and native-prefill/native-decode/serial-fallback
-  state. Buffered streaming preserves final backend
-  telemetry on choice `done` chunks and, when tokenizer/counting hooks are
-  available, emits server-derived per-delta token/decode-state snapshots for
+  fallback/blocker metadata. Scheduler-owned submit/poll token events now carry
+  telemetry-bearing `GenerationStreamChunk` snapshots synthesized from
+  `RowSamplingState`, including sampler mode, active processors, native fallback,
+  forced-token queues, thinking-budget pressure, and scheduler execution flags.
+  PARO scheduler-owned c>N final telemetry reports scheduler execution path and
+  native-prefill/native-decode/serial-fallback state. Buffered streaming
+  preserves final backend telemetry on choice `done` chunks and, when
+  tokenizer/counting hooks are available, emits server-derived per-delta
+  token/decode-state snapshots for
   parsed answer/reasoning/tool/structured chunks while inheriting stable backend
   sampler/execution metadata such as processor blockers, sampler fallback,
   logits-readback state, and scheduler execution flags. Backend-authored
@@ -983,15 +987,20 @@ Current code reality:
   outputs into `GenerationStreamChunk` values before falling back to plain text,
   preserving finish details and final decode-state telemetry through buffered
   stream paths.
+  `ResidentBatchScheduler.record_generated_events()` records generated token ids
+  while returning scheduler-authored token events with `GenerationStreamChunk`
+  telemetry, and `ResidentEngineLoop.poll()` attaches those stream chunks to
+  token events. The chunks are telemetry carriers only until a native runner can
+  detokenize or otherwise provide the text surface.
   Buffered streaming preserves backend final telemetry on choice `done` chunks
   and now emits server-derived token/decode-state snapshots for opt-in buffered
   answer/reasoning/tool/structured deltas when tokenizer counting is available.
   Those buffered deltas inherit stable backend sampler/execution metadata from
   the final telemetry, but keep token-specific fields such as forced-token state,
   stop suffixes, budget pressure, timing, and usage on the final/backend-authored
-  snapshots. Backend-authored buffered per-token snapshots, live c>N/scheduler
-  stream chunks, canonical tool/structured phases, and real continuation
-  eligibility remain future lower-loop work.
+  snapshots. Backend-authored buffered per-token snapshots, runtime-native c>N
+  stream chunk forwarding, canonical tool/structured phases, and real
+  continuation eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -2784,14 +2793,15 @@ stack, thinking-budget hard/soft close, strict tool result validation, and
 golden harness traces are now implemented. Good next logical units, in order:
 
 1. **Live backend DecodeState telemetry:** buffered streaming now carries safe
-   backend sampler/execution metadata on opt-in deltas, and the submit/poll
-   wrapper preserves underlying `stream_detailed()` telemetry, but lower loops
-   still need backend-authored per-token snapshots for forced-token state,
-   budget pressure, stop suffixes, and continuation eligibility. Extend
-   c>N/native scheduler paths from their current final execution-path/fallback
-   snapshots to per-token `GenerationStreamChunk` snapshots instead of relying
-   on server post-parse inference. PARO/GGUF c=1 true streaming already emits
-   greedy/sampled answer-token snapshots.
+   backend sampler/execution metadata on opt-in deltas, the submit/poll wrapper
+   preserves underlying `stream_detailed()` telemetry, and scheduler-owned
+   submit/poll token events can carry `GenerationStreamChunk` snapshots for
+   forced-token state, budget pressure, sampler fallback, and execution flags.
+   Runtime-native c>N/PARO scheduler runners still need to forward or author
+   those per-token chunks from lower loops, including stop suffixes and real
+   continuation eligibility, instead of relying on server post-parse inference.
+   PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
+   snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
    per-row planner metadata for native fallback/rejection decisions, and PARO
    c>N sampled batches record it in runtime diagnostics. c>N/GGUF/native GPU

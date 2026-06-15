@@ -92536,3 +92536,26 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC scheduler token telemetry events
+
+Added scheduler-owned token events for live decode-state telemetry. The existing
+`ResidentBatchScheduler.record_generated()` completion API remains compatible,
+while new `record_generated_events()` records generated token ids and returns
+per-token `GeneratedTokenEvent` records with telemetry-bearing
+`GenerationStreamChunk` snapshots synthesized from `RowSamplingState`. The
+snapshots include request/row/step counts, active processors, sampler fallback,
+full-vocab host-logits readback markers, forced-token queues/selection metadata,
+thinking-budget pressure, and scheduler execution flags. `ResidentEngineLoop`
+now attaches those stream chunks to its token events, giving scheduler-owned
+c>N/native runners a canonical carrier before lower runtime loops can author
+their own detokenized text chunks. Updated `docs/AGENTIC.md` to mark this
+incremental progress while leaving runtime-native c>N chunk forwarding,
+stop-suffix telemetry, and real continuation eligibility as future lower-loop
+work.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py hipengine/generation/engine_loop.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> passed.
+- `uv run pytest tests/test_generation_batch_scheduler.py -q -k 'record_generated_events_emit_decode_telemetry or token_events_carry_stream_telemetry or sampler_states_track_generated_history or resident_engine_loop_submit_poll_cancel_and_reclaim'` -> `4 passed`.
+- `uv run pytest tests/test_generation_batch_scheduler.py -q -k 'resident_batch_scheduler_emits_speculative_verify_work or rejects_speculative_accept_over_budget or record_generated_events_emit_decode_telemetry or token_events_carry_stream_telemetry'` -> `4 passed`.
+- `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/engine_loop.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.

@@ -78,6 +78,7 @@ class EngineLoopEvent:
     request_ids: tuple[int, ...] = ()
     work_kind: WorkKind | None = None
     token_id: int | None = None
+    stream_chunk: GenerationStreamChunk | None = None
     completed: CompletedRequest | None = None
 
 
@@ -545,19 +546,20 @@ class ResidentEngineLoop:
         start = time.perf_counter()
         generated = tuple(self.runner.decode(work))
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
-        completed = self.scheduler.record_generated(generated)
+        generated_events = self.scheduler.record_generated_events(generated)
         self._last_work_kind = work.kind
         events = [EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind)]
-        for token in generated:
+        for token_event in generated_events:
             events.append(
                 EngineLoopEvent(
                     kind="token",
-                    request_id=token.request_id,
-                    request_ids=(token.request_id,),
-                    token_id=token.token_id,
+                    request_id=token_event.request_id,
+                    request_ids=(token_event.request_id,),
+                    token_id=token_event.token_id,
+                    stream_chunk=token_event.stream_chunk,
                 )
             )
-        for item in completed:
+        for item in (event.completed for event in generated_events if event.completed is not None):
             events.append(
                 EngineLoopEvent(
                     kind="completed",

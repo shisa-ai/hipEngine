@@ -38,6 +38,7 @@ from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     GraphBucketCache,
     PerRowSamplingParams,
+    GeneratedTokenEvent,
     ResidentBatchScheduler,
     ResidentEngineLoop,
     SamplingMode,
@@ -16480,6 +16481,102 @@ def test_resident_scheduler_sampler_states_track_generated_history() -> None:
     with pytest.raises(KeyError, match="sampler state"):
         scheduler.sampler_state(r0)
     assert scheduler.sampler_state(r1).generated_tokens == [200]
+
+
+def test_resident_scheduler_record_generated_events_emit_decode_telemetry() -> None:
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    request_id = scheduler.submit(
+        [10, 11],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(
+            temperature=0.7,
+            top_k=4,
+            logit_bias={7: 0.5},
+            forced_tokens_pending=(55, 56),
+            forced_token_reason="tool_choice_required",
+        ),
+        sampling_row_index=3,
+    )
+    scheduler.admit_pending()
+    assert scheduler.next_prefill_work(chunk_size=8) is not None
+
+    events = scheduler.record_generated_events(
+        [GeneratedToken(request_id, 55)],
+        native_gpu_requested=True,
+        execution_path="native_scheduler",
+        native_caware_decode=True,
+    )
+
+    assert len(events) == 1
+    event = events[0]
+    assert isinstance(event, GeneratedTokenEvent)
+    assert event.request_id == request_id
+    assert event.token_id == 55
+    assert event.completed is None
+    assert event.stream_chunk.text == ""
+    assert event.stream_chunk.telemetry is not None
+    assert event.stream_chunk.telemetry.to_json_dict()["decode_state"] == {
+        "row_index": 3,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "request_id": str(request_id),
+        "answer_tokens": 1,
+        "forced_tokens_pending": [55, 56],
+        "forced_token_id": 55,
+        "forced_token_reason": "tool_choice_required",
+        "forced_tokens_remaining": 1,
+        "active_processors": ["logit_bias", "forced_tokens_pending"],
+        "sampler_fast_path_blockers": ["temperature", "logit_bias", "forced_tokens_pending"],
+        "sampler_fallback_reason": "native_gpu_unsupported_request",
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": True,
+        "execution_path": "native_scheduler",
+        "native_caware_decode": True,
+    }
+
+    final_events = scheduler.record_generated_events([GeneratedToken(request_id, 56)])
+
+    assert len(final_events) == 1
+    assert final_events[0].completed is not None
+    assert final_events[0].stream_chunk.finish_details is not None
+    assert final_events[0].stream_chunk.finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 2,
+    }
+
+
+def test_resident_engine_loop_token_events_carry_stream_telemetry() -> None:
+    loop = ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit([10, 11], max_new_tokens=1)
+
+    events = loop.poll(max_ticks=3)
+
+    token_event = next(event for event in events if event.kind == "token")
+    assert token_event.request_id == request_id
+    assert token_event.token_id == 1000
+    assert token_event.stream_chunk is not None
+    assert token_event.stream_chunk.telemetry is not None
+    assert token_event.stream_chunk.finish_details is not None
+    assert token_event.stream_chunk.finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 1,
+    }
+    assert token_event.stream_chunk.telemetry.to_json_dict()["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "request_id": str(request_id),
+        "answer_tokens": 1,
+        "sampler_mode": "greedy_fast",
+        "full_vocab_logits_d2h": False,
+        "execution_path": "resident_scheduler",
+    }
 
 
 def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:

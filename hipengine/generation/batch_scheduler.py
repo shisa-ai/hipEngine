@@ -17,7 +17,7 @@ from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
-from hipengine.generation.registry import FinishDetails
+from hipengine.generation.registry import FinishDetails, GenerationStreamChunk, GenerationTelemetry
 from hipengine.generation.sampling import (
     RowSamplingState,
     SamplerPlan,
@@ -481,6 +481,17 @@ class GeneratedToken:
     request_id: int
     token_id: int
     finished: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedTokenEvent:
+    """One scheduler-recorded token plus its optional live stream snapshot."""
+
+    request_id: int
+    token_id: int
+    finished: bool
+    stream_chunk: GenerationStreamChunk
+    completed: "CompletedRequest | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1194,13 +1205,49 @@ class ResidentBatchScheduler:
     def record_generated(self, tokens: Sequence[GeneratedToken | tuple[int, int] | tuple[int, int, bool]]) -> tuple[CompletedRequest, ...]:
         """Record generated tokens and reclaim newly completed requests."""
 
-        completed: list[CompletedRequest] = []
+        return tuple(
+            event.completed
+            for event in self.record_generated_events(tokens)
+            if event.completed is not None
+        )
+
+    def record_generated_events(
+        self,
+        tokens: Sequence[GeneratedToken | tuple[int, int] | tuple[int, int, bool]],
+        *,
+        native_gpu_available: bool = False,
+        native_gpu_requested: bool = False,
+        native_only: bool = False,
+        execution_path: str | None = "resident_scheduler",
+        native_compact_prefill: bool | None = None,
+        native_caware_decode: bool | None = None,
+        serial_decode_fallback: bool | None = None,
+    ) -> tuple[GeneratedTokenEvent, ...]:
+        """Record generated tokens and return per-token telemetry events."""
+
+        events: list[GeneratedTokenEvent] = []
         for item in tokens:
             token = _coerce_generated_token(item)
-            done = self._append_generated_token(token)
-            if done is not None:
-                completed.append(done)
-        return tuple(completed)
+            done, stream_chunk = self._append_generated_token_with_stream_chunk(
+                token,
+                native_gpu_available=native_gpu_available,
+                native_gpu_requested=native_gpu_requested,
+                native_only=native_only,
+                execution_path=execution_path,
+                native_compact_prefill=native_compact_prefill,
+                native_caware_decode=native_caware_decode,
+                serial_decode_fallback=serial_decode_fallback,
+            )
+            events.append(
+                GeneratedTokenEvent(
+                    request_id=token.request_id,
+                    token_id=token.token_id,
+                    finished=token.finished,
+                    stream_chunk=stream_chunk,
+                    completed=done,
+                )
+            )
+        return tuple(events)
 
     def cancel(self, request_id: int, *, reason: str = "cancel") -> CompletedRequest | None:
         """Cancel a pending or active request through the unified reclaim path."""
@@ -1540,17 +1587,136 @@ class ResidentBatchScheduler:
         return row_index
 
     def _append_generated_token(self, token: GeneratedToken) -> CompletedRequest | None:
+        done, _stream_chunk = self._append_generated_token_with_stream_chunk(token)
+        return done
+
+    def _append_generated_token_with_stream_chunk(
+        self,
+        token: GeneratedToken,
+        *,
+        native_gpu_available: bool = False,
+        native_gpu_requested: bool = False,
+        native_only: bool = False,
+        execution_path: str | None = "resident_scheduler",
+        native_compact_prefill: bool | None = None,
+        native_caware_decode: bool | None = None,
+        serial_decode_fallback: bool | None = None,
+    ) -> tuple[CompletedRequest | None, GenerationStreamChunk]:
         request = self.active_batch.requests[token.request_id]
         finish_reason = "stop" if token.finished else "length"
         sampler_state = self._sampling_states.get(token.request_id)
+        params = self._sampling.get(token.request_id)
+        forced_tokens = () if sampler_state is None else tuple(sampler_state.forced_tokens)
+        forced_reason = None if sampler_state is None else sampler_state.forced_token_reason
+        plan = (
+            None
+            if params is None
+            else plan_sampler(
+                params,
+                native_gpu_available=bool(native_gpu_available),
+                native_gpu_requested=bool(native_gpu_requested),
+                native_only=bool(native_only),
+            )
+        )
         if sampler_state is not None:
             sampler_state.observe(token.token_id)
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
         self._update_kv_pages(updated)
+        stream_chunk = self._stream_chunk_for_generated_token(
+            token,
+            updated,
+            sampler_state=sampler_state,
+            plan=plan,
+            forced_tokens_before=forced_tokens,
+            forced_reason_before=forced_reason,
+            execution_path=execution_path,
+            native_compact_prefill=native_compact_prefill,
+            native_caware_decode=native_caware_decode,
+            serial_decode_fallback=serial_decode_fallback,
+        )
         if not updated.finished:
-            return None
-        return self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)
+            return None, stream_chunk
+        done = self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)
+        return done, GenerationStreamChunk(
+            text=stream_chunk.text,
+            token_logprobs=stream_chunk.token_logprobs,
+            finish_details=done.finish_details,
+            telemetry=stream_chunk.telemetry,
+        )
+
+    def _stream_chunk_for_generated_token(
+        self,
+        token: GeneratedToken,
+        request: RequestState,
+        *,
+        sampler_state: RowSamplingState | None,
+        plan: SamplerPlan | None,
+        forced_tokens_before: Sequence[int],
+        forced_reason_before: str | None,
+        execution_path: str | None,
+        native_compact_prefill: bool | None,
+        native_caware_decode: bool | None,
+        serial_decode_fallback: bool | None,
+    ) -> GenerationStreamChunk:
+        if sampler_state is None:
+            telemetry = GenerationTelemetry.from_decode_counts(
+                prompt_tokens=len(request.prompt_tokens),
+                generated_tokens=len(request.generated_tokens),
+                phase="answer",
+                request_id=str(token.request_id),
+                answer_tokens=len(request.generated_tokens),
+                execution_path=execution_path,
+                native_compact_prefill=native_compact_prefill,
+                native_caware_decode=native_caware_decode,
+                serial_decode_fallback=serial_decode_fallback,
+            )
+            return GenerationStreamChunk(text="", telemetry=telemetry)
+
+        thinking_budget = sampler_state.thinking_budget
+        phase = "answer" if thinking_budget is None else thinking_budget.phase
+        reasoning_tokens = 0 if thinking_budget is None else thinking_budget.reasoning_tokens
+        answer_tokens = sampler_state.step_index if thinking_budget is None else thinking_budget.answer_tokens
+        budget_pressure = None if thinking_budget is None else thinking_budget.budget_pressure
+        forced_token_id = None
+        forced_token_reason = None
+        forced_tokens_remaining = None
+        if forced_tokens_before and int(forced_tokens_before[0]) == int(token.token_id):
+            forced_token_id = int(token.token_id)
+            forced_token_reason = forced_reason_before
+            forced_tokens_remaining = max(0, len(tuple(forced_tokens_before)) - 1)
+        telemetry = GenerationTelemetry.from_decode_counts(
+            prompt_tokens=len(sampler_state.prompt_tokens),
+            generated_tokens=sampler_state.step_index,
+            row_index=sampler_state.row_index,
+            request_id=str(token.request_id),
+            phase=phase,
+            sampler_mode=None if plan is None else plan.mode.value,
+            reasoning_tokens=reasoning_tokens,
+            answer_tokens=answer_tokens,
+            forced_tokens_pending=tuple(sampler_state.forced_tokens),
+            forced_token_id=forced_token_id,
+            forced_token_reason=forced_token_reason,
+            forced_tokens_remaining=forced_tokens_remaining,
+            post_thinking_forced_tokens_pending=tuple(
+                sampler_state.post_thinking_forced_tokens_pending.pending_tokens
+            ),
+            post_thinking_forced_token_reason=sampler_state.post_thinking_forced_token_reason,
+            force_sequence_completion_token_sequences=tuple(
+                tuple(sequence) for sequence in sampler_state.force_sequence_completion_token_sequences
+            ),
+            force_sequence_completion_reason=sampler_state.force_sequence_completion_reason,
+            active_processors=() if plan is None else plan.active_processors,
+            sampler_fast_path_blockers=() if plan is None else plan.fast_path_blockers,
+            sampler_fallback_reason=None if plan is None else plan.fallback_reason,
+            budget_pressure=budget_pressure,
+            full_vocab_logits_d2h=None if plan is None else plan.uses_host_logits,
+            execution_path=execution_path,
+            native_compact_prefill=native_compact_prefill,
+            native_caware_decode=native_caware_decode,
+            serial_decode_fallback=serial_decode_fallback,
+        )
+        return GenerationStreamChunk(text="", telemetry=telemetry)
 
     def _pop_pending_request(self, request_id: int) -> RequestState | None:
         for pending in tuple(self._pending):
@@ -1647,6 +1813,7 @@ __all__ = [
     "CompactPromptSlab",
     "CompletedRequest",
     "GeneratedToken",
+    "GeneratedTokenEvent",
     "GraphBucketCache",
     "GraphBucketStats",
     "PerRowSamplingParams",
