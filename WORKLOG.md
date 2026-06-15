@@ -93435,3 +93435,17 @@ Validation and outcome:
 - Result: `512/128` median prefill/decode `1634.967605 / 116.625481 tok/s`; `4K/128` median prefill/decode `1855.574823 / 106.904545 tok/s`; tracked peak unchanged at `21.334858 GiB`; generated IDs remained stable (`220`, `570`).
 - Baseline was `512/128` decode `125.748702 tok/s`, `4K/128` decode `114.601613 tok/s`, primary metric `114.601613 tok/s`; the candidate primary metric was `106.904545 tok/s` (`-6.7%`).
 - Decision: no-hold/reverted. The original per-lane scale loads are faster than the `__shfl` broadcast path on this GPU/shape mix. Added a no-hold note to `docs/TUNING-gguf.md` so this exact change is not retried without new ISA/rocprof evidence.
+
+## 2026-06-15 - GGUF G-D2 block64 no-hold
+
+Tried a second G-D2 Q8_0 T16 decode probe: changed the single/dual/dual-split/
+triple-split launch helpers from `dim3 block(128)` to `dim3 block(64)`, leaving
+kernel bodies unchanged. Hypothesis was that two wave32 groups per output tile
+would reduce redundant memory/reduction work for rows=1 decode.
+
+Validation and outcome:
+- Correctness fixture: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q` -> `24 passed`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Result: `512/128` median prefill/decode `1657.671726 / 122.386756 tok/s`, `4K/128` median prefill/decode `1856.359915 / 111.796561 tok/s`, tracked peak `21.334858 GiB`.
+- Full-model gate token IDs changed relative to baseline despite within-run stability: `512/128` `220 -> 97799`, `4K/128` `570 -> 28944`. This likely comes from a different accumulation grouping/order that the small synthetic Q8 fixture did not expose.
+- Decision: no-hold/reverted. It regressed decode vs the original baseline (`114.601613 -> 111.796561` primary metric) and failed the generated-token gate. Added a no-hold note to `docs/TUNING-gguf.md`; keep the 128-thread launch unless a new accumulation-order-safe variant is proven.

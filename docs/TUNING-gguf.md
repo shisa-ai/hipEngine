@@ -135,6 +135,11 @@ No-hold notes:
   gate metric from `114.602` to `106.905 tok/s` (`-6.7%`) and reduced both gate
   decode medians. The original per-lane scale loads are faster on this GPU;
   do not retry this exact change without new ISA/rocprof evidence.
+- **G-D2 block64 rejected (2026-06-15).** Launching Q8_0 T16 GEMV with 64
+  threads instead of 128 passed the synthetic Q8 fixture but changed full-model
+  gate tokens (`220 -> 97799`, `570 -> 28944`) and still regressed decode vs the
+  original baseline (`114.602 -> 111.797 tok/s` primary metric). Keep the 128-
+  thread launch unless a new accumulation-order-safe variant is proven.
 
 ## What we copy from the MTP/DFlash/megakernel successes
 
