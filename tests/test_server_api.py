@@ -795,6 +795,25 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "buffered_delta_safe_decode_state",
             "buffered_done",
         ],
+        "live_many_chunks": {
+            "available": False,
+            "source": "engine.stream_many_detailed",
+            "capability": "engine.supports_stream_many",
+            "requires_row_index": "GenerationTelemetry.decode_state.row_index",
+            "public_surfaces": [
+                "chat_answer_delta",
+                "chat_reasoning_delta",
+            ],
+            "safe_request_shape": {
+                "chat_n_gt_1": True,
+                "tools": False,
+                "structured_outputs": False,
+                "logprobs": False,
+                "stop": False,
+                "continuation": False,
+            },
+            "fallback": "buffered_scheduler_chunks_or_buffered_choice",
+        },
         "buffered_scheduler_chunks": {
             "source": "engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks",
             "requires_single_http_request_batch": True,
@@ -13619,6 +13638,174 @@ def test_streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_an
     assert "data: [DONE]" in response.text
     assert len(fake.calls) == 1
     assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_n_forwards_runtime_native_live_chunks() -> None:
+    class LiveManyFakeLLM(FakeLLM):
+        supports_stream_many = True
+
+        def __init__(self) -> None:
+            super().__init__(outputs=["should-not-buffer"])
+            self.stream_many_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+
+        def stream_many_detailed(self, prompts, sampling_params: SamplingParams):
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.stream_many_calls.append((prompt_tuple, sampling_params))
+            chunks = (
+                (
+                    0,
+                    "<think>r0</think>",
+                    GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=1,
+                        row_index=0,
+                        request_id="0",
+                        phase="think",
+                        sampler_mode="greedy_fast",
+                        execution_path="runtime_native_live_many",
+                    ),
+                    None,
+                ),
+                (
+                    1,
+                    "B",
+                    GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=1,
+                        row_index=1,
+                        request_id="1",
+                        phase="answer",
+                        sampler_mode="greedy_fast",
+                        execution_path="runtime_native_live_many",
+                    ),
+                    None,
+                ),
+                (
+                    0,
+                    "A",
+                    GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=0,
+                        request_id="0",
+                        phase="answer",
+                        sampler_mode="greedy_fast",
+                        execution_path="runtime_native_live_many",
+                    ),
+                    FinishDetails(reason="length", length_limit=2, sampler_mode="greedy_fast"),
+                ),
+                (
+                    1,
+                    "C",
+                    GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=1,
+                        request_id="1",
+                        phase="answer",
+                        sampler_mode="greedy_fast",
+                        execution_path="runtime_native_live_many",
+                    ),
+                    FinishDetails(reason="length", length_limit=2, sampler_mode="greedy_fast"),
+                ),
+            )
+            assert tuple(row for row, _text, _telemetry, _finish in chunks) == (0, 1, 0, 1)
+            for _row, text, telemetry, finish_details in chunks:
+                yield GenerationStreamChunk(
+                    text=text,
+                    telemetry=telemetry,
+                    finish_details=finish_details,
+                )
+
+    fake = LiveManyFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    capabilities = client.get("/v1/hipengine/capabilities")
+    assert capabilities.status_code == 200
+    assert capabilities.json()["features"]["stream_metadata"]["live_many_chunks"]["available"] is True
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "n": 2,
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    choices = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ]
+    assert [(choice["index"], choice["delta"]) for choice in choices] == [
+        (0, {"role": "assistant"}),
+        (1, {"role": "assistant"}),
+        (0, {"reasoning_content": "r0"}),
+        (1, {"content": "B"}),
+        (0, {"content": "A"}),
+        (1, {"content": "C"}),
+    ]
+    token_choices = [choice for choice in choices if "role" not in choice["delta"]]
+    assert [
+        (
+            choice["index"],
+            choice["hipengine"]["phase"],
+            choice["hipengine"]["decode_state"]["row_index"],
+            choice["hipengine"]["decode_state"]["execution_path"],
+        )
+        for choice in token_choices
+    ] == [
+        (0, "think", 0, "runtime_native_live_many"),
+        (1, "answer", 1, "runtime_native_live_many"),
+        (0, "answer", 0, "runtime_native_live_many"),
+        (1, "answer", 1, "runtime_native_live_many"),
+    ]
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "length"
+    ]
+    assert [(choice["index"], choice["finish_details"]) for choice in done] == [
+        (
+            0,
+            {
+                "reason": "length",
+                "length_limit": 2,
+                "cache_action": "append_none",
+                "sampler_mode": "greedy_fast",
+                "phase": "answer",
+                "continuation_eligible": False,
+            },
+        ),
+        (
+            1,
+            {
+                "reason": "length",
+                "length_limit": 2,
+                "cache_action": "append_none",
+                "sampler_mode": "greedy_fast",
+                "phase": "answer",
+                "continuation_eligible": False,
+            },
+        ),
+    ]
+    prompt_tokens = sum(fake.count_tokens(prompt) for prompt in fake.stream_many_calls[0][0])
+    assert payloads[-1]["usage"] == {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": 2,
+        "total_tokens": prompt_tokens + 2,
+    }
+    assert len(fake.stream_many_calls) == 1
+    assert fake.calls == []
+    assert fake.stream_calls == []
+    assert "data: [DONE]" in response.text
 
 
 def test_streaming_chat_completion_can_include_kv_pool_metadata() -> None:

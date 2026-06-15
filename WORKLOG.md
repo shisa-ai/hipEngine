@@ -93199,3 +93199,22 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'maps_live_middle_reasoning_span_logprobs or maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs or streaming_chat_completion_uses_live_reasoning_private_logprobs or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_returns_logprobs_from_buffered_path or streaming_chat_completion_preserves_reasoning_with_tool_call'` -> `10 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py` -> clean.
+
+## 2026-06-15 - Runtime-native live c>N chat stream forwarding
+
+Added a conservative server path for runtime-native multi-row chat streaming:
+engines that explicitly advertise `supports_stream_many` and implement
+`stream_many_detailed(prompts, sampling)` can now feed row-indexed
+`GenerationStreamChunk` events into `/v1/chat/completions` streams with `n > 1`.
+The server requires `GenerationTelemetry.decode_state.row_index`, preserves
+OpenAI-compatible `choices[].index` deltas, retags reasoning/content phases via
+the existing splitter, and keeps tool, structured-output, logprob, stop-string,
+continuation, and unsupported-engine requests on the existing buffered-safe
+paths. `/v1/hipengine/capabilities` now advertises the optional
+`features.stream_metadata.live_many_chunks` surface and safe request shape.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'runtime_native_live_chunks or buffered_answer_deltas'` -> `2 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or runtime_native_live_chunks or buffered_answer_deltas or scheduler_chunks_for_tool_call_arguments or withheld_scheduler_tool_chunks or unmappable_scheduler_tool_chunks'` -> `6 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

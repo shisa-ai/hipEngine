@@ -1036,12 +1036,18 @@ Current code reality:
   reconstruct the final choice text and logprob chunks can be mapped to emitted
   content/reasoning deltas. Live parser-final splitter leftovers also reuse
   retained source-chunk token metadata when the held public delta is mappable.
+  Engines that explicitly advertise `supports_stream_many` and implement
+  `stream_many_detailed` can also feed runtime-native live c>N chat chunks
+  directly to public SSE deltas for the plain no-tools/no-structured/no-logprob
+  request subset, provided every chunk carries
+  `GenerationTelemetry.decode_state.row_index`. The server keeps the existing
+  buffered parser/validation paths for tool, structured-output, logprob, stop,
+  continuation, and unsupported-engine cases.
   Coalesced
   multi-request batches, invalid or
-  unmappable tool outputs, structured-output validation failures, public
-  runtime-native live c>N stream chunk forwarding, canonical tool/structured
-  phases, unmappable parser-final logprob spans, and real continuation
-  eligibility remain future lower-loop work.
+  unmappable tool outputs, structured-output validation failures, canonical
+  tool/structured phases, unmappable parser-final logprob spans, and real
+  continuation eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -1300,9 +1306,10 @@ Current code reality:
   execution path and native/serial fallback state. PARO scheduler-owned c>N
   token chunks now carry per-token planner metadata, fallback reason,
   host-logits D2H accounting, and execution flags for buffered server replay;
-  runtime-native live c>N forwarding, GGUF/native GPU sampler parity, and
-  phase/logprob semantics for reasoning/tool/structured chunks still need
-  lower-loop coverage before server streams can become fully
+  broader runtime-native live c>N parity for logprobs/tool/structured surfaces,
+  GGUF/native GPU sampler parity, and phase/logprob semantics for
+  reasoning/tool/structured chunks still need lower-loop coverage before server
+  streams can become fully
   backend-authoritative.
 - Host suppress-token ids and min-token/EOS policy are implemented as
   pre-selection processors after static bias/history penalties and before the
@@ -2898,10 +2905,10 @@ golden harness traces are now implemented. Good next logical units, in order:
    logprobs now carry hipEngine-private reasoning logprob metadata.
    Parser-final splitter leftovers on the live path reuse retained source-chunk
    logprob metadata when the held delta is mappable.
-   Runtime-native live c>N stream forwarding, public invalid/unmappable
-   tool-call chunk forwarding, unmappable parser-final logprob spans, and real
-   continuation eligibility still need lower-loop work instead of relying on
-   server post-parse inference.
+   Broader runtime-native live c>N parity for tool/structured/logprob streams,
+   public invalid/unmappable tool-call chunk forwarding, unmappable
+   parser-final logprob spans, and real continuation eligibility still need
+   lower-loop work instead of relying on server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
@@ -2909,9 +2916,9 @@ golden harness traces are now implemented. Good next logical units, in order:
    c>N sampled batches record it in runtime diagnostics, including per-token
    scheduler chunk diagnostics that buffered completion and plain chat streams
    can expose for single-request batches. GGUF/native GPU sampler paths plus
-   true live c>N stream surfaces still need emitted chunk/final metadata and
-   logprob semantics to match host AR sampling everywhere; invalid tool calls
-   and structured validation failures still require full buffering.
+   live c>N tool/structured/logprob surfaces still need emitted chunk/final
+   metadata and logprob semantics to match host AR sampling everywhere; invalid
+   tool calls and structured validation failures still require full buffering.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path
    apply the same EOS finish, logit bias, penalties, suppressions, forced-token,

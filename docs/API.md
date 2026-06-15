@@ -268,6 +268,15 @@ the conservative buffered parser path. If the server batcher coalesced separate
 HTTP requests into one backend batch, or if the scheduler chunks no longer match
 the public post-processed text, the stream falls back to the conservative
 one-delta-per-choice buffered behavior.
+If an engine explicitly advertises `supports_stream_many` and implements
+`stream_many_detailed`, plain `/v1/chat/completions` requests with `n > 1` can
+forward runtime-native live chunks before the full batch completes. Each backend
+chunk must carry `GenerationTelemetry.decode_state.row_index`, and the server
+uses that row index to emit OpenAI-compatible choice deltas for the matching
+`choices[].index`. This live c>N path is intentionally limited to chat streams
+without tools, structured-output validation, logprobs, stop strings, or
+continuation resume; those request shapes keep the buffered parser/validation
+paths above.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final
@@ -285,7 +294,10 @@ token-accounting/decode-state scopes (`live_delta`, `buffered_delta`, and
 `final_choice` when tokenizer counting is available), and
 backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `buffered_done`) for engines that emit `GenerationStreamChunk` or
-`GenerationOutput` telemetry. `features.stream_metadata.buffered_scheduler_chunks`
+`GenerationOutput` telemetry. `features.stream_metadata.live_many_chunks`
+advertises the optional runtime-native c>N chat stream hook, whether it is
+currently available for the served engine, the required row-index metadata, and
+the conservative safe request shape. `features.stream_metadata.buffered_scheduler_chunks`
 lists the public surfaces where
 `engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks` can
 be replayed (`completion_delta`, answer/reasoning chat deltas, reasoning chat

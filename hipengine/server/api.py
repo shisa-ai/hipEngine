@@ -1871,9 +1871,14 @@ class _GenerationBatcher:
             return
         try:
             self._active_requests = len(group)
-            if len(group) == 1 and group[0].stream_queue is not None and len(group[0].prompts) == 1:
-                await self._stream_single(group[0])
-                return
+            if len(group) == 1 and group[0].stream_queue is not None:
+                if len(group[0].prompts) == 1:
+                    await self._stream_single(group[0])
+                    return
+                engine = self._engine_factory()
+                if _engine_supports_stream_many(engine):
+                    await self._stream_many(group[0], engine)
+                    return
             prompts: list[str] = []
             slices: list[tuple[_QueuedGeneration, int, int]] = []
             for item in group:
@@ -1926,6 +1931,18 @@ class _GenerationBatcher:
         assert item.stream_queue is not None
         try:
             async for chunk in _stream_engine_text(self._engine_factory(), item.prompts[0], item.sampling):
+                if _queued_generation_cancelled(item):
+                    break
+                item.stream_queue.put_nowait(chunk)
+        except Exception as exc:
+            _finish_queued_generation(item, exception=exc)
+            return
+        _finish_queued_generation(item, outputs=())
+
+    async def _stream_many(self, item: _QueuedGeneration, engine: Any) -> None:
+        assert item.stream_queue is not None
+        try:
+            async for chunk in _stream_engine_many(engine, item.prompts, item.sampling):
                 if _queued_generation_cancelled(item):
                     break
                 item.stream_queue.put_nowait(chunk)
@@ -1987,6 +2004,30 @@ async def _stream_engine_text(engine: Any, prompt: str, sampling: SamplingParams
             yield _coerce_generation_stream_chunk(output)
         return
     iterator = iter(streamer(prompt, sampling))
+    done = False
+    try:
+        while True:
+            item = await run_in_threadpool(_next_stream_item, iterator)
+            if item is _STREAM_DONE:
+                done = True
+                break
+            yield _coerce_generation_stream_chunk(item)
+    finally:
+        if not done:
+            closer = getattr(iterator, "close", None)
+            if callable(closer):
+                await run_in_threadpool(closer)
+
+
+async def _stream_engine_many(
+    engine: Any,
+    prompts: Sequence[str],
+    sampling: SamplingParams,
+) -> AsyncIterator[GenerationStreamChunk]:
+    streamer = _engine_stream_many_callable(engine)
+    if streamer is None:
+        raise NotImplementedError("multi-row streaming is not supported by this generator")
+    iterator = iter(streamer(tuple(str(prompt) for prompt in prompts), sampling))
     done = False
     try:
         while True:
@@ -4118,6 +4159,25 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "buffered_delta_safe_decode_state",
                         "buffered_done",
                     ],
+                    "live_many_chunks": {
+                        "available": _engine_supports_stream_many(engine),
+                        "source": "engine.stream_many_detailed",
+                        "capability": "engine.supports_stream_many",
+                        "requires_row_index": "GenerationTelemetry.decode_state.row_index",
+                        "public_surfaces": [
+                            "chat_answer_delta",
+                            "chat_reasoning_delta",
+                        ],
+                        "safe_request_shape": {
+                            "chat_n_gt_1": True,
+                            "tools": False,
+                            "structured_outputs": False,
+                            "logprobs": False,
+                            "stop": False,
+                            "continuation": False,
+                        },
+                        "fallback": "buffered_scheduler_chunks_or_buffered_choice",
+                    },
                     "buffered_scheduler_chunks": {
                         "source": "engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks",
                         "requires_single_http_request_batch": True,
@@ -4752,7 +4812,195 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         try:
             n = _request_n(request)
-            batch = await generate_with_request_control(tuple(prompt for _ in range(n)), request, control)
+            prompts = tuple(prompt for _ in range(n))
+            if _chat_live_many_streaming_allowed(request):
+
+                async def prepare_many_stream() -> tuple[Any, SamplingParams] | None:
+                    async with session_lock:
+                        engine = get_llm()
+                        if not _engine_supports_stream_many(engine):
+                            return None
+                        await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                        sampling = sampling_params(
+                            request,
+                            prompts,
+                            engine,
+                            deadline_at=control.deadline_at,
+                            cancellation_token=control.cancellation_token,
+                        )
+                        sampling = replace(
+                            sampling,
+                            row_seeds=_row_seeds_for_request(request.seed, len(prompts)),
+                        )
+                        _validate_context_budget(
+                            effective_max_context_tokens(engine),
+                            engine,
+                            prompts,
+                            sampling,
+                            error_extra={
+                                "hipengine": {
+                                    "routing": _routing_rejection_metadata(
+                                        config,
+                                        requested_model=request.model,
+                                        reason="context_overflow",
+                                        engine=engine,
+                                    )
+                                }
+                            },
+                        )
+                        return engine, sampling
+
+                prepared_stream = await _await_with_request_control(prepare_many_stream(), control)
+                if prepared_stream is not None:
+                    engine, sampling = prepared_stream
+                    if include_hipengine:
+                        routing_metadata = _routing_response_metadata(
+                            config,
+                            requested_model=request.model,
+                            engine=engine,
+                        )
+                    token_accounting_by_index = [
+                        _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+                        for _index in range(n)
+                    ]
+                    splitters = [_ReasoningSplitter() for _index in range(n)]
+                    full_text = ["" for _index in range(n)]
+                    last_stream_chunks: list[GenerationStreamChunk | None] = [None for _index in range(n)]
+                    for index in range(n):
+                        yield _chat_stream_role(
+                            response_id,
+                            created,
+                            config.model_id,
+                            index=index,
+                            include_hipengine=include_hipengine,
+                            stream_started_at=stream_started_at,
+                            routing=routing_metadata,
+                        )
+                    async for token in _iterate_with_request_control(
+                        generation_batcher.stream(
+                            prompts,
+                            sampling,
+                            error_extra=route_rejection_extra(
+                                requested_model=request.model,
+                                reason="engine_busy",
+                                engine=engine,
+                                details={
+                                    "overload_source": "generation_queue_cap",
+                                    "max_queued_requests": config.max_queued_requests,
+                                },
+                            ),
+                        ),
+                        control,
+                    ):
+                        stream_chunk = _coerce_generation_stream_chunk(token)
+                        row_index = _stream_chunk_row_index(stream_chunk, row_count=n)
+                        if row_index is None:
+                            raise ValueError(
+                                "multi-row stream chunks must carry telemetry.decode_state.row_index"
+                            )
+                        last_stream_chunks[row_index] = stream_chunk
+                        text = stream_chunk.text
+                        if not text:
+                            continue
+                        full_text[row_index] += text
+                        splitter = splitters[row_index]
+                        token_accounting = token_accounting_by_index[row_index]
+                        for part in splitter.feed_parts(text):
+                            phase = "think" if part.field == "reasoning_content" else "answer"
+                            token_payload = (
+                                token_accounting.observe(phase, part.text)
+                                if token_accounting is not None
+                                else None
+                            )
+                            yield _chat_stream_delta(
+                                response_id,
+                                created,
+                                config.model_id,
+                                part.field,
+                                part.text,
+                                index=row_index,
+                                tokens=token_payload,
+                                stream_chunk=_stream_chunk_with_phase(stream_chunk, phase),
+                                include_hipengine=include_hipengine,
+                                stream_started_at=stream_started_at,
+                                routing=routing_metadata,
+                                phase=phase,
+                            )
+                    for index, splitter in enumerate(splitters):
+                        token_accounting = token_accounting_by_index[index]
+                        for part in splitter.finish_parts():
+                            phase = "think" if part.field == "reasoning_content" else "answer"
+                            token_payload = (
+                                token_accounting.observe(phase, part.text)
+                                if token_accounting is not None
+                                else None
+                            )
+                            final_stream_chunk = last_stream_chunks[index]
+                            yield _chat_stream_delta(
+                                response_id,
+                                created,
+                                config.model_id,
+                                part.field,
+                                part.text,
+                                index=index,
+                                tokens=token_payload,
+                                stream_chunk=(
+                                    None
+                                    if final_stream_chunk is None
+                                    else _stream_chunk_with_phase(final_stream_chunk, phase)
+                                ),
+                                include_hipengine=include_hipengine,
+                                stream_started_at=stream_started_at,
+                                routing=routing_metadata,
+                                phase=phase,
+                            )
+                    usage = _usage(engine, prompts, full_text)
+                    app.state.hipengine_server_metrics.record_success(usage)
+                    final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+                    for index, text in enumerate(full_text):
+                        backend_detail = _output_from_stream_chunk(last_stream_chunks[index], text)
+                        finish_reason = _finish_reason_for_output(backend_detail, "stop")
+                        token_accounting = token_accounting_by_index[index]
+                        row_usage = _usage(engine, (prompts[index],), (text,))
+                        final_tokens = (
+                            _stream_usage_token_payload(row_usage, token_accounting)
+                            if include_hipengine and token_accounting is not None
+                            else None
+                        )
+                        yield _chat_stream_done(
+                            response_id,
+                            created,
+                            config.model_id,
+                            finish_reason,
+                            index=index,
+                            finish_details=_chat_finish_details_payload(
+                                backend_detail,
+                                finish_reason,
+                                text,
+                                cache_action=_session_cache_action(request),
+                            ),
+                            tokens=final_tokens,
+                            stream_chunk=last_stream_chunks[index],
+                            include_hipengine=include_hipengine,
+                            stream_started_at=stream_started_at,
+                            routing=routing_metadata,
+                            kv_pool=final_kv_pool,
+                        )
+                    if _stream_include_usage(request):
+                        yield _chat_stream_usage(
+                            response_id,
+                            created,
+                            config.model_id,
+                            usage,
+                            include_hipengine=include_hipengine,
+                            stream_started_at=stream_started_at,
+                            routing=routing_metadata,
+                            kv_pool=final_kv_pool,
+                        )
+                    yield "data: [DONE]\n\n"
+                    return
+
+            batch = await generate_with_request_control(prompts, request, control)
             scheduler_chunks_by_index = _scheduler_token_chunks_by_request(batch.scheduler_token_chunks)
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
@@ -7085,6 +7333,53 @@ def _engine_supports_stream_logprobs(engine: Any | None) -> bool:
         getattr(target, "supports_stream_logprobs", False)
         or getattr(target, "supports_stream_token_logprobs", False)
     )
+
+
+def _engine_stream_many_callable(engine: Any | None) -> Callable[[tuple[str, ...], SamplingParams], Iterator[Any]] | None:
+    if engine is None:
+        return None
+    for target in (engine, getattr(engine, "_text_generator", None)):
+        if target is None:
+            continue
+        streamer = getattr(target, "stream_many_detailed", None)
+        if callable(streamer):
+            return streamer
+    return None
+
+
+def _engine_supports_stream_many(engine: Any | None) -> bool:
+    if engine is None:
+        return False
+    if _engine_stream_many_callable(engine) is None:
+        return False
+    for target in (engine, getattr(engine, "_text_generator", None)):
+        if target is None:
+            continue
+        if bool(getattr(target, "supports_stream_many", False)):
+            return True
+        if bool(getattr(target, "supports_stream_many_detailed", False)):
+            return True
+    return False
+
+
+def _chat_live_many_streaming_allowed(request: ChatCompletionRequest) -> bool:
+    return (
+        _request_n(request) > 1
+        and request.continuation_id is None
+        and not request.tools
+        and not _request_logprobs_enabled(request)
+        and not _structured_result_validation(request)
+        and not _request_has_stop_strings(request)
+    )
+
+
+def _request_has_stop_strings(request: CompletionRequest | ChatCompletionRequest) -> bool:
+    stop = request.stop
+    if stop is None:
+        return False
+    if isinstance(stop, str):
+        return bool(stop)
+    return any(bool(str(item)) for item in stop)
 
 
 def _request_top_logprobs(request: CompletionRequest | ChatCompletionRequest) -> int:
@@ -11818,6 +12113,20 @@ def _stream_chunk_with_phase(
             decode_state=replace(stream_chunk.telemetry.decode_state, phase=phase),
         ),
     )
+
+
+def _stream_chunk_row_index(
+    stream_chunk: GenerationStreamChunk,
+    *,
+    row_count: int,
+) -> int | None:
+    telemetry = stream_chunk.telemetry
+    if telemetry is None:
+        return None
+    row_index = int(telemetry.decode_state.row_index)
+    if 0 <= row_index < int(row_count):
+        return row_index
+    return None
 
 
 def _scheduler_chunks_match_completion_text(
