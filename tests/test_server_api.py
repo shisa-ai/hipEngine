@@ -547,6 +547,18 @@ def _session_commit_policy_capability() -> dict[str, Any]:
             "schema_violation",
             "tool_required_not_satisfied",
         ],
+        "context_overflow_policy": {
+            "field": "session.context_overflow_policy",
+            "default": "reject",
+            "modes": ["reject", "new_session"],
+            "aliases": {"fail": "reject"},
+            "new_session": {
+                "scope": "app_local_chat_transcript_prefix",
+                "drops_request_content": False,
+                "requires_request_only_fit": True,
+                "metadata": ["clear_policy", "would_reset_session", "would_drop", "kept_segments"],
+            },
+        },
     }
 
 
@@ -771,6 +783,9 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "effective_max_context_tokens": 2048,
         "chat_default_max_tokens": 4096,
         "chat_default_mode": "bounded",
+        "overflow_policy_field": "session.context_overflow_policy",
+        "default_overflow_policy": "reject",
+        "overflow_policies": ["reject", "new_session"],
     }
     assert body["tokenizer"]["tokenize"] is True
     assert body["tokenizer"]["detokenize"] is True
@@ -1696,6 +1711,208 @@ def test_chat_context_overflow_reports_session_fit_context() -> None:
         "cache_action": "append_visible_only",
     }
     assert len(fake.calls) == 1
+
+
+def test_fit_context_new_session_policy_reports_reset_when_prefix_overflows() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=10,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "remember alpha"}],
+            "max_tokens": 1,
+            "session": {"id": "fit_reset_session"},
+        },
+    )
+    fit = client.post(
+        "/v1/hipengine/fit_context",
+        json={
+            "messages": [{"role": "user", "content": "now beta"}],
+            "max_tokens": 5,
+            "session": {"id": "fit_reset_session", "context_overflow_policy": "new_session"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert fit.status_code == 200
+    body = fit.json()
+    assert body["fits"] is True
+    assert body["prompt_tokens"] == 4
+    assert body["effective_max_tokens"] == 5
+    assert body["required_context_tokens"] == 10
+    assert body["clear_policy"] == "new_session"
+    assert body["would_truncate"] is False
+    assert body["would_reset_session"] is True
+    assert body["would_drop"] == [
+        {
+            "kind": "session_prefix",
+            "session_id": "fit_reset_session",
+            "storage": "app_local_transcript",
+            "message_count": 2,
+        }
+    ]
+    assert body["kept_segments"] == [{"kind": "request_messages", "message_count": 1}]
+    assert body["session"] == {
+        "id": "fit_reset_session",
+        "stateful": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "prefix_message_count": 0,
+        "request_message_count": 1,
+        "rendered_message_count": 1,
+        "cache_action": "append_visible_only",
+    }
+    serialized = json.dumps(body)
+    assert "now beta" in serialized
+    assert "remember alpha" not in serialized
+    assert "stored answer" not in serialized
+
+
+def test_chat_context_new_session_policy_resets_transcript_on_success() -> None:
+    fake = SequentialFakeLLM(["stored answer", "fresh answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=10,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "remember alpha"}],
+            "max_tokens": 1,
+            "session": {"id": "chat_reset_session"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "now beta"}],
+            "max_tokens": 5,
+            "session": {"id": "chat_reset_session", "context_overflow_policy": "new_session"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(fake.calls) == 2
+    prompt = fake.calls[1][0][0]
+    assert "now beta" in prompt
+    assert "remember alpha" not in prompt
+    assert "stored answer" not in prompt
+    record = app.state.hipengine_chat_sessions["chat_reset_session"]
+    assert record.messages == (
+        {"role": "user", "content": "now beta"},
+        {"role": "assistant", "content": "fresh answer"},
+    )
+
+
+def test_chat_context_new_session_policy_does_not_hide_request_overflow() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=10,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "remember alpha"}],
+            "max_tokens": 1,
+            "session": {"id": "too_large_session"},
+        },
+    )
+    payload = {
+        "messages": [{"role": "user", "content": "one two three four five six seven eight nine ten"}],
+        "max_tokens": 1,
+        "session": {"id": "too_large_session", "context_overflow_policy": "new_session"},
+    }
+    fit = client.post("/v1/hipengine/fit_context", json=payload)
+    overflow = client.post("/v1/chat/completions", json={"model": "fake-model", **payload})
+
+    assert first.status_code == 200
+    assert fit.status_code == 200
+    assert overflow.status_code == 400
+    fit_body = fit.json()
+    error = overflow.json()["error"]
+    assert fit_body["fits"] is False
+    assert fit_body["clear_policy"] == "new_session"
+    assert fit_body["would_reset_session"] is False
+    assert fit_body["would_drop"] == []
+    assert fit_body["kept_segments"] == [
+        {
+            "kind": "session_prefix",
+            "session_id": "too_large_session",
+            "storage": "app_local_transcript",
+            "message_count": 2,
+        },
+        {"kind": "request_messages", "message_count": 1},
+    ]
+    assert fit_body["session"]["prefix_message_count"] == 2
+    assert error["code"] == "context_length_exceeded"
+    assert error["fit_context"]["clear_policy"] == "new_session"
+    assert error["fit_context"]["would_reset_session"] is False
+    assert len(fake.calls) == 1
+    assert app.state.hipengine_chat_sessions["too_large_session"].messages == (
+        {"role": "user", "content": "remember alpha"},
+        {"role": "assistant", "content": "stored answer"},
+    )
+
+
+def test_chat_context_overflow_policy_requires_known_stateful_mode() -> None:
+    fake = FakeLLM(outputs=["unused"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    invalid = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "session": {"id": "bad_policy", "context_overflow_policy": "truncate_oldest_visible"},
+        },
+    )
+    stateless = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "session": {"context_overflow_policy": "new_session"},
+        },
+    )
+
+    assert invalid.status_code == 400
+    assert invalid.json()["error"]["code"] == "invalid_request"
+    assert invalid.json()["error"]["param"] == "session.context_overflow_policy"
+    assert stateless.status_code == 400
+    assert stateless.json()["error"]["code"] == "unsupported_parameter"
+    assert stateless.json()["error"]["param"] == "session.context_overflow_policy"
+    assert fake.calls == []
 
 
 def test_token_diagnostics_report_unsupported_model_hooks() -> None:

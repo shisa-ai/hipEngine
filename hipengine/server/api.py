@@ -78,6 +78,9 @@ _SESSION_COMMIT_MODES = (
     "append_all",
 )
 _SESSION_STATEFUL_DEFAULT_COMMIT = "append_visible_only"
+_SESSION_CONTEXT_OVERFLOW_POLICIES = ("reject", "new_session")
+_SESSION_CONTEXT_OVERFLOW_POLICY_ALIASES = {"fail": "reject"}
+_SESSION_ALLOWED_STATEFUL_KEYS = frozenset({"id", "commit", "context_overflow_policy"})
 _SESSION_UNSAFE_VISIBLE_REASONS = frozenset(
     {
         "length",
@@ -1176,6 +1179,18 @@ def _session_commit_policy_capability() -> dict[str, Any]:
         "visible_only_reprefill": False,
         "visible_only_replay": "rerender_app_local_transcript",
         "downgrade_visible_only_on": sorted(_SESSION_UNSAFE_VISIBLE_REASONS),
+        "context_overflow_policy": {
+            "field": "session.context_overflow_policy",
+            "default": "reject",
+            "modes": list(_SESSION_CONTEXT_OVERFLOW_POLICIES),
+            "aliases": dict(_SESSION_CONTEXT_OVERFLOW_POLICY_ALIASES),
+            "new_session": {
+                "scope": "app_local_chat_transcript_prefix",
+                "drops_request_content": False,
+                "requires_request_only_fit": True,
+                "metadata": ["clear_policy", "would_reset_session", "would_drop", "kept_segments"],
+            },
+        },
     }
 
 
@@ -1511,6 +1526,16 @@ class _GeneratedBatch:
 class _QueuedBatchResult:
     outputs: list[Any]
     scheduler_token_chunks: list[dict[str, Any]] | None = None
+
+
+@dataclass(frozen=True)
+class _ChatContextRender:
+    prompt: str
+    render_request: ChatCompletionRequest
+    prefix_messages: tuple[dict[str, Any], ...]
+    session_payload: dict[str, Any] | None = None
+    fit_context_extra: dict[str, Any] | None = None
+    reset_session_on_commit: bool = False
 
 
 @dataclass
@@ -2562,6 +2587,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         raw_output: str,
         visible_message: Mapping[str, Any],
         cache_action: str | None,
+        reset_session: bool = False,
     ) -> None:
         session_id = _session_id(request)
         if session_id is None or cache_action in (None, "append_none"):
@@ -2578,8 +2604,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         now = time.time()
         async with chat_session_lock:
             previous = chat_sessions.get(session_id)
-            created = now if previous is None else previous.created
-            base = () if previous is None else previous.messages
+            created = now if previous is None or reset_session else previous.created
+            base = () if previous is None or reset_session else previous.messages
             chat_sessions[session_id] = _ChatSessionRecord(
                 id=session_id,
                 messages=(*base, *appended),
@@ -2611,9 +2637,79 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             cache_action=effective_cache_action,
         )
 
+    def chat_context_fit_payload(
+        chat_request: ChatCompletionRequest,
+        prompt: str,
+        engine: Any,
+    ) -> dict[str, Any]:
+        max_context = effective_max_context_tokens(engine)
+        max_tokens = _request_max_tokens(
+            chat_request,
+            (prompt,),
+            engine,
+            max_context,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+        )
+        return _context_fit_payload(
+            prompt_tokens=_count_tokens_for_admission(engine, str(prompt)),
+            max_context_tokens=max_context,
+            max_tokens=max_tokens,
+        )
+
+    async def render_chat_context_for_request(
+        request: ChatCompletionRequest,
+        engine: Any,
+        *,
+        apply_context_policy: bool,
+    ) -> _ChatContextRender:
+        prefix_messages = tuple(await chat_session_prefix_messages(request))
+        render_request = request
+        if prefix_messages:
+            render_request = _chat_request_with_messages(
+                request,
+                (*prefix_messages, *request.messages),
+            )
+        prompt = chat_prompt_for_request(render_request, engine)
+        effective_prefix = prefix_messages
+        session_payload = _diagnostic_session_payload(request, effective_prefix)
+        fit_context_extra = None if session_payload is None else {"session": session_payload}
+        reset_session = False
+        policy = _session_context_overflow_policy(request)
+        if apply_context_policy and policy == "new_session" and session_payload is not None:
+            dropped_message_count = 0
+            if prefix_messages and effective_max_context_tokens(engine) is not None:
+                prefixed_fit = chat_context_fit_payload(render_request, prompt, engine)
+                request_only_prompt = chat_prompt_for_request(request, engine)
+                request_only_fit = chat_context_fit_payload(request, request_only_prompt, engine)
+                if not prefixed_fit["fits"] and request_only_fit["fits"]:
+                    prompt = request_only_prompt
+                    render_request = request
+                    effective_prefix = ()
+                    dropped_message_count = len(prefix_messages)
+                    reset_session = True
+                    session_payload = _diagnostic_session_payload(request, effective_prefix)
+            policy_extra = _context_policy_new_session_payload(
+                request,
+                session_id=_session_id(request),
+                dropped_message_count=dropped_message_count,
+                kept_prefix_message_count=0 if reset_session else len(prefix_messages),
+                reset=reset_session,
+            )
+            fit_context_extra = {"session": session_payload, **policy_extra}
+        return _ChatContextRender(
+            prompt=prompt,
+            render_request=render_request,
+            prefix_messages=tuple(dict(item) for item in effective_prefix),
+            session_payload=session_payload,
+            fit_context_extra=fit_context_extra,
+            reset_session_on_commit=reset_session,
+        )
+
     async def diagnostic_render_for_request(
         request: TokenDiagnosticRequest,
         engine: Any,
+        *,
+        apply_context_policy: bool = False,
     ) -> dict[str, Any]:
         has_text = request.text is not None
         has_messages = request.messages is not None
@@ -2648,18 +2744,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="unsupported_parameter",
                 param=unsupported_param,
             )
-        prefix_messages = await chat_session_prefix_messages(chat_request)
-        render_request = chat_request
-        if prefix_messages:
-            render_request = _chat_request_with_messages(
-                chat_request,
-                (*prefix_messages, *chat_request.messages),
-            )
+        rendered = await render_chat_context_for_request(
+            chat_request,
+            engine,
+            apply_context_policy=apply_context_policy,
+        )
         return {
-            "text": chat_prompt_for_request(render_request, engine),
+            "text": rendered.prompt,
             "input_type": "chat",
-            "chat_request": render_request,
-            "session": _diagnostic_session_payload(chat_request, prefix_messages),
+            "chat_request": rendered.render_request,
+            "session": rendered.session_payload,
+            "fit_context_extra": rendered.fit_context_extra,
         }
 
     def get_llm() -> Any:
@@ -4118,6 +4213,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "effective_max_context_tokens": None if effective_context is None else int(effective_context),
                 "chat_default_max_tokens": config.chat_default_max_tokens,
                 "chat_default_mode": "auto" if config.chat_default_max_tokens is None else "bounded",
+                "overflow_policy_field": "session.context_overflow_policy",
+                "default_overflow_policy": "reject",
+                "overflow_policies": list(_SESSION_CONTEXT_OVERFLOW_POLICIES),
             },
             "tokenizer": {
                 "tokenize": tokenizer_caps["tokenize"],
@@ -4403,7 +4501,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def fit_context(request: FitContextRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = get_llm()
         max_context = effective_max_context_tokens(engine)
-        rendered = await diagnostic_render_for_request(request, engine)
+        rendered = await diagnostic_render_for_request(request, engine, apply_context_policy=True)
         text = str(rendered["text"])
         input_type = str(rendered["input_type"])
         prompt_tokens = await run_in_threadpool(_count_tokens_strict, engine, text)
@@ -4424,6 +4522,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_context_tokens=max_context,
             max_tokens=int(effective_max_tokens),
         )
+        fit_context_extra = rendered.get("fit_context_extra")
+        if fit_context_extra is not None:
+            fit_payload.update(dict(fit_context_extra))
         response = {
             "object": "hipengine.fit_context",
             "input_type": input_type,
@@ -4632,12 +4733,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             _apply_continuation_defaults(request, continuation)
             control = _request_control(config, request, raw_request)
 
-            async def prepare_prompt() -> tuple[str, dict[str, Any] | None]:
+            async def prepare_prompt() -> _ChatContextRender:
                 async with session_lock:
                     engine = get_llm()
                     await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                     if continuation is not None:
-                        return continuation.resume_prompts()[0], None
+                        return _ChatContextRender(
+                            prompt=continuation.resume_prompts()[0],
+                            render_request=request,
+                            prefix_messages=(),
+                        )
                     if not request.messages:
                         raise OpenAIHTTPError(
                             400,
@@ -4645,18 +4750,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             code="invalid_request",
                             param="messages",
                         )
-                    session_messages = await chat_session_prefix_messages(request)
-                    render_request = request
-                    if session_messages:
-                        render_request = _chat_request_with_messages(
-                            request,
-                            (*session_messages, *request.messages),
-                        )
-                    session_payload = _diagnostic_session_payload(request, session_messages)
-                    fit_context_extra = None if session_payload is None else {"session": session_payload}
-                    return chat_prompt_for_request(render_request, engine), fit_context_extra
+                    return await render_chat_context_for_request(
+                        request,
+                        engine,
+                        apply_context_policy=True,
+                    )
 
-            prompt, fit_context_extra = await _await_with_request_control(prepare_prompt(), control)
+            prepared_prompt = await _await_with_request_control(prepare_prompt(), control)
+            prompt = prepared_prompt.prompt
+            fit_context_extra = prepared_prompt.fit_context_extra
             if request.stream:
                 live_chat_logprobs = (
                     bool(request.logprobs)
@@ -4798,6 +4900,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     raw_output=output,
                     visible_message=message,
                     cache_action=effective_cache_action,
+                    reset_session=prepared_prompt.reset_session_on_commit,
                 )
             response = {
                 "id": response_id,
@@ -8195,6 +8298,49 @@ def _diagnostic_session_payload(
     }
 
 
+def _context_policy_new_session_payload(
+    request: ChatCompletionRequest,
+    *,
+    session_id: str | None,
+    dropped_message_count: int,
+    kept_prefix_message_count: int,
+    reset: bool,
+) -> dict[str, Any]:
+    kept_segments: list[dict[str, Any]] = []
+    if kept_prefix_message_count > 0:
+        kept_segments.append(
+            {
+                "kind": "session_prefix",
+                "session_id": session_id,
+                "storage": "app_local_transcript",
+                "message_count": int(kept_prefix_message_count),
+            }
+        )
+    kept_segments.append(
+        {
+            "kind": "request_messages",
+            "message_count": len(request.messages),
+        }
+    )
+    would_drop: list[dict[str, Any]] = []
+    if reset and dropped_message_count > 0:
+        would_drop.append(
+            {
+                "kind": "session_prefix",
+                "session_id": session_id,
+                "storage": "app_local_transcript",
+                "message_count": int(dropped_message_count),
+            }
+        )
+    return {
+        "clear_policy": "new_session",
+        "would_truncate": False,
+        "would_reset_session": bool(reset),
+        "would_drop": would_drop,
+        "kept_segments": kept_segments,
+    }
+
+
 def _thinking_budget_sampling_kwargs(
     config: ServerConfig,
     request: ChatCompletionRequest,
@@ -8363,11 +8509,13 @@ def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompleti
                     return "stream"
                 if _request_n(request) != 1:
                     return "n"
-                if set(session.keys()) - {"id", "commit"}:
+                if set(session.keys()) - _SESSION_ALLOWED_STATEFUL_KEYS:
                     return "session"
                 if _session_cache_action(request) is not None:
                     return None
                 return "session.commit"
+            if "context_overflow_policy" in session:
+                return "session.context_overflow_policy"
             if _session_cache_action(request) is not None:
                 return None
             if "commit" in session:
@@ -8619,6 +8767,8 @@ def _validate_session_request(request: CompletionRequest | ChatCompletionRequest
         return
     if "id" in session:
         _session_id(request)
+    if "context_overflow_policy" in session:
+        _session_context_overflow_policy(request)
     if "commit" not in session:
         return
     raw_commit = session.get("commit")
@@ -8637,6 +8787,33 @@ def _validate_session_request(request: CompletionRequest | ChatCompletionRequest
             code="invalid_request",
             param="session.commit",
         )
+
+
+def _session_context_overflow_policy(request: CompletionRequest | ChatCompletionRequest) -> str:
+    session = getattr(request, "session", None)
+    if not isinstance(session, Mapping):
+        return "reject"
+    raw_policy = session.get("context_overflow_policy")
+    if raw_policy is None:
+        return "reject"
+    if not isinstance(raw_policy, str) or not raw_policy.strip():
+        raise OpenAIHTTPError(
+            400,
+            "session.context_overflow_policy must be a non-empty string",
+            code="invalid_request",
+            param="session.context_overflow_policy",
+        )
+    policy = raw_policy.strip().lower()
+    policy = _SESSION_CONTEXT_OVERFLOW_POLICY_ALIASES.get(policy, policy)
+    if policy not in _SESSION_CONTEXT_OVERFLOW_POLICIES:
+        raise OpenAIHTTPError(
+            400,
+            "session.context_overflow_policy must be one of: "
+            + ", ".join(_SESSION_CONTEXT_OVERFLOW_POLICIES),
+            code="invalid_request",
+            param="session.context_overflow_policy",
+        )
+    return policy
 
 
 def _session_id(request: CompletionRequest | ChatCompletionRequest) -> str | None:
@@ -8670,7 +8847,7 @@ def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) ->
         return None
     mode = str(commit).strip().lower()
     if has_id:
-        if mode in _SESSION_COMMIT_MODES and not (set(session.keys()) - {"id", "commit"}):
+        if mode in _SESSION_COMMIT_MODES and not (set(session.keys()) - _SESSION_ALLOWED_STATEFUL_KEYS):
             return mode
         return None
     if mode == "append_none" and set(session.keys()) == {"commit"}:

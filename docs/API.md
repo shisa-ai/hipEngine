@@ -91,7 +91,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
-| `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and reject/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
+| `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes and `session.context_overflow_policy="new_session"` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text-only messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
@@ -180,7 +180,11 @@ the same single-model route policy under `error.hipengine.routing`, plus
 `matched: false`, `configured_model`, and `reason: "model_unavailable"`.
 Context-overflow errors include `error.fit_context` and, after the requested
 model has matched, `error.hipengine.routing` with `matched: true` and
-`reason: "context_overflow"`.
+`reason: "context_overflow"`. Stateful chat requests that set
+`session.context_overflow_policy="new_session"` use the same preflight decision
+as `/v1/hipengine/fit_context`; if the current request alone still cannot fit,
+the error keeps `clear_policy: "new_session"` and reports
+`would_reset_session: false`.
 Admission rejections such as generation queue cap or chat-session cap failures
 use `engine_busy`; when they occur after the served model has matched, the
 payload includes `error.hipengine.routing` with `matched: true`,
@@ -719,12 +723,15 @@ normal token selection so KV state remains consistent. If tokenization is
 unavailable, generation remains prompt-hint-only rather than failing. Native GPU
 sampler parity and speculative/MTP parity are not implemented yet. Generic
 sampler `min_tokens` / `eos_token_id` still suppresses EOS for ordinary
-generation independent of thinking-budget phase policy. Chat `count_tokens` and
-`fit_context` diagnostics also honor app-local `session.id` transcript prefixes,
-lower the configured close sequence into token ids, and return an initial
-thinking-budget state plus `allow_unbounded=true` when that merged control is
-active for harness/debug verification when tokenization is available. The
-capabilities manifest exposes enforcement under
+generation independent of thinking-budget phase policy. Chat `count_tokens`
+diagnostics honor app-local `session.id` transcript prefixes exactly as stored.
+Chat `fit_context` and generation use the same prefix policy; with
+`session.context_overflow_policy="new_session"`, a stored transcript prefix is
+dropped only when prefix+request overflows and the current request alone fits.
+Both diagnostics lower the configured close sequence into token ids and return
+an initial thinking-budget state plus `allow_unbounded=true` when that merged
+control is active for harness/debug verification when tokenization is available.
+The capabilities manifest exposes enforcement under
 `features.reasoning_controls.token_budget_enforced`,
 `hard_close_token_forcing`, `soft_close_bias`, `eos_suppression`,
 `diagnostic_close_token_lowering`, and `diagnostic_initial_state`.
@@ -811,6 +818,17 @@ resident-KV visible re-prefill: `/v1/hipengine/capabilities` reports
 `sessions.commit_policy.resident_kv_commit=false`,
 `sessions.commit_policy.visible_only_reprefill=false`, and
 `sessions.commit_policy.visible_only_replay="rerender_app_local_transcript"`.
+Stateful buffered chat requests may also set
+`session.context_overflow_policy="new_session"`. The default policy is `reject`
+(`fail` is accepted as an alias). Under `new_session`, generation and
+`/v1/hipengine/fit_context` first render the stored prefix plus request; when
+that overflows but the current request alone fits, the request is generated
+without the stored prefix and the app-local transcript is replaced on successful
+commit. The response/error fit metadata reports `clear_policy: "new_session"`,
+`would_reset_session`, sanitized `would_drop` entries for dropped
+`session_prefix` segments, and `kept_segments`; request messages are never
+dropped by this policy. Truncation, summary compaction, and pinned-prefix
+policies are not implemented.
 Deterministic buffered chat session requests that stop by generation length may
 mint continuation handles; the resume request must send the same existing
 `session.id` and omit `messages`.
@@ -918,7 +936,7 @@ payload.
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
-| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context` with max allowed/recommended `max_tokens`, overflow tokens, and matched-route diagnostics under `error.hipengine.routing`. |
+| `context_overflow` | 400 | no | Prompt plus `max_tokens` exceeds admitted context; legacy `error.code` is `context_length_exceeded`; payload includes `error.fit_context` with max allowed/recommended `max_tokens`, overflow tokens, clear/reset policy metadata, and matched-route diagnostics under `error.hipengine.routing`. |
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation; matched request routes include `error.hipengine.routing` with an `overload_source`. |

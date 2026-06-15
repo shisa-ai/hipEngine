@@ -93391,3 +93391,22 @@ Validation:
 - Parsed 14 copied gfx1151 JSON artifacts successfully.
 - Checked README local markdown links; all resolve.
 - `git diff --check -- README.md benchmarks/results/2026-06-15-gfx1151-*` -> clean.
+## 2026-06-15 - Stateful chat new-session context policy
+
+Implemented the first non-reject app-local transcript overflow policy for
+buffered chat sessions. `session.context_overflow_policy="new_session"` now
+shares `/v1/hipengine/fit_context` and generation decision logic: the server
+renders the stored prefix plus request, drops only the stored prefix when that
+overflows and the current request alone fits, and replaces the transcript on a
+successful commit. Request-only overflow still rejects without mutating the
+session. Fit/error metadata reports sanitized `would_reset_session`,
+`would_drop`, and `kept_segments` fields, and capabilities/API/AGENTIC docs now
+advertise the exact scope.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or token_diagnostics_use_session_prefix_for_chat or chat_context_overflow_reports_session_fit_context or new_session_policy or context_overflow_policy_requires_known_stateful_mode or server_rejects_requests_beyond_preallocated_context'` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'fit_context or context_overflow or capabilities_endpoint_reports_manifest_and_auth or chat_session_visible_only or session_append_none or stateless_session_default or context_overflow_policy'` -> `21 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

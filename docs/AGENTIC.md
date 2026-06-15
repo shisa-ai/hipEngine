@@ -1195,16 +1195,20 @@ Current code reality:
 - Raw text diagnostics use the served tokenizer/counting hooks. Chat diagnostics
   render the same Qwen-style prompt as generation, including tool markup and
   thinking controls, before counting. When a chat diagnostic request includes
-  `session.id`, the stored app-local transcript is prepended before rendering,
-  and the response reports session prefix/request/rendered message counts plus
-  `resident_state_reuse=false`. Chat count/fit diagnostics also expose lowered
-  thinking-budget close tokens, the initialized `ThinkingBudgetState` payload,
-  and `allow_unbounded=true` when that merged control is active and tokenization
-  is available; capability metadata advertises that diagnostic lowering/state
-  support separately from live token-budget enforcement.
+  `session.id`, `count_tokens` prepends the stored app-local transcript exactly
+  as stored. `fit_context` shares generation's overflow-policy decision: the
+  default is `reject`, and `session.context_overflow_policy="new_session"` drops
+  the stored prefix only when prefix+request overflows and the current request
+  alone fits. The responses report session prefix/request/rendered message
+  counts plus `resident_state_reuse=false`. Chat count/fit diagnostics also
+  expose lowered thinking-budget close tokens, the initialized
+  `ThinkingBudgetState` payload, and `allow_unbounded=true` when that merged
+  control is active and tokenization is available; capability metadata
+  advertises that diagnostic lowering/state support separately from live
+  token-budget enforcement.
 - `/fit_context` uses the same context arithmetic and chat default max-token
-  policy as generation admission, and reports the current clear policy as
-  `reject` with no automatic truncation/dropping.
+  policy as generation admission, reports the current clear policy, and includes
+  sanitized kept/dropped/reset segment metadata for `new_session`.
 - Endpoints return explicit unsupported-feature errors when the served model does
   not expose tokenizer/counting/decoding hooks.
 
@@ -2074,25 +2078,38 @@ Implement:
 
 - explicit overflow policies: `fail`, `auto_clear_transient`,
   `truncate_oldest_visible`, `keep_pinned_prefix`, `compact_summary`, and
-  `new_session`;
+  `new_session` (`reject` is the implemented default name, while `fail` is an
+  accepted alias);
 - `/fit_context` preflight with the same decision logic as generation;
 - response metadata listing kept/dropped/reset segments.
 
 Current code reality:
 
-- The current overflow policy is explicit `reject`: generation does not
+- The default overflow policy is explicit `reject`: generation does not
   truncate, auto-clear, or drop request content.
+- Stateful buffered chat requests may set
+  `session.context_overflow_policy="new_session"`. Generation and
+  `/fit_context` first render the stored app-local transcript prefix plus the
+  current request; if that overflows but the current request alone fits, the
+  request is rendered without the stored prefix and the app-local transcript is
+  replaced on successful commit. If the current request alone still overflows,
+  the request is rejected and the transcript is left intact.
 - `/fit_context` reports prompt tokens, effective max tokens, required context,
   max allowed/recommended `max_tokens`, overflow tokens, `fits`,
-  `clear_policy="reject"`, `would_truncate=false`, and an empty `would_drop`
-  list using the same helper as generation admission. Chat preflight with
-  `session.id` includes the app-local stored transcript prefix before computing
-  prompt tokens and reports the same session-prefix metadata as `/count_tokens`.
+  `clear_policy`, `would_truncate=false`, `would_reset_session` for
+  `new_session`, sanitized `would_drop`, and `kept_segments` using the same
+  helper as generation admission. Chat preflight with `session.id` includes the
+  app-local stored transcript prefix before computing prompt tokens unless
+  `new_session` can safely reset to the current request; it reports the same
+  session-prefix metadata as generation.
 - Generation `context_overflow` errors include `error.fit_context` with the same
   actionable shape, so clients can retry with a smaller `max_tokens` or run the
   preflight endpoint without reverse-engineering the error message. For
   session-backed chat requests, generation overflow errors also include the
-  same `session` prefix-count metadata as `/fit_context`.
+  same `session` prefix-count and overflow-policy metadata as `/fit_context`.
+- `auto_clear_transient`, `truncate_oldest_visible`, `keep_pinned_prefix`, and
+  summary compaction are still future work; `new_session` never drops current
+  request messages.
 
 Exit gates:
 
@@ -2903,9 +2920,10 @@ Use this as the handoff for an implementation agent:
 ## Near-term implementation slices
 
 The single-model server contract, capabilities manifest, token diagnostics,
-session transcript commit policy, deterministic continuations, host processor
-stack, thinking-budget hard/soft close, strict tool result validation, and
-golden harness traces are now implemented. Good next logical units, in order:
+session transcript commit/context fitting policy, deterministic continuations,
+host processor stack, thinking-budget hard/soft close, strict tool result
+validation, and golden harness traces are now implemented. Good next logical
+units, in order:
 
 1. **Live backend DecodeState telemetry:** buffered streaming now carries safe
    backend sampler/execution metadata on opt-in deltas, the submit/poll wrapper
