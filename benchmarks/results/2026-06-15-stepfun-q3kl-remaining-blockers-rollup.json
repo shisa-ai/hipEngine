@@ -10,7 +10,8 @@
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
     "oracle_rank_check": "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty",
     "oracle_token_mismatch": "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
-    "status_refresh": "python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
+    "status_refresh": "python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json",
+    "top_token_roundtrip": "python3 scripts/stepfun_top_token_roundtrip.py --default-output --pretty"
   },
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
@@ -87,7 +88,9 @@
       "rank_check_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
       "rank_check_generator_command": "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty",
       "readiness_gate": "oracle_parity",
-      "status": "blocked"
+      "status": "blocked",
+      "top_token_roundtrip_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json",
+      "top_token_roundtrip_generator_command": "python3 scripts/stepfun_top_token_roundtrip.py --default-output --pretty"
     },
     {
       "blocked_count": 2,
@@ -234,9 +237,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "22cc6ab2212554191f1424746e385e55861505d3d7f7077f1155512ede599520",
+    "kv_blocker_status": "0218ba0a993438d6c5155fb2494b8419c10b584fa021961f2cca14591689d57b",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "330fd41f97c092e2024bda8e070a28405129ade4fdf68ea84d5e3e896cf768b9"
+    "status": "c279c03eac9d3ef673bc5988faf1e13f253d501b9769ff57332fba8cee418848"
   },
   "status": "blocked"
 }

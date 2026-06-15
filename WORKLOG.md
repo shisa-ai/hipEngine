@@ -40904,3 +40904,33 @@ git diff --check
 ```
 
 Results: targeted oracle-rank/rollup tests passed (`6` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; remaining-blockers rollup file SHA `69c1a6897a28727dcb956922eb694b581c7d5646760e323cc190f2d4653a7555`; rollup stable payload SHA `bdc7c0683f1340bcba70d236d93dc72239efc4226862c0e8311621a46a5a3081`; correctness-status file SHA `0e2e91a7592a9f5da80d6fb263eef02f710edb235f6fb59fe97df5860e97403b`; final-blocker file SHA `3ebb6a14bfabcc10595bd7d8efebda64f1272c6787da9b6b86b96ec4d69a9f8e`; handoff file SHA `441f0e34c289c8b693cf6af9aad7432d613edafe24f45facc3ca954e935f1408`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun host top-token text round-trip check
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 490. Added `scripts/stepfun_top_token_roundtrip.py`, a reproducible llama.cpp `llama-tokenize --no-bos` round-trip check for the host-composed top-token texts in `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`, plus `tests/test_stepfun_top_token_roundtrip.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the new top-token round-trip artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json` reports `status=passed`, `all_top_token_texts_roundtrip=true`, `mismatch_count=0`, and host top token IDs `[369, 5, 15251, 223, 201]` round-trip as `[[369], [5], [15251], [223], [201]]`. This rules out host top-token text-label drift as the explanation for the retained Vulkan llama.cpp oracle mismatch, but it does not resolve oracle parity: generated token `671` remains absent from the host top-5 and the canonical missing evidence remains `generated_text_matches_target`. Top-token round-trip file SHA is `1e028dac72506c087f77adf09a372f81a31bc0c0a36c4daf02967eb2b4ed6dc2`; stable payload SHA from `scripts/stepfun_top_token_roundtrip.py --sha-only` is `53aa0da3e30fbfc839ed141b692af34924a1b1d9cf5eb5a13010a5560c2cfc14`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_top_token_roundtrip.py tests/test_stepfun_top_token_roundtrip.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_top_token_roundtrip.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_top_token_roundtrip.py --default-output --pretty
+python3 scripts/stepfun_top_token_roundtrip.py --sha-only
+python3 scripts/stepfun_top_token_roundtrip.py --all-roundtrip-only
+python3 scripts/stepfun_top_token_roundtrip.py --mismatches-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted top-token/rollup tests passed (`7` tests); status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `ef061ea5cef1d16bbf5d94e096bb444e35f262d7f3aaf8d3d8b8cd6b73533800`; remaining-blockers file SHA `793fae87c80862452985ab3d816e4eef448ded6fff81af90e47f195a74c7d85b`; correctness-status file SHA `7ed09a383fbc1eb0f1a498956672df86faccc25773e423dc9ec596057b297517`; final-blocker file SHA `07b2703e48b8acf570c50916abfb0eda589e7e3e23ede77e45d296bca218de52`; handoff file SHA `67fc507bc0cb74bb50a65eddc1fb6aa227fe49c86badfa17779d4e629b67f002`; full StepFun guard passed; `git diff --check` passed.

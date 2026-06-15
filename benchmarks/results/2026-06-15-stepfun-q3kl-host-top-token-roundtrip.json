@@ -1,0 +1,230 @@
+{
+  "all_top_token_texts_roundtrip": true,
+  "artifact_kind": "stepfun_host_top_token_roundtrip",
+  "conclusion": "all host top-token texts round-trip to their host token ids",
+  "date": "2026-06-15",
+  "host_top_token_count": 5,
+  "host_top_token_ids": [
+    369,
+    5,
+    15251,
+    223,
+    201
+  ],
+  "llama_tokenize": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+  "mismatch_count": 0,
+  "mismatches": [],
+  "missing_evidence": [],
+  "mode": "llama-tokenize --no-bos",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact only checks host top-token text/token-id round-trips with llama-tokenize; it does not compare generated text to the target."
+  },
+  "oracle_blocker_interpretation": "top-token text labels are tokenizer-coherent; the retained llama.cpp oracle mismatch should be investigated as logits/prompt/backend parity, not host top-token text-label drift",
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "prompt_artifact_sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+  "ready": true,
+  "records": [
+    {
+      "logit": 19.158626556396484,
+      "missing_evidence": [],
+      "rank": 1,
+      "roundtrip_status": "passed",
+      "roundtrip_token_count": 1,
+      "roundtrip_token_ids": [
+        369
+      ],
+      "single_token_matches_host_id": true,
+      "token_id": 369,
+      "token_text": " |",
+      "tokenization_record": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "host-top-token-rank-1",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[369]\nTotal number of tokens: 1\n",
+        "stdout_len": 32,
+        "text": " |",
+        "text_len": 2,
+        "token_count": 1,
+        "token_ids": [
+          369
+        ]
+      }
+    },
+    {
+      "logit": 18.343582153320312,
+      "missing_evidence": [],
+      "rank": 2,
+      "roundtrip_status": "passed",
+      "roundtrip_token_count": 1,
+      "roundtrip_token_ids": [
+        5
+      ],
+      "single_token_matches_host_id": true,
+      "token_id": 5,
+      "token_text": "#",
+      "tokenization_record": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "host-top-token-rank-2",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[5]\nTotal number of tokens: 1\n",
+        "stdout_len": 30,
+        "text": "#",
+        "text_len": 1,
+        "token_count": 1,
+        "token_ids": [
+          5
+        ]
+      }
+    },
+    {
+      "logit": 16.907772064208984,
+      "missing_evidence": [],
+      "rank": 3,
+      "roundtrip_status": "passed",
+      "roundtrip_token_count": 1,
+      "roundtrip_token_ids": [
+        15251
+      ],
+      "single_token_matches_host_id": true,
+      "token_id": 15251,
+      "token_text": "\ufeff",
+      "tokenization_record": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "host-top-token-rank-3",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[15251]\nTotal number of tokens: 1\n",
+        "stdout_len": 34,
+        "text": "\ufeff",
+        "text_len": 1,
+        "token_count": 1,
+        "token_ids": [
+          15251
+        ]
+      }
+    },
+    {
+      "logit": 16.793684005737305,
+      "missing_evidence": [],
+      "rank": 4,
+      "roundtrip_status": "passed",
+      "roundtrip_token_count": 1,
+      "roundtrip_token_ids": [
+        223
+      ],
+      "single_token_matches_host_id": true,
+      "token_id": 223,
+      "token_text": " ",
+      "tokenization_record": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "host-top-token-rank-4",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[223]\nTotal number of tokens: 1\n",
+        "stdout_len": 32,
+        "text": " ",
+        "text_len": 1,
+        "token_count": 1,
+        "token_ids": [
+          223
+        ]
+      }
+    },
+    {
+      "logit": 15.653017044067383,
+      "missing_evidence": [],
+      "rank": 5,
+      "roundtrip_status": "passed",
+      "roundtrip_token_count": 1,
+      "roundtrip_token_ids": [
+        201
+      ],
+      "single_token_matches_host_id": true,
+      "token_id": 201,
+      "token_text": "\n",
+      "tokenization_record": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "host-top-token-rank-5",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[201]\nTotal number of tokens: 1\n",
+        "stdout_len": 32,
+        "text": "\n",
+        "text_len": 1,
+        "token_count": 1,
+        "token_ids": [
+          201
+        ]
+      }
+    }
+  ],
+  "schema_version": 1,
+  "status": "passed",
+  "tokenizer_model": "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf"
+}
