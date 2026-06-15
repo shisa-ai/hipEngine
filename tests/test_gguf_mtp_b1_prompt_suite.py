@@ -280,6 +280,18 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["llamacpp_trace_oracle"]["passed"] is True
     assert artifact["llamacpp_trace_oracle"]["selected_token_ids"] == [8068, 271]
     assert artifact["llamacpp_trace_oracle"]["observed_top_k"] == 3
+    assert artifact["llamacpp_trace_oracle"]["denominator_metrics"] == {
+        "accepted_draft_tokens": 0,
+        "generated_draft_tokens": 2,
+        "accepted_per_draft": 0.0,
+        "visible_output_token_count": None,
+        "accepted_per_output": None,
+        "accepted_per_output_status": "not_comparable_debug_trace_missing_visible_output_count",
+        "denominators": {
+            "accepted_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+            "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+        },
+    }
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "passed",
@@ -485,6 +497,47 @@ def test_b1_prompt_suite_preflight_reports_llamacpp_trace_blocker_before_runtime
         "observed_top_k",
         "debug_trace_not_benchmark",
     }
+
+
+def test_b1_prompt_suite_preflight_reports_llamacpp_trace_denominator_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    trace = _write_json(
+        tmp_path / "bad-denominator-trace.json",
+        {
+            "schema": 1,
+            "kind": "llamacpp_mtp_draft_candidate_trace",
+            "prompt_tokens": 3,
+            "calls": [
+                {
+                    "generated": 1,
+                    "accepted": 0,
+                    "candidates": [{"rank": 0, "token_id": 42}],
+                }
+            ],
+            "summary": {
+                "candidate_count": 1,
+                "draft_call_count": 1,
+                "observed_top_k": 1,
+                "draft_n": 2,
+                "draft_n_accepted": 0,
+                "draft_acceptance": 0.0,
+            },
+            "metadata": {"server_command": ["llama-server", "--no-spec-draft-backend-sampling"]},
+        },
+    )
+
+    artifact = suite.build_b1_prompt_suite_artifact(
+        **_artifact_inputs(tmp_path),
+        llamacpp_trace_fixture=trace,
+    )
+
+    assert artifact["llamacpp_trace_oracle"]["passed"] is False
+    assert artifact["llamacpp_trace_oracle"]["denominator_metrics"]["generated_draft_tokens"] == 1
+    assert artifact["blockers"][0]["code"] == "llamacpp_trace_oracle_failed"
+    assert {item["name"] for item in artifact["blockers"][0]["failed_checks"]} == {"draft_n"}
 
 
 def test_b1_prompt_suite_preflight_reports_oracle_gate_blocker_before_runtime_blocker(

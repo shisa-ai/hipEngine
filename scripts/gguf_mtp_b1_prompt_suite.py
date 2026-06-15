@@ -302,6 +302,8 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
     check("calls_present", isinstance(calls, list) and bool(calls), "fixture must contain at least one draft call")
     call_items = calls if isinstance(calls, list) else []
     candidate_count = 0
+    generated_draft_tokens = 0
+    accepted_draft_tokens = 0
     selected_token_ids: list[int] = []
     max_candidates = 0
     calls_valid = True
@@ -322,13 +324,22 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
             continue
         selected_token_ids.append(token_id)
         generated = call.get("generated") if isinstance(call, dict) else None
-        if isinstance(generated, int) and generated > draft_max:
+        accepted = call.get("accepted") if isinstance(call, dict) else None
+        if not isinstance(generated, int) or generated < 0:
+            calls_valid = False
+            continue
+        generated_draft_tokens += generated
+        if generated > draft_max:
             calls_valid = False
             check(
                 f"call_{index}_generated_budget",
                 False,
                 f"generated={generated} exceeds requested draft_max={draft_max}",
             )
+        if not isinstance(accepted, int) or accepted < 0 or accepted > generated:
+            calls_valid = False
+            continue
+        accepted_draft_tokens += accepted
     check("candidate_rows", calls_valid, "each draft call must expose a rank-0 token and stay within draft_max")
     check(
         "candidate_count",
@@ -339,6 +350,31 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
         "draft_call_count",
         summary.get("draft_call_count") == len(call_items),
         "summary draft_call_count must equal calls length",
+    )
+    reported_draft_n = timing.get("draft_n", summary.get("draft_n"))
+    reported_draft_n_accepted = timing.get("draft_n_accepted", summary.get("draft_n_accepted"))
+    reported_draft_acceptance = timing.get("draft_acceptance", summary.get("draft_acceptance"))
+    expected_draft_acceptance = (
+        float(accepted_draft_tokens) / float(generated_draft_tokens)
+        if generated_draft_tokens
+        else None
+    )
+    check(
+        "draft_n",
+        reported_draft_n == generated_draft_tokens,
+        "reported draft_n must equal summed generated draft tokens",
+    )
+    check(
+        "draft_n_accepted",
+        reported_draft_n_accepted == accepted_draft_tokens,
+        "reported draft_n_accepted must equal summed accepted draft tokens",
+    )
+    check(
+        "draft_acceptance",
+        expected_draft_acceptance is not None
+        and isinstance(reported_draft_acceptance, int | float)
+        and abs(float(reported_draft_acceptance) - expected_draft_acceptance) <= 1.0e-9,
+        "reported draft_acceptance must equal draft_n_accepted / draft_n",
     )
     check(
         "observed_top_k",
@@ -351,6 +387,26 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
         "trace fixture must be marked as debug/provenance, not a backend-sampling benchmark",
     )
 
+    visible_output_token_count = trace.get("visible_output_token_count")
+    if not isinstance(visible_output_token_count, int) or visible_output_token_count <= 0:
+        visible_output_token_count = None
+    denominator_metrics = {
+        "accepted_draft_tokens": accepted_draft_tokens,
+        "generated_draft_tokens": generated_draft_tokens,
+        "accepted_per_draft": expected_draft_acceptance,
+        "visible_output_token_count": visible_output_token_count,
+        "accepted_per_output": None
+        if visible_output_token_count is None
+        else float(accepted_draft_tokens) / float(visible_output_token_count),
+        "accepted_per_output_status": "not_comparable_debug_trace_missing_visible_output_count"
+        if visible_output_token_count is None
+        else "computed",
+        "denominators": {
+            "accepted_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+            "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+        },
+    }
+
     passed = all(item["passed"] for item in checks)
     return {
         "fixture": str(trace_fixture),
@@ -362,9 +418,10 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
         "candidate_count": candidate_count,
         "observed_top_k": summary.get("observed_top_k", max_candidates),
         "selected_token_ids": selected_token_ids,
-        "draft_acceptance": timing.get("draft_acceptance", summary.get("draft_acceptance")),
-        "draft_n": timing.get("draft_n", summary.get("draft_n")),
-        "draft_n_accepted": timing.get("draft_n_accepted", summary.get("draft_n_accepted")),
+        "denominator_metrics": denominator_metrics,
+        "draft_acceptance": reported_draft_acceptance,
+        "draft_n": reported_draft_n,
+        "draft_n_accepted": reported_draft_n_accepted,
         "checks": checks,
     }
 

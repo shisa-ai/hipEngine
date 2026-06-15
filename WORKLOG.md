@@ -96159,3 +96159,49 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Metrics contract only defines denominator accounting; future MTP
   attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF llama trace denominator checks
+
+Implemented `mtp-gguf` multiloop iteration 77: extended the GGUF MTP llama.cpp
+trace oracle summary with explicit draft-denominator metrics.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This validates the captured debug trace's `draft_n` and `draft_n_accepted`
+  fields against summed per-call generated/accepted draft tokens and labels
+  accepted/output as not comparable until visible output-token counts are present.
+
+Changes:
+- `scripts/gguf_mtp_b1_prompt_suite.py` now computes
+  `llamacpp_trace_oracle.denominator_metrics` with:
+  - `accepted_draft_tokens`, `generated_draft_tokens`, and `accepted_per_draft`,
+  - `visible_output_token_count`, `accepted_per_output`, and an explicit
+    `accepted_per_output_status`,
+  - denominator labels for `accepted_per_draft` and `accepted_per_output`.
+- The trace validator now checks that reported `draft_n`, `draft_n_accepted`, and
+  `draft_acceptance` match the captured call rows.
+- Extended B1 preflight tests for the passing denominator summary and a
+  mismatched `draft_n` trace blocker.
+- Updated `docs/MTP-gguf.md` to document the denominator checks and the
+  not-comparable accepted/output status for debug traces.
+
+Validation:
+- Focused B1 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `12` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `suite blocked trace True accepted_per_draft 0.0 accepted_per_output_status not_comparable_debug_trace_missing_visible_output_count blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Denominator checks only validate the captured llama.cpp trace oracle and
+  mark accepted/output as not comparable until visible output-token counts exist.

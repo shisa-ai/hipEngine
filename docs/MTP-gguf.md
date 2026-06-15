@@ -576,8 +576,11 @@ Current status:
   and 0/2 accepted drafts. It was captured with backend draft sampling disabled
   only to expose candidate probabilities in the log; it is an oracle/debug
   fixture, not a performance benchmark. The B1 preflight child validates and
-  embeds a compact `llamacpp_trace_oracle` summary from this fixture so blocked
-  artifacts carry both CPU-reference and captured llama.cpp oracle provenance.
+  embeds a compact `llamacpp_trace_oracle` summary from this fixture, including
+  draft-denominator checks for `draft_n` / `draft_n_accepted` and an explicit
+  `accepted_per_output` status of not-comparable until visible output tokens are
+  available, so blocked artifacts carry both CPU-reference and captured llama.cpp
+  oracle provenance.
 
 Acceptance:
 
@@ -859,7 +862,7 @@ is now answered by the M1 required/optional table.)
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
       specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
       precheck, CPU-reference oracle gate output, and captured llama.cpp
-      draft-trace oracle provenance; B1 runtime
+      draft-trace oracle provenance/denominator checks; B1 runtime
       execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
