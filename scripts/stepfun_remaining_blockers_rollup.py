@@ -193,6 +193,9 @@ def _generator_commands() -> dict[str, str]:
         "llamacpp_logits_entrypoint_inventory": (
             "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty"
         ),
+        "llamacpp_logits_helper_contract": (
+            "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -299,6 +302,8 @@ def build_remaining_blockers_rollup(
                 "llamacpp_logits_plan_generator_command": commands["llamacpp_logits_plan"],
                 "llamacpp_logits_entrypoint_inventory_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json",
                 "llamacpp_logits_entrypoint_inventory_generator_command": commands["llamacpp_logits_entrypoint_inventory"],
+                "llamacpp_logits_helper_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json",
+                "llamacpp_logits_helper_contract_generator_command": commands["llamacpp_logits_helper_contract"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

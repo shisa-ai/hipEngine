@@ -9,6 +9,7 @@
     "kv_evidence_preflight": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
     "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
     "llamacpp_logits_entrypoint_inventory": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
+    "llamacpp_logits_helper_contract": "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty",
     "llamacpp_logits_plan": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
     "llamacpp_logits_preflight": "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
     "llamacpp_logits_probe": "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
@@ -101,6 +102,8 @@
       "host_logit_margin_generator_command": "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty",
       "llamacpp_logits_entrypoint_inventory_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json",
       "llamacpp_logits_entrypoint_inventory_generator_command": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
+      "llamacpp_logits_helper_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json",
+      "llamacpp_logits_helper_contract_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty",
       "llamacpp_logits_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
       "llamacpp_logits_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
       "llamacpp_logits_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
@@ -267,9 +270,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "8f1b814a90a5a8de60a6aa9f07a0e2ee107982340a0fa3a05711d7676126cd13",
+    "kv_blocker_status": "d16aaa863738e9b7f1e960fe6c82300e04493e67dd145041bdff78a953bd00b5",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "faa18320802c09cc66177f1021baa1a5daeaa1a17cec2b07c6d39ca356a76834"
+    "status": "3271225e8f7905f3401ac700335d16fd1bcc50f8cf3dee7710389c3bc9b52b7a"
   },
   "status": "blocked"
 }

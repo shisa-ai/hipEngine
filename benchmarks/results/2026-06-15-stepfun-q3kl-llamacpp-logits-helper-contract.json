@@ -1,0 +1,225 @@
+{
+  "artifact_kind": "stepfun_llamacpp_logits_helper_contract",
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "blocked_reason": "same-prompt-capable llama.cpp logits helper has not been built and captured",
+  "date": "2026-06-15",
+  "helper_contract": {
+    "accepted_prompt_paths": [
+      "tokenize prompt text with parse_special=true and add_bos=false for this retained artifact",
+      "or bypass text tokenization by accepting the retained input_ids explicitly"
+    ],
+    "decode_contract": "decode all retained prompt tokens with logits enabled for the final token",
+    "logits_contract": "write or return final-token logits for the full GGUF vocabulary, then compare expected token 369 against generated token 671",
+    "must_match_retained_input_ids": true,
+    "raw_output_contract": [
+      "logits_bin",
+      "logits_txt",
+      "prompt_txt",
+      "tokens_bin"
+    ]
+  },
+  "implementation_ready": true,
+  "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+  "missing_evidence": [
+    "same_prompt_logits_helper_built",
+    "llama_cpp_same_prompt_logits_artifact_present"
+  ],
+  "next_action": "build a logits helper that tokenizes with parse_special=true or accepts retained input_ids, then rerun scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This contract only identifies the source hooks for same-prompt logits capture; generated_text_matches_target remains unresolved."
+  },
+  "preflight_artifact": {
+    "artifact_kind": "stepfun_llamacpp_logits_preflight",
+    "exists": true,
+    "missing_evidence": [
+      "llama_cpp_same_prompt_logits_artifact_present",
+      "llama_cpp_same_prompt_special_token_support_present"
+    ],
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
+    "ready": false,
+    "sha256": "eaaf29a248a3dcfd44c700798b24b3d4e003a0da9d935b6cac2f8572a9e44299",
+    "status": "blocked"
+  },
+  "probe_artifact": {
+    "artifact_kind": "stepfun_llamacpp_logits_probe",
+    "exists": true,
+    "missing_evidence": [
+      "llama_debug_same_prompt_special_token_support_present"
+    ],
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
+    "ready": false,
+    "sha256": "5aecd251d8075ae007e55c5e9e87e7deed7f26cccdb6e298cec9b5f0266a3ca9",
+    "status": "blocked"
+  },
+  "prompt_artifact": {
+    "artifact_kind": null,
+    "exists": true,
+    "missing_evidence": null,
+    "path": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+    "ready": null,
+    "sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+    "status": "partial_prompt_smoke"
+  },
+  "prompt_contract": {
+    "expected_next_token_id": 369,
+    "expected_next_token_logit": 19.158626556396484,
+    "expected_next_token_text": " |",
+    "generated_first_token_id": 671,
+    "generated_first_token_text": "The",
+    "input_id_count": 23,
+    "input_ids": [
+      0,
+      128006,
+      27824,
+      201,
+      77666,
+      288,
+      28,
+      3157,
+      271,
+      128007,
+      201,
+      128006,
+      5265,
+      201,
+      33310,
+      128007,
+      201,
+      128006,
+      624,
+      15059,
+      201,
+      128798,
+      201
+    ],
+    "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "prompt_length": 23
+  },
+  "recommended_commands": [
+    "patch or build a llama.cpp logits helper that calls common_tokenize(..., parse_special=true) or accepts explicit token IDs",
+    "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j 8",
+    "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
+    "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty"
+  ],
+  "required_code_shapes": [
+    "common_tokenize(ctx, params.prompt, add_bos, true)",
+    "llama_get_logits_ith(ctx, tokens.size() - 1)",
+    "--save-logits / --logits-output-dir path",
+    "common_tokenize(..., add_special, true)",
+    "llama_tokenize(..., add_special, parse_special)",
+    "add a parse-special/token-ids control to the logits helper instead",
+    "helper-specific --parse-special or --token-ids input"
+  ],
+  "schema_version": 1,
+  "source_hook_marker_failures": [],
+  "source_hooks": [
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "contract_role": "current llama-debug prompt tokenization",
+      "contract_status": "insufficient",
+      "exists": true,
+      "key": "debug_current_tokenization",
+      "line": 59,
+      "line_text": "tokens = common_tokenize(ctx, params.prompt, add_bos);",
+      "marker": "common_tokenize(ctx, params.prompt, add_bos)",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "required_behavior": "tokenize retained prompt with parse_special=true or consume explicit retained token IDs",
+      "required_code_shape": "common_tokenize(ctx, params.prompt, add_bos, true)"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "contract_role": "final prompt-token logits readback",
+      "contract_status": "usable",
+      "exists": true,
+      "key": "debug_logits_read",
+      "line": 90,
+      "line_text": "const float * logits = llama_get_logits_ith(ctx, tokens.size() - 1);",
+      "marker": "llama_get_logits_ith(ctx, tokens.size() - 1)",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "required_behavior": "read logits for the final retained prompt token after prompt decode",
+      "required_code_shape": "llama_get_logits_ith(ctx, tokens.size() - 1)"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "contract_role": "existing save-logits control path",
+      "contract_status": "usable",
+      "exists": true,
+      "key": "debug_save_logits_gate",
+      "line": 204,
+      "line_text": "if (params.save_logits) {",
+      "marker": "params.save_logits",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "required_behavior": "write final logits and prompt-token metadata to retained raw outputs",
+      "required_code_shape": "--save-logits / --logits-output-dir path"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/common/common.h",
+      "contract_role": "public common-tokenize parse-special parameter",
+      "contract_status": "usable",
+      "exists": true,
+      "key": "common_tokenize_parse_special_signature",
+      "line": 956,
+      "line_text": "bool   parse_special = false);",
+      "marker": "bool   parse_special = false);",
+      "marker_present": true,
+      "path": "common/common.h",
+      "required_behavior": "pass parse_special=true for literal chat/control token markers in the retained prompt",
+      "required_code_shape": "common_tokenize(..., add_special, true)"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/common/common.cpp",
+      "contract_role": "parse-special forwarding to llama_tokenize",
+      "contract_status": "usable",
+      "exists": true,
+      "key": "common_tokenize_llama_tokenize_forward",
+      "line": 1660,
+      "line_text": "n_tokens = llama_tokenize(vocab, text.data(), text.length(), result.data(), result.size(), add_special, parse_special);",
+      "marker": "llama_tokenize(vocab, text.data(), text.length(), result.data(), result.size(), add_special, parse_special)",
+      "marker_present": true,
+      "path": "common/common.cpp",
+      "required_behavior": "forward parse_special=true to llama_tokenize",
+      "required_code_shape": "llama_tokenize(..., add_special, parse_special)"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/common/arg.cpp",
+      "contract_role": "existing --special flag is output-only for supported examples",
+      "contract_status": "insufficient",
+      "exists": true,
+      "key": "arg_special_output_only",
+      "line": 1524,
+      "line_text": "{\"-sp\", \"--special\"},",
+      "marker": "{\"-sp\", \"--special\"}",
+      "marker_present": true,
+      "path": "common/arg.cpp",
+      "required_behavior": "do not confuse output-special rendering with prompt special-token parsing",
+      "required_code_shape": "add a parse-special/token-ids control to the logits helper instead"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/common/arg.cpp",
+      "contract_role": "existing parse-special flag is scoped to imatrix args in this checkout",
+      "contract_status": "insufficient",
+      "exists": true,
+      "key": "arg_parse_special_imatrix_only",
+      "line": 2770,
+      "line_text": "{\"--parse-special\"},",
+      "marker": "{\"--parse-special\"}",
+      "marker_present": true,
+      "path": "common/arg.cpp",
+      "required_behavior": "expose parse-special behavior for the logits helper or accept explicit token IDs",
+      "required_code_shape": "helper-specific --parse-special or --token-ids input"
+    }
+  ],
+  "source_hooks_ready": true,
+  "status": "blocked"
+}

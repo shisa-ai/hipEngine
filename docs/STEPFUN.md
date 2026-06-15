@@ -940,8 +940,19 @@ reporting.
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json`,
   showing source-level candidates (`examples/debug/debug.cpp`, `include/llama.h`, `examples/batched/batched.cpp`)
   exist and the local Vulkan CMake build has built `llama-debug` (`build_readiness_status=built`).
-  The remaining mismatch is therefore not explained by prompt-token drift or host top-token text-label drift; the next
-  llama.cpp evidence blocker is special-token-safe logits capture for the exact retained prompt IDs.
+  `scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty` retains
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json`, an implementation contract for
+  the next source patch: it pins the retained 23-token prompt IDs to
+  `[0, 128006, 27824, 201, 77666, 288, 28, 3157, 271, 128007, 201, 128006, 5265, 201, 33310, 128007, 201, 128006, 624, 15059, 201, 128798, 201]`,
+  expected next token `369` (`" |"`), and generated llama.cpp token `671` (`"The"`); records the needed C++ hooks
+  in `examples/debug/debug.cpp` (`common_tokenize(ctx, params.prompt, add_bos)`, `llama_get_logits_ith(ctx, tokens.size() - 1)`,
+  `params.save_logits`), `common/common.h` / `common/common.cpp` parse-special forwarding, and `common/arg.cpp`
+  flag scope; and requires the helper to either tokenize with `parse_special=true` and `add_bos=false` or accept those
+  explicit retained token IDs before reading final prompt-token logits. The contract reports `implementation_ready=true`
+  and `source_hooks_ready=true`, but remains `status=blocked` until `same_prompt_logits_helper_built` and
+  `llama_cpp_same_prompt_logits_artifact_present` are captured. The remaining mismatch is therefore not explained by
+  prompt-token drift or host top-token text-label drift; the next llama.cpp evidence blocker is building that
+  special-token-safe logits helper for the exact retained prompt IDs.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in
   `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`.
