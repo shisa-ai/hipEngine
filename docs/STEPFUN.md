@@ -932,7 +932,8 @@ reporting.
   is the drift check for that prompt/rank-check margin evidence.
   `scripts/stepfun_top_token_roundtrip.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json`, showing those
-  five host top-token texts round-trip through llama.cpp no-BOS tokenization to the same IDs;
+  five host top-token texts round-trip through llama.cpp no-BOS tokenization to the same IDs; `python3 scripts/stepfun_top_token_roundtrip.py --verify-roundtrip --verification-status-only`
+  is the drift check for that top-token text/token-ID coherence evidence;
   `scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json`, showing the
   23-token host prompt input sequence also matches llama.cpp no-BOS tokenization.

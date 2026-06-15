@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_top_token_roundtrip import build_top_token_roundtrip, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_top_token_roundtrip import (
+    build_top_token_roundtrip,
+    main,
+    verify_top_token_roundtrip,
+)
 from test_stepfun_oracle_rank_check import _write_prompt_with_top_tokens  # type: ignore[import-not-found]
 
 
@@ -161,3 +169,81 @@ def test_stepfun_top_token_roundtrip_cli_compact_modes(tmp_path: Path) -> None:
     assert json.loads(output.read_text()) is True
     assert main([*base_args, "--mismatches-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()) == []
+
+
+def test_stepfun_top_token_roundtrip_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    prompt, model, fake_tokenize = _write_roundtrip_inputs(tmp_path)
+    artifact = tmp_path / "top-token-roundtrip.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--prompt-artifact",
+        str(prompt),
+        "--llama-tokenize",
+        str(fake_tokenize),
+        "--tokenizer-model",
+        str(model),
+        "--artifact-date",
+        "2030-01-14",
+    ]
+    current = build_top_token_roundtrip(
+        prompt_artifact=prompt,
+        llama_tokenize=fake_tokenize,
+        tokenizer_model=model,
+        artifact_date="2030-01-14",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_top_token_roundtrip(artifact, current_report=current)
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "passed"
+    assert verification["current_status"] == "passed"
+    assert verification["persisted_all_top_token_texts_roundtrip"] is True
+    assert verification["current_all_top_token_texts_roundtrip"] is True
+    assert verification["persisted_mismatch_count"] == 0
+    assert verification["current_mismatch_count"] == 0
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-roundtrip",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["all_top_token_texts_roundtrip"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_top_token_roundtrip(artifact, current_report=current)
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "top_token_roundtrip_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-roundtrip",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "top_token_roundtrip_drift"
