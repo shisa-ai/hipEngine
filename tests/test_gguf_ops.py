@@ -14,6 +14,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
+    gguf_rmsnorm_bf16_f32_weight_out_f32,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
@@ -40,6 +41,7 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
     y = float_array_to_bf16_bits(y_f32)
     add_out = np.empty_like(x)
     norm_out = np.empty_like(x)
+    norm_out_f32 = np.empty_like(x_f32)
     add_norm = np.empty_like(x)
     residual = np.empty_like(x)
     bufs = []
@@ -49,12 +51,16 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
         dw = _dev(weight, runtime, bufs)
         dadd = malloc(add_out.nbytes, runtime=runtime)
         dnorm = malloc(norm_out.nbytes, runtime=runtime)
+        dnorm_f32 = malloc(norm_out_f32.nbytes, runtime=runtime)
         dadd_norm = malloc(add_norm.nbytes, runtime=runtime)
         dres = malloc(residual.nbytes, runtime=runtime)
-        bufs.extend((dadd, dnorm, dadd_norm, dres))
+        bufs.extend((dadd, dnorm, dnorm_f32, dadd_norm, dres))
         gguf_bf16_add(dx.ptr, dy.ptr, dadd.ptr, x.size, library=library, runtime=runtime)
         gguf_rmsnorm_bf16_f32_weight(
             dx.ptr, dw.ptr, dnorm.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
+        )
+        gguf_rmsnorm_bf16_f32_weight_out_f32(
+            dx.ptr, dw.ptr, dnorm_f32.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
         )
         gguf_add_rmsnorm_bf16_f32_weight(
             dx.ptr,
@@ -71,6 +77,7 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(add_out), dadd, runtime=runtime)
         copy_device_to_host(host_array_ptr(norm_out), dnorm, runtime=runtime)
+        copy_device_to_host(host_array_ptr(norm_out_f32), dnorm_f32, runtime=runtime)
         copy_device_to_host(host_array_ptr(add_norm), dadd_norm, runtime=runtime)
         copy_device_to_host(host_array_ptr(residual), dres, runtime=runtime)
     finally:
@@ -79,10 +86,12 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
 
     expected_add = bf16_to_float32(float_array_to_bf16_bits(x_f32 + y_f32))
     np.testing.assert_array_equal(bf16_to_float32(add_out), expected_add)
+    expected_norm = _rmsnorm(x_f32, weight)
     np.testing.assert_allclose(
         bf16_to_float32(norm_out),
-        bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(x_f32, weight))),
+        bf16_to_float32(float_array_to_bf16_bits(expected_norm)),
     )
+    np.testing.assert_allclose(norm_out_f32, expected_norm, rtol=1.0e-6, atol=1.0e-6)
     expected_residual = bf16_to_float32(float_array_to_bf16_bits(x_f32 + y_f32))
     np.testing.assert_array_equal(bf16_to_float32(residual), expected_residual)
     np.testing.assert_allclose(

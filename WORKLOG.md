@@ -93133,3 +93133,42 @@ Validation:
 - Prompt verifier passed: metadata semantics only, no torch hot-path import, no
   backend/quant dispatch branches, no attention/KV/runtime behavior changes, no
   NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF fp32 RMSNorm output kernel target
+
+Implemented `mtp-gguf` multiloop iteration 11: a GGUF RMSNorm kernel variant
+that writes fp32 output for the future M2.5 post-`output_norm` hidden-seed tap.
+This does not wire generation to the new buffer yet; it supplies the concrete
+fp32 write target for the next iteration.
+
+Changes:
+- Added HIP kernel `gguf_rmsnorm_bf16_f32_weight_out_f32_kernel` and C ABI entry
+  `hipengine_gguf_rmsnorm_bf16_f32_weight_out_f32(...)` in
+  `hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip`.
+- Added Python wrapper `gguf_rmsnorm_bf16_f32_weight_out_f32(...)` and registry
+  key `KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "f32_out")`.
+- Exported the wrapper from `hipengine/kernels/hip_gfx1100/fused/__init__.py`.
+- Extended `tests/test_gguf_ops.py::test_gguf_ops_bf16_add_and_f32_weight_rmsnorm`
+  to check fp32 output directly against CPU `_rmsnorm(x_f32, weight)` with
+  `rtol=atol=1e-6`, while preserving the existing BF16-rounded RMSNorm check.
+- Updated `docs/KERNELS.md` GGUF helper catalog row with the new f32-output
+  wrapper and rocprof evidence.
+
+Lineage note:
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run in
+  this container because the configured read-only reference repo path
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. No external code was
+  copied; this is a small in-tree sibling of the existing GGUF RMSNorm helper.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Correctness: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_ops.py::test_gguf_ops_bf16_add_and_f32_weight_rmsnorm` -> passed; fp32 path matches CPU RMSNorm, BF16 path still matches rounded BF16 reference.
+- Prebuilt outside profiler with `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-rocprof-gguf-rmsnorm-f32/hipcc-version.txt`, then ran cached rocprof smoke:
+  `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-rocprof-gguf-rmsnorm-f32/hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-gguf-rmsnorm-f32/trace --output-format csv -- /home/lhl/miniforge3/envs/therock/bin/python /tmp/rocprof_gguf_rmsnorm_f32.py`
+- Rocprof trace `/tmp/hipengine-rocprof-gguf-rmsnorm-f32/trace/gfx1151/344863_kernel_trace.csv` contains
+  `gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)` with `DurationNs=3887`.
+- `py_compile` passed for `hipengine/kernels/hip_gfx1100/fused/gguf_ops.py`.
+- Prompt verifier passed: registered GGUF RMSNorm f32-output kernel only, no torch
+  hot-path import, no backend/quant dispatch branches, no attention/KV/runtime
+  generation behavior changes, no NextN math, and no performance claims.

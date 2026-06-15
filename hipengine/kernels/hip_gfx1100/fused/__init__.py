@@ -10,6 +10,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
+    gguf_rmsnorm_bf16_f32_weight_out_f32,
     plan_gguf_ops_build,
     register_gguf_ops,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",
     "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
     "gguf_rmsnorm_bf16_f32_weight",
+    "gguf_rmsnorm_bf16_f32_weight_out_f32",
     "plan_gguf_ops_build",
     "plan_paro_combine_build",
     "plan_paro_silu_build",

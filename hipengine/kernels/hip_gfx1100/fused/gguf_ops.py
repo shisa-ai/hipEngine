@@ -81,6 +81,35 @@ def gguf_rmsnorm_bf16_f32_weight(
     )
 
 
+def gguf_rmsnorm_bf16_f32_weight_out_f32(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_rmsnorm(
+        "hipengine_gguf_rmsnorm_bf16_f32_weight_out_f32",
+        (x_ptr, weight_ptr, out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_add_rmsnorm_bf16_f32_weight(
     x_ptr: int,
     add_ptr: int,
@@ -350,6 +379,11 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "bf16_out"),
         gguf_rmsnorm_bf16_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "f32_out"),
+        gguf_rmsnorm_bf16_f32_weight_out_f32,
         replace=replace,
     )
     register(
@@ -674,6 +708,7 @@ __all__ = [
     "gguf_bf16_add",
     "gguf_gate_mul_bf16",
     "gguf_rmsnorm_bf16_f32_weight",
+    "gguf_rmsnorm_bf16_f32_weight_out_f32",
     "gguf_gate_repeat_value_bf16",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",
