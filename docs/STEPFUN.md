@@ -864,7 +864,13 @@ reporting.
   now records `status=executed`, `returncode=0`, `elapsed_s=172.72`,
   `generated_text="The\n\n"`, and no timeout or Step35 architecture blocker;
   the remaining oracle-parity evidence gap is the exact text mismatch versus the
-  host-composed expected token (`next_token_id=369`, decoded ` |`). Historical
+  host-composed expected token (`next_token_id=369`, decoded ` |`). A retained
+  tokenization parity artifact,
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-tokenization-parity.json`,
+  confirms `llama-tokenize --no-bos` produces the same 23 input IDs as the
+  host-composed prompt artifact, while default llama.cpp BOS insertion produces
+  a 24-token double-BOS sequence; the current oracle blocker is therefore
+  downstream of prompt tokenization/BOS handling. Historical
   CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
   outer-supervisor timeout remain documented by git history and the separate
   wrapper-timeout source artifact. The oracle helper now also traps `SIGTERM`/`SIGINT` from

@@ -40437,3 +40437,39 @@ git diff --check
 Verification outputs: handoff/status/manifest verification all returned `"match"`; oracle checker summary returned `status=failed`, `missing_evidence=["generated_text_matches_target"]`; P0-P12 open/partial count stayed `2`; blocked gates remained `oracle_parity|kv_backed_decode|e2e_inference`; blocker kinds remained `oracle_parity_blocked|kv_backed_decode_not_wired`; manual wrapper-timeout canonical evidence check passed; full StepFun guard passed after installing the missing local test-runner dependencies (`pytest` and `tokenizers`) into the active shell environment (`376` tests run with expected skips, plus CPU-reference fixture checks); `git diff --check` passed.
 
 Artifact hashes after refresh: oracle artifact SHA `9852244f0b322a8c29ed9319f6fae972aa7beecd242729e53f58b23f18f32fe8`; correctness-status SHA `05b4310a75d1fc60ca9438c902f637cc995ea8bf86475fb4afe3a7a2f2dd9198`; final-blocker SHA `2677fe0b612e5db5da1b78e0a330db5333035605536412387899eab427b45858`; handoff SHA `1889fda7db7ba9c684bb8d9c8c65fb6f4e8574723b517f7ba8296c4694e51c77`.
+
+## 2026-06-15 - StepFun Q3_K_L oracle mismatch: tokenizer parity narrowed
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 473. Built the current llama.cpp Vulkan `llama-tokenize` target and compared the canonical host-composed prompt artifact against llama.cpp tokenization using the same `/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf` shard. Retained compact evidence in `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-tokenization-parity.json`.
+
+Commands:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json'))['prompt']
+path=pathlib.Path('/tmp/stepfun_prompt.txt')
+path.write_text(p)
+print(path, len(p.encode()), repr(p[:40]))
+PY
+/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --file /tmp/stepfun_prompt.txt --ids --show-count --log-disable > /tmp/stepfun_tokenize_default.txt
+/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --file /tmp/stepfun_prompt.txt --ids --show-count --no-bos --log-disable > /tmp/stepfun_tokenize_no_bos.txt
+```
+
+Results: default llama.cpp tokenization emitted `[0, 0, 128006, ...]` with 24 tokens (double BOS) and did not match the host prompt; `--no-bos` emitted exactly the host `input_ids` list `[0, 128006, 27824, 201, 77666, 288, 28, 3157, 271, 128007, 201, 128006, 5265, 201, 33310, 128007, 201, 128006, 624, 15059, 201, 128798, 201]` with 23 tokens. This narrows the current oracle mismatch: the retained oracle generated `The\n\n` vs expected ` |`, but the prompt IDs match when llama.cpp BOS insertion is disabled, so the remaining blocker is downstream of prompt tokenization/BOS handling. No oracle/e2e/performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: tokenization parity artifact SHA `a74c9132c29c9fa131ea5ab638a2be87c2a7fa962194cad624ca4d7cd9f12b20`; refreshed correctness-status SHA `f929d188b5c1a51947c59e051a9d4aa42ea518cc80cbac9f51914fb05eda120d`; final-blocker SHA `9f9f9ff56cfe04e4fe05916739bb5a915245806715e1e23aa6b7d317fc9d6158`; handoff SHA `5c89fc9ac4b6da99314af860598cbed4dbd4094f6d9a98ea21e012d17f36df3f`; status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; full StepFun guard passed (`376` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed.
