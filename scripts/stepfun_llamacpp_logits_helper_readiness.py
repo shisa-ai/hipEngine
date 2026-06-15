@@ -36,6 +36,7 @@ DEFAULT_ARTIFACT_DATE = "2026-06-15"
 DEFAULT_LLAMA_DEBUG = probe_mod.DEFAULT_LLAMA_DEBUG
 DEFAULT_LLAMA_LOGITS_ARTIFACT = probe_mod.DEFAULT_OUTPUT
 DEFAULT_PATCH_ARTIFACT = dry_run_mod.DEFAULT_PATCH_OUTPUT
+DEFAULT_PATCH_DRY_RUN_ARTIFACT = dry_run_mod.DEFAULT_OUTPUT
 
 PATCH_APPLIED_MARKERS = (
     {
@@ -86,6 +87,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--llama-cpp-root", type=Path, default=contract_mod.DEFAULT_LLAMA_CPP_ROOT)
     parser.add_argument("--llama-debug", type=Path, default=DEFAULT_LLAMA_DEBUG)
     parser.add_argument("--patch-artifact", type=Path, default=DEFAULT_PATCH_ARTIFACT)
+    parser.add_argument("--patch-dry-run-artifact", type=Path, default=DEFAULT_PATCH_DRY_RUN_ARTIFACT)
     parser.add_argument("--llama-logits-artifact", type=Path, default=DEFAULT_LLAMA_LOGITS_ARTIFACT)
     parser.add_argument("--artifact-date", default=DEFAULT_ARTIFACT_DATE)
     parser.add_argument("--output", type=Path, default=None, help="Write JSON output atomically to this path.")
@@ -120,6 +122,31 @@ def _patch_artifact_record(path: Path) -> dict[str, object]:
         "path": str(path),
         "exists": path.exists(),
         "sha256": _file_sha256(path),
+    }
+
+
+def _patch_dry_run_record(path: Path, *, patch_sha256: str | None) -> dict[str, object]:
+    payload = _load_json_object(path)
+    dry_run_patch_artifact = payload.get("patch_artifact") if payload else None
+    dry_run_patch_sha256 = None
+    dry_run_apply_command = None
+    if isinstance(dry_run_patch_artifact, dict):
+        dry_run_patch_sha256 = dry_run_patch_artifact.get("sha256")
+        dry_run_apply_command = dry_run_patch_artifact.get("apply_command")
+    return {
+        "path": str(path),
+        "exists": path.exists(),
+        "sha256": _file_sha256(path),
+        "status": payload.get("status") if payload else None,
+        "patch_ready": payload.get("patch_ready") if payload else None,
+        "git_apply_check_status": (
+            payload.get("git_apply_check", {}).get("status") if payload else None
+        ),
+        "patch_artifact_sha256": dry_run_patch_sha256,
+        "patch_artifact_sha256_matches": (
+            patch_sha256 is not None and dry_run_patch_sha256 == patch_sha256
+        ),
+        "patch_apply_command": dry_run_apply_command,
     }
 
 
@@ -225,6 +252,7 @@ def build_llamacpp_logits_helper_readiness(
     llama_cpp_root: Path = contract_mod.DEFAULT_LLAMA_CPP_ROOT,
     llama_debug: Path = DEFAULT_LLAMA_DEBUG,
     patch_artifact: Path = DEFAULT_PATCH_ARTIFACT,
+    patch_dry_run_artifact: Path = DEFAULT_PATCH_DRY_RUN_ARTIFACT,
     llama_logits_artifact: Path = DEFAULT_LLAMA_LOGITS_ARTIFACT,
     artifact_date: str = DEFAULT_ARTIFACT_DATE,
 ) -> dict[str, object]:
@@ -235,10 +263,22 @@ def build_llamacpp_logits_helper_readiness(
     helper_record = _llama_debug_record(llama_debug)
     logits_record = _llama_logits_record(llama_logits_artifact)
     patch_artifact_record = _patch_artifact_record(patch_artifact)
+    patch_dry_run_record = _patch_dry_run_record(
+        patch_dry_run_artifact,
+        patch_sha256=patch_artifact_record["sha256"],
+    )
 
     missing_evidence: list[str] = []
     if not patch_artifact_record["exists"]:
         missing_evidence.append("llama_cpp_token_ids_helper_patch_artifact_present")
+    if not patch_dry_run_record["exists"]:
+        missing_evidence.append("llama_cpp_token_ids_helper_patch_dry_run_present")
+    if patch_dry_run_record["patch_ready"] is not True:
+        missing_evidence.append("llama_cpp_token_ids_helper_patch_dry_run_ready")
+    if patch_dry_run_record["git_apply_check_status"] != "passed":
+        missing_evidence.append("llama_cpp_token_ids_helper_patch_git_apply_check_passes")
+    if patch_dry_run_record["patch_artifact_sha256_matches"] is not True:
+        missing_evidence.append("llama_cpp_token_ids_helper_patch_artifact_matches_dry_run")
     if not git_record["clean_for_patch_apply"]:
         missing_evidence.append("llama_cpp_worktree_clean_for_patch_apply")
     if not source_record["patch_applied"]:
@@ -265,6 +305,7 @@ def build_llamacpp_logits_helper_readiness(
         "llama_cpp_root": str(llama_cpp_root),
         "git_worktree": git_record,
         "patch_artifact": patch_artifact_record,
+        "patch_dry_run_artifact": patch_dry_run_record,
         "source_patch": source_record,
         "llama_debug": helper_record,
         "llama_logits_artifact": logits_record,
@@ -317,6 +358,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         llama_cpp_root=args.llama_cpp_root,
         llama_debug=args.llama_debug,
         patch_artifact=args.patch_artifact,
+        patch_dry_run_artifact=args.patch_dry_run_artifact,
         llama_logits_artifact=args.llama_logits_artifact,
         artifact_date=args.artifact_date,
     )

@@ -970,7 +970,9 @@ reporting.
   `scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json`, a no-side-effect post-apply
   verifier that currently reports `status=blocked`, `git_worktree.clean_for_patch_apply=true` at
-  llama.cpp revision `6e9007ae61f4`, `source_patch.patch_applied=false`,
+  llama.cpp revision `6e9007ae61f4`, `patch_dry_run_artifact.patch_ready=true`,
+  `patch_dry_run_artifact.git_apply_check_status=passed`,
+  `patch_dry_run_artifact.patch_artifact_sha256_matches=true`, `source_patch.patch_applied=false`,
   `llama_debug.retained_token_ids_capable=false`, and missing evidence
   `llama_cpp_token_ids_helper_patch_applied`, `llama_debug_retained_token_ids_input_present`, and
   `llama_cpp_same_prompt_logits_artifact_present`; after applying the retained patch and rebuilding `llama-debug`, this

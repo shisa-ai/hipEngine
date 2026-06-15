@@ -67,6 +67,17 @@
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
     "sha256": "fa733be08306aa52af23cf154002cec9c4ed7cd5f671cd2444b0a5cb144838f9"
   },
+  "patch_dry_run_artifact": {
+    "exists": true,
+    "git_apply_check_status": "passed",
+    "patch_apply_command": "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+    "patch_artifact_sha256": "fa733be08306aa52af23cf154002cec9c4ed7cd5f671cd2444b0a5cb144838f9",
+    "patch_artifact_sha256_matches": true,
+    "patch_ready": true,
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json",
+    "sha256": "83bb9e4bcb1491606d02543a66083ae16ad22ba8187a5ff3426b5b31de2311e3",
+    "status": "blocked"
+  },
   "ready": false,
   "required_next_commands": [
     "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
