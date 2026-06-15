@@ -93644,3 +93644,22 @@ Validation and outcome:
 - Result: `512/128` median prefill/decode `1646.916954 / 126.958585 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.310557 / 115.716965 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Decision: no-hold/reverted. The candidate preserved IDs and memory and improved `4K/128` prefill versus the retained selected-down lb2 row (`1855.806476 -> 1857.310557 tok/s`), but left `512/128` prefill flat/slightly lower and regressed both decode medians (`127.011979 -> 126.958585 tok/s`, `115.804576 -> 115.716965 tok/s`); keep mid-context MoE chunks at `1024`.
+
+## 2026-06-15 - GGUF G-D4 grouped-GQA min-context=512 no-hold
+
+Tried lowering the grouped GQA split full-attention decode threshold in
+`hipengine/runtime/qwen35_gguf_runner.py` from `4096` to `512`, so the short
+`512/128` gate used grouped GQA instead of the warp-split path while `4K/128`
+kept grouped GQA. The code change was reverted after measurement.
+
+Validation and outcome:
+- Selection check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+import hipengine.runtime.qwen35_gguf_runner as r
+print('min_context', r._gguf_paged_attn_gqa_grouped_min_context())
+print('use_grouped_512', r._use_gguf_paged_attn_gqa_grouped(512, 2))
+print('use_grouped_4k', r._use_gguf_paged_attn_gqa_grouped(4096, 16))
+PY` -> `min_context=512`, `use_grouped_512=True`, `use_grouped_4k=True`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-gqa-min512.json`.
+- Result: `512/128` median prefill/decode `1574.586083 / 126.935278 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.747112 / 115.652327 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved IDs and memory, but regressed both retained decode medians (`127.011979 -> 126.935278 tok/s`, `115.804576 -> 115.652327 tok/s`) and sharply lowered `512/128` prefill; keep grouped GQA min-context default at `4096`.
