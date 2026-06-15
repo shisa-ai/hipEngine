@@ -9,7 +9,7 @@
   "candidate_probe_commands": [
     "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900 --pretty",
     "after a concrete logits dump entrypoint is identified, retain same-prompt llama.cpp logits as benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json and compare token 369 vs 671",
-    "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty captures the compact logits artifact only after the probe binary can parse special tokens"
+    "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty captures the compact logits artifact only after the probe binary can parse special tokens or accept retained token IDs"
   ],
   "date": "2026-06-15",
   "expected_llama_logits_artifact": {
@@ -18,7 +18,7 @@
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
     "ready": false,
     "same_prompt_tokens_match": null,
-    "sha256": "5aecd251d8075ae007e55c5e9e87e7deed7f26cccdb6e298cec9b5f0266a3ca9",
+    "sha256": "e88ada1c1a6be91077b941567bc27e3a14ebd0f643a809bf032da070f2a35163",
     "status": "blocked"
   },
   "llama_cli_probe": {

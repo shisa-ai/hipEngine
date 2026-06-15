@@ -39,7 +39,10 @@ DEFAULT_RAW_OUTPUT_DIR = Path("/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe
 DEFAULT_ARTIFACT_DATE = "2026-06-15"
 DEFAULT_GENERATED_TOKEN_ID = 671
 DEFAULT_GENERATED_TOKEN_TEXT = "The"
-SAME_PROMPT_SPECIAL_HELP_MARKERS = ("--special", "--parse-special")
+SAME_PROMPT_SPECIAL_HELP_MARKERS = ("--special", "--parse-special", "--token-ids")
+PROMPT_TOKEN_SOURCE_TEXT = "text"
+PROMPT_TOKEN_SOURCE_RETAINED_IDS = "retained-input-ids"
+PROMPT_TOKEN_SOURCE_CHOICES = (PROMPT_TOKEN_SOURCE_TEXT, PROMPT_TOKEN_SOURCE_RETAINED_IDS)
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -52,6 +55,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--generated-token-id", type=int, default=DEFAULT_GENERATED_TOKEN_ID)
     parser.add_argument("--generated-token-text", default=DEFAULT_GENERATED_TOKEN_TEXT)
+    parser.add_argument(
+        "--prompt-token-source",
+        choices=PROMPT_TOKEN_SOURCE_CHOICES,
+        default=PROMPT_TOKEN_SOURCE_TEXT,
+        help=(
+            "How the helper should receive the retained prompt. 'text' preserves the current "
+            "llama-debug prompt path; 'retained-input-ids' passes the prompt artifact's token IDs "
+            "via --token-ids for a future same-prompt helper."
+        ),
+    )
     parser.add_argument("--artifact-date", default=DEFAULT_ARTIFACT_DATE)
     parser.add_argument("--execute", action="store_true", help="Run llama-debug and parse saved logits.")
     parser.add_argument(
@@ -173,12 +186,20 @@ def _llama_help_capability(binary: Path) -> dict[str, object]:
         return info
     text = (completed.stdout or "") + (completed.stderr or "")
     matched = [marker for marker in SAME_PROMPT_SPECIAL_HELP_MARKERS if _marker_in_help(text, marker)]
+    parse_special_present = _marker_in_help(text, "--parse-special")
+    token_ids_present = _marker_in_help(text, "--token-ids")
+    output_special_present = _marker_in_help(text, "--special")
     info.update(
         {
             "help_status": "executed",
             "help_returncode": completed.returncode,
             "matched_same_prompt_special_markers": matched,
             "same_prompt_special_token_flag_present": bool(matched),
+            "parse_special_flag_present": parse_special_present,
+            "token_ids_flag_present": token_ids_present,
+            "output_special_flag_present": output_special_present,
+            "same_prompt_text_tokenization_capable": parse_special_present,
+            "same_prompt_retained_token_ids_capable": token_ids_present,
         }
     )
     return info
@@ -238,20 +259,35 @@ def _cleanup_raw_outputs(paths: dict[str, Path]) -> None:
             pass
 
 
+def _retained_token_ids_csv(prompt_payload: dict[str, object]) -> str:
+    input_ids = prompt_payload.get("input_ids")
+    if not isinstance(input_ids, list) or not all(isinstance(item, int) for item in input_ids):
+        raise ValueError("prompt artifact missing integer input_ids for retained-input-ids mode")
+    return ",".join(str(item) for item in input_ids)
+
+
 def _build_command(
     *,
     llama_debug: Path,
     model: Path,
     prompt: str,
     raw_output_dir: Path,
+    prompt_token_source: str = PROMPT_TOKEN_SOURCE_TEXT,
+    retained_token_ids_csv: str | None = None,
     extra_args: Sequence[str] = (),
 ) -> list[str]:
+    prompt_args = ["--prompt", prompt]
+    if prompt_token_source == PROMPT_TOKEN_SOURCE_RETAINED_IDS:
+        if not retained_token_ids_csv:
+            raise ValueError("retained-input-ids mode requires retained_token_ids_csv")
+        prompt_args.extend(["--token-ids", retained_token_ids_csv])
+    elif prompt_token_source != PROMPT_TOKEN_SOURCE_TEXT:
+        raise ValueError(f"unsupported prompt token source: {prompt_token_source}")
     return [
         str(llama_debug),
         "--model",
         str(model),
-        "--prompt",
-        prompt,
+        *prompt_args,
         "--save-logits",
         "--logits-output-dir",
         str(raw_output_dir),
@@ -388,6 +424,8 @@ def _build_planned_report(
     artifact_date: str,
     top_k: int,
     timeout_s: float,
+    prompt_token_source: str,
+    retained_token_ids_csv: str | None,
 ) -> dict[str, object]:
     raw_paths = _raw_output_paths(model, raw_output_dir)
     return {
@@ -411,6 +449,9 @@ def _build_planned_report(
         "prompt": prompt_payload.get("prompt"),
         "prompt_length": prompt_payload.get("prompt_length"),
         "input_ids": prompt_payload.get("input_ids"),
+        "prompt_token_source": prompt_token_source,
+        "retained_token_ids_argument": retained_token_ids_csv,
+        "retained_token_ids_argument_present": bool(retained_token_ids_csv),
         "target": {
             "canonical_backend": "vulkan",
             "readiness_gate": "oracle_parity",
@@ -440,6 +481,7 @@ def build_llamacpp_logits_probe(
     top_k: int = 10,
     generated_token_id: int = DEFAULT_GENERATED_TOKEN_ID,
     generated_token_text: str = DEFAULT_GENERATED_TOKEN_TEXT,
+    prompt_token_source: str = PROMPT_TOKEN_SOURCE_TEXT,
     artifact_date: str = DEFAULT_ARTIFACT_DATE,
     execute: bool = False,
     force_execute_without_special: bool = False,
@@ -450,11 +492,18 @@ def build_llamacpp_logits_probe(
     prompt = prompt_payload.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError(f"prompt artifact missing string prompt: {prompt_artifact}")
+    retained_token_ids_csv = (
+        _retained_token_ids_csv(prompt_payload)
+        if prompt_token_source == PROMPT_TOKEN_SOURCE_RETAINED_IDS
+        else None
+    )
     command = _build_command(
         llama_debug=llama_debug,
         model=model,
         prompt=prompt,
         raw_output_dir=raw_output_dir,
+        prompt_token_source=prompt_token_source,
+        retained_token_ids_csv=retained_token_ids_csv,
         extra_args=extra_llama_args,
     )
     report = _build_planned_report(
@@ -469,24 +518,39 @@ def build_llamacpp_logits_probe(
         artifact_date=artifact_date,
         top_k=top_k,
         timeout_s=timeout_s,
+        prompt_token_source=prompt_token_source,
+        retained_token_ids_csv=retained_token_ids_csv,
     )
     if not execute:
         return report
     capability = report.get("llama_debug_same_prompt_capability")
-    special_ready = (
-        isinstance(capability, dict)
-        and capability.get("same_prompt_special_token_flag_present") is True
-    )
+    if prompt_token_source == PROMPT_TOKEN_SOURCE_RETAINED_IDS:
+        special_ready = (
+            isinstance(capability, dict)
+            and capability.get("same_prompt_retained_token_ids_capable") is True
+        )
+        missing_evidence = "llama_debug_retained_token_ids_input_present"
+        blocked_reason = (
+            "built llama-debug exposes --save-logits but does not accept retained token IDs, "
+            "so it cannot bypass text tokenization for the exact StepFun prompt IDs"
+        )
+    else:
+        special_ready = (
+            isinstance(capability, dict)
+            and capability.get("same_prompt_special_token_flag_present") is True
+        )
+        missing_evidence = "llama_debug_same_prompt_special_token_support_present"
+        blocked_reason = (
+            "built llama-debug exposes --save-logits but does not accept a special-token "
+            "parsing flag, so it cannot reproduce the retained StepFun prompt token IDs"
+        )
     if not special_ready and not force_execute_without_special:
         report.update(
             {
                 "status": "blocked",
                 "ready": False,
-                "missing_evidence": ["llama_debug_same_prompt_special_token_support_present"],
-                "blocked_reason": (
-                    "built llama-debug exposes --save-logits but does not accept a special-token "
-                    "parsing flag, so it cannot reproduce the retained StepFun prompt token IDs"
-                ),
+                "missing_evidence": [missing_evidence],
+                "blocked_reason": blocked_reason,
                 "next_action": (
                     "add or build a logits-dump helper that tokenizes the retained prompt with "
                     "special tokens enabled or accepts explicit token IDs, then rerun this probe"
@@ -602,6 +666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         top_k=args.top_k,
         generated_token_id=args.generated_token_id,
         generated_token_text=args.generated_token_text,
+        prompt_token_source=args.prompt_token_source,
         artifact_date=args.artifact_date,
         execute=args.execute,
         force_execute_without_special=args.force_execute_without_special,

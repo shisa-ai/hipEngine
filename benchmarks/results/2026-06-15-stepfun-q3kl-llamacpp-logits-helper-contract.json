@@ -28,7 +28,7 @@
     "same_prompt_logits_helper_built",
     "llama_cpp_same_prompt_logits_artifact_present"
   ],
-  "next_action": "build a logits helper that tokenizes with parse_special=true or accepts retained input_ids, then rerun scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
+  "next_action": "build a logits helper that tokenizes with parse_special=true or accepts retained input_ids, then rerun scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
     "kv_backed_decode_claim_allowed": false,
@@ -45,18 +45,18 @@
     ],
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
     "ready": false,
-    "sha256": "eaaf29a248a3dcfd44c700798b24b3d4e003a0da9d935b6cac2f8572a9e44299",
+    "sha256": "35eb339492f93fbf78b1962239e737f0d721a48bb176d20ae6f9c1cb9cb8d94f",
     "status": "blocked"
   },
   "probe_artifact": {
     "artifact_kind": "stepfun_llamacpp_logits_probe",
     "exists": true,
     "missing_evidence": [
-      "llama_debug_same_prompt_special_token_support_present"
+      "llama_debug_retained_token_ids_input_present"
     ],
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
     "ready": false,
-    "sha256": "5aecd251d8075ae007e55c5e9e87e7deed7f26cccdb6e298cec9b5f0266a3ca9",
+    "sha256": "e88ada1c1a6be91077b941567bc27e3a14ebd0f643a809bf032da070f2a35163",
     "status": "blocked"
   },
   "prompt_artifact": {
@@ -106,7 +106,7 @@
   "recommended_commands": [
     "patch or build a llama.cpp logits helper that calls common_tokenize(..., parse_special=true) or accepts explicit token IDs",
     "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j 8",
-    "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
+    "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
     "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty"
   ],
   "required_code_shapes": [

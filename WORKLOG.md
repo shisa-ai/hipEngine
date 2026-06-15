@@ -41347,3 +41347,39 @@ git diff --check
 ```
 
 Results: helper-contract tests passed (`3` tests); rollup + helper-contract tests passed (`6` tests); status/handoff/manifest verification returned `"match"`; P0-P12 open/partial count remains `2`; full StepFun guard passed; helper-contract stable payload SHA `1649eac3d173667a2841337a1705f8da987115f6092265db2a21da828f567515`, file SHA `4e44a1131bca18f203988a9f0179d7bc01515d60b29a7e8c55508817e9a7c40a`; remaining-blockers stable payload SHA `4b5a20be3d0bc8701cf4cdd7ee87717fdfeb7efe2fc33ccae92985f1b4b36c2e`, file SHA `e7e4201cc94edc18036c13d25c32b22d40a44de4623a02b708349cb4609220b7`; correctness-status file SHA `5c18e05d831d52c98e00b478fb4b4b923dba85e77cbb7df8e9006674838b375e`; final-blocker file SHA `8bbeae89aea160faeaba7ddadcac2b5e8e4238a947a783d033f818d77e4fb895`; handoff file SHA `d6fdf85b39ad1bca8316ee47407f491be8bb7424e34a56824e292c2f0e41bd44`; blocked gates remain `oracle_parity|kv_backed_decode|e2e_inference`; next-action oracle evidence gap remains `generated_text_matches_target`; `git diff --check` passed.
+
+
+## 2026-06-15 - StepFun retained-token logits probe driver
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 506. Extended `scripts/stepfun_llamacpp_logits_probe.py` so the in-tree probe can drive the future same-prompt llama.cpp helper without relying on free-form shell edits: `--prompt-token-source retained-input-ids` now emits the prompt artifact IDs through a `--token-ids` argument while preserving the prompt text for metadata, reports `token_ids_flag_present` / `same_prompt_retained_token_ids_capable` in the helper capability payload, and blocks explicitly on `llama_debug_retained_token_ids_input_present` when the built helper cannot accept retained token IDs. This is still blocker evidence only: no external llama.cpp source was edited, and no oracle parity, KV-backed decode, e2e, or performance claim is made.
+
+Updated `tests/test_stepfun_llamacpp_logits_probe.py` with retained-token planning, captured-output, and missing-token-id-flag cases; updated `scripts/stepfun_llamacpp_logits_preflight.py`, `scripts/stepfun_llamacpp_logits_helper_contract.py`, `scripts/stepfun_remaining_blockers_rollup.py`, `tests/test_stepfun_remaining_blockers_rollup.py`, and `docs/STEPFUN.md` so recommended probe invocations use `python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty`. Refreshed `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json` (`status=blocked`, `prompt_token_source=retained-input-ids`, missing `llama_debug_retained_token_ids_input_present`), logits preflight/plan/helper-contract/remaining-blockers artifacts, plus correctness-status/final-blocker/handoff artifacts.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_probe.py tests/test_stepfun_llamacpp_logits_preflight.py tests/test_stepfun_llamacpp_logits_plan.py tests/test_stepfun_llamacpp_logits_helper_contract.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --status-only
+python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --sha-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_llamacpp_logits_probe.py scripts/stepfun_llamacpp_logits_preflight.py scripts/stepfun_llamacpp_logits_helper_contract.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_llamacpp_logits_probe.py tests/test_stepfun_remaining_blockers_rollup.py || true
+git diff --check
+```
+
+Results: targeted logits/probe/rollup tests passed (`27` tests); status/manifest/handoff verification returned `"match"`; retained-token probe status remains `"blocked"`; P0-P12 open/partial count remains `2`; full StepFun guard passed; probe stable payload SHA `e88ada1c1a6be91077b941567bc27e3a14ebd0f643a809bf032da070f2a35163`, file SHA `ba95bd134e2b8be906c8af15ee00175c46f9b1bddcd2b6ed3fec5ace3340fd75`; preflight stable payload SHA `35eb339492f93fbf78b1962239e737f0d721a48bb176d20ae6f9c1cb9cb8d94f`, file SHA `231426e48a2bb63d5518f32e26087de0aa2199f229c129cfd18afefa60f7e5bb`; plan stable payload SHA `92c068ae7ab4fde2da68c40652b2bcd4a33c9de2ff81fa3f47dec4cdce8caf79`, file SHA `8ddde4d1ab4ade06f543270de5cfb2c75288a76cfe160d285119757b3a5ab716`; helper-contract stable payload SHA `5e8e9d5e55f683d08b86c739a8b2a565b37090173b29fa0e74f2978830bf1b7a`, file SHA `7ab6ac3cd459487bf70a8409effaff831a90a1cacb43d7396d66b4a33a189f05`; remaining-blockers stable payload SHA `4e6d30ff5022ded503e96ee3f32e293c13fc5be09206c6578c8496696d1d6608`, file SHA `0058925893171a0aea78dd17e0d58e6ee0c7220ebd797dd0c291c067f3864733`; correctness-status/final-blocker/handoff file SHAs `ac45590bc2564d1be2782c3820f224b5f586c4db245d916cc8015f44395146dc`, `77bda6de36d8caec0dbfd089563679f7024a11ddcd703ad2a90e9efe0aa7e3a7`, and `9822668db20a6a32bd47dc5dccc005d2bc6b02eed3db2a00d10afe4a17c77008`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

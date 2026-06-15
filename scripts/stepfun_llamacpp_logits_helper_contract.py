@@ -257,7 +257,7 @@ def build_llamacpp_logits_helper_contract(
         "recommended_commands": [
             "patch or build a llama.cpp logits helper that calls common_tokenize(..., parse_special=true) or accepts explicit token IDs",
             "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j 8",
-            "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
+            "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
             "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
         ],
         "missing_evidence": missing_evidence,
@@ -266,7 +266,7 @@ def build_llamacpp_logits_helper_contract(
         ),
         "next_action": (
             "build a logits helper that tokenizes with parse_special=true or accepts retained input_ids, "
-            "then rerun scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty"
+            "then rerun scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty"
         ),
         "blocked_gates": ["oracle_parity", "kv_backed_decode", "e2e_inference"],
         "no_claim_policy": {

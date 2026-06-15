@@ -315,8 +315,9 @@ def build_llamacpp_logits_preflight(
                 f"llama.cpp logits as {llama_logits_artifact} and compare token 369 vs 671"
             ),
             (
-                "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty "
-                "captures the compact logits artifact only after the probe binary can parse special tokens"
+                "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids "
+                "--execute --default-output --pretty captures the compact logits artifact only after "
+                "the probe binary can parse special tokens or accept retained token IDs"
             ),
         ],
         "blocked_reason": (

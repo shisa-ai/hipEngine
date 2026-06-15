@@ -185,7 +185,7 @@ def _generator_commands() -> dict[str, str]:
             "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty"
         ),
         "llamacpp_logits_probe": (
-            "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty"
+            "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty"
         ),
         "llamacpp_logits_plan": (
             "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty"

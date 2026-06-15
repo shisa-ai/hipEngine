@@ -56,6 +56,8 @@ def _write_fake_llama_debug(
         "    for i, value in enumerate(vals):\n"
         "        f.write(f'{i}: {value}\\n')\n"
         f"token_ids = {token_ids!r}\n"
+        "if '--token-ids' in sys.argv:\n"
+        "    token_ids = [int(part) for part in sys.argv[sys.argv.index('--token-ids') + 1].split(',') if part]\n"
         "with open(str(base) + '-prompt.txt', 'w') as f:\n"
         "    f.write('prompt: ' + prompt + '\\n')\n"
         "    f.write('n_tokens: ' + str(len(token_ids)) + '\\n')\n"
@@ -94,6 +96,10 @@ def test_stepfun_llamacpp_logits_probe_plans_command(tmp_path: Path) -> None:
     assert "--logits-output-dir" in report["command"]
     assert "--special" in report["command"]
     assert report["llama_debug_same_prompt_capability"]["same_prompt_special_token_flag_present"] is True
+    assert report["llama_debug_same_prompt_capability"]["output_special_flag_present"] is True
+    assert report["llama_debug_same_prompt_capability"]["token_ids_flag_present"] is False
+    assert report["prompt_token_source"] == "text"
+    assert report["retained_token_ids_argument"] is None
     assert report["target"] == {
         "canonical_backend": "vulkan",
         "readiness_gate": "oracle_parity",
@@ -103,6 +109,110 @@ def test_stepfun_llamacpp_logits_probe_plans_command(tmp_path: Path) -> None:
         "generated_first_token_id": 2,
         "generated_first_token_text": "generated",
     }
+
+
+def test_stepfun_llamacpp_logits_probe_plans_retained_token_ids_command(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    fake_debug = tmp_path / "llama-debug"
+    model = tmp_path / "model.gguf"
+    _write_prompt_artifact(prompt)
+    _write_fake_llama_debug(
+        fake_debug,
+        logits=[0.0, 1.0, 2.0, 3.0, 4.0],
+        token_ids=[9, 9, 9],
+        help_text="--save-logits --logits-output-dir --token-ids",
+    )
+    model.write_text("fake")
+
+    report = build_llamacpp_logits_probe(
+        prompt_artifact=prompt,
+        llama_debug=fake_debug,
+        model=model,
+        raw_output_dir=tmp_path / "raw",
+        generated_token_id=2,
+        generated_token_text="generated",
+        prompt_token_source="retained-input-ids",
+        execute=False,
+    )
+
+    assert report["prompt_token_source"] == "retained-input-ids"
+    assert report["retained_token_ids_argument"] == "1,2,3"
+    assert report["retained_token_ids_argument_present"] is True
+    assert "--token-ids" in report["command"]
+    assert report["command"][report["command"].index("--token-ids") + 1] == "1,2,3"
+    assert report["llama_debug_same_prompt_capability"]["same_prompt_retained_token_ids_capable"] is True
+    assert report["llama_debug_same_prompt_capability"]["same_prompt_text_tokenization_capable"] is False
+
+
+def test_stepfun_llamacpp_logits_probe_executes_retained_token_ids_helper(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    fake_debug = tmp_path / "llama-debug"
+    model = tmp_path / "model.gguf"
+    _write_prompt_artifact(prompt)
+    _write_fake_llama_debug(
+        fake_debug,
+        logits=[0.0, 1.5, 8.0, 2.5, 7.0, -1.0],
+        token_ids=[9, 9, 9],
+        help_text="--save-logits --logits-output-dir --token-ids",
+    )
+    model.write_text("fake")
+
+    report = build_llamacpp_logits_probe(
+        prompt_artifact=prompt,
+        llama_debug=fake_debug,
+        model=model,
+        raw_output_dir=tmp_path / "raw",
+        generated_token_id=2,
+        generated_token_text="generated",
+        top_k=2,
+        prompt_token_source="retained-input-ids",
+        execute=True,
+    )
+
+    assert report["status"] == "captured"
+    assert report["ready"] is True
+    assert report["same_prompt_tokens_match"] is True
+    assert report["prompt_tokens_from_llamacpp"]["token_ids"] == [1, 2, 3]
+    assert report["llama_debug_same_prompt_capability"]["same_prompt_retained_token_ids_capable"] is True
+
+
+def test_stepfun_llamacpp_logits_probe_blocks_retained_token_ids_when_flag_missing(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    fake_debug = tmp_path / "llama-debug"
+    model = tmp_path / "model.gguf"
+    _write_prompt_artifact(prompt)
+    _write_fake_llama_debug(
+        fake_debug,
+        logits=[0.0, 1.0, 2.0, 3.0, 4.0],
+        token_ids=[1, 2, 3],
+        help_text="--save-logits --logits-output-dir --special",
+    )
+    model.write_text("fake")
+
+    report = build_llamacpp_logits_probe(
+        prompt_artifact=prompt,
+        llama_debug=fake_debug,
+        model=model,
+        raw_output_dir=tmp_path / "raw",
+        generated_token_id=2,
+        prompt_token_source="retained-input-ids",
+        execute=True,
+    )
+
+    assert report["status"] == "blocked"
+    assert report["ready"] is False
+    assert report["missing_evidence"] == ["llama_debug_retained_token_ids_input_present"]
+    assert report["blocked_reason"] == (
+        "built llama-debug exposes --save-logits but does not accept retained token IDs, "
+        "so it cannot bypass text tokenization for the exact StepFun prompt IDs"
+    )
+    assert not (tmp_path / "raw").exists()
 
 
 def test_stepfun_llamacpp_logits_probe_executes_and_summarizes_logits(tmp_path: Path) -> None:
