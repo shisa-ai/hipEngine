@@ -292,6 +292,25 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
         },
     }
+    assert artifact["hipengine_metrics_contract"] == {
+        "status": "not_run",
+        "blocked_until": "native_gguf_mtp_runtime",
+        "source": "Qwen35GGUFMTPVerificationMetrics",
+        "result_source": "Qwen35GGUFMTPVerificationResult",
+        "draft_max": 1,
+        "required_fields": [
+            "cycle_count",
+            "draft_token_count",
+            "accepted_token_count",
+            "output_token_count",
+            "accepted_per_draft",
+            "accepted_per_output",
+        ],
+        "denominators": {
+            "accepted_per_draft": "accepted_token_count / draft_token_count",
+            "accepted_per_output": "accepted_token_count / output_token_count",
+        },
+    }
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "passed",

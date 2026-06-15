@@ -470,6 +470,13 @@ class Qwen35GGUFMTPVerificationMetrics:
     def accepted_per_output(self) -> float:
         return float(self.accepted_token_count) / float(self.output_token_count)
 
+    @staticmethod
+    def denominator_labels() -> dict[str, str]:
+        return {
+            "accepted_per_draft": "accepted_token_count / draft_token_count",
+            "accepted_per_output": "accepted_token_count / output_token_count",
+        }
+
     def as_dict(self) -> dict[str, object]:
         return {
             "cycle_count": self.cycle_count,
@@ -478,6 +485,7 @@ class Qwen35GGUFMTPVerificationMetrics:
             "output_token_count": self.output_token_count,
             "accepted_per_draft": self.accepted_per_draft,
             "accepted_per_output": self.accepted_per_output,
+            "denominators": self.denominator_labels(),
             "results": [result.as_dict() for result in self.results],
         }
 

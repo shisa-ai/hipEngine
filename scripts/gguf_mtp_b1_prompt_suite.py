@@ -30,6 +30,7 @@ from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     qwen35_gguf_current_hidden_seed_contract,
     qwen35_gguf_fp32_hidden_seed_contract,
 )
+from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPVerificationMetrics  # noqa: E402
 from scripts.gguf_mtp_oracle_gate import (  # noqa: E402
     DEFAULT_FIXTURE as DEFAULT_ORACLE_FIXTURE,
     run_oracle_gate,
@@ -192,6 +193,25 @@ def _build_runtime_kernel_precheck(*, backend: str, draft_topk: dict[str, Any]) 
         "missing_native_runtime_keys": [item["key"] for item in missing_native],
         "missing_optimization_keys": [item["key"] for item in missing_optimization],
         "checks": checks,
+    }
+
+
+def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
+    return {
+        "status": "not_run",
+        "blocked_until": "native_gguf_mtp_runtime",
+        "source": "Qwen35GGUFMTPVerificationMetrics",
+        "result_source": "Qwen35GGUFMTPVerificationResult",
+        "draft_max": int(draft_max),
+        "required_fields": [
+            "cycle_count",
+            "draft_token_count",
+            "accepted_token_count",
+            "output_token_count",
+            "accepted_per_draft",
+            "accepted_per_output",
+        ],
+        "denominators": Qwen35GGUFMTPVerificationMetrics.denominator_labels(),
     }
 
 
@@ -500,6 +520,7 @@ def build_b1_prompt_suite_artifact(
         llamacpp_trace_fixture,
         draft_max=requested_draft_max,
     )
+    hipengine_metrics_contract = _build_hipengine_metrics_contract(draft_max=requested_draft_max)
     blockers: list[dict[str, Any]] = []
     if not parity["all_pass"]:
         blockers.append(
@@ -623,6 +644,7 @@ def build_b1_prompt_suite_artifact(
         "runtime_kernel_precheck": runtime_kernel_precheck,
         "oracle_gate": oracle_gate,
         "llamacpp_trace_oracle": llamacpp_trace_oracle,
+        "hipengine_metrics_contract": hipengine_metrics_contract,
         "execution": {
             "implemented": False,
             "exactness_gate": "passed" if oracle_gate["passed"] and llamacpp_trace_oracle["passed"] else "failed",

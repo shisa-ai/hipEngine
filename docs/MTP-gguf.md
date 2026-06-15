@@ -864,8 +864,9 @@ is now answered by the M1 required/optional table.)
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
       specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
-      precheck, CPU-reference oracle gate output, and captured llama.cpp
-      draft-trace oracle provenance/denominator checks; B1 runtime
+      precheck, CPU-reference oracle gate output, a hipEngine metrics contract
+      with explicit accepted-per-draft/output denominator labels, and captured
+      llama.cpp draft-trace oracle provenance/denominator checks; B1 runtime
       execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
@@ -882,7 +883,9 @@ is now answered by the M1 required/optional table.)
       budget, stale draft `top_k=1` sampling, or a non-fp32/non-post-`output_norm`
       seed contract. The llama.cpp comparison helper now reports
       `accepted_per_output` with explicit `draft_n_accepted / predicted_n`
-      denominator for future parity rows.
+      denominator for future parity rows, while the preflight artifact exposes
+      the hipEngine-side `Qwen35GGUFMTPVerificationMetrics` denominator contract
+      that native runtime must fill.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts; actual B2-B4
       execution/parity still waits on native draft execution.

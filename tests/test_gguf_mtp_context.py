@@ -334,6 +334,10 @@ def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:
     assert metrics.accepted_per_draft == 0.75
     assert metrics.accepted_per_output == 0.6
     assert metrics.as_dict()["accepted_per_output"] == 0.6
+    assert metrics.as_dict()["denominators"] == {
+        "accepted_per_draft": "accepted_token_count / draft_token_count",
+        "accepted_per_output": "accepted_token_count / output_token_count",
+    }
     assert metrics.as_dict()["results"][0]["first_mismatch_index"] == 1
 
 

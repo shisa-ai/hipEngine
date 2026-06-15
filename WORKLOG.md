@@ -96252,3 +96252,48 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. The change only makes denominator accounting explicit for
   future llama.cpp parity artifacts.
+
+## 2026-06-15 - MTP-GGUF hipEngine metrics contract in preflight
+
+Implemented `mtp-gguf` multiloop iteration 79: surfaced the hipEngine GGUF MTP
+verification metrics contract in B1/B1-B4 preflight artifacts.
+
+Scope note:
+- Preflight/context/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- This records the exact hipEngine accepted-per-draft/output schema that native
+  runtime must fill once execution exists, rather than only reporting the
+  llama.cpp-side denominator fields.
+
+Changes:
+- Added denominator labels to `Qwen35GGUFMTPVerificationMetrics.as_dict()` via
+  `Qwen35GGUFMTPVerificationMetrics.denominator_labels()`:
+  - `accepted_per_draft = accepted_token_count / draft_token_count`
+  - `accepted_per_output = accepted_token_count / output_token_count`
+- Added `hipengine_metrics_contract` to `scripts/gguf_mtp_b1_prompt_suite.py`
+  blocked artifacts. It records status `not_run`, the metrics/result contract
+  names, requested draft cap, required metric fields, and denominator labels.
+- Extended context and B1 preflight tests to assert the denominator labels and
+  artifact contract.
+- Updated `docs/MTP-gguf.md` to document that preflight artifacts expose the
+  hipEngine-side `Qwen35GGUFMTPVerificationMetrics` denominator contract.
+
+Validation:
+- Focused context + B1 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_b1_prompt_suite.py` -> `31` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `suite blocked metrics_contract not_run {'accepted_per_draft': 'accepted_token_count / draft_token_count', 'accepted_per_output': 'accepted_token_count / output_token_count'} blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/context/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. The contract only records denominator accounting for future
+  accepted/output artifacts.
