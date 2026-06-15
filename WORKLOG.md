@@ -92978,3 +92978,41 @@ Validation:
 - Prompt verifier passed: oracle/parity tooling only, no torch hot-path import,
   no backend/quant dispatch branches, no hipEngine runtime generation changes,
   no attention/KV path changes, no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF block validation gate
+
+Implemented `mtp-gguf` multiloop iteration 6: a pure metadata validation gate for
+trailing GGUF MTP/NextN blocks.
+
+Changes:
+- Added `validate_qwen35_gguf_mtp_blocks(info)` in
+  `hipengine/loading/qwen35_gguf.py`.
+  - AR mapping still ignores trailing MTP blocks.
+  - The new MTP-specific gate fails on missing required NextN tensors and
+    unexpected trailing-block tensors.
+  - Optional tensors remain valid when a target-weight fallback is defined.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to cover:
+  - complete MTP inventory validation;
+  - missing required `nextn.*` validation failure;
+  - unexpected trailing tensor validation failure.
+
+Real GGUF smoke:
+- Command: `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import validate_qwen35_gguf_mtp_blocks
+p='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(p)
+blocks=validate_qwen35_gguf_mtp_blocks(r.info)
+print(len(blocks), blocks[0].layer_id, len(blocks[0].tensor_names), blocks[0].missing_required_tensor_names, blocks[0].missing_optional_tensor_names)
+PY`
+- Result: one MTP block, layer `40`, `20` tensors, no missing required tensors,
+  optional missing `embed_tokens` and `shared_head_head` with target fallbacks.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Mapping validator tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `6` passed.
+- Prompt verifier passed: metadata validation only, no torch hot-path import, no
+  backend/quant dispatch branches, no attention/KV/runtime generation changes,
+  no NextN math, and no performance claims.

@@ -377,6 +377,39 @@ def qwen35_gguf_mtp_block_inventories(info: GGUFModelInfo) -> tuple[Qwen35GGUFMT
     return tuple(inventories)
 
 
+def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPBlockInventory, ...]:
+    """Validate required trailing GGUF MTP/NextN tensor metadata.
+
+    AR mapping intentionally excludes ignored MTP blocks.  This separate gate is
+    for the GGUF-MTP lane: optional tensors may be absent when a target-weight
+    fallback is defined, but required tensors and unexpected trailing-block
+    tensors are errors.
+    """
+
+    inventories = qwen35_gguf_mtp_block_inventories(info)
+    errors: list[str] = []
+    for block in inventories:
+        if block.missing_required_tensor_names:
+            preview = ", ".join(block.missing_required_tensor_names[:8])
+            more = (
+                ""
+                if len(block.missing_required_tensor_names) <= 8
+                else f" (+{len(block.missing_required_tensor_names) - 8} more)"
+            )
+            errors.append(f"MTP block {block.layer_id} missing required tensors: {preview}{more}")
+        if block.unexpected_tensor_names:
+            preview = ", ".join(block.unexpected_tensor_names[:8])
+            more = (
+                ""
+                if len(block.unexpected_tensor_names) <= 8
+                else f" (+{len(block.unexpected_tensor_names) - 8} more)"
+            )
+            errors.append(f"MTP block {block.layer_id} unexpected tensors: {preview}{more}")
+    if errors:
+        raise MissingGGUFTensorError("; ".join(errors))
+    return inventories
+
+
 def _build_layer_map(
     config: Qwen35GGUFConfig,
     actual: Mapping[str, GGUFTensorInfo],
@@ -579,5 +612,6 @@ __all__ = [
     "qwen35_gguf_config_from_metadata",
     "qwen35_gguf_mtp_block_inventories",
     "required_qwen35_gguf_tensor_names",
+    "validate_qwen35_gguf_mtp_blocks",
     "validate_qwen35_gguf_tensor_map",
 ]
