@@ -159,6 +159,11 @@ same `choices[].logprobs` object includes
 `hipengine.omitted_token_logprobs[]` with token index, nullable token id, text,
 and a stable reason such as `backend_omitted_logprob`; the capabilities manifest
 lists stable reason strings under `features.logprobs.omission_reasons`.
+OpenAI-compatible chat `logprobs.content` remains visible-content only; when a
+live or buffered stream can map reasoning-token metadata to a reasoning delta,
+opt-in stream metadata carries
+`choices[].hipengine.reasoning_logprobs`, advertised as
+`features.logprobs.chat_reasoning_private_stream_metadata`.
 
 ### Routing metadata
 
@@ -252,7 +257,7 @@ a single HTTP request and the scheduler chunk text exactly reconstructs each
 public choice text, the server emits those scheduler chunks as individual
 public SSE deltas or `delta.tool_calls` argument fragments. Public
 OpenAI-compatible `logprobs.content` remains visible-content only; reasoning
-deltas with mapped scheduler logprobs carry hipEngine-private
+deltas with mapped live or scheduler logprobs carry hipEngine-private
 `choices[].hipengine.reasoning_logprobs` when `stream_options.include_hipengine`
 is enabled. Chat requests with structured-output validation failures, invalid
 tool calls, tool outputs whose arguments cannot be mapped safely, or scheduler

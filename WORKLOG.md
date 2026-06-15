@@ -93136,3 +93136,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments or withheld_scheduler_tool_chunks or unmappable_scheduler_tool_chunks or streaming_chat_completion_rejects_undeclared_auto_tool_name or streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup or streaming_chat_completion_reports_strict_tool_schema_failure'` -> `7 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - Live chat reasoning logprob stream metadata
+
+Forwarded live `n=1` chat reasoning logprob metadata when the backend emits
+`GenerationStreamChunk.token_logprobs` and advertises `supports_stream_logprobs`.
+Reasoning deltas still do not receive public OpenAI `logprobs.content`; opt-in
+hipEngine metadata now carries `choices[].hipengine.reasoning_logprobs` on the
+live path, matching the buffered scheduler-chunk surface. The live stream path
+also retags backend decode-state telemetry to the parsed delta phase before
+emitting reasoning/content chunks.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_streaming_chat_completion_uses_live_reasoning_private_logprobs -q` -> `1 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata or streaming_chat_completion_uses_live_reasoning_private_logprobs or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason'` -> `7 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

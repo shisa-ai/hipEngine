@@ -1097,6 +1097,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "streaming": "buffered",
         "live_chunk_metadata": False,
         "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
+        "chat_reasoning_private_stream_metadata": "choices[].hipengine.reasoning_logprobs",
         "requires_backend_token_metadata": True,
         "omission_reasons": ["backend_omitted_logprob", "prompt_logprob_unavailable"],
         "missing_backend_metadata_error": {
@@ -1315,6 +1316,7 @@ def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_suppo
         "streaming": "live_chunk_metadata",
         "live_chunk_metadata": True,
         "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
+        "chat_reasoning_private_stream_metadata": "choices[].hipengine.reasoning_logprobs",
         "requires_backend_token_metadata": True,
         "omission_reasons": ["backend_omitted_logprob", "prompt_logprob_unavailable"],
         "missing_backend_metadata_error": {
@@ -8370,6 +8372,103 @@ def test_streaming_chat_completion_uses_scheduler_reasoning_private_logprobs() -
         {"token": "A", "logprob": -0.2, "bytes": None, "top_logprobs": []}
     ]
     assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_uses_live_reasoning_private_logprobs() -> None:
+    fake = FakeLLM(
+        stream_chunks=[
+            GenerationStreamChunk(
+                text="<think>r0</think>",
+                token_logprobs=(
+                    TokenLogprob(
+                        token_id=300,
+                        token_text="<think>r0</think>",
+                        logprob=-0.1,
+                        top_logprobs=((300, "<think>r0</think>", -0.1),),
+                    ),
+                ),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=1,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+            GenerationStreamChunk(
+                text="A",
+                token_logprobs=(TokenLogprob(token_id=301, token_text="A", logprob=-0.2),),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=2,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+        ],
+    )
+    fake.supports_stream_logprobs = True
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "stream": True,
+            "logprobs": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    reasoning = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("reasoning_content")
+    )
+    content = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    )
+    assert reasoning["delta"] == {"reasoning_content": "r0"}
+    assert "logprobs" not in reasoning
+    assert reasoning["hipengine"]["decode_state"]["phase"] == "think"
+    assert reasoning["hipengine"]["decode_state"]["execution_path"] == "live_host_sampler_decode"
+    assert reasoning["hipengine"]["reasoning_logprobs"] == {
+        "content": [
+            {
+                "token_id": 300,
+                "token": "<think>r0</think>",
+                "logprob": -0.1,
+                "bytes": None,
+                "top_logprobs": [
+                    {
+                        "token_id": 300,
+                        "token": "<think>r0</think>",
+                        "logprob": -0.1,
+                        "bytes": None,
+                    }
+                ],
+            }
+        ],
+        "public_text": "r0",
+        "refusal": None,
+    }
+    assert content["delta"] == {"content": "A"}
+    assert content["logprobs"]["content"] == [
+        {"token": "A", "logprob": -0.2, "bytes": None, "top_logprobs": []}
+    ]
+    assert fake.stream_calls
+    assert fake.calls[0][1].logprobs is True
+    assert fake.calls[0][1].top_logprobs == 0
 
 
 def test_streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs() -> None:

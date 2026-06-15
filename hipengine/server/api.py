@@ -4166,6 +4166,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "streaming": "live_chunk_metadata" if stream_logprobs else "buffered",
                     "live_chunk_metadata": stream_logprobs,
                     "live_chunk_metadata_capability": "engine.supports_stream_logprobs",
+                    "chat_reasoning_private_stream_metadata": "choices[].hipengine.reasoning_logprobs",
                     "requires_backend_token_metadata": True,
                     "omission_reasons": [_LOGPROB_OMISSION_REASON, _PROMPT_LOGPROB_OMISSION_REASON],
                     "missing_backend_metadata_error": {
@@ -5165,9 +5166,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     continue
                 for field, chunk in splitter.feed(text):
                     phase = "think" if field == "reasoning_content" else "answer"
+                    phase_stream_chunk = _stream_chunk_with_phase(stream_chunk, phase)
                     logprobs = (
                         _chat_stream_logprobs(stream_chunk, chunk)
                         if request.logprobs and field == "content"
+                        else None
+                    )
+                    reasoning_logprobs = (
+                        _chat_reasoning_stream_logprobs(stream_chunk, chunk)
+                        if request.logprobs
+                        and include_hipengine
+                        and field == "reasoning_content"
                         else None
                     )
                     token_payload = (
@@ -5180,11 +5189,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         field,
                         chunk,
                         logprobs=logprobs,
+                        reasoning_logprobs=reasoning_logprobs,
                         tokens=token_payload,
-                        stream_chunk=stream_chunk,
+                        stream_chunk=phase_stream_chunk,
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
+                        phase=phase,
                     )
             if not buffer_tool_output:
                 for field, chunk in splitter.finish():

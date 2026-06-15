@@ -1028,16 +1028,17 @@ Current code reality:
   snapshots, scheduler token-event chunks, or PARO/GGUF c>N engine/wrapped-
   generator `last_batch_generation.scheduler_token_chunks` diagnostics.
   Buffered `/v1/completions` streams, plain answer/reasoning buffered
-  `/v1/chat/completions` streams, plain chat content logprob streams, reasoning
-  streams with hipEngine-private logprob metadata, validated structured chat
-  content streams, and validated tool-call
-  argument spans now use PARO c>N and GGUF serial c>N scheduler token chunks as
+  `/v1/chat/completions` streams, plain chat content logprob streams, live and
+  buffered reasoning streams with hipEngine-private logprob metadata, validated
+  structured chat content streams, and validated tool-call argument spans now
+  use PARO c>N and GGUF serial c>N scheduler token chunks as
   per-token public deltas for a single HTTP request when the chunks exactly
   reconstruct the final choice text and logprob chunks can be mapped to emitted
   content/reasoning deltas. Coalesced multi-request batches, invalid or
   unmappable tool outputs, structured-output validation failures, public
   runtime-native live c>N stream chunk forwarding, canonical tool/structured
-  phases, and real continuation eligibility remain future lower-loop work.
+  phases, parser-final leftover logprob mapping, and real continuation
+  eligibility remain future lower-loop work.
 
 Exit gates:
 
@@ -2890,9 +2891,10 @@ golden harness traces are now implemented. Good next logical units, in order:
    Validated tool-call argument spans can likewise replay scheduler chunks as
    OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
    invalid/unmappable tool-call chunks are withheld fail-closed with private
-   final-choice diagnostics. Runtime-native live c>N stream forwarding, public
-   invalid/unmappable tool-call chunk forwarding, true live reasoning-logprob
-   forwarding, and real
+   final-choice diagnostics. Live c=1 reasoning deltas with backend token
+   logprobs now carry hipEngine-private reasoning logprob metadata.
+   Runtime-native live c>N stream forwarding, public invalid/unmappable
+   tool-call chunk forwarding, parser-final leftover logprob mapping, and real
    continuation eligibility still need lower-loop work instead of relying on
    server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
