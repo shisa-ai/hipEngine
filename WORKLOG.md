@@ -41055,3 +41055,34 @@ git diff --check
 ```
 
 Results: targeted host-logit-margin/rollup tests passed (`8` tests); host-logit-margin compact outputs were `"passed"`, `0.8150444030761719`, and `true`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `08dc92edf02480bff1341fdacc7fbc251705a357e948f8108027bd1e05d46c43`; remaining-blockers file SHA `b693bd5325213d1cd84a16aa6face6fed2016175f309e956a3c8dbf386e62e80`; correctness-status file SHA `ba3ffa9ffb0b8e145dcb859befd2584e34987e8a4e2df1e96c891c5d5b886d8c`; final-blocker file SHA `1b2cd54c832945ebe4af6868817e55b3050484a68dc046e5c985b92415395b3d`; handoff file SHA `b71d56b70513b0d5e405fa34f40134ca5c775e7ae3b7e479a1111328ba592e27`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle next-action manifest
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 495. Added `scripts/stepfun_oracle_next_action_manifest.py`, a retained next-action manifest that consolidates the oracle blocker diagnosis, evidence consistency check, and host top-logit margin into a single handoff artifact for the next logits/backend parity investigation. Added `tests/test_stepfun_oracle_next_action_manifest.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the next-action manifest artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json` reports `status=blocked`, `investigation_ready=true`, and `missing_preconditions=[]`. It pins the next action to `investigate logits/backend parity for the canonical Vulkan executed oracle; do not claim oracle parity until generated_text_matches_target passes`. Target evidence is expected token `369` / `" |"`, generated first token `671`, generated text `"The\n\n"`, generated token absent from host top IDs `[369, 5, 15251, 223, 201]`, and host top-1→top-2 margin `0.8150444030761719`. Ruled-out causes remain `prompt_token_drift`, `host_top_token_text_label_drift`, and `expected_next_token_text_tokenization_drift`; active findings remain `generated_text_mismatch`, `generated_token_absent_from_host_top_tokens`, and comparison-only `hip_oracle_timeout`. Next-action manifest file SHA is `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`; stable payload SHA from `scripts/stepfun_oracle_next_action_manifest.py --sha-only` is `4102fe519bb8a0a7269a821c9c3b678a8e83fddb9151d4120f4ce36d49674028`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_next_action_manifest.py tests/test_stepfun_oracle_next_action_manifest.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_oracle_next_action_manifest.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty
+python3 scripts/stepfun_oracle_next_action_manifest.py --sha-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --status-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --investigation-ready-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --next-action-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted next-action/rollup tests passed (`7` tests); compact outputs were `"blocked"`, `true`, and the logits/backend parity next-action string; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `49ee72bada756d48985b66fb325ac153387e0284a8dd33b0f2e53118dd772d12`; remaining-blockers file SHA `89b184286a4a6d6becbe7f484b84c5ab2293d884b79895cba62ee13c50a14d0a`; correctness-status file SHA `7119bcbe771f00512d634c4c0c23eac4acd474ad8464fc82c55172c8f0cae500`; final-blocker file SHA `11e1b83f43f766abedae9ebe7d90b206a76b532676ad0e9ce1b1d7c23f24e7e2`; handoff file SHA `2f2ecb4aa2619d9a6d95101eec69fa6c935e9351eb764c4e7e4ebb9549d3975d`; full StepFun guard passed; `git diff --check` passed.

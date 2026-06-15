@@ -1,0 +1,191 @@
+{
+  "acceptance_to_clear_oracle_parity": [
+    "canonical generated_text_matches_target evidence passes",
+    "oracle_parity_ready becomes true in stepfun_correctness_status",
+    "retained oracle/status/handoff artifacts are refreshed and verify as match",
+    "full StepFun guard passes",
+    "WORKLOG and docs/STEPFUN.md record the new evidence without performance claims"
+  ],
+  "active_findings": [
+    "generated_text_mismatch",
+    "generated_token_absent_from_host_top_tokens",
+    "hip_oracle_timeout"
+  ],
+  "artifact_kind": "stepfun_oracle_next_action_manifest",
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "comparison_only_findings": [
+    "hip_oracle_timeout"
+  ],
+  "date": "2026-06-15",
+  "investigation_ready": true,
+  "missing_preconditions": [],
+  "next_action": "investigate logits/backend parity for the canonical Vulkan executed oracle; do not claim oracle parity until generated_text_matches_target passes",
+  "next_action_kind": "logits_backend_parity_investigation",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This manifest describes the next investigation target; it does not resolve generated_text_matches_target."
+  },
+  "non_goals_for_next_action": [
+    "KV-backed decode wiring",
+    "e2e generation readiness claim",
+    "StepFun throughput or latency claim",
+    "NVFP4, vision, or MTP work"
+  ],
+  "preconditions": [
+    {
+      "actual": "blocked",
+      "command": "python3 scripts/stepfun_oracle_blocker_diagnosis.py --status-only",
+      "expected": "blocked",
+      "name": "oracle_diagnosis_status_blocked",
+      "passed": true
+    },
+    {
+      "actual": "match",
+      "command": "python3 scripts/stepfun_oracle_evidence_consistency_check.py --status-only",
+      "expected": "match",
+      "name": "oracle_evidence_consistency_matches",
+      "passed": true
+    },
+    {
+      "actual": "passed",
+      "command": "python3 scripts/stepfun_host_logit_margin.py --status-only",
+      "expected": "passed",
+      "name": "host_logit_margin_passes",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "command": "python3 scripts/stepfun_host_logit_margin.py --expected-top1-only",
+      "expected": true,
+      "name": "expected_token_is_host_top1",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "command": "python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only",
+      "expected": true,
+      "name": "generated_text_mismatch_is_active",
+      "passed": true
+    }
+  ],
+  "ready": false,
+  "required_commands_before_claiming_parity": [
+    "python3 scripts/stepfun_oracle_evidence_consistency_check.py --status-only",
+    "python3 scripts/stepfun_oracle_blocker_diagnosis.py --status-only",
+    "python3 scripts/stepfun_correctness_status.py --blocked-gates-joined-only",
+    "bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name \"test_stepfun_*.py\" -print | sort | tr \"\\n\" \" \" ); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'"
+  ],
+  "required_evidence_inputs": [
+    {
+      "artifact_kind": "stepfun_oracle_blocker_diagnosis",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json",
+      "required": true,
+      "role": "consolidated ruled-out causes and active oracle findings",
+      "sha256": "2577f7dacb1458169774dac3d6a75b1c118252a4765a8f77833a67a8ca96564b",
+      "status": "blocked"
+    },
+    {
+      "artifact_kind": "stepfun_oracle_evidence_consistency_check",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json",
+      "required": true,
+      "role": "cross-artifact freshness and consistency gate",
+      "sha256": "3a6e53f03e723ffbe9d87e5df60ead423e32a3d114ebe88f3816915bed3ca02a",
+      "status": "match"
+    },
+    {
+      "artifact_kind": "stepfun_host_top_logit_margin",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json",
+      "required": true,
+      "role": "host top-logit margin context for the expected token",
+      "sha256": "7a2b5aa06a93d7394925752c4b4b16cd8e7b7ec039574e607747cf21d49da8c1",
+      "status": "passed"
+    },
+    {
+      "artifact_kind": "stepfun_llamacpp_oracle_backend_matrix",
+      "key": "backend_matrix",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
+      "required": true,
+      "role": "canonical and comparison oracle backend outcomes",
+      "sha256": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
+      "status": "blocked"
+    },
+    {
+      "artifact_kind": null,
+      "key": "token_mismatch",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json",
+      "required": true,
+      "role": "canonical generated-text mismatch details",
+      "sha256": "206f04205bc9cd48f6c23d19d4b74e203974c1b4ccd74dea3b1d5a61e9ee0979",
+      "status": "failed"
+    },
+    {
+      "artifact_kind": "stepfun_llamacpp_oracle_rank_check",
+      "key": "rank_check",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+      "required": true,
+      "role": "generated token host-top-list absence",
+      "sha256": "2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba",
+      "status": "failed"
+    },
+    {
+      "artifact_kind": "stepfun_host_top_token_roundtrip",
+      "key": "top_token_roundtrip",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json",
+      "required": true,
+      "role": "host top-token text/token-id round-trip evidence",
+      "sha256": "53aa0da3e30fbfc839ed141b692af34924a1b1d9cf5eb5a13010a5560c2cfc14",
+      "status": "passed"
+    },
+    {
+      "artifact_kind": "stepfun_prompt_token_roundtrip",
+      "key": "prompt_token_roundtrip",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
+      "required": true,
+      "role": "host prompt input-id/tokenizer round-trip evidence",
+      "sha256": "1684aef6c074af5e0b4e1bd9ed894ed0b75d118af11726894c7693bb21636fd8",
+      "status": "passed"
+    }
+  ],
+  "ruled_out_causes": [
+    "prompt_token_drift",
+    "host_top_token_text_label_drift",
+    "expected_next_token_text_tokenization_drift"
+  ],
+  "schema_version": 1,
+  "status": "blocked",
+  "target": {
+    "canonical_backend": "vulkan",
+    "expected_next_token_id": 369,
+    "expected_next_token_text": " |",
+    "generated_first_token_id": 671,
+    "generated_first_token_matches_expected_id": false,
+    "generated_text": "The\n\n",
+    "generated_text_stripped_token_ids": [
+      671
+    ],
+    "generated_text_token_ids": [
+      671,
+      271
+    ],
+    "generated_token_host_rank": null,
+    "generated_token_in_host_top_tokens": false,
+    "host_top1_to_top2_margin": 0.8150444030761719,
+    "host_top1_to_top5_margin": 3.5056095123291016,
+    "host_top_token_ids": [
+      369,
+      5,
+      15251,
+      223,
+      201
+    ],
+    "readiness_gate": "oracle_parity",
+    "unresolved_evidence_gap": "generated_text_matches_target"
+  }
+}

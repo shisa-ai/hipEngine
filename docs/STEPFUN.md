@@ -921,7 +921,10 @@ reporting.
   remains unresolved. `scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json`,
   currently `status=match`, to catch stale or contradictory oracle evidence before the next
-  logits/backend parity investigation. The remaining mismatch is therefore not explained by prompt-token drift or
+  logits/backend parity investigation. `scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty`
+  retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`,
+  pinning the follow-up target to canonical Vulkan logits/backend parity until
+  `generated_text_matches_target` passes. The remaining mismatch is therefore not explained by prompt-token drift or
   host top-token text-label drift.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in

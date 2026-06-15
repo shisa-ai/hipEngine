@@ -175,6 +175,9 @@ def _generator_commands() -> dict[str, str]:
         "oracle_evidence_consistency_check": (
             "python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty"
         ),
+        "oracle_next_action_manifest": (
+            "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -269,6 +272,8 @@ def build_remaining_blockers_rollup(
                 "diagnosis_generator_command": commands["oracle_blocker_diagnosis"],
                 "evidence_consistency_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json",
                 "evidence_consistency_generator_command": commands["oracle_evidence_consistency_check"],
+                "next_action_manifest_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json",
+                "next_action_manifest_generator_command": commands["oracle_next_action_manifest"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

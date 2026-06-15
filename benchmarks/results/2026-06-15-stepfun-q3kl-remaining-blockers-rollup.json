@@ -11,6 +11,7 @@
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
     "oracle_blocker_diagnosis": "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty",
     "oracle_evidence_consistency_check": "python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty",
+    "oracle_next_action_manifest": "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty",
     "oracle_rank_check": "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty",
     "oracle_token_mismatch": "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
     "prompt_token_roundtrip": "python3 scripts/stepfun_prompt_token_roundtrip.py --default-output --pretty",
@@ -93,6 +94,8 @@
       "generator_command_kind": "oracle_backend_matrix",
       "host_logit_margin_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json",
       "host_logit_margin_generator_command": "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty",
+      "next_action_manifest_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json",
+      "next_action_manifest_generator_command": "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty",
       "oracle_parity_ready": false,
       "primary_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
       "prompt_token_roundtrip_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
@@ -249,9 +252,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "617a76ef3934e59b843c835b63c322aa98c11c646508056371fd7d51c15070c4",
+    "kv_blocker_status": "4bfd2be3d060a13a183520088491cf042829fbd12d33652778d43c9f0b1f153e",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "ddffe69d83bb937b98b4788c9fb8453488ec778d774bfe23d49a0fe6e5d1ab94"
+    "status": "aa2d4f8b73bebddaa75e135cc8c40d18f769420cc99273248ecd0c8c5b2384cc"
   },
   "status": "blocked"
 }
