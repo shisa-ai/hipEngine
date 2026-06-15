@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import inspect
 from math import prod
 from pathlib import Path
 
 import pytest
 
+from hipengine.kernels.cpu_reference.ops import qwen35_gguf_mtp_nextn_layer_logits
 from hipengine.loading.gguf import (
     GGUFModelInfo,
     GGUFTensorInfo,
@@ -351,6 +353,31 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "ggml_type_name": "F32",
         "qtype_argument": "gate_qtype",
     }
+
+
+def test_qwen35moe_gguf_mtp_cpu_call_spec_matches_reference_signature() -> None:
+    info = _synthetic_qwen35moe_mtp_info()
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+    call_spec = plan.cpu_reference_call_spec
+    parameters = inspect.signature(qwen35_gguf_mtp_nextn_layer_logits).parameters
+    parameter_names = tuple(parameters)
+    tensor_args = tuple(call_spec.tensor_arguments)
+    qtype_args = tuple(call_spec.qtype_arguments)
+    keyword_args = tuple(call_spec.keyword_arguments)
+
+    assert tuple(name for name in parameter_names if name in tensor_args) == tensor_args
+    assert tuple(name for name in parameter_names if name in qtype_args) == qtype_args
+    assert set(keyword_args).issubset(parameters)
+    bound_args = {"hidden_seed", *tensor_args, *qtype_args, *keyword_args}
+    missing_required = [
+        name
+        for name, parameter in parameters.items()
+        if parameter.default is inspect.Signature.empty
+        and parameter.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        and name not in bound_args
+    ]
+    assert missing_required == []
 
 
 def test_qwen35moe_gguf_mtp_draft_tensor_plan_rejects_unknown_qtype_binding() -> None:

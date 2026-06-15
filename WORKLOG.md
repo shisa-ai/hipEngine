@@ -94128,3 +94128,49 @@ Validation:
 - Forbidden-pattern and diff checks passed.
 - Prompt verifier passed: test-only loader metadata coverage, no backend/quant
   branches, no runtime generation/GPU/KV path changes, no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU call spec signature drift regression
+
+Implemented `mtp-gguf` multiloop iteration 33: added unit coverage that pins the
+loader-generated CPU call spec against the current
+`qwen35_gguf_mtp_nextn_layer_logits(...)` signature.
+
+Scope note:
+- This is test-only coverage for the torch-free loader CPU-call-spec bridge.
+  It does not materialize weights, alter runtime generation, dispatch GPU
+  kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this test only catches metadata/signature drift before future CPU parity
+  harnesses run.
+
+Evidence:
+- Signature smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... inspect.signature(qwen35_gguf_mtp_nextn_layer_logits) ... PY`
+  reported:
+  - `tensor_args_match_signature True`
+  - `qtype_args_match_signature True`
+  - `kwargs_subset_signature True`
+  - `missing_required []`.
+
+Changes:
+- Added `test_qwen35moe_gguf_mtp_cpu_call_spec_matches_reference_signature`.
+  - Builds the synthetic MTP draft tensor plan and call spec.
+  - Inspects the CPU-reference NextN layer function signature.
+  - Asserts tensor arguments and qtype arguments preserve signature order.
+  - Asserts scalar keyword args are accepted by the signature.
+  - Asserts all required signature parameters are covered by `hidden_seed`, the
+    tensor args, the qtype args, or scalar kwargs.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `17` passed.
+- Focused call-spec tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py -k 'call_spec_matches_reference_signature or tensor_plan'` -> `5` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for the updated mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: test-only loader metadata coverage, no backend/quant
+  branches, no runtime generation/GPU/KV path changes, no performance claims.
