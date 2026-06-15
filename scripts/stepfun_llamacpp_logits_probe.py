@@ -99,6 +99,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--same-prompt-tokens-match-only", action="store_true")
     parser.add_argument("--expected-outranks-generated-only", action="store_true")
     parser.add_argument("--sha-only", action="store_true")
+    parser.add_argument(
+        "--verify-probe",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted llama.cpp logits probe artifact with current "
+            f"prompt/helper/execution metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-probe, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-probe, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-probe, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -653,6 +679,115 @@ def build_llamacpp_logits_probe(
     return report
 
 
+def verify_llamacpp_logits_probe(
+    probe_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted llama.cpp logits probe artifact with current metadata."""
+
+    persisted = _load_json_object(probe_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_probe_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted llama.cpp logits probe artifact differs from current "
+                    "prompt/helper/execution metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    persisted_capability = persisted.get("llama_debug_same_prompt_capability")
+    current_capability = current_report.get("llama_debug_same_prompt_capability")
+    persisted_comparison = persisted.get("comparison")
+    current_comparison = current_report.get("comparison")
+    return {
+        "schema_version": 1,
+        "artifact_path": str(probe_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_ready": persisted.get("ready"),
+        "current_ready": current_report.get("ready"),
+        "persisted_prompt_token_source": persisted.get("prompt_token_source"),
+        "current_prompt_token_source": current_report.get("prompt_token_source"),
+        "persisted_retained_token_ids_argument_present": persisted.get(
+            "retained_token_ids_argument_present"
+        ),
+        "current_retained_token_ids_argument_present": current_report.get(
+            "retained_token_ids_argument_present"
+        ),
+        "persisted_retained_token_ids_argument": persisted.get(
+            "retained_token_ids_argument"
+        ),
+        "current_retained_token_ids_argument": current_report.get(
+            "retained_token_ids_argument"
+        ),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+        "persisted_blocked_reason": persisted.get("blocked_reason"),
+        "current_blocked_reason": current_report.get("blocked_reason"),
+        "persisted_execution_status": persisted.get("execution_status"),
+        "current_execution_status": current_report.get("execution_status"),
+        "persisted_same_prompt_tokens_match": persisted.get("same_prompt_tokens_match"),
+        "current_same_prompt_tokens_match": current_report.get("same_prompt_tokens_match"),
+        "persisted_expected_outranks_generated": (
+            persisted_comparison.get("llamacpp_expected_outranks_generated")
+            if isinstance(persisted_comparison, dict)
+            else None
+        ),
+        "current_expected_outranks_generated": (
+            current_comparison.get("llamacpp_expected_outranks_generated")
+            if isinstance(current_comparison, dict)
+            else None
+        ),
+        "persisted_retained_token_ids_capable": (
+            persisted_capability.get("same_prompt_retained_token_ids_capable")
+            if isinstance(persisted_capability, dict)
+            else None
+        ),
+        "current_retained_token_ids_capable": (
+            current_capability.get("same_prompt_retained_token_ids_capable")
+            if isinstance(current_capability, dict)
+            else None
+        ),
+        "persisted_text_tokenization_capable": (
+            persisted_capability.get("same_prompt_text_tokenization_capable")
+            if isinstance(persisted_capability, dict)
+            else None
+        ),
+        "current_text_tokenization_capable": (
+            current_capability.get("same_prompt_text_tokenization_capable")
+            if isinstance(current_capability, dict)
+            else None
+        ),
+        "persisted_prompt_artifact_sha256": (
+            persisted.get("prompt_artifact", {}).get("sha256")
+            if isinstance(persisted.get("prompt_artifact"), dict)
+            else None
+        ),
+        "current_prompt_artifact_sha256": (
+            current_report.get("prompt_artifact", {}).get("sha256")
+            if isinstance(current_report.get("prompt_artifact"), dict)
+            else None
+        ),
+        "persisted_no_claim_policy": persisted.get("no_claim_policy"),
+        "current_no_claim_policy": current_report.get("no_claim_policy"),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -673,6 +808,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         keep_raw=args.keep_raw,
         extra_llama_args=list(args.llama_arg or ()),
     )
+    if args.verify_probe is not None:
+        verification = verify_llamacpp_logits_probe(
+            args.verify_probe,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        if args.sha_only:
+            payload = status_mod._stable_json_sha256(payload)
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        _emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.same_prompt_tokens_match_only:

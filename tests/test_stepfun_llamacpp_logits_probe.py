@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_llamacpp_logits_probe import build_llamacpp_logits_probe, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_llamacpp_logits_probe import (
+    build_llamacpp_logits_probe,
+    main,
+    verify_llamacpp_logits_probe,
+)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -408,3 +416,139 @@ def test_stepfun_llamacpp_logits_probe_cli_compact_modes(tmp_path: Path) -> None
     assert json.loads(output.read_text()) is True
     assert main([*base_args, "--expected-outranks-generated-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()) is False
+
+
+def test_stepfun_llamacpp_logits_probe_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    fake_debug = tmp_path / "llama-debug"
+    model = tmp_path / "model.gguf"
+    artifact = tmp_path / "probe.json"
+    output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_fake_llama_debug(
+        fake_debug,
+        logits=[0.0, 1.0, 2.0, 3.0, 4.0],
+        token_ids=[1, 2, 3],
+        help_text="--save-logits --logits-output-dir --special",
+    )
+    model.write_text("fake")
+    base_args = [
+        "--prompt-artifact",
+        str(prompt),
+        "--llama-debug",
+        str(fake_debug),
+        "--model",
+        str(model),
+        "--raw-output-dir",
+        str(tmp_path / "raw"),
+        "--generated-token-id",
+        "2",
+        "--prompt-token-source",
+        "retained-input-ids",
+        "--execute",
+    ]
+    current = build_llamacpp_logits_probe(
+        prompt_artifact=prompt,
+        llama_debug=fake_debug,
+        model=model,
+        raw_output_dir=tmp_path / "raw",
+        generated_token_id=2,
+        prompt_token_source="retained-input-ids",
+        execute=True,
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_probe(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_ready"] is False
+    assert verification["current_ready"] is False
+    assert verification["persisted_prompt_token_source"] == "retained-input-ids"
+    assert verification["current_prompt_token_source"] == "retained-input-ids"
+    assert verification["persisted_retained_token_ids_argument_present"] is True
+    assert verification["current_retained_token_ids_argument_present"] is True
+    assert verification["persisted_retained_token_ids_argument"] == "1,2,3"
+    assert verification["current_retained_token_ids_argument"] == "1,2,3"
+    assert verification["persisted_missing_evidence"] == [
+        "llama_debug_retained_token_ids_input_present"
+    ]
+    assert verification["current_missing_evidence"] == [
+        "llama_debug_retained_token_ids_input_present"
+    ]
+    assert verification["persisted_blocked_reason"] == (
+        "built llama-debug exposes --save-logits but does not accept retained token IDs, "
+        "so it cannot bypass text tokenization for the exact StepFun prompt IDs"
+    )
+    assert verification["current_blocked_reason"] == (
+        "built llama-debug exposes --save-logits but does not accept retained token IDs, "
+        "so it cannot bypass text tokenization for the exact StepFun prompt IDs"
+    )
+    assert verification["persisted_execution_status"] is None
+    assert verification["current_execution_status"] is None
+    assert verification["persisted_same_prompt_tokens_match"] is None
+    assert verification["current_same_prompt_tokens_match"] is None
+    assert verification["persisted_expected_outranks_generated"] is None
+    assert verification["current_expected_outranks_generated"] is None
+    assert verification["persisted_retained_token_ids_capable"] is False
+    assert verification["current_retained_token_ids_capable"] is False
+    assert verification["persisted_text_tokenization_capable"] is False
+    assert verification["current_text_tokenization_capable"] is False
+    assert verification["persisted_prompt_artifact_sha256"] == _stable_json_sha256(
+        json.loads(prompt.read_text())
+    )
+    assert verification["current_prompt_artifact_sha256"] == _stable_json_sha256(
+        json.loads(prompt.read_text())
+    )
+    assert verification["persisted_no_claim_policy"] == current["no_claim_policy"]
+    assert verification["current_no_claim_policy"] == current["no_claim_policy"]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-probe",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["ready"] = True
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_probe(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == "llamacpp_logits_probe_drift"
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-probe",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "llamacpp_logits_probe_drift"
