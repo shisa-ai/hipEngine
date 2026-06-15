@@ -48,13 +48,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 855,
+        "line": 869,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ],
     "last_item": {
-      "line": 855,
+      "line": 869,
       "state": "partial",
       "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
     },
@@ -115,6 +115,46 @@
       "llamacpp_logits_helper_patch_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty",
       "llamacpp_logits_helper_readiness_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json",
       "llamacpp_logits_helper_readiness_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty",
+      "llamacpp_logits_helper_readiness_missing_evidence": [
+        "llama_cpp_token_ids_helper_patch_applied",
+        "llama_debug_retained_token_ids_input_present",
+        "llama_cpp_same_prompt_logits_artifact_present"
+      ],
+      "llamacpp_logits_helper_readiness_status": "blocked",
+      "llamacpp_logits_helper_required_next_command_records": [
+        {
+          "command": "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+          "kind": "apply_retained_token_helper_patch",
+          "sha256": "0e24f3730e951e3ad84ff0ff73f48b1b3a5feb9a9c53c37956e7ccf8a67931ff",
+          "side_effect_scope": "external_llama_cpp_worktree",
+          "step": 1,
+          "unblocks_missing_evidence": [
+            "llama_cpp_token_ids_helper_patch_applied"
+          ]
+        },
+        {
+          "command": "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",
+          "kind": "build_llama_debug_helper",
+          "sha256": "9c5222c03530bce54cca513fc7cad96e2607f01be64ae13ce7b37b0a65792bcf",
+          "side_effect_scope": "external_llama_cpp_build_dir",
+          "step": 2,
+          "unblocks_missing_evidence": [
+            "same_prompt_logits_helper_built",
+            "llama_debug_retained_token_ids_input_present"
+          ]
+        },
+        {
+          "command": "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
+          "kind": "capture_same_prompt_logits",
+          "sha256": "f1325f1aceff88d95e4d48f207e73c4553c4c7fa4e5b4649522312194f48bb1c",
+          "side_effect_scope": "in_tree_benchmark_artifact",
+          "step": 3,
+          "unblocks_missing_evidence": [
+            "llama_cpp_same_prompt_logits_artifact_present"
+          ]
+        }
+      ],
+      "llamacpp_logits_helper_required_next_command_records_sha256": "73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d",
       "llamacpp_logits_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
       "llamacpp_logits_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
       "llamacpp_logits_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
@@ -154,6 +194,29 @@
       "runtime_wiring_symbol_validation": {
         "all_symbols_present": true,
         "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "future_execution_entrypoint": {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "class_name": "StepFunResidentSession",
+          "class_present": true,
+          "executable": false,
+          "expected_missing_until_streaming_loop_wired": false,
+          "expected_signature": "decode_one_token_kv_bf16(run_plan: StepFunKVDecodeRunPlan, *, kv_cache: StepFunKVCacheAllocation, runtime: HipRuntime | None = None, stream: int = 0) -> dict[str, object]",
+          "method_name": "decode_one_token_kv_bf16",
+          "method_present": true,
+          "present": true,
+          "ready": false,
+          "required_runtime_steps": [
+            "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+            "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+            "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+            "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+            "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+            "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+            "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+          ],
+          "surface_present": true,
+          "symbol": "StepFunResidentSession.decode_one_token_kv_bf16"
+        },
         "missing_execution_owner": {
           "class_present": true,
           "owner": "StepFunResidentSession",
@@ -281,9 +344,10 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "d69ab603cb1164ab77c97faa122e0853e97b9c360dabcc9ca6e3f7cbf23e3d57",
+    "kv_blocker_status": "f5930236d5c780ebe687090ac0a7d0510fb7c2073d1efae2c92b9ffdd0b5da30",
+    "llamacpp_logits_helper_readiness": "8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "e71d1e104228f3bda57be3cf2783615df30f2ab103a484dbc59a33fe918f3fce"
+    "status": "066808de5b5cbc371c5c090868c8b07438c5fd0b3cd350bcfe2f699c6d7e4541"
   },
   "status": "blocked"
 }

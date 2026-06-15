@@ -1001,7 +1001,8 @@ reporting.
   special-token-safe logits helper for the exact retained prompt IDs.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in
-  `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`.
+  `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`; that top-level rollup now mirrors the
+  retained-token helper readiness status plus the same command-record digest for the external-tree handoff.
   Historical
   CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
   outer-supervisor timeout remain documented by git history and the separate

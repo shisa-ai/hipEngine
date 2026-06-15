@@ -41979,3 +41979,37 @@ git diff --check
 ```
 
 Results: targeted readiness tests passed (`4` tests); targeted readiness/final-blocker selection passed (`8` tests); status/final-blocker/handoff verification returned `"match"`; readiness status remains `"blocked"`; readiness stable payload SHA is `8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7`; final manifest entries SHA `78171a92416418693ef734f22eac308e1922d43a6a27fbe43344763f95b2ba1f`, manifest SHA `542bbce679477f4580ad7629adc246ce38c04298a14a60235dfd7135e36e8b50`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, correctness-status `ede75cc0c36bf50fe409270a3bba236a1c19adf9f24086dc73ff0b028101bbd7`, final-blocker `94161fe6633aa0c42d5c656de4e96bab098814aa0114e681844eb6ae2f8d0ad0`, handoff `bb6b772d302aac840cd394c6dac200e27b93614ab07a314deb5b7ade05daf4ba`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun remaining-blockers rollup helper command binding
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 524. Propagated the retained-token llama.cpp helper readiness command-record binding into the top-level remaining-blockers rollup. `scripts/stepfun_remaining_blockers_rollup.py` now reads the retained helper readiness artifact and mirrors its status, missing-evidence list, ordered patch/build/probe command records, combined command-record digest, and source-artifact digest into the oracle-parity blocker entry. This keeps the consolidated handoff artifact aligned with the exact external-tree commands needed for the next oracle investigation while leaving oracle parity blocked on `generated_text_matches_target`; no external llama.cpp files were edited and no KV, e2e, oracle, or performance claim is made.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json` remains `status=blocked`, `remaining_blocker_count=2`, and blocker kinds `oracle_parity_blocked` plus `kv_backed_decode_not_wired`. The oracle blocker now records `llamacpp_logits_helper_readiness_status=blocked`, missing evidence `llama_cpp_token_ids_helper_patch_applied`, `llama_debug_retained_token_ids_input_present`, and `llama_cpp_same_prompt_logits_artifact_present`, plus `llamacpp_logits_helper_required_next_command_records_sha256=73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d` and `source_artifact_sha256.llamacpp_logits_helper_readiness=8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7`. Refreshed correctness-status, final-blocker-manifest, and handoff artifacts after the rollup/docs change.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --open-count-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --blocker-kinds-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+```
+
+Results: targeted remaining-blockers rollup tests passed (`3` tests); status/final-blocker/handoff verification returned `"match"`; rollup compact status remains `"blocked"`, compact open count remains `2`, compact blocker kinds remain `["oracle_parity_blocked", "kv_backed_decode_not_wired"]`, and stable rollup payload SHA is `9742a681c7e5071f0cb9ac177af840c5f1182cfd84a64381674b5dd3dd058a4a`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are remaining-blockers rollup `dcbae7ed21d60de86a74aa6cd116a5d4f4eeb6a888fdb5441617251e654de6f1`, helper readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, correctness-status `b1324dc02d30afba2eae907929a2681420d3e39e8dfaabc72167a0fc647612e1`, final-blocker `6c236c501b4a77278f476844e5d91f52bf91a1fdfe2bb5747ac3e905bc66efd1`, handoff `69342068d674672465a09403f7b7042cd49f80ea55e20b18af75c7d3570da067`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

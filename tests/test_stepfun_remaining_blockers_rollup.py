@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -15,29 +16,76 @@ from test_stepfun_correctness_status import (  # type: ignore[import-not-found]
 from test_stepfun_oracle_backend_matrix import _write_inputs as _write_backend_inputs  # type: ignore[import-not-found]
 
 
-def _write_rollup_inputs(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path, Path]:
+def _stable_json_sha256(payload: object) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _command_record(step: int, kind: str, command: str) -> dict[str, object]:
+    payload = {
+        "step": step,
+        "kind": kind,
+        "command": command,
+        "side_effect_scope": f"scope_{step}",
+        "unblocks_missing_evidence": [f"evidence_{step}"],
+    }
+    return {**payload, "sha256": _stable_json_sha256(payload)}
+
+
+def _write_helper_readiness_artifact(tmp_path: Path) -> Path:
+    artifact = tmp_path / "readiness.json"
+    command_records = [
+        _command_record(1, "apply_retained_token_helper_patch", "apply-helper"),
+        _command_record(2, "build_llama_debug_helper", "build-helper"),
+        _command_record(3, "capture_same_prompt_logits", "capture-logits"),
+    ]
+    payload = {
+        "schema_version": 1,
+        "artifact_kind": "stepfun_llamacpp_logits_helper_readiness",
+        "status": "blocked",
+        "ready": False,
+        "missing_evidence": [
+            "llama_cpp_token_ids_helper_patch_applied",
+            "llama_debug_retained_token_ids_input_present",
+            "llama_cpp_same_prompt_logits_artifact_present",
+        ],
+        "required_next_command_records": command_records,
+        "required_next_command_records_sha256": _stable_json_sha256(command_records),
+    }
+    artifact.write_text(json.dumps(payload, sort_keys=True))
+    return artifact
+
+
+def _write_rollup_inputs(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path, Path, Path, Path]:
     prompt, vulkan, hip, model, fake_tokenize = _write_backend_inputs(tmp_path)
     docs = tmp_path / "STEPFUN.md"
     resource = tmp_path / "resource.json"
+    helper_readiness = _write_helper_readiness_artifact(tmp_path)
     # The backend helper writes a Vulkan oracle pair suitable for oracle matrix tests.
     # The correctness-status/KV rollup fixtures expect the fuller canonical prompt
     # fixture shape, so overwrite only the prompt with the shared StepFun test fixture.
     _write_prompt_artifact(prompt)
     _write_docs(docs)
     _write_resource_artifact(resource)
-    return prompt, vulkan, hip, docs, resource, fake_tokenize
+    return prompt, vulkan, hip, docs, resource, fake_tokenize, helper_readiness
 
 
 def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     tmp_path: Path,
 ) -> None:
-    prompt, oracle, hip, docs, resource, fake_tokenize = _write_rollup_inputs(tmp_path)
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness = (
+        _write_rollup_inputs(tmp_path)
+    )
 
     rollup = build_remaining_blockers_rollup(
         prompt_artifact=prompt,
         oracle_artifact=oracle,
         hip_artifact=hip,
         resource_artifact=resource,
+        helper_readiness_artifact=helper_readiness,
         docs=docs,
         llama_tokenize=fake_tokenize,
         tokenizer_model=tmp_path / "model.gguf",
@@ -174,6 +222,26 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     assert oracle_blocker["llamacpp_logits_helper_readiness_generator_command"] == (
         "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
     )
+    assert oracle_blocker["llamacpp_logits_helper_readiness_status"] == "blocked"
+    assert oracle_blocker["llamacpp_logits_helper_readiness_missing_evidence"] == [
+        "llama_cpp_token_ids_helper_patch_applied",
+        "llama_debug_retained_token_ids_input_present",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    command_records = oracle_blocker[
+        "llamacpp_logits_helper_required_next_command_records"
+    ]
+    assert [record["kind"] for record in command_records] == [
+        "apply_retained_token_helper_patch",
+        "build_llama_debug_helper",
+        "capture_same_prompt_logits",
+    ]
+    assert oracle_blocker[
+        "llamacpp_logits_helper_required_next_command_records_sha256"
+    ] == _stable_json_sha256(command_records)
+    assert rollup["source_artifact_sha256"][
+        "llamacpp_logits_helper_readiness"
+    ] == _stable_json_sha256(json.loads(helper_readiness.read_text()))
     assert kv_blocker["readiness_gate"] == "kv_backed_decode"
     assert kv_blocker["generator_command_kind"] == "kv_blocker_status"
     assert kv_blocker["kv_decode_dispatch_ready"] is True
@@ -289,7 +357,9 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
 
 
 def test_stepfun_remaining_blockers_rollup_cli_writes_artifact(tmp_path: Path) -> None:
-    prompt, oracle, hip, docs, resource, fake_tokenize = _write_rollup_inputs(tmp_path)
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness = (
+        _write_rollup_inputs(tmp_path)
+    )
     output = tmp_path / "rollup.json"
 
     rc = main(
@@ -304,6 +374,8 @@ def test_stepfun_remaining_blockers_rollup_cli_writes_artifact(tmp_path: Path) -
             str(docs),
             "--resource-artifact",
             str(resource),
+            "--helper-readiness-artifact",
+            str(helper_readiness),
             "--llama-tokenize",
             str(fake_tokenize),
             "--tokenizer-model",
@@ -328,7 +400,9 @@ def test_stepfun_remaining_blockers_rollup_cli_writes_artifact(tmp_path: Path) -
 
 
 def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> None:
-    prompt, oracle, hip, docs, resource, fake_tokenize = _write_rollup_inputs(tmp_path)
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness = (
+        _write_rollup_inputs(tmp_path)
+    )
     output = tmp_path / "compact.json"
     base_args = [
         "--prompt-artifact",
@@ -341,6 +415,8 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
         str(docs),
         "--resource-artifact",
         str(resource),
+        "--helper-readiness-artifact",
+        str(helper_readiness),
         "--llama-tokenize",
         str(fake_tokenize),
         "--tokenizer-model",

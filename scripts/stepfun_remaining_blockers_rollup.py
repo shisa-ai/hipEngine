@@ -10,6 +10,7 @@ parity, KV-backed decode readiness, e2e readiness, or performance.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -20,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts import stepfun_correctness_status as status_mod
 from scripts import stepfun_kv_blocker_status as kv_status
+from scripts import stepfun_llamacpp_logits_helper_readiness as helper_readiness
 from scripts import stepfun_oracle_backend_matrix as backend_matrix
 
 DEFAULT_OUTPUT = Path(
@@ -53,6 +55,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=status_mod.DEFAULT_RESOURCE_ARTIFACT,
         help="StepFun text-resource dry-run artifact used by the KV blocker.",
+    )
+    parser.add_argument(
+        "--helper-readiness-artifact",
+        type=Path,
+        default=helper_readiness.DEFAULT_OUTPUT,
+        help="Retained llama.cpp retained-token helper readiness artifact.",
     )
     parser.add_argument(
         "--docs",
@@ -135,6 +143,16 @@ def _docs_open_partial_summary(status: dict[str, object]) -> dict[str, object]:
         "first_item": items[0] if items else None,
         "last_item": items[-1] if items else None,
     }
+
+
+def _load_json_object(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _readiness_summary(status: dict[str, object]) -> dict[str, object]:
@@ -235,6 +253,7 @@ def build_remaining_blockers_rollup(
     oracle_artifact: Path = status_mod.DEFAULT_ORACLE_ARTIFACT,
     hip_artifact: Path = backend_matrix.DEFAULT_HIP_ARTIFACT,
     resource_artifact: Path = status_mod.DEFAULT_RESOURCE_ARTIFACT,
+    helper_readiness_artifact: Path = helper_readiness.DEFAULT_OUTPUT,
     docs: Path = status_mod.DEFAULT_DOCS_PATH,
     llama_tokenize: Path = backend_matrix.token_mismatch.DEFAULT_LLAMA_TOKENIZE,
     tokenizer_model: Path = backend_matrix.token_mismatch.DEFAULT_TOKENIZER_MODEL,
@@ -265,6 +284,7 @@ def build_remaining_blockers_rollup(
         resource_artifact=resource_artifact,
         artifact_date=artifact_date,
     )
+    helper_readiness_payload = _load_json_object(helper_readiness_artifact)
     docs_summary = _docs_open_partial_summary(status)
     readiness = _readiness_summary(status)
     commands = _generator_commands()
@@ -324,6 +344,10 @@ def build_remaining_blockers_rollup(
                 ),
                 "llamacpp_logits_helper_readiness_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json",
                 "llamacpp_logits_helper_readiness_generator_command": commands["llamacpp_logits_helper_readiness"],
+                "llamacpp_logits_helper_readiness_status": helper_readiness_payload.get("status"),
+                "llamacpp_logits_helper_readiness_missing_evidence": helper_readiness_payload.get("missing_evidence"),
+                "llamacpp_logits_helper_required_next_command_records": helper_readiness_payload.get("required_next_command_records"),
+                "llamacpp_logits_helper_required_next_command_records_sha256": helper_readiness_payload.get("required_next_command_records_sha256"),
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {
@@ -354,6 +378,9 @@ def build_remaining_blockers_rollup(
             "status": status_mod._stable_json_sha256(status),
             "oracle_backend_matrix": status_mod._stable_json_sha256(oracle_matrix),
             "kv_blocker_status": status_mod._stable_json_sha256(kv_blocker),
+            "llamacpp_logits_helper_readiness": status_mod._stable_json_sha256(
+                helper_readiness_payload
+            ),
         },
         "no_claim_policy": {
             "oracle_parity_claim_allowed": False,
@@ -377,6 +404,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         oracle_artifact=args.oracle_artifact,
         hip_artifact=args.hip_artifact,
         resource_artifact=args.resource_artifact,
+        helper_readiness_artifact=args.helper_readiness_artifact,
         docs=args.docs,
         llama_tokenize=args.llama_tokenize,
         tokenizer_model=args.tokenizer_model,
