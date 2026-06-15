@@ -433,6 +433,14 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "B4": "partial_trace_did_not_exercise_full_budget",
     }
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+    assert matrix["all_accepted_per_output_metrics_comparable"] is False
+    assert matrix["accepted_per_output_status_by_budget"] == {
+        "B1": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+        "B2": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+        "B3": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+        "B4": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+    }
+    assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_native_runtime_kernels_ready"] is False
     assert matrix["all_optimization_kernels_ready"] is False
     assert matrix["readiness_by_budget"]["B1"] == {
@@ -444,6 +452,7 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "hidden_seed_contract_precheck": True,
         "exactness_gate": "passed",
         "llamacpp_trace_budget_coverage": "full_requested_budget_exercised",
+        "accepted_per_output_status": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
         "native_runtime_kernels_ready": False,
         "optimization_kernels_ready": False,
         "missing_native_runtime_keys": [
@@ -496,6 +505,8 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert "artifacts" not in matrix
     assert matrix["all_llamacpp_trace_budgets_full"] is False
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+    assert matrix["all_accepted_per_output_metrics_comparable"] is False
+    assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
     assert (

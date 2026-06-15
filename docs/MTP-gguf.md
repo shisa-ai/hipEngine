@@ -338,8 +338,11 @@ metrics-contract status, and blocker codes without requiring reviewers to inspec
 each full child artifact. It also includes matrix-level
 `llamacpp_trace_budget_coverage_by_budget`,
 `partial_llamacpp_trace_budget_budgets`, and
-`all_llamacpp_trace_budgets_full` rollups; add `--compact-matrix` to omit full
-child artifacts for compact benchmark evidence. Use
+`all_llamacpp_trace_budgets_full` rollups, plus accepted/output denominator
+comparability rollups (`accepted_per_output_status_by_budget`,
+`noncomparable_accepted_per_output_budgets`, and
+`all_accepted_per_output_metrics_comparable`); add `--compact-matrix` to omit
+full child artifacts for compact benchmark evidence. Use
 `--fail-on-partial-trace-budget` to return exit code `3` when a single-budget or
 matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
@@ -914,7 +917,8 @@ is now answered by the M1 required/optional table.)
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
       `readiness_by_budget` parity/preflight/native-key status plus per-budget
-      and matrix-level llama.cpp trace budget coverage (`--compact-matrix` omits
+      and matrix-level llama.cpp trace budget coverage and accepted/output
+      denominator comparability (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
       trace provenance); actual B2-B4

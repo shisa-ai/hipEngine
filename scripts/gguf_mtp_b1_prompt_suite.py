@@ -64,6 +64,8 @@ DEFAULT_SAMPLING_BY_DRAFT_MAX = {
 DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json")
 FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
 PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
+ACCEPTED_OUTPUT_COMPARABLE = "computed"
+ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = "not_comparable_debug_trace_missing_visible_output_count"
 
 
 class B1PromptSuitePreflightError(RuntimeError):
@@ -384,9 +386,9 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
         "accepted_per_output": None
         if visible_output_token_count is None
         else float(accepted_draft_tokens) / float(visible_output_token_count),
-        "accepted_per_output_status": "not_comparable_debug_trace_missing_visible_output_count"
+        "accepted_per_output_status": ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE
         if visible_output_token_count is None
-        else "computed",
+        else ACCEPTED_OUTPUT_COMPARABLE,
         "denominators": {
             "accepted_per_draft": "accepted_draft_tokens / generated_draft_tokens",
             "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
@@ -634,6 +636,9 @@ def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
         "hidden_seed_contract_precheck": artifact["hidden_seed_contract_precheck"]["passed"],
         "exactness_gate": artifact["execution"]["exactness_gate"],
         "llamacpp_trace_budget_coverage": artifact["llamacpp_trace_oracle"]["budget_coverage"],
+        "accepted_per_output_status": artifact["llamacpp_trace_oracle"]["denominator_metrics"][
+            "accepted_per_output_status"
+        ],
         "native_runtime_kernels_ready": artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"],
         "optimization_kernels_ready": artifact["runtime_kernel_precheck"]["optimization_kernels_ready"],
         "missing_native_runtime_keys": artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"],
@@ -681,6 +686,15 @@ def build_b1_b4_prompt_suite_matrix(
         for budget, coverage in trace_budget_coverage_by_budget.items()
         if coverage != FULL_TRACE_BUDGET_COVERAGE
     ]
+    accepted_per_output_status_by_budget = {
+        budget: readiness["accepted_per_output_status"]
+        for budget, readiness in readiness_by_budget.items()
+    }
+    noncomparable_accepted_per_output_budgets = [
+        budget
+        for budget, status in accepted_per_output_status_by_budget.items()
+        if status != ACCEPTED_OUTPUT_COMPARABLE
+    ]
     matrix = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
@@ -704,6 +718,9 @@ def build_b1_b4_prompt_suite_matrix(
         "all_llamacpp_trace_budgets_full": not partial_trace_budget_budgets,
         "llamacpp_trace_budget_coverage_by_budget": trace_budget_coverage_by_budget,
         "partial_llamacpp_trace_budget_budgets": partial_trace_budget_budgets,
+        "all_accepted_per_output_metrics_comparable": not noncomparable_accepted_per_output_budgets,
+        "accepted_per_output_status_by_budget": accepted_per_output_status_by_budget,
+        "noncomparable_accepted_per_output_budgets": noncomparable_accepted_per_output_budgets,
         "all_native_runtime_kernels_ready": all(
             item["runtime_kernel_precheck"]["native_runtime_kernels_ready"] for item in artifacts
         ),
