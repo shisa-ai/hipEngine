@@ -41179,3 +41179,34 @@ git diff --check
 ```
 
 Results: targeted logits-plan/rollup tests passed (`7` tests); compact outputs were `"blocked"`, `true`, and `["identify_or_add_logits_dump_entrypoint", "capture_same_prompt_llamacpp_logits", "compare_host_vs_llamacpp_logits", "refresh_oracle_handoff_artifacts"]`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `2517c8f6c498967cc21ba6c9050482ed06bcecb0b74b3215103fb6f67a2c1ae5`; remaining-blockers file SHA `77f0ab311b1cf8679453d7e581daaf5aa5b436a41c998623fef4fee909e43348`; correctness-status file SHA `9254bffc0b713e0878768e7423b91fd10051dcd683aa88ec3f21d472e6acb196`; final-blocker file SHA `794290e87795dc07e14c174119fcf9bc8f04d0773aafa68beb4a8bfd49d724c0`; handoff file SHA `162ec7ae8c8e80b1f16f3ec0eb2ddf5cea5b65a938645acebcd7f0856d527014`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp logits entrypoint inventory
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 500. Added `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py`, a retained inventory that scans the local Vulkan llama.cpp build binaries and selected source files for same-prompt logits dump entrypoint candidates, plus `tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the logits-entrypoint inventory artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json` reports `status=blocked`, `ready=false`, `built_logits_dump_binary_present=false`, and missing evidence `built_llamacpp_logits_dump_binary_present` plus `llama_debug_binary_built`. Built binaries found under `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin` do not expose a logits dump marker. Source-level candidates are present: `examples/debug/debug.cpp` (`params.save_logits`, `llama_get_logits_ith`, `save_output_data`), `common/arg.cpp` (`--save-logits`, `--logits-output-dir`, `--save-all-logits`, `--kl-divergence-base`), `include/llama.h` (`llama_get_logits`, `llama_get_logits_ith`, `llama_get_sampled_logits_ith`), and `examples/batched/batched.cpp` (`batch.logits`, `llama_decode`, `llama_sampler_sample`). This narrows the logits preflight blocker to building/adding a logits-dump entrypoint, but does not resolve oracle parity; canonical missing evidence remains `generated_text_matches_target`. Inventory file SHA is `d0c9410fc3476824af0d424bee37921c58c9fe7aa7ec0ad9a2dcd38834596cef`; stable payload SHA from `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only` is `7540780527b93e611520a360dba9ab8d2846290a8dbaad144cb083e30f9d9038`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_entrypoint_inventory.py tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --status-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --built-logits-binary-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --source-candidates-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted logits-entrypoint-inventory/rollup tests passed (`8` tests); compact outputs were `"blocked"`, `false`, and the four source-level candidate records; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `82cb00da04201a82021f96c1f891da705117f8abe0950afbae84edea2aa522b3`; remaining-blockers file SHA `45dfe773cb84ee6b0a34ca4a4d2b2aca4550d5dd2e225395680cacbc58f589dc`; correctness-status file SHA `b8baad7f33efd15ec9978ddc728b95dde0a2d240ffd6292e232242468e5ccb3b`; final-blocker file SHA `f7dfde20b15a9c34c8b1b3719498695799ab0a321f53475d4cf44094b964bade`; handoff file SHA `8d1ee25d9c7e0d56d4ffdaa3a7a52be7d1cfbf58c7bde06fa76e5f39d2c5f36e`; full StepFun guard passed; `git diff --check` passed.

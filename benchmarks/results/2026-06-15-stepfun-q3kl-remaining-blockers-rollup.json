@@ -8,6 +8,7 @@
     "kv_blocker_status": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
     "kv_evidence_preflight": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
     "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
+    "llamacpp_logits_entrypoint_inventory": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
     "llamacpp_logits_plan": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
     "llamacpp_logits_preflight": "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
@@ -97,6 +98,8 @@
       "generator_command_kind": "oracle_backend_matrix",
       "host_logit_margin_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json",
       "host_logit_margin_generator_command": "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty",
+      "llamacpp_logits_entrypoint_inventory_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json",
+      "llamacpp_logits_entrypoint_inventory_generator_command": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
       "llamacpp_logits_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
       "llamacpp_logits_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
       "llamacpp_logits_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
@@ -261,9 +264,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "4b11574e175580422a15719298e5b911ba0a394f7ca9c7f526b0648b7aef651b",
+    "kv_blocker_status": "c8f3a958fe2aee4f8027163e34b6e37c2e3a12fe4439fcfed373ee16c6a477c2",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "e6a7bdd3e29ff160926462ff32845df9ba0954a588c6c23da437b978a213f97e"
+    "status": "7dd7a0ece2481f4707039f6140d899c9e916ae6720fd0e031301fcbc02278b25"
   },
   "status": "blocked"
 }

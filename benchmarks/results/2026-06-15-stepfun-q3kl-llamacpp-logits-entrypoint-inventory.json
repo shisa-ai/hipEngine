@@ -1,0 +1,267 @@
+{
+  "artifact_kind": "stepfun_llamacpp_logits_entrypoint_inventory",
+  "bin_dir": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin",
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "blocked_reason": "source-level logits APIs/examples exist but no ready built logits-dump binary is present",
+  "built_binary_count": 4,
+  "built_binary_records": [
+    {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "logit_bias_only": false,
+      "logits_dump_markers": [],
+      "name": "llama-bench",
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-bench"
+    },
+    {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "logit_bias_only": true,
+      "logits_dump_markers": [],
+      "name": "llama-cli",
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-cli"
+    },
+    {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "logit_bias_only": true,
+      "logits_dump_markers": [],
+      "name": "llama-completion",
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-completion"
+    },
+    {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "logit_bias_only": false,
+      "logits_dump_markers": [],
+      "name": "llama-tokenize",
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize"
+    }
+  ],
+  "built_logits_dump_binaries": [],
+  "built_logits_dump_binary_present": false,
+  "date": "2026-06-15",
+  "help_markers_checked": [
+    "--save-logits",
+    "--logits-output-dir",
+    "--save-all-logits",
+    "--kl-divergence-base",
+    "--logits",
+    "--logits-file",
+    "--dump-logits",
+    "--logprobs",
+    "--top-logprobs"
+  ],
+  "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+  "missing_evidence": [
+    "built_llamacpp_logits_dump_binary_present",
+    "llama_debug_binary_built"
+  ],
+  "next_action": "build or add a llama.cpp logits-dump entrypoint, preferably from examples/debug/debug.cpp or a minimal helper using llama_get_logits_ith, then refresh the logits preflight",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This inventory only records logits entrypoint availability; generated_text_matches_target remains unresolved."
+  },
+  "plan_artifact": {
+    "artifact_kind": "stepfun_llamacpp_logits_plan",
+    "exists": true,
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
+    "sha256": "34faf59520ea125e4a6c52018858ba7baf6f23d91bee09e5001a4d12ac852a1b",
+    "status": "blocked"
+  },
+  "preflight_artifact": {
+    "artifact_kind": "stepfun_llamacpp_logits_preflight",
+    "exists": true,
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
+    "sha256": "82c5ad55ab685614a543fe2d602fa07f544371ab522362d95e88873c27d5ec67",
+    "status": "blocked"
+  },
+  "ready": false,
+  "schema_version": 1,
+  "source_candidate_count": 4,
+  "source_candidates": [
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": "llama-debug",
+      "expected_binary_built": false,
+      "markers_checked": [
+        "params.save_logits",
+        "llama_get_logits_ith",
+        "save_output_data"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "params.save_logits",
+        "llama_get_logits_ith",
+        "save_output_data"
+      ],
+      "path": "examples/debug/debug.cpp",
+      "role": "existing llama-debug example that can save final logits via common debug args"
+    },
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": null,
+      "expected_binary_built": null,
+      "markers_checked": [
+        "--save-logits",
+        "--logits-output-dir",
+        "--save-all-logits",
+        "--kl-divergence-base"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "--save-logits",
+        "--logits-output-dir",
+        "--save-all-logits",
+        "--kl-divergence-base"
+      ],
+      "path": "common/arg.cpp",
+      "role": "common argument definitions for logits-related debug/perplexity flags"
+    },
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": null,
+      "expected_binary_built": null,
+      "markers_checked": [
+        "llama_get_logits",
+        "llama_get_logits_ith",
+        "llama_get_sampled_logits_ith"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "llama_get_logits",
+        "llama_get_logits_ith",
+        "llama_get_sampled_logits_ith"
+      ],
+      "path": "include/llama.h",
+      "role": "public C API for retrieving decoded logits"
+    },
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": "llama-batched",
+      "expected_binary_built": false,
+      "markers_checked": [
+        "batch.logits",
+        "llama_decode",
+        "llama_sampler_sample"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "batch.logits",
+        "llama_decode",
+        "llama_sampler_sample"
+      ],
+      "path": "examples/batched/batched.cpp",
+      "role": "minimal generation example showing batch.logits on the prompt tail"
+    }
+  ],
+  "source_logits_candidate_count": 4,
+  "source_logits_candidates": [
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": "llama-debug",
+      "expected_binary_built": false,
+      "markers_checked": [
+        "params.save_logits",
+        "llama_get_logits_ith",
+        "save_output_data"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "params.save_logits",
+        "llama_get_logits_ith",
+        "save_output_data"
+      ],
+      "path": "examples/debug/debug.cpp",
+      "role": "existing llama-debug example that can save final logits via common debug args"
+    },
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": null,
+      "expected_binary_built": null,
+      "markers_checked": [
+        "--save-logits",
+        "--logits-output-dir",
+        "--save-all-logits",
+        "--kl-divergence-base"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "--save-logits",
+        "--logits-output-dir",
+        "--save-all-logits",
+        "--kl-divergence-base"
+      ],
+      "path": "common/arg.cpp",
+      "role": "common argument definitions for logits-related debug/perplexity flags"
+    },
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": null,
+      "expected_binary_built": null,
+      "markers_checked": [
+        "llama_get_logits",
+        "llama_get_logits_ith",
+        "llama_get_sampled_logits_ith"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "llama_get_logits",
+        "llama_get_logits_ith",
+        "llama_get_sampled_logits_ith"
+      ],
+      "path": "include/llama.h",
+      "role": "public C API for retrieving decoded logits"
+    },
+    {
+      "all_markers_present": true,
+      "candidate_kind": "source_only_or_api",
+      "exists": true,
+      "expected_binary": "llama-batched",
+      "expected_binary_built": false,
+      "markers_checked": [
+        "batch.logits",
+        "llama_decode",
+        "llama_sampler_sample"
+      ],
+      "markers_missing": [],
+      "markers_present": [
+        "batch.logits",
+        "llama_decode",
+        "llama_sampler_sample"
+      ],
+      "path": "examples/batched/batched.cpp",
+      "role": "minimal generation example showing batch.logits on the prompt tail"
+    }
+  ],
+  "status": "blocked"
+}
