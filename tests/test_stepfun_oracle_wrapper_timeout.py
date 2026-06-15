@@ -31,18 +31,17 @@ def test_stepfun_180s_oracle_wrapper_timeout_artifact_is_blocking_evidence() -> 
 
     # The longer attempt was interrupted by the outer pi wrapper before the helper
     # rewrote the canonical machine-readable oracle artifact. Later helper
-    # refreshes update the canonical timeout artifact while the wrapper keeps its
-    # historical after-attempt metadata as evidence.
+    # refreshes can supersede the canonical file with newer oracle evidence while
+    # the wrapper keeps its historical after-attempt timeout metadata as evidence.
     assert artifact["output_artifact_status_after_attempt"] == "timeout"
     assert artifact["output_artifact_timeout_s_after_attempt"] == 60.0
-    assert canonical["status"] == "timeout"
-    assert canonical["timeout_s"] >= artifact["output_artifact_timeout_s_after_attempt"]
-    assert canonical["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
+    assert canonical["status"] == "executed"
+    assert canonical["returncode"] == 0
+    assert canonical["oracle_blocker_kind"] is None
+    assert canonical["generated_text"] == "The\n\n"
+    assert canonical["text_matches_expected_exact"] is False
+    assert canonical["text_matches_expected_stripped"] is False
     assert artifact["output_artifact_sha256_after_attempt"] != canonical_sha256
-    timeout_termination = canonical["timeout_termination"]
-    assert timeout_termination.get("timeout_reached") is True or timeout_termination.get(
-        "termination_method"
-    ) == "os.killpg"
     command = artifact["command"]
     assert command[:2] == ["python3", "scripts/stepfun_llamacpp_oracle.py"]
     assert "--timeout-s" in command

@@ -40385,3 +40385,55 @@ sha256sum benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json ben
 ```
 
 Results: targeted correctness-status tests passed (`224` tests); compact source-artifact-count CLI emitted `5` and SHA `ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d`; persisted handoff/status/manifest verification commands returned `"match"`; P0-P12 open/partial checklist count stayed at `2`; full StepFun guard passed (`363` tests plus CPU-reference fixture checks). Refreshed artifact hashes: correctness-status file SHA `075b3c4fa89c3f5ab155447c4b3c5afa9c3e8e10cd828f283bad181e41e42b9c`, `source_artifacts_sha256=4160a8fd977d6d4868152f816fbf5baf18d347e45c6424b6d9841642f65bf570`; final-blocker file SHA `d49ba7101fec178e8518a61c6b26475e2fb9a02918080d7d18efc07f4056b942`, `status_provenance_sha256=d04c8a7da92075392c0613419fd795c6c12bd8a1dc88576d66cc0ccdfea23dc3`; handoff file SHA `67bbf1f347b1257a0441767d7545a2c6a94a83abf026569cfe6ad675ea9aba2c`, `digest_summary_sha256=114c3dd137a949d082e7cdd245ce4a79019b4a075e29d1095fba79e0ab688f70`. Prompt-verifier checks found no runtime `import torch`, no backend/quant branch matches in StepFun status/final-blocker/helper/checker scripts, no unsupported performance/throughput claims in this diff, and `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L llama.cpp oracle now executes but mismatches
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 472. Resumed in the clean `/home/lhl/hipEngine-stepfun-3.7-flash` worktree to unblock the StepFun oracle artifact. Located current StepFun GGUF shards under `/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf` and current llama.cpp Vulkan build under `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release`; built the missing `llama-cli` and `llama-completion` targets in that external build tree. A `llama-cli` attempt was stopped after it produced only a pre-launch partial artifact / long-running load state; the final retained oracle run used `llama-completion` with diagnostic logs and GPU offload.
+
+Retained oracle command:
+
+```bash
+python3 scripts/stepfun_llamacpp_oracle.py \
+  --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json \
+  --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-completion \
+  --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf \
+  --execute --timeout-s 900 --diagnostic-logs \
+  --llama-arg=--gpu-layers --llama-arg=999 \
+  --llama-arg=--no-warmup --llama-arg=--no-perf \
+  --llama-arg=--no-conversation --llama-arg=--special \
+  --llama-arg=--override-kv --llama-arg=tokenizer.ggml.add_bos_token=bool:false \
+  --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --pretty
+```
+
+Result: the canonical legacy-named oracle artifact now records `status=executed`, `returncode=0`, `elapsed_s=172.72431970099933`, no timeout or Step35 architecture blocker, and `generated_text="The\n\n"`. This is a comparable oracle run but **not** oracle parity: the host-composed target remains token id `369`, text ` |`, so `text_matches_expected_exact=false` and `text_matches_expected_stripped=false`; `scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --status-only` returns `"failed"` with missing evidence `generated_text_matches_target` / `oracle_exact_text_match`.
+
+Updated `docs/STEPFUN.md` to describe the new executed-mismatch blocker, refreshed the canonical oracle/status/final-blocker/handoff artifacts, and adjusted `tests/test_stepfun_oracle_wrapper_timeout.py` so the historical wrapper-timeout source can coexist with newer canonical oracle evidence. No StepFun e2e/performance claim is made; `oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`, and P0-P12 open/partial checklist count remains `2`.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --summary-only --pretty
+python3 -m compileall -q tests/test_stepfun_oracle_wrapper_timeout.py scripts/stepfun_correctness_status.py scripts/stepfun_final_blocker_manifest.py scripts/stepfun_handoff_check.py scripts/stepfun_oracle_artifact_check.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 scripts/stepfun_correctness_status.py --docs-open-partial-state-line-texts-joined-only
+python3 scripts/stepfun_correctness_status.py --blocked-gates-joined-only
+python3 scripts/stepfun_correctness_status.py --blocker-kinds-joined-only
+PYTHONPATH=tests:. python3 - <<'PY'
+from test_stepfun_oracle_wrapper_timeout import test_stepfun_180s_oracle_wrapper_timeout_artifact_is_blocking_evidence
+test_stepfun_180s_oracle_wrapper_timeout_artifact_is_blocking_evidence()
+print('manual wrapper-timeout canonical evidence check passed')
+PY
+python3 scripts/check_fixtures.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Verification outputs: handoff/status/manifest verification all returned `"match"`; oracle checker summary returned `status=failed`, `missing_evidence=["generated_text_matches_target"]`; P0-P12 open/partial count stayed `2`; blocked gates remained `oracle_parity|kv_backed_decode|e2e_inference`; blocker kinds remained `oracle_parity_blocked|kv_backed_decode_not_wired`; manual wrapper-timeout canonical evidence check passed; full StepFun guard passed after installing the missing local test-runner dependencies (`pytest` and `tokenizers`) into the active shell environment (`376` tests run with expected skips, plus CPU-reference fixture checks); `git diff --check` passed.
+
+Artifact hashes after refresh: oracle artifact SHA `9852244f0b322a8c29ed9319f6fae972aa7beecd242729e53f58b23f18f32fe8`; correctness-status SHA `05b4310a75d1fc60ca9438c902f637cc995ea8bf86475fb4afe3a7a2f2dd9198`; final-blocker SHA `2677fe0b612e5db5da1b78e0a330db5333035605536412387899eab427b45858`; handoff SHA `1889fda7db7ba9c684bb8d9c8c65fb6f4e8574723b517f7ba8296c4694e51c77`.

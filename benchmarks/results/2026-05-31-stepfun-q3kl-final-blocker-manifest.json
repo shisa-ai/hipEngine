@@ -6,18 +6,18 @@
   "artifact_status_handoff": [
     {
       "artifact_file_present": true,
-      "current_blocker_kind": "llama_cpp_oracle_timeout",
-      "current_returncode": null,
-      "current_status": "timeout",
+      "current_blocker_kind": null,
+      "current_returncode": 0,
+      "current_status": "executed",
       "evidence_satisfied": false,
-      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_evidence": "oracle_exact_text_match",
       "missing": true,
-      "missing_reason": "oracle_completed_successfully",
+      "missing_reason": "oracle_exact_text_match",
       "name": "llama_cpp_oracle_success_artifact",
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
-      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
       "required_for": "oracle_parity_blocked",
       "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "validator_command": "python3 scripts/stepfun_oracle_artifact_check.py --artifact <llama_cpp_oracle_success_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
@@ -141,15 +141,15 @@
       "validator_success_status": "passed"
     }
   ],
-  "artifact_status_handoff_sha256": "570b7eb9711cf76e59d966756dd105abbf82ea8f377d613aeff6e353658df1af",
+  "artifact_status_handoff_sha256": "37f8a32bdb164c871ab65409d9b41a798bdd9165c348b88aab18a391350ee703",
   "artifacts_to_collect": [
     {
-      "current_blocker_kind": "llama_cpp_oracle_timeout",
-      "current_returncode": null,
-      "current_status": "timeout",
+      "current_blocker_kind": null,
+      "current_returncode": 0,
+      "current_status": "executed",
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
-      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_evidence": "oracle_exact_text_match",
       "name": "llama_cpp_oracle_success_artifact",
       "partial_output_handoff_safe": true,
       "partial_output_supervisor_signal_contract": {
@@ -170,9 +170,9 @@
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
-      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
       "required_for": "oracle_parity_blocked",
-      "source_sha256": "1de75fc87eb12a40c312efe3f61a6204442c8cbb88824c58f1ac1051fc959370",
+      "source_sha256": "9852244f0b322a8c29ed9319f6fae972aa7beecd242729e53f58b23f18f32fe8",
       "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "validator_command": "python3 scripts/stepfun_oracle_artifact_check.py --artifact <llama_cpp_oracle_success_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
       "validator_command_concrete": "python3 scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
@@ -275,7 +275,7 @@
       "validator_success_status": "passed"
     }
   ],
-  "artifacts_to_collect_sha256": "5fc41a612d8b593043cc9119fc2e89fa143a60f2d95c0a93778a0129dab51282",
+  "artifacts_to_collect_sha256": "e4c6edbd8112f17509f37ceed25dc9adeeaf7d753f1f46f56b34fb8ba4cfadb6",
   "blocked_gates": [
     "oracle_parity",
     "kv_backed_decode",
@@ -309,12 +309,12 @@
   "entries": [
     {
       "artifact_handoff": {
-        "current_blocker_kind": "llama_cpp_oracle_timeout",
-        "current_returncode": null,
-        "current_status": "timeout",
+        "current_blocker_kind": null,
+        "current_returncode": 0,
+        "current_status": "executed",
         "expected_next_token_id": 369,
         "expected_next_token_text": " |",
-        "first_missing_evidence": "oracle_completed_successfully",
+        "first_missing_evidence": "oracle_exact_text_match",
         "name": "llama_cpp_oracle_success_artifact",
         "partial_output_handoff_safe": true,
         "partial_output_supervisor_signal_contract": {
@@ -335,9 +335,9 @@
         "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
         "readiness_gate": "oracle_parity",
         "recommended_command_kind": "oracle_helper_long_timeout_command",
-        "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+        "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
         "required_for": "oracle_parity_blocked",
-        "source_sha256": "1de75fc87eb12a40c312efe3f61a6204442c8cbb88824c58f1ac1051fc959370",
+        "source_sha256": "9852244f0b322a8c29ed9319f6fae972aa7beecd242729e53f58b23f18f32fe8",
         "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
         "validator_command": "python3 scripts/stepfun_oracle_artifact_check.py --artifact <llama_cpp_oracle_success_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
         "validator_command_concrete": "python3 scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
@@ -364,18 +364,16 @@
       },
       "blocker_kind": "oracle_parity_blocked",
       "checklist_item": "P11 llama.cpp greedy next-token/logit comparison",
-      "first_missing_evidence": "oracle_completed_successfully",
-      "gate_blocked_by": "llama_cpp_oracle_timeout",
+      "first_missing_evidence": "oracle_exact_text_match",
+      "gate_blocked_by": null,
       "gate_ready": false,
       "missing_evidence": [
-        "oracle_completed_successfully",
-        "oracle_generated_comparable_text",
         "oracle_exact_text_match"
       ],
       "queue_index": 0,
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
-      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress.",
       "success_criteria": [
         "oracle_gap_report.status is ready",
@@ -509,13 +507,13 @@
       ]
     }
   ],
-  "entries_sha256": "b9491e2cda94df5eb098ded6e3994fb0b6b9e7dd22195c32eb59542184182bc0",
+  "entries_sha256": "dc6690ba87438dd1075d58483cf5bb1fbb1273b05a968e16a643e97af0a7cfe0",
   "entry_count": 2,
   "gate_status_handoff": [
     {
-      "blocked_by": "llama_cpp_oracle_timeout",
+      "blocked_by": null,
       "blocker_kind": "oracle_parity_blocked",
-      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_evidence": "oracle_exact_text_match",
       "readiness_gate": "oracle_parity",
       "ready": false,
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress.",
@@ -555,23 +553,23 @@
       "success_criteria": []
     }
   ],
-  "gate_status_handoff_sha256": "e4fc3075353f0d721a4a1da19163aaafd96de9f2409a6e035addb40359b3e7b3",
+  "gate_status_handoff_sha256": "8b4ec43230d5d1da4a3a61e662f62ac332b9f96e42efb35ec193ccbb07777b8c",
   "missing_artifact_count": 3,
   "missing_artifacts_handoff": [
     {
       "artifact_file_present": true,
-      "current_blocker_kind": "llama_cpp_oracle_timeout",
-      "current_returncode": null,
-      "current_status": "timeout",
+      "current_blocker_kind": null,
+      "current_returncode": 0,
+      "current_status": "executed",
       "evidence_satisfied": false,
-      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_evidence": "oracle_exact_text_match",
       "missing": true,
-      "missing_reason": "oracle_completed_successfully",
+      "missing_reason": "oracle_exact_text_match",
       "name": "llama_cpp_oracle_success_artifact",
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
-      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
       "required_for": "oracle_parity_blocked",
       "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "validator_command": "python3 scripts/stepfun_oracle_artifact_check.py --artifact <llama_cpp_oracle_success_artifact.json> --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
@@ -695,7 +693,7 @@
       "validator_success_status": "passed"
     }
   ],
-  "missing_artifacts_handoff_sha256": "570b7eb9711cf76e59d966756dd105abbf82ea8f377d613aeff6e353658df1af",
+  "missing_artifacts_handoff_sha256": "37f8a32bdb164c871ab65409d9b41a798bdd9165c348b88aab18a391350ee703",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
     "performance_claim_allowed": false,
@@ -712,10 +710,10 @@
       "partial_output_supervisor_signal_handoff_safe": true,
       "queue_index": 0,
       "readiness_gate": "oracle_parity",
-      "recommended_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900.0 --diagnostic-logs --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "recommended_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-completion --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900.0 --diagnostic-logs --llama-arg=--gpu-layers --llama-arg=999 --llama-arg=--no-warmup --llama-arg=--no-perf --llama-arg=--no-conversation --llama-arg=--special --llama-arg=--override-kv --llama-arg=tokenizer.ggml.add_bos_token=bool:false --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
       "recommended_command_reason": "oracle_timeout_retry_with_longer_timeout",
-      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
       "resource_artifact": null,
       "success_criteria": [
         "oracle_gap_report.status is ready",
@@ -749,7 +747,7 @@
       "writes_partial_output_before_launch": null
     }
   ],
-  "recommended_commands_handoff_sha256": "1e2e4164af4c36c51128d9897a3365a9e70cd3398d373d21d1d8d40f33fdae1b",
+  "recommended_commands_handoff_sha256": "f46f993d25508c306dcdf34e70b14109431eee0b113311ca228b9a0edcfef2ca",
   "remaining_blocker_count": 2,
   "remaining_blocker_kinds": [
     "oracle_parity_blocked",
@@ -758,23 +756,23 @@
   "schema_version": 1,
   "status": "blocked",
   "status_provenance": {
-    "handoff_summary_sha256": "1aeb98405057c0b3210de3d03a1eed8da45a5ed52c2e729a53674077a65862e0",
-    "next_action_commands_sha256": "dd508e6e3a62c886cf3b6d3308fce62b268309b0419def678383f4e0071e2c0a",
-    "oracle_partial_output_handoff_sha256": "bd0628cadd439eee98a671e02d58b8508e634ff94adbe9e633db10edb1072477",
-    "oracle_progress_sha256": "3bcd3b8b73a49ca26a9639378342b22327382870ddf9fc0964569b56c31c6e2c",
-    "readiness_summary_sha256": "34f8c2bca0a87cacd6263a4da72be065be257d8ca46fafb2152556d55fa8019a",
+    "handoff_summary_sha256": "3eca8a98ad2cb76784938efadb5b08898a855247cf0938b08dc3980391bd413f",
+    "next_action_commands_sha256": "8cbe625238b5b2e51914a2d479657fa73ae836d38205c29f45166748c5c59862",
+    "oracle_partial_output_handoff_sha256": "181b866b8e2625e8d0b02780bda484767aaa96350158c3b0fb5c738f809171a0",
+    "oracle_progress_sha256": "09e06b1655a5b56610a0550a8ad27a5add7d542d369b2420df6461cab1bd204f",
+    "readiness_summary_sha256": "feb3c02d3655691000a2177fc93f9bc59a2825ddad9cbe946a8ca1cde5be0df2",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "f005beb95720c2597828966f03430a5a8e215f4839db830db436fa23070b4ff7",
-        "size_bytes": 95919
+        "sha256": "449a8eac57900987c0ba5a117c07adf0da96615e60c7309867c867cae37d3771",
+        "size_bytes": 96114
       },
       "oracle": {
         "exists": true,
         "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
-        "sha256": "1de75fc87eb12a40c312efe3f61a6204442c8cbb88824c58f1ac1051fc959370",
-        "size_bytes": 4428
+        "sha256": "9852244f0b322a8c29ed9319f6fae972aa7beecd242729e53f58b23f18f32fe8",
+        "size_bytes": 6149
       },
       "oracle_wrapper_timeout": {
         "exists": true,
@@ -795,18 +793,18 @@
         "size_bytes": 178045
       }
     },
-    "source_artifacts_sha256": "4160a8fd977d6d4868152f816fbf5baf18d347e45c6424b6d9841642f65bf570",
+    "source_artifacts_sha256": "7a22a6ecadd50b7abc3c1597a3a1f4db6737e527515daeb92f5663f9d960a0c5",
     "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
   },
-  "status_provenance_sha256": "d04c8a7da92075392c0613419fd795c6c12bd8a1dc88576d66cc0ccdfea23dc3",
+  "status_provenance_sha256": "86804b3ea6bad7b6382bdedf73de78b2dc322bb9d3932e091398c9768681bf4c",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",
-      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_evidence": "oracle_exact_text_match",
       "gate_ready": false,
       "readiness_gate": "oracle_parity",
       "recommended_command_kind": "oracle_helper_long_timeout_command",
-      "recommended_command_sha256": "66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b",
+      "recommended_command_sha256": "73645c8c62ad5677de7853727e1a4edd158a5146418e81affc4ce912e518561d",
       "success_criteria": [
         "oracle_gap_report.status is ready",
         "oracle_gap_report.missing_preconditions is empty",
@@ -831,13 +829,13 @@
       ]
     }
   ],
-  "success_criteria_handoff_sha256": "6eb5966887a0cee64a956c2c8ac12b342adf5ca8a4670015b500b55243f1d3d9",
+  "success_criteria_handoff_sha256": "67cc99bc245c2a4067de636c4ef07323b52ac926d4878bc6bfd5ac600bf3ed6d",
   "validator_commands_handoff": [
     {
       "artifact_name": "llama_cpp_oracle_success_artifact",
       "evidence_satisfied": false,
       "missing": true,
-      "missing_reason": "oracle_completed_successfully",
+      "missing_reason": "oracle_exact_text_match",
       "readiness_gate": "oracle_parity",
       "required_for": "oracle_parity_blocked",
       "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
@@ -888,5 +886,5 @@
       "validator_success_status": "passed"
     }
   ],
-  "validator_commands_handoff_sha256": "7bbf4ed6c9740ad02d355b80f9944abe9addfe47bc87425d534c42214b325766"
+  "validator_commands_handoff_sha256": "b835afbc329c56f6620b4624658981896dabb92b9ac8accca4b851e1d0992ae6"
 }

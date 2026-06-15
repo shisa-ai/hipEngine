@@ -854,20 +854,20 @@ reporting.
   uses diagnostic logs and fails before generation because the local
   `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
   `step35` (`unknown model architecture: 'step35'`). A newer local Vulkan
-  llama.cpp build (`/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli`,
-  version `9197 (fcae601e4)`) accepts `step35` but bounded CPU/no-GPU oracle
-  attempts in
+  llama.cpp build (`/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-completion`,
+  version `9641 (6e9007ae6)`) accepts `step35` and, on 2026-06-15, completed a
+  GPU-offloaded deterministic one-token oracle run against `/models/gguf/` with
+  `--gpu-layers 999`, `--no-warmup`, `--no-perf`, `--no-conversation`,
+  `--special`, `--override-kv tokenizer.ggml.add_bos_token=bool:false`, and
+  diagnostic logs. The canonical legacy-named artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
-  still have not produced a comparable token. The canonical artifact first
-  recorded a 60 s internal timeout (refreshed 2026-06-02 with
-  `elapsed_s=61.75`) and was refreshed on 2026-06-04 after the recommended
-  900 s rerun hit the outer pi supervision window before the helper rewrote its
-  pre-launch partial artifact. It now records `status=timeout`,
-  `timeout_s=900.0`, `outer_tool_timeout_s=1000.0`,
-  `partial_artifact_reconciled_after_outer_timeout=true`,
-  `oracle_blocker_kind=llama_cpp_oracle_timeout`, no leftover `llama-cli`
-  process after the supervisor timeout, and `timeout_termination` provenance for
-  the timeout blocker. The oracle helper now also traps `SIGTERM`/`SIGINT` from
+  now records `status=executed`, `returncode=0`, `elapsed_s=172.72`,
+  `generated_text="The\n\n"`, and no timeout or Step35 architecture blocker;
+  the remaining oracle-parity evidence gap is the exact text mismatch versus the
+  host-composed expected token (`next_token_id=369`, decoded ` |`). Historical
+  CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
+  outer-supervisor timeout remain documented by git history and the separate
+  wrapper-timeout source artifact. The oracle helper now also traps `SIGTERM`/`SIGINT` from
   an outer supervisor, kills the `llama-cli` process group, and rewrites the
   pre-launch partial artifact with structured timeout provenance when it gets a
   graceful interruption window. `oracle_partial_output_handoff` and the
@@ -901,9 +901,9 @@ reporting.
   blocker polling. It also surfaces an `oracle_gap_report`
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
-  text ` |`, top-5 expected tokens, current timeout 900 s, no comparable
-  generated text, `timeout_termination` recorded, and the llama.cpp command
-  shell).
+  text ` |`, top-5 expected tokens, current executed oracle status, generated
+  text `The\n\n`, and the llama.cpp command shell), with only the exact generated
+  text match still missing for oracle parity.
   `scripts/stepfun_oracle_artifact_check.py` validates a future retained
   llama.cpp oracle-success artifact against that target: it requires successful
   status/return code, recorded llama.cpp binary/model metadata, no Step35
