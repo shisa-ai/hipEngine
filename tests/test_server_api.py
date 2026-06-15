@@ -13991,8 +13991,11 @@ def test_streaming_chat_completion_reports_strict_tool_schema_failure() -> None:
     )
 
     assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    assert '"command":7' not in response.text
     payloads = _sse_payloads(response.text)
     assert not any(payload["choices"][0]["delta"].get("tool_calls") for payload in payloads)
+    assert not any(payload["choices"][0]["delta"].get("content") for payload in payloads)
     assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
     assert payloads[-1]["choices"][0]["finish_details"] == _stateless_finish_details("schema_violation")
 

@@ -93549,3 +93549,18 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'continuation_resume_rejects_thinking_controls_without_consuming_handle or continuation_resume_rejects_messages_without_consuming_handle or completion_continuation_resume_rejects_prompt_without_consuming_handle or completion_continuation_resume_rejects_explicit_stop_without_consuming_handle or completion_continuation_resume_rejects_ignore_eos_without_consuming_handle'` -> `15 passed`.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-15 - Streaming strict-tool schema leakage guard
+
+Tightened the streaming strict-tool schema failure regression so it now asserts
+schema-violating tool-call output withholds raw `<tool_call>` markup, invalid
+arguments, parsed `delta.tool_calls`, and fallback content deltas. This keeps
+the fail-closed streaming contract explicit for schema violations, not only
+malformed tool-call JSON.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion_reports_strict_tool_schema_failure or streaming_chat_completion_reports_strict_tool_policy_failure or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call or streaming_chat_completion_malformed_tool_call_fails_closed'` -> `2 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion_reports_strict_tool_schema_failure or streaming_chat_completion_reports_strict_tool_name_failure or streaming_chat_completion_rejects_malformed_tool_call or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call'` -> `2 passed`.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
