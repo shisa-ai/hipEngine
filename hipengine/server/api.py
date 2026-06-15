@@ -4794,18 +4794,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     routing=routing_metadata,
                 )
                 scheduler_chunks = scheduler_chunks_by_index.get(index, ())
+                use_scheduler_logprobs = bool(request.logprobs)
+                scheduler_logprob_safe_text = (
+                    not use_scheduler_logprobs or _split_reasoning(text).content == text
+                )
                 use_scheduler_chunks = (
                     not request.tools
-                    and not request.logprobs
                     and not _structured_result_validation(request)
                     and not parsed.tool_calls
                     and not tool_validation.failed
                     and structured_failure is None
                     and structured_length_failure is None
+                    and scheduler_logprob_safe_text
                     and _scheduler_chunks_match_completion_text(
                         text,
                         scheduler_chunks,
-                        require_logprobs=False,
+                        require_logprobs=use_scheduler_logprobs,
                     )
                 )
                 if use_scheduler_chunks:
@@ -4816,6 +4820,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         scheduler_chunks,
                         finish_reason,
                         index=index,
+                        include_logprobs=use_scheduler_logprobs,
                         finish_details=finish_details,
                         token_accounting=token_accounting,
                         include_hipengine=include_hipengine,
@@ -6948,11 +6953,51 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
     if token_logprobs is not None or finish_details is not None or telemetry is not None:
         return GenerationOutput(
             text=str(getattr(value, "text", value)),
-            token_logprobs=tuple(token_logprobs or ()),
+            token_logprobs=_coerce_token_logprobs(token_logprobs),
             finish_details=finish_details,
             telemetry=telemetry,
         )
     return GenerationOutput(text=str(value))
+
+
+def _coerce_token_logprobs(value: Any) -> tuple[TokenLogprob, ...]:
+    if not value:
+        return ()
+    tokens: list[TokenLogprob] = []
+    for item in value:
+        if isinstance(item, TokenLogprob):
+            tokens.append(item)
+            continue
+        if isinstance(item, Mapping):
+            raw_top = item.get("top_logprobs", ()) or ()
+            top_logprobs = tuple(
+                (
+                    int(top.get("token_id")),
+                    str(top.get("token_text", top.get("token", ""))),
+                    float(top.get("logprob")),
+                )
+                if isinstance(top, Mapping)
+                else (int(top[0]), str(top[1]), float(top[2]))
+                for top in raw_top
+            )
+            tokens.append(
+                TokenLogprob(
+                    token_id=int(item.get("token_id")),
+                    token_text=str(item.get("token_text", item.get("token", ""))),
+                    logprob=(None if item.get("logprob") is None else float(item.get("logprob"))),
+                    top_logprobs=top_logprobs,
+                )
+            )
+            continue
+        tokens.append(
+            TokenLogprob(
+                token_id=int(getattr(item, "token_id")),
+                token_text=str(getattr(item, "token_text", getattr(item, "token", ""))),
+                logprob=getattr(item, "logprob", None),
+                top_logprobs=tuple(getattr(item, "top_logprobs", ()) or ()),
+            )
+        )
+    return tuple(tokens)
 
 
 def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
@@ -6964,14 +7009,19 @@ def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
     if token_logprobs is not None or finish_details is not None or telemetry is not None:
         return GenerationStreamChunk(
             text=str(getattr(value, "text", value)),
-            token_logprobs=tuple(token_logprobs or ()),
+            token_logprobs=_coerce_token_logprobs(token_logprobs),
             finish_details=finish_details,
             telemetry=telemetry,
         )
     if isinstance(value, Mapping) and (
         "text" in value or "token_logprobs" in value or "finish_details" in value or "telemetry" in value
     ):
-        return GenerationStreamChunk.from_value(value)
+        return GenerationStreamChunk(
+            text=str(value.get("text", "")),
+            token_logprobs=_coerce_token_logprobs(value.get("token_logprobs", ())),
+            finish_details=value.get("finish_details"),
+            telemetry=value.get("telemetry"),
+        )
     return GenerationStreamChunk(text=str(value))
 
 
@@ -11682,6 +11732,7 @@ def _chat_stream_scheduler_text_chunks(
     finish_reason: str,
     *,
     index: int = 0,
+    include_logprobs: bool = False,
     finish_details: Mapping[str, Any] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
@@ -11697,6 +11748,28 @@ def _chat_stream_scheduler_text_chunks(
         if stream_chunk is None:
             continue
         last_stream_chunk = stream_chunk
+        if include_logprobs:
+            token_payload = (
+                token_accounting.observe("answer", stream_chunk.text)
+                if token_accounting is not None
+                else None
+            )
+            yield _chat_stream_delta(
+                response_id,
+                created,
+                model,
+                "content",
+                stream_chunk.text,
+                index=index,
+                logprobs=_chat_stream_logprobs(stream_chunk, stream_chunk.text),
+                tokens=token_payload,
+                stream_chunk=_stream_chunk_with_phase(stream_chunk, "answer"),
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing,
+                phase="answer",
+            )
+            continue
         for delta_field, chunk in splitter.feed(stream_chunk.text):
             phase = "think" if delta_field == "reasoning_content" else "answer"
             token_payload = (

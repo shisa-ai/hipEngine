@@ -7891,6 +7891,231 @@ def test_streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supp
     assert fake.calls[0][1].top_logprobs == 1
 
 
+def test_streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            outputs = [
+                GenerationOutput(
+                    text="AB",
+                    token_logprobs=(
+                        TokenLogprob(token_id=100, token_text="A", logprob=-0.1),
+                        TokenLogprob(token_id=101, token_text="B", logprob=-0.2),
+                    ),
+                    finish_details=FinishDetails(reason="length", length_limit=2, sampler_mode="host_logits_sample"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=0,
+                        phase="done",
+                        sampler_mode="host_logits_sample",
+                    ),
+                ),
+                GenerationOutput(
+                    text="CD",
+                    token_logprobs=(
+                        TokenLogprob(token_id=200, token_text="C", logprob=-0.3),
+                        TokenLogprob(token_id=201, token_text="D", logprob=-0.4),
+                    ),
+                    finish_details=FinishDetails(reason="length", length_limit=2, sampler_mode="host_logits_sample"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=1,
+                        phase="done",
+                        sampler_mode="host_logits_sample",
+                    ),
+                ),
+            ]
+            chunk_texts = (("A", "B"), ("C", "D"))
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": request_id,
+                        "token_index": token_index,
+                        "token_id": 100 + request_id * 100 + token_index,
+                        "finished": token_index == 1,
+                        "chunk": {
+                            "text": text,
+                            "token_logprobs": [
+                                {
+                                    "token_id": 100 + request_id * 100 + token_index,
+                                    "token_text": text,
+                                    "logprob": -(request_id * 2 + token_index + 1) / 10,
+                                    "top_logprobs": [
+                                        {
+                                            "token_id": 100 + request_id * 100 + token_index,
+                                            "token_text": text,
+                                            "logprob": -(request_id * 2 + token_index + 1) / 10,
+                                        }
+                                    ],
+                                }
+                            ],
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=token_index + 1,
+                                row_index=request_id,
+                                request_id=str(request_id),
+                                phase="answer",
+                                sampler_mode="host_logits_sample",
+                                execution_path="scheduler_native_packed_prefill_serial_host_sampler_decode",
+                            ).to_json_dict(),
+                        },
+                    }
+                    for request_id, row in enumerate(chunk_texts)
+                    for token_index, text in enumerate(row)
+                ]
+            }
+            return outputs[: len(prompt_tuple)]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "n": 2,
+            "max_tokens": 2,
+            "stream": True,
+            "logprobs": True,
+            "top_logprobs": 1,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    deltas = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ]
+    content_deltas = [choice for choice in deltas if "content" in choice["delta"]]
+    assert [(choice["index"], choice["delta"]["content"]) for choice in content_deltas] == [
+        (0, "A"),
+        (0, "B"),
+        (1, "C"),
+        (1, "D"),
+    ]
+    assert [
+        choice["logprobs"]["content"][0]["logprob"]
+        for choice in content_deltas
+    ] == pytest.approx([-0.1, -0.2, -0.3, -0.4])
+    assert [
+        choice["logprobs"]["content"][0]["top_logprobs"][0]["token"]
+        for choice in content_deltas
+    ] == ["A", "B", "C", "D"]
+    assert {
+        choice["hipengine"]["decode_state"]["execution_path"]
+        for choice in content_deltas
+    } == {"scheduler_native_packed_prefill_serial_host_sampler_decode"}
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "length"
+    ]
+    assert [choice["index"] for choice in done] == [0, 1]
+    assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            text = "<think>r0</think>A"
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": 0,
+                        "token_index": token_index,
+                        "token_id": 300 + token_index,
+                        "finished": token_index == 1,
+                        "chunk": {
+                            "text": chunk_text,
+                            "token_logprobs": [
+                                {
+                                    "token_id": 300 + token_index,
+                                    "token_text": chunk_text,
+                                    "logprob": -(token_index + 1) / 10,
+                                }
+                            ],
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=token_index + 1,
+                                row_index=0,
+                                request_id="0",
+                                phase="answer",
+                                sampler_mode="host_logits_sample",
+                                execution_path="scheduler_should_not_surface",
+                            ).to_json_dict(),
+                        },
+                    }
+                    for token_index, chunk_text in enumerate(("<think>r0</think>", "A"))
+                ]
+            }
+            return [
+                GenerationOutput(
+                    text=text,
+                    token_logprobs=(
+                        TokenLogprob(token_id=300, token_text="<think>r0</think>", logprob=-0.1),
+                        TokenLogprob(token_id=301, token_text="A", logprob=-0.2),
+                    ),
+                    finish_details=FinishDetails(reason="stop", sampler_mode="host_logits_sample"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=0,
+                        phase="done",
+                        sampler_mode="host_logits_sample",
+                        execution_path="buffered_final_metadata",
+                    ),
+                )
+            ][: len(prompt_tuple)]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "stream": True,
+            "logprobs": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    deltas = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ]
+    assert [(choice["index"], choice["delta"]) for choice in deltas] == [
+        (0, {"role": "assistant"}),
+        (0, {"reasoning_content": "r0"}),
+        (0, {"content": "A"}),
+    ]
+    assert "<think>" not in json.dumps([choice["delta"] for choice in deltas])
+    assert {
+        choice.get("hipengine", {}).get("decode_state", {}).get("execution_path")
+        for choice in deltas
+        if choice["delta"].get("content") or choice["delta"].get("reasoning_content")
+    } == {"buffered_final_metadata"}
+    content = next(choice for choice in deltas if choice["delta"].get("content"))
+    assert content["logprobs"]["content"][0]["logprob"] == -0.1
+    assert fake.stream_calls == []
+
+
 def test_streaming_chat_live_logprobs_omitted_selected_score_reports_reason() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],

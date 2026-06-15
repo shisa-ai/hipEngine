@@ -92658,3 +92658,27 @@ Validation:
 - `uv run pytest tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py -q -k 'speculative_mtp or sampler_block or speculative_verify or qwen35_paro_sampled_batch_uses_scheduler_packed_prefill or qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback'` -> `25 passed`.
 - `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_sampling.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_sampling.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC buffered chat scheduler logprobs
+
+Buffered plain `/v1/chat/completions` content streams with `logprobs=true` now
+forward single-request `last_batch_generation.scheduler_token_chunks` as
+per-token public SSE deltas when the scheduler chunks exactly reconstruct the
+public content and carry token logprob metadata. Reasoning spans with requested
+logprobs, tool calls, and structured-output result validation remain on the
+conservative buffered parser path, with a regression proving reasoning+logprob
+streams do not expose scheduler chunks even when those chunks match raw
+`<think>` text. Server coercion now converts JSON-style scheduler
+`token_logprobs` dictionaries into `TokenLogprob` objects so PARO scheduler
+chunk diagnostics can feed OpenAI-compatible chat stream logprobs. Updated
+`docs/API.md` and `docs/AGENTIC.md`, including the server conformance coverage
+notes for agentic tool/reasoning/session/logprob patterns.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs or streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_returns_logprobs_from_buffered_path or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas'` -> `6 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or scheduler_token_chunks or stream_logprobs or streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser or streaming_chat_completion_returns_logprobs_from_buffered_path or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas'` -> `21 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

@@ -131,12 +131,13 @@ Known baseline limitations:
   `scheduler_token_chunks` with per-token `GenerationStreamChunk` payloads,
   and final telemetry reports scheduler execution path plus
   native-prefill/native-decode/serial-fallback state. Buffered completion
-  streams and plain buffered chat answer/reasoning streams for a single HTTP
-  request can forward those scheduler chunks as per-token public SSE deltas
-  when the chunk text exactly reconstructs the public choice text; if separate
-  HTTP requests were coalesced into one backend batch, the server withholds the
-  backend row chunks instead of exposing ambiguous row ids. Chat tool calls,
-  structured-output result validation, and logprob streams keep the
+  streams, plain buffered chat answer/reasoning streams without logprobs, and
+  plain chat content streams with logprobs for a single HTTP request can forward
+  those scheduler chunks as per-token public SSE deltas when the chunk text
+  exactly reconstructs the public choice text; if separate HTTP requests were
+  coalesced into one backend batch, the server withholds the backend row chunks
+  instead of exposing ambiguous row ids. Chat tool calls, structured-output
+  result validation, and reasoning spans with requested logprobs keep the
   conservative buffered parser paths. Other buffered streaming paths preserve
   final backend
   telemetry on choice `done` chunks and, when tokenizer/counting hooks are
@@ -144,7 +145,7 @@ Known baseline limitations:
   parsed answer/reasoning/tool/structured chunks while inheriting stable backend
   sampler/execution metadata such as processor blockers, sampler fallback,
   logits-readback state, and scheduler execution flags. Backend-authored
-  buffered tool/structured per-token snapshots, logprob-bearing chat scheduler
+  buffered tool/structured per-token snapshots, reasoning-logprob scheduler
   chunks, and canonical live reasoning/tool-call/structured phases still need
   lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
@@ -1014,13 +1015,15 @@ Current code reality:
   stop suffixes, budget pressure, timing, and usage on final/backend-authored
   snapshots, scheduler token-event chunks, or PARO c>N
   `last_batch_generation.scheduler_token_chunks` diagnostics.
-  Buffered `/v1/completions` streams and plain answer/reasoning buffered
-  `/v1/chat/completions` streams now use PARO c>N scheduler token chunks as
-  per-token public deltas for a single HTTP request when the chunks exactly
-  reconstruct the final choice text. Coalesced multi-request batches, chat
-  tools, structured-output result validation, chat logprobs, public
-  runtime-native live c>N stream chunk forwarding, canonical tool/structured
-  phases, and real continuation eligibility remain future lower-loop work.
+  Buffered `/v1/completions` streams, plain answer/reasoning buffered
+  `/v1/chat/completions` streams without logprobs, and plain chat content
+  logprob streams now use PARO c>N scheduler token chunks as per-token public
+  deltas for a single HTTP request when the chunks exactly reconstruct the
+  final choice text. Coalesced multi-request batches, chat tools,
+  structured-output result validation, reasoning-logprob chunk forwarding,
+  public runtime-native live c>N stream chunk forwarding, canonical
+  tool/structured phases, and real continuation eligibility remain future
+  lower-loop work.
 
 Exit gates:
 
@@ -2515,7 +2518,8 @@ Current code reality:
 - `tests/test_server_api.py` covers server streaming edge paths that need
   direct SSE-shape assertions outside the golden trace harness, including
   backend scheduler token chunks forwarded as buffered completion and plain
-  chat answer/reasoning deltas with per-choice decode-state metadata.
+  chat answer/reasoning deltas, plus plain chat content logprob deltas, with
+  per-choice decode-state metadata.
 
 Exit gates:
 
@@ -2831,10 +2835,11 @@ golden harness traces are now implemented. Good next logical units, in order:
    PARO c>N batch generation now authors JSON-ready scheduler token chunks in
    `last_batch_generation`, and buffered completion plus plain buffered
    chat answer/reasoning streams can forward those chunks as per-token public
-   deltas for a single HTTP request. Public runtime-native live c>N stream
-   forwarding, chat tool/structured/logprob per-token forwarding, and real
-   continuation eligibility still need lower-loop work instead of relying on
-   server post-parse inference.
+   deltas for a single HTTP request; content-only chat logprob streams also use
+   scheduler chunks when chunk logprobs are present. Public runtime-native live
+   c>N stream forwarding, chat tool/structured/reasoning-logprob per-token
+   forwarding, and real continuation eligibility still need lower-loop work
+   instead of relying on server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
@@ -2842,8 +2847,8 @@ golden harness traces are now implemented. Good next logical units, in order:
    c>N sampled batches record it in runtime diagnostics, including per-token
    scheduler chunk diagnostics that buffered completion and plain chat streams
    can expose for single-request batches. GGUF/native GPU sampler paths plus
-   chat tool/structured/logprob c>N stream surfaces still need emitted
-   chunk/final metadata and logprob semantics to match host AR sampling
+   chat tool/structured/reasoning-logprob c>N stream surfaces still need
+   emitted chunk/final metadata and logprob semantics to match host AR sampling
    everywhere.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path
