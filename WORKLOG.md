@@ -31555,7 +31555,7 @@ Reviewed the prior GGUF chunked-prefill implementation before treating the 32K s
 - Tail safety: changed GGUF `_chunk_ranges` to match PARO and merge a tiny final chunk into the previous chunk so linear-attention conv prefill never sees an invalid `< ssm_conv_kernel` tail.
 - Cleanup: removed a duplicate return in `_run_bulk_prefill_and_sample`, added chunk-bound validation, and exposed GGUF prefill chunk policy fields in `scripts/qwen35_gguf_bench.py` for follow-up sweeps.
 
-Validation so far:
+Validation:
 
 ```bash
 python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py tests/test_qwen35_gguf_chunked_prefill.py
@@ -92599,3 +92599,23 @@ Validation:
 - `uv run pytest tests/test_generation_qwen35_paro.py -q` -> `38 passed`.
 - `uv run ruff check hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/qwen35_paro.py tests/test_generation_qwen35_paro.py docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC buffered completion c>N scheduler chunks
+
+Threaded PARO-style `last_batch_generation.scheduler_token_chunks` through the
+OpenAI server generation batcher for metadata-aware detailed submissions. The
+batcher only returns scheduler chunks for a single HTTP request; if separate
+HTTP requests are coalesced into one backend prompt batch, it withholds those
+backend row diagnostics rather than exposing ambiguous request ids. Buffered
+`/v1/completions` streams now use those scheduler chunks as individual public
+SSE deltas when they exactly reconstruct each post-processed choice text and
+fall back to the previous one-delta-per-choice behavior otherwise. This moves
+public c>N stream surfaces forward for text completions while leaving true live
+c>N forwarding and chat/tool/structured per-token forwarding as lower-loop work.
+
+Validation so far:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher_returns_scheduler_chunks_for_single_metadata_submission or generation_batcher_drops_scheduler_chunks_for_coalesced_metadata_submissions or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas'` -> `3 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_completion_can_include_hipengine_metadata or streaming_completion_prefers_backend_chunk_decode_state or streaming_completion_prefers_backend_chunk_finish_details or completions_endpoint_calls_llm_and_applies_stop'` -> `17 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

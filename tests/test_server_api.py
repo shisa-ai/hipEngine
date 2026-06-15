@@ -38,6 +38,7 @@ from hipengine.server.api import (
     _chat_session_message_copy,
     _coerce_generation_output,
     _GenerationBatcher,
+    _QueuedBatchResult,
     _request_control,
     _startup_memory_summary,
 )
@@ -3043,6 +3044,79 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_returns_scheduler_chunks_for_single_metadata_submission() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            outputs = super().generate_detailed(prompts, sampling_params)
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {"request_id": index, "token_index": 0, "token_id": 100 + index, "chunk": {"text": output.text}}
+                    for index, output in enumerate(outputs)
+                ]
+            }
+            return outputs
+
+    async def run() -> None:
+        fake = SchedulerChunkFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+        )
+
+        result = await batcher.submit(
+            ("one", "two"),
+            sampling,
+            detailed=True,
+            include_batch_metadata=True,
+        )
+
+        assert isinstance(result, _QueuedBatchResult)
+        assert [output.text for output in result.outputs] == ["generated:one", "generated:two"]
+        assert result.scheduler_token_chunks == [
+            {"request_id": 0, "token_index": 0, "token_id": 100, "chunk": {"text": "generated:one"}},
+            {"request_id": 1, "token_index": 0, "token_id": 101, "chunk": {"text": "generated:two"}},
+        ]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_drops_scheduler_chunks_for_coalesced_metadata_submissions() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            outputs = super().generate_detailed(prompts, sampling_params)
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {"request_id": index, "token_index": 0, "token_id": 100 + index, "chunk": {"text": output.text}}
+                    for index, output in enumerate(outputs)
+                ]
+            }
+            return outputs
+
+    async def run() -> None:
+        fake = SchedulerChunkFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), sampling, detailed=True, include_batch_metadata=True),
+            batcher.submit(("two",), sampling, detailed=True, include_batch_metadata=True),
+        )
+
+        assert isinstance(first, _QueuedBatchResult)
+        assert isinstance(second, _QueuedBatchResult)
+        assert [output.text for output in first.outputs] == ["generated:one"]
+        assert [output.text for output in second.outputs] == ["generated:two"]
+        assert first.scheduler_token_chunks is None
+        assert second.scheduler_token_chunks is None
+        assert fake.calls == [(("one", "two"), sampling)]
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_default_zero_window_queues_without_lifetime_lock() -> None:
     async def run() -> None:
         fake = FakeLLM()
@@ -3476,6 +3550,137 @@ def test_completions_expose_backend_generation_telemetry() -> None:
             sampler_mode="greedy_fast",
         ),
     }
+
+
+def test_streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas() -> None:
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            outputs = [
+                GenerationOutput(
+                    text="AB",
+                    finish_details=FinishDetails(reason="length", length_limit=2, sampler_mode="greedy_fast"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=0,
+                        phase="done",
+                        sampler_mode="greedy_fast",
+                    ),
+                ),
+                GenerationOutput(
+                    text="CD",
+                    finish_details=FinishDetails(reason="length", length_limit=2, sampler_mode="greedy_fast"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=2,
+                        row_index=1,
+                        phase="done",
+                        sampler_mode="greedy_fast",
+                    ),
+                ),
+            ]
+            chunk_texts = (("A", "B"), ("C", "D"))
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": request_id,
+                        "token_index": token_index,
+                        "token_id": 100 + request_id * 10 + token_index,
+                        "finished": token_index == 1,
+                        "chunk": {
+                            "text": text,
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=token_index + 1,
+                                row_index=request_id,
+                                request_id=str(request_id),
+                                phase="answer",
+                                sampler_mode="greedy_fast",
+                                execution_path="scheduler_native_packed_prefill_serial_decode",
+                            ).to_json_dict(),
+                        },
+                    }
+                    for request_id, row in enumerate(chunk_texts)
+                    for token_index, text in enumerate(row)
+                ]
+            }
+            return outputs[: len(prompt_tuple)]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "one",
+            "n": 2,
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    deltas = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ]
+    assert [(choice["index"], choice["text"]) for choice in deltas] == [
+        (0, "A"),
+        (0, "B"),
+        (1, "C"),
+        (1, "D"),
+    ]
+    assert [
+        choice["hipengine"]["decode_state"]["generated_tokens"]
+        for choice in deltas
+    ] == [1, 2, 1, 2]
+    assert [
+        choice["hipengine"]["decode_state"]["execution_path"]
+        for choice in deltas
+    ] == [
+        "scheduler_native_packed_prefill_serial_decode",
+        "scheduler_native_packed_prefill_serial_decode",
+        "scheduler_native_packed_prefill_serial_decode",
+        "scheduler_native_packed_prefill_serial_decode",
+    ]
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "length"
+    ]
+    assert [(choice["index"], choice["finish_details"]) for choice in done] == [
+        (
+            0,
+            {
+                "reason": "length",
+                "length_limit": 2,
+                "cache_action": "append_none",
+                "sampler_mode": "greedy_fast",
+                "continuation_eligible": False,
+            },
+        ),
+        (
+            1,
+            {
+                "reason": "length",
+                "length_limit": 2,
+                "cache_action": "append_none",
+                "sampler_mode": "greedy_fast",
+                "continuation_eligible": False,
+            },
+        ),
+    ]
+    assert payloads[-1]["usage"] == {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4}
+    assert "data: [DONE]" in response.text
+    assert fake.calls[0][0] == ("one", "one")
+    assert fake.stream_calls == []
 
 
 def test_completion_continuation_resumes_buffered_length_finish_once() -> None:

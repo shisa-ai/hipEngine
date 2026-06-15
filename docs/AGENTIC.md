@@ -130,15 +130,19 @@ Known baseline limitations:
   PARO scheduler-owned c>N batch diagnostics retain JSON-ready
   `scheduler_token_chunks` with per-token `GenerationStreamChunk` payloads,
   and final telemetry reports scheduler execution path plus
-  native-prefill/native-decode/serial-fallback state. Buffered streaming
-  preserves final backend telemetry on choice `done` chunks and, when
-  tokenizer/counting hooks are available, emits server-derived per-delta
-  token/decode-state snapshots for
+  native-prefill/native-decode/serial-fallback state. Buffered completion
+  streams for a single HTTP request can forward those scheduler chunks as
+  per-token public SSE deltas when the chunk text exactly reconstructs the
+  public choice text; if separate HTTP requests were coalesced into one backend
+  batch, the server withholds the backend row chunks instead of exposing
+  ambiguous row ids. Other buffered streaming paths preserve final backend
+  telemetry on choice `done` chunks and, when tokenizer/counting hooks are
+  available, emit server-derived per-delta token/decode-state snapshots for
   parsed answer/reasoning/tool/structured chunks while inheriting stable backend
   sampler/execution metadata such as processor blockers, sampler fallback,
   logits-readback state, and scheduler execution flags. Backend-authored
-  buffered per-token snapshots and canonical live reasoning/tool-call/structured
-  phases still need lower-loop signals.
+  buffered chat/tool/structured per-token snapshots and canonical live
+  reasoning/tool-call/structured phases still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
   phase/counts, and host-sampled thinking-budget forced close. Cooperative
@@ -1003,7 +1007,10 @@ Current code reality:
   stop suffixes, budget pressure, timing, and usage on final/backend-authored
   snapshots, scheduler token-event chunks, or PARO c>N
   `last_batch_generation.scheduler_token_chunks` diagnostics.
-  Backend-authored buffered per-token snapshots, public runtime-native c>N
+  Buffered `/v1/completions` streams now use PARO c>N scheduler token chunks as
+  per-token public deltas for a single HTTP request when the chunks exactly
+  reconstruct the final choice text. Coalesced multi-request batches, buffered
+  chat/tool/structured per-token forwarding, public runtime-native live c>N
   stream chunk forwarding, canonical tool/structured phases, and real
   continuation eligibility remain future lower-loop work.
 
@@ -2810,17 +2817,20 @@ golden harness traces are now implemented. Good next logical units, in order:
    token stop suffix state, forced-token state, budget pressure, sampler
    fallback, and execution flags.
    PARO c>N batch generation now authors JSON-ready scheduler token chunks in
-   `last_batch_generation`; public runtime-native c>N stream forwarding and
-   real continuation eligibility still need lower-loop work instead of relying
-   on server post-parse inference.
+   `last_batch_generation`, and buffered completion streams can forward those
+   chunks as per-token public deltas for a single HTTP request. Public
+   runtime-native live c>N stream forwarding, buffered chat/tool/structured
+   per-token forwarding, and real continuation eligibility still need
+   lower-loop work instead of relying on server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
    per-row planner metadata for native fallback/rejection decisions, and PARO
    c>N sampled batches record it in runtime diagnostics, including per-token
-   scheduler chunk diagnostics. GGUF/native GPU sampler paths and public c>N
-   stream surfaces still need emitted chunk/final metadata and logprob semantics
-   to match host AR sampling everywhere.
+   scheduler chunk diagnostics that buffered completion streams can expose for
+   single-request batches. GGUF/native GPU sampler paths plus chat/tool/
+   structured c>N stream surfaces still need emitted chunk/final metadata and
+   logprob semantics to match host AR sampling everywhere.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path
    apply the same EOS finish, logit bias, penalties, suppressions, forced-token,

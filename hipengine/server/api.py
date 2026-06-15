@@ -1503,6 +1503,13 @@ class _GeneratedBatch:
     outputs: list[str]
     usage: dict[str, int]
     details: list[GenerationOutput]
+    scheduler_token_chunks: list[dict[str, Any]] | None = None
+
+
+@dataclass(frozen=True)
+class _QueuedBatchResult:
+    outputs: list[Any]
+    scheduler_token_chunks: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -1708,9 +1715,10 @@ def _log_stream_failure(
 class _QueuedGeneration:
     prompts: tuple[str, ...]
     sampling: SamplingParams
-    future: asyncio.Future[list[Any]] | None = None
+    future: asyncio.Future[Any] | None = None
     stream_queue: asyncio.Queue[object] | None = None
     detailed: bool = False
+    include_batch_metadata: bool = False
     cancelled: bool = False
 
 
@@ -1777,11 +1785,12 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         detailed: bool = False,
+        include_batch_metadata: bool = False,
         error_extra: Mapping[str, Any] | None = None,
-    ) -> list[Any]:
+    ) -> list[Any] | _QueuedBatchResult:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
-        future: asyncio.Future[list[Any]] = loop.create_future()
+        future: asyncio.Future[Any] = loop.create_future()
         self._raise_if_full(error_extra=error_extra)
         self._queue.append(
             _QueuedGeneration(
@@ -1789,6 +1798,7 @@ class _GenerationBatcher:
                 sampling=sampling,
                 future=future,
                 detailed=bool(detailed),
+                include_batch_metadata=bool(include_batch_metadata),
             )
         )
         if self._worker is None or self._worker.done():
@@ -1870,27 +1880,46 @@ class _GenerationBatcher:
                 prompts.extend(item.prompts)
                 slices.append((item, start, len(prompts)))
             try:
-                outputs = await self._generate_prompts(tuple(prompts), group[0].sampling)
+                batch_result = await self._generate_prompts(tuple(prompts), group[0].sampling)
             except Exception as exc:
                 for item in group:
                     _finish_queued_generation(item, exception=exc)
                 return
+            outputs = batch_result.outputs
             for item, start, end in slices:
                 item_outputs: Sequence[Any] = outputs[start:end]
                 if not item.detailed:
                     item_outputs = [_coerce_generation_output(output).text for output in item_outputs]
-                _finish_queued_generation(item, outputs=item_outputs)
+                if item.include_batch_metadata:
+                    scheduler_token_chunks = (
+                        _copy_scheduler_token_chunks(batch_result.scheduler_token_chunks)
+                        if len(group) == 1
+                        else None
+                    )
+                    _finish_queued_generation(
+                        item,
+                        result=_QueuedBatchResult(
+                            outputs=list(item_outputs),
+                            scheduler_token_chunks=scheduler_token_chunks,
+                        ),
+                    )
+                else:
+                    _finish_queued_generation(item, outputs=item_outputs)
         finally:
             self._active_requests = 0
 
-    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[Any]:
-        raw_outputs = await _generate_detailed(self._engine_factory(), prompts, sampling)
+    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> _QueuedBatchResult:
+        engine = self._engine_factory()
+        raw_outputs = await _generate_detailed(engine, prompts, sampling)
         outputs = list(raw_outputs)
         if len(outputs) != len(prompts):
             raise RuntimeError(
                 f"generator returned {len(outputs)} outputs for {len(prompts)} prompts"
             )
-        return outputs
+        return _QueuedBatchResult(
+            outputs=outputs,
+            scheduler_token_chunks=_backend_scheduler_token_chunks(engine),
+        )
 
     async def _stream_single(self, item: _QueuedGeneration) -> None:
         assert item.stream_queue is not None
@@ -1913,11 +1942,14 @@ def _finish_queued_generation(
     item: _QueuedGeneration,
     *,
     outputs: Sequence[Any] | None = None,
+    result: Any | None = None,
     exception: Exception | None = None,
 ) -> None:
     if item.future is not None and not item.future.done():
         if exception is not None:
             item.future.set_exception(exception)
+        elif result is not None:
+            item.future.set_result(result)
         else:
             item.future.set_result(list(outputs or ()))
     if item.stream_queue is None:
@@ -3181,11 +3213,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 )
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
+                scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
             else:
-                raw_outputs = await generation_batcher.submit(
+                queued_result = await generation_batcher.submit(
                     tuple(prompts),
                     sampling,
                     detailed=True,
+                    include_batch_metadata=True,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -3196,6 +3230,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         },
                     ),
                 )
+                if isinstance(queued_result, _QueuedBatchResult):
+                    raw_outputs = queued_result.outputs
+                    scheduler_token_chunks = queued_result.scheduler_token_chunks
+                else:
+                    raw_outputs = queued_result
+                    scheduler_token_chunks = None
         except GenerationDeadlineExceeded as exc:
             raise _deadline_exceeded_error(exc.finish_details) from exc
         except GenerationCancelled as exc:
@@ -3233,7 +3273,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         if _request_logprobs_enabled(request):
             _validate_logprob_details(details, outputs)
-        batch = _GeneratedBatch(outputs=outputs, usage=_usage(engine, prompts, outputs), details=details)
+        batch = _GeneratedBatch(
+            outputs=outputs,
+            usage=_usage(engine, prompts, outputs),
+            details=details,
+            scheduler_token_chunks=scheduler_token_chunks,
+        )
         app.state.hipengine_server_metrics.record_success(batch.usage)
         return batch
 
@@ -4423,6 +4468,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         else None
                     ),
                     done_phase="structured" if _structured_result_validation(request) else "done",
+                    scheduler_token_chunks=batch.scheduler_token_chunks,
                 ),
                 media_type="text/event-stream",
             )
@@ -6902,6 +6948,27 @@ def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) ->
     if chunk is None or (chunk.finish_details is None and chunk.telemetry is None):
         return None
     return GenerationOutput(text=str(text), finish_details=chunk.finish_details, telemetry=chunk.telemetry)
+
+
+def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
+    batch_generation = getattr(engine, "last_batch_generation", None)
+    if not isinstance(batch_generation, Mapping):
+        return None
+    raw_chunks = batch_generation.get("scheduler_token_chunks")
+    if not isinstance(raw_chunks, Sequence) or isinstance(raw_chunks, (str, bytes, bytearray)):
+        return None
+    chunks: list[dict[str, Any]] = []
+    for raw_chunk in raw_chunks:
+        if isinstance(raw_chunk, Mapping):
+            chunks.append(deepcopy(dict(raw_chunk)))
+    return chunks or None
+
+
+def _copy_scheduler_token_chunks(chunks: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]] | None:
+    if not chunks:
+        return None
+    copied = [deepcopy(dict(chunk)) for chunk in chunks if isinstance(chunk, Mapping)]
+    return copied or None
 
 
 def _buffered_delta_stream_chunk(
@@ -11120,6 +11187,7 @@ def _completion_stream(
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
+    scheduler_token_chunks: Sequence[Mapping[str, Any]] | None = None,
 ) -> Iterator[str]:
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
@@ -11127,8 +11195,44 @@ def _completion_stream(
         if details is not None
         else {}
     )
+    scheduler_chunks_by_index = _scheduler_token_chunks_by_request(scheduler_token_chunks)
     for index, text in enumerate(texts):
         choice = choices_by_index.get(index, {})
+        scheduler_chunks = scheduler_chunks_by_index.get(index, ())
+        if _scheduler_chunks_match_completion_text(
+            text,
+            scheduler_chunks,
+            require_logprobs=choice.get("logprobs") is not None,
+        ):
+            phase = "structured" if done_phase == "structured" else "answer"
+            for raw_chunk in scheduler_chunks:
+                stream_chunk = _scheduler_payload_stream_chunk(raw_chunk)
+                if stream_chunk is None:
+                    continue
+                token_payload = (
+                    token_accounting.observe(phase, stream_chunk.text)
+                    if include_hipengine and token_accounting is not None and len(choices) == 1
+                    else None
+                )
+                yield _completion_stream_delta(
+                    response_id,
+                    created,
+                    model,
+                    stream_chunk.text,
+                    index=index,
+                    logprobs=(
+                        _completion_stream_logprobs(stream_chunk)
+                        if choice.get("logprobs") is not None
+                        else None
+                    ),
+                    tokens=token_payload,
+                    stream_chunk=stream_chunk,
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                    routing=routing,
+                    phase=phase,
+                )
+            continue
         final_stream_chunk = _stream_chunk_from_detail("", details_by_index.get(index))
         phase = "structured" if done_phase == "structured" else "answer"
         token_payload = (
@@ -11188,6 +11292,52 @@ def _completion_stream(
             kv_pool=kv_pool,
         )
     yield "data: [DONE]\n\n"
+
+
+def _scheduler_token_chunks_by_request(
+    chunks: Sequence[Mapping[str, Any]] | None,
+) -> dict[int, list[Mapping[str, Any]]]:
+    grouped: dict[int, list[Mapping[str, Any]]] = {}
+    if not chunks:
+        return grouped
+    for chunk in chunks:
+        try:
+            request_id = int(chunk.get("request_id"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        grouped.setdefault(request_id, []).append(chunk)
+    for request_chunks in grouped.values():
+        request_chunks.sort(key=lambda item: int(item.get("token_index", 0)))
+    return grouped
+
+
+def _scheduler_payload_stream_chunk(payload: Mapping[str, Any]) -> GenerationStreamChunk | None:
+    raw_chunk = payload.get("chunk")
+    if not isinstance(raw_chunk, Mapping):
+        return None
+    return _coerce_generation_stream_chunk(raw_chunk)
+
+
+def _scheduler_chunks_match_completion_text(
+    text: str,
+    chunks: Sequence[Mapping[str, Any]],
+    *,
+    require_logprobs: bool,
+) -> bool:
+    if not chunks:
+        return False
+    pieces: list[str] = []
+    for payload in chunks:
+        raw_chunk = payload.get("chunk")
+        if not isinstance(raw_chunk, Mapping):
+            return False
+        chunk_text = raw_chunk.get("text")
+        if not isinstance(chunk_text, str):
+            return False
+        if require_logprobs and not raw_chunk.get("token_logprobs"):
+            return False
+        pieces.append(chunk_text)
+    return "".join(pieces) == str(text)
 
 
 def _chat_stream(
