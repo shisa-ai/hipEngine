@@ -52,6 +52,46 @@ class B1PromptSuitePreflightError(RuntimeError):
     """Raised when the B1 harness cannot build a preflight artifact."""
 
 
+def _sampling_draft_budget(settings: dict[str, Any]) -> dict[str, Any]:
+    draft = settings.get("draft") if isinstance(settings.get("draft"), dict) else {}
+    return {
+        "budget": draft.get("budget"),
+        "draft_max": draft.get("draft_max"),
+    }
+
+
+def _build_draft_budget_precheck(
+    *,
+    hipengine_sampling: dict[str, Any],
+    llamacpp_sampling: dict[str, Any],
+    draft_max: int,
+) -> dict[str, Any]:
+    expected = {"budget": f"B{draft_max}", "draft_max": int(draft_max)}
+    observed = {
+        "hipengine": _sampling_draft_budget(hipengine_sampling),
+        "llamacpp": _sampling_draft_budget(llamacpp_sampling),
+    }
+    mismatches: list[dict[str, Any]] = []
+    for engine, values in observed.items():
+        for field, expected_value in expected.items():
+            if values.get(field) != expected_value:
+                mismatches.append(
+                    {
+                        "engine": engine,
+                        "field": field,
+                        "expected": expected_value,
+                        "actual": values.get(field),
+                    }
+                )
+    return {
+        "checked": True,
+        "passed": not mismatches,
+        "expected": expected,
+        "observed": observed,
+        "mismatches": mismatches,
+    }
+
+
 def build_b1_prompt_suite_artifact(
     *,
     model: Path,
@@ -62,7 +102,13 @@ def build_b1_prompt_suite_artifact(
     llamacpp_sampling: Path,
     oracle_fixture: Path = DEFAULT_ORACLE_FIXTURE,
     prompt_limit: int | None = None,
+    draft_max: int = 1,
 ) -> dict[str, Any]:
+    requested_draft_max = int(draft_max)
+    if requested_draft_max < 1 or requested_draft_max > 4:
+        raise B1PromptSuitePreflightError("draft_max must be in 1..4 for B1-B4 preflight")
+    requested_budget = f"B{requested_draft_max}"
+
     prompts_payload = load_prompt_suite(prompts_file)
     prompts = list(prompts_payload.get("prompts", []))
     if prompt_limit is not None:
@@ -78,12 +124,19 @@ def build_b1_prompt_suite_artifact(
     if not mtp_draft_tensor_plans:
         raise B1PromptSuitePreflightError(f"{model}: no MTP draft tensor plans found")
 
+    hipengine_sampling_settings = load_sampling_settings(hipengine_sampling)
+    llamacpp_sampling_settings = load_sampling_settings(llamacpp_sampling)
     parity = build_parity_precheck(
         hipengine_token_inventory=load_json(hipengine_token_inventory),
         llamacpp_token_inventory=load_json(llamacpp_token_inventory),
-        hipengine_sampling=load_sampling_settings(hipengine_sampling),
-        llamacpp_sampling=load_sampling_settings(llamacpp_sampling),
+        hipengine_sampling=hipengine_sampling_settings,
+        llamacpp_sampling=llamacpp_sampling_settings,
         require_sampling=True,
+    )
+    draft_budget_precheck = _build_draft_budget_precheck(
+        hipengine_sampling=hipengine_sampling_settings,
+        llamacpp_sampling=llamacpp_sampling_settings,
+        draft_max=requested_draft_max,
     )
     oracle_gate = run_oracle_gate(oracle_fixture)
     blockers: list[dict[str, Any]] = []
@@ -96,6 +149,15 @@ def build_b1_prompt_suite_artifact(
                 "sampling_match": bool(parity["sampling"]["passed"]),
             }
         )
+    if not draft_budget_precheck["passed"]:
+        blockers.append(
+            {
+                "code": "draft_budget_mismatch",
+                "detail": "requested GGUF MTP draft budget must match sampling settings before metrics are comparable",
+                "expected": draft_budget_precheck["expected"],
+                "mismatches": draft_budget_precheck["mismatches"],
+            }
+        )
     if not oracle_gate["passed"]:
         blockers.append(
             {
@@ -105,7 +167,7 @@ def build_b1_prompt_suite_artifact(
                 "top1_agreement": float(oracle_gate["metrics"]["top1_agreement"]),
             }
         )
-    if parity["all_pass"] and oracle_gate["passed"]:
+    if parity["all_pass"] and draft_budget_precheck["passed"] and oracle_gate["passed"]:
         blockers.append(
             {
                 "code": "native_gguf_mtp_runtime_missing",
@@ -130,8 +192,8 @@ def build_b1_prompt_suite_artifact(
         "prompts_file": str(prompts_file),
         "prompt_count": len(prompts),
         "prompt_names": [str(prompt.get("name", index)) for index, prompt in enumerate(prompts)],
-        "budget": "B1",
-        "draft_max": 1,
+        "budget": requested_budget,
+        "draft_max": requested_draft_max,
         "validated_mtp_blocks": [
             {
                 "layer_id": int(block.layer_id),
@@ -146,12 +208,13 @@ def build_b1_prompt_suite_artifact(
             plan.cpu_reference_call_spec.as_dict() for plan in mtp_draft_tensor_plans
         ],
         "parity_precheck": parity,
+        "draft_budget_precheck": draft_budget_precheck,
         "oracle_gate": oracle_gate,
         "execution": {
             "implemented": False,
             "exactness_gate": "passed" if oracle_gate["passed"] else "failed",
             "accepted_output_metrics": "not_run",
-            "next_action": "implement native GGUF MTP draft execution and re-run this harness",
+            "next_action": f"implement native GGUF MTP draft execution and re-run this harness for {requested_budget}",
         },
         "blockers": blockers,
     }
@@ -167,6 +230,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llamacpp-sampling", type=Path, default=DEFAULT_SAMPLING)
     parser.add_argument("--oracle-fixture", type=Path, default=DEFAULT_ORACLE_FIXTURE)
     parser.add_argument("--prompt-limit", type=int)
+    parser.add_argument(
+        "--draft-max",
+        type=int,
+        default=1,
+        choices=range(1, 5),
+        metavar="{1,2,3,4}",
+        help="requested GGUF MTP draft budget cap to preflight (default: 1)",
+    )
     parser.add_argument("--out", type=Path, help="write JSON artifact to this path")
     parser.add_argument(
         "--fail-on-blocked",
@@ -184,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         llamacpp_sampling=args.llamacpp_sampling,
         oracle_fixture=args.oracle_fixture,
         prompt_limit=args.prompt_limit,
+        draft_max=args.draft_max,
     )
     payload = json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     if args.out:

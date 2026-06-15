@@ -48,14 +48,14 @@ def _token_inventory(path: Path, *, token_ids: list[int] | None = None) -> Path:
     )
 
 
-def _sampling(path: Path) -> Path:
+def _sampling(path: Path, *, draft_max: int = 1) -> Path:
     return _write_json(
         path,
         {
             "schema": 1,
             "sampling": {
                 "target": {"temperature": 0.0, "seed": 12345},
-                "draft": {"budget": "B1", "draft_max": 1, "temperature": 0.0},
+                "draft": {"budget": f"B{draft_max}", "draft_max": draft_max, "temperature": 0.0},
             },
         },
     )
@@ -141,7 +141,7 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False) -> dict[str, Path]:
+def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False, draft_max: int = 1) -> dict[str, Path]:
     return {
         "model": tmp_path / "model.gguf",
         "prompts_file": _prompt_suite(tmp_path / "prompts.json"),
@@ -150,8 +150,8 @@ def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False) -> dict[str, Pat
             tmp_path / "llama.json",
             token_ids=[1, 7, 3] if mismatch else [1, 2, 3],
         ),
-        "hipengine_sampling": _sampling(tmp_path / "hip-sampling.json"),
-        "llamacpp_sampling": _sampling(tmp_path / "llama-sampling.json"),
+        "hipengine_sampling": _sampling(tmp_path / "hip-sampling.json", draft_max=draft_max),
+        "llamacpp_sampling": _sampling(tmp_path / "llama-sampling.json", draft_max=draft_max),
     }
 
 
@@ -166,6 +166,8 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["kind"] == "hipengine_gguf_mtp_b1_prompt_suite"
     assert artifact["mode"] == "preflight"
     assert artifact["status"] == "blocked"
+    assert artifact["budget"] == "B1"
+    assert artifact["draft_max"] == 1
     assert artifact["prompt_names"] == ["p0", "p1"]
     assert artifact["validated_mtp_blocks"] == [
         {
@@ -201,12 +203,22 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "kv_evict_mask",
         "block_size",
     ]
+    assert artifact["draft_budget_precheck"] == {
+        "checked": True,
+        "passed": True,
+        "expected": {"budget": "B1", "draft_max": 1},
+        "observed": {
+            "hipengine": {"budget": "B1", "draft_max": 1},
+            "llamacpp": {"budget": "B1", "draft_max": 1},
+        },
+        "mismatches": [],
+    }
     assert artifact["oracle_gate"]["passed"] is True
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "passed",
         "accepted_output_metrics": "not_run",
-        "next_action": "implement native GGUF MTP draft execution and re-run this harness",
+        "next_action": "implement native GGUF MTP draft execution and re-run this harness for B1",
     }
     assert artifact["blockers"] == [
         {
@@ -217,6 +229,68 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             ),
         }
     ]
+
+
+def test_b1_prompt_suite_preflight_can_request_b4_when_sampling_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    artifact = suite.build_b1_prompt_suite_artifact(
+        **_artifact_inputs(tmp_path, draft_max=4),
+        draft_max=4,
+    )
+
+    assert artifact["budget"] == "B4"
+    assert artifact["draft_max"] == 4
+    assert artifact["draft_budget_precheck"]["passed"] is True
+    assert artifact["draft_budget_precheck"]["expected"] == {"budget": "B4", "draft_max": 4}
+    assert artifact["blockers"] == [
+        {
+            "code": "native_gguf_mtp_runtime_missing",
+            "detail": (
+                "Native GGUF MTP draft execution is not implemented yet; this harness "
+                "stops after metadata/token/sampling preflight instead of reporting metrics."
+            ),
+        }
+    ]
+
+
+def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    artifact = suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path), draft_max=2)
+
+    assert artifact["budget"] == "B2"
+    assert artifact["draft_max"] == 2
+    assert artifact["draft_budget_precheck"]["passed"] is False
+    assert artifact["blockers"] == [
+        {
+            "code": "draft_budget_mismatch",
+            "detail": "requested GGUF MTP draft budget must match sampling settings before metrics are comparable",
+            "expected": {"budget": "B2", "draft_max": 2},
+            "mismatches": [
+                {"engine": "hipengine", "field": "budget", "expected": "B2", "actual": "B1"},
+                {"engine": "hipengine", "field": "draft_max", "expected": 2, "actual": 1},
+                {"engine": "llamacpp", "field": "budget", "expected": "B2", "actual": "B1"},
+                {"engine": "llamacpp", "field": "draft_max", "expected": 2, "actual": 1},
+            ],
+        }
+    ]
+
+
+def test_b1_prompt_suite_preflight_rejects_out_of_range_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    with pytest.raises(suite.B1PromptSuitePreflightError, match="draft_max"):
+        suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path), draft_max=5)
 
 
 def test_b1_prompt_suite_preflight_reports_oracle_gate_blocker_before_runtime_blocker(

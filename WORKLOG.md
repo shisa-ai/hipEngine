@@ -95624,3 +95624,49 @@ Validation:
   backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF budget-aware preflight
+
+Implemented `mtp-gguf` multiloop iteration 66: made the GGUF MTP preflight
+budget-aware for B1-B4 without enabling runtime execution.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation,
+  native MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- This prevents future B2-B4 parity artifacts from silently reusing B1 sampling
+  settings while the native runtime is still missing.
+
+Changes:
+- Added `draft_max` to `build_b1_prompt_suite_artifact()` and `--draft-max
+  {1,2,3,4}` to `scripts/gguf_mtp_b1_prompt_suite.py`.
+- Added `draft_budget_precheck` to the blocked artifact. It records the requested
+  `{budget, draft_max}` and compares both hipEngine and llama.cpp sampling
+  fixtures against that request.
+- Added a `draft_budget_mismatch` blocker before runtime metrics when the
+  requested budget and sampling fixture budget disagree.
+- Updated tests for B1 default, matching B4 preflight, mismatched B2 request, and
+  out-of-range budget rejection.
+- Updated `docs/MTP-gguf.md` to document budget-aware preflight and clarify that
+  actual B2-B4 execution/parity remains gated on native draft execution.
+
+Validation:
+- Focused B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `8` passed.
+- Real local preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 1 --out <tmp>` ->
+  `B1 blocked B1 True native_gguf_mtp_runtime_missing`.
+- Real local B4 mismatch smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` ->
+  `B4 blocked B4 False draft_budget_mismatch`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

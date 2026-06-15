@@ -643,9 +643,11 @@ Deliverables:
   path (`grep gguf` in all three returns nothing). Plan for a new GGUF MTP child
   runner, not a flag flip on the wrapper. Current preflight child:
   `scripts/gguf_mtp_b1_prompt_suite.py`, which validates MTP metadata plus
-  token/sampling parity, embeds the MTP draft tensor/call specs (including
-  KVLiveSpans dynamic inputs), runs the CPU-reference oracle exactness gate, and
-  emits a blocked artifact until native GGUF MTP draft execution is implemented.
+  token/sampling parity, enforces that the requested `--draft-max` B1-B4 budget
+  matches both engines' sampling fixtures, embeds the MTP draft tensor/call specs
+  (including KVLiveSpans dynamic inputs), runs the CPU-reference oracle exactness
+  gate, and emits a blocked artifact until native GGUF MTP draft execution is
+  implemented.
 - Run matched prompt/token suite against:
   - hipEngine GGUF AR;
   - hipEngine GGUF MTP B1-B4;
@@ -840,8 +842,12 @@ is now answered by the M1 required/optional table.)
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the
       B1 deterministic sampling settings, and the committed hipEngine/llama.cpp
       D32 token fixtures match on all 9 prompts.
-- [ ] Run B1 exactness and accepted/output parity against llama.cpp B1.
-- [ ] Extend to B2-B4 after B1 is exact.
+- [ ] Run B1 exactness and accepted/output parity against llama.cpp B1. The
+      preflight child now records a `draft_budget_precheck` so a requested B1-B4
+      artifact cannot silently reuse mismatched sampling settings.
+- [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
+      `--draft-max {1,2,3,4}` for budget-aware blocked artifacts; actual B2-B4
+      execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
       `full_vocab_d2h` fallback/oracle is registered and advertised in MTP
