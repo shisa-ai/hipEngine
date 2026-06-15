@@ -123,6 +123,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--missing-evidence-only", action="store_true")
     parser.add_argument("--required-code-shapes-only", action="store_true")
     parser.add_argument("--sha-only", action="store_true")
+    parser.add_argument(
+        "--verify-contract",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted llama.cpp logits helper contract artifact with current "
+            f"source-hook/prompt/preflight metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-contract, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-contract, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-contract, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -282,6 +308,120 @@ def build_llamacpp_logits_helper_contract(
     }
 
 
+def verify_llamacpp_logits_helper_contract(
+    contract_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted llama.cpp logits helper contract with current metadata."""
+
+    persisted_payload = _load_json_object(contract_artifact)
+    persisted: dict[str, object] = (
+        persisted_payload if persisted_payload is not None else {"exists": False}
+    )
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_helper_contract_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted llama.cpp logits helper contract artifact differs "
+                    "from current source-hook/prompt/preflight metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    persisted_prompt = persisted.get("prompt_contract")
+    current_prompt = current_report.get("prompt_contract")
+    return {
+        "schema_version": 1,
+        "artifact_path": str(contract_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_implementation_ready": persisted.get("implementation_ready"),
+        "current_implementation_ready": current_report.get("implementation_ready"),
+        "persisted_source_hooks_ready": persisted.get("source_hooks_ready"),
+        "current_source_hooks_ready": current_report.get("source_hooks_ready"),
+        "persisted_source_hook_marker_failures": persisted.get(
+            "source_hook_marker_failures"
+        ),
+        "current_source_hook_marker_failures": current_report.get(
+            "source_hook_marker_failures"
+        ),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+        "persisted_required_code_shapes": persisted.get("required_code_shapes"),
+        "current_required_code_shapes": current_report.get("required_code_shapes"),
+        "persisted_prompt_input_ids": (
+            persisted_prompt.get("input_ids") if isinstance(persisted_prompt, dict) else None
+        ),
+        "current_prompt_input_ids": (
+            current_prompt.get("input_ids") if isinstance(current_prompt, dict) else None
+        ),
+        "persisted_expected_next_token_id": (
+            persisted_prompt.get("expected_next_token_id")
+            if isinstance(persisted_prompt, dict)
+            else None
+        ),
+        "current_expected_next_token_id": (
+            current_prompt.get("expected_next_token_id")
+            if isinstance(current_prompt, dict)
+            else None
+        ),
+        "persisted_generated_first_token_id": (
+            persisted_prompt.get("generated_first_token_id")
+            if isinstance(persisted_prompt, dict)
+            else None
+        ),
+        "current_generated_first_token_id": (
+            current_prompt.get("generated_first_token_id")
+            if isinstance(current_prompt, dict)
+            else None
+        ),
+        "persisted_prompt_sha256": (
+            persisted.get("prompt_artifact", {}).get("sha256")
+            if isinstance(persisted.get("prompt_artifact"), dict)
+            else None
+        ),
+        "current_prompt_sha256": (
+            current_report.get("prompt_artifact", {}).get("sha256")
+            if isinstance(current_report.get("prompt_artifact"), dict)
+            else None
+        ),
+        "persisted_probe_sha256": (
+            persisted.get("probe_artifact", {}).get("sha256")
+            if isinstance(persisted.get("probe_artifact"), dict)
+            else None
+        ),
+        "current_probe_sha256": (
+            current_report.get("probe_artifact", {}).get("sha256")
+            if isinstance(current_report.get("probe_artifact"), dict)
+            else None
+        ),
+        "persisted_preflight_sha256": (
+            persisted.get("preflight_artifact", {}).get("sha256")
+            if isinstance(persisted.get("preflight_artifact"), dict)
+            else None
+        ),
+        "current_preflight_sha256": (
+            current_report.get("preflight_artifact", {}).get("sha256")
+            if isinstance(current_report.get("preflight_artifact"), dict)
+            else None
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -293,6 +433,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         preflight_artifact=args.preflight_artifact,
         artifact_date=args.artifact_date,
     )
+    if args.verify_contract is not None:
+        verification = verify_llamacpp_logits_helper_contract(
+            args.verify_contract,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.implementation_ready_only:

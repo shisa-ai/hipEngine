@@ -982,8 +982,9 @@ reporting.
   in `examples/debug/debug.cpp` (`common_tokenize(ctx, params.prompt, add_bos)`, `llama_get_logits_ith(ctx, tokens.size() - 1)`,
   `params.save_logits`), `common/common.h` / `common/common.cpp` parse-special forwarding, and `common/arg.cpp`
   flag scope; and requires the helper to either tokenize with `parse_special=true` and `add_bos=false` or accept those
-  explicit retained token IDs before reading final prompt-token logits. The in-tree probe now has a tested
-  `--prompt-token-source retained-input-ids` mode that emits `--token-ids 0,128006,...` for a future helper, so no
+  explicit retained token IDs before reading final prompt-token logits; `python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-status-only`
+  is the drift check for the source-hook, prompt-token, required-code-shape, and upstream probe/preflight metadata.
+  The in-tree probe now has a tested `--prompt-token-source retained-input-ids` mode that emits `--token-ids 0,128006,...` for a future helper, so no
   free-form shell rewrite is needed once the helper binary exists. `scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-plan.json`, which checks the
   current `/home/lhl/llama.cpp/llama.cpp-vulkan` anchors and emits the exact reviewed patch recipe without editing the

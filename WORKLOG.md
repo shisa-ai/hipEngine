@@ -43123,3 +43123,84 @@ PY
 ```
 
 Results: targeted llama.cpp logits entrypoint-inventory tests passed (`6` tests); inventory verifier status returns `"match"`, verifier failures `[]`, verifier digest `56e3440dff0fd97e0407a5ec2451d8fd820761ee4e1a34b40144dbd006ccea5d`; inventory status remains `"ready"`, `built_logits_dump_binary_present` remains `true`, `build_readiness_status` remains `"built"`, and stable payload SHA remains `bf0cf0df9e15323dd1feff8cf4c20a98b87822046641b94d79b1146d0f1f9748`; refreshed helper artifacts retain their blocked statuses; helper readiness and remaining-blockers verification returned `"match"`; status/final-blocker/handoff verification returned `"match"`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `35f431dc240cecf0178ebc106b495d4c00a45b2db2f2d4d3c626e6f35e2b7227`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are entrypoint inventory `337541debb028dcfa9099680800fb2087bb595033249e2f43fe23dd4154633ae`, helper contract `b9ec7de96c8b3d5fc764eae52931d83e7dd292c677017f3b002f1ecb7f7c3a58`, helper patch-plan `ee6fc06ccd33e9b3990749c72f2ea0e4c994d0b2ebe57679a793e1753500f45c`, helper patch dry-run `83bb9e4bcb1491606d02543a66083ae16ad22ba8187a5ff3426b5b31de2311e3`, helper readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, remaining-blockers rollup `c73ae51eabbb28eb09d18851b8bb1ab534844e2d435e8fc03434059ca085bd4b`, correctness-status `52b5ab4b2f5f450b738eb2610f95e03b3307b8a79f1c5db4f581f3166af6849c`, final-blocker `3c98929904b7e306f0efc102e10ef6abfdc55d715cdf5d032b93c759070ca97e`, handoff `afd060ae7f73cd8683f81900b7d6b30ec07b32adb7ba36fa61cb6a3bc11e66ac`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed; remaining artifact scripts without verify options are the llama.cpp logits helper contract/patch-plan/patch-dry-run/probe scripts.
+
+## 2026-06-15 - StepFun llama.cpp logits helper contract drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 544. Added an explicit verifier for the retained llama.cpp logits helper contract artifact. `scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract` now rebuilds the source-hook marker map, retained prompt-token contract, required code shapes, missing-evidence list, and upstream prompt/probe/preflight artifact hashes from current inputs and compares them with `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json`, with compact status/failure/digest modes for handoff polling. This verifies the helper contract before patch-plan/dry-run/readiness, remaining-blockers rollup, and final handoff consume it; it does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, build the helper, capture same-prompt logits, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json` remains `status=blocked`, `implementation_ready=true`, with missing evidence `same_prompt_logits_helper_built` and `llama_cpp_same_prompt_logits_artifact_present`; its file SHA is `b9ec7de96c8b3d5fc764eae52931d83e7dd292c677017f3b002f1ecb7f7c3a58` and stable payload SHA is `925b75498650b21e83e9de4c2443b918b4b3b53e1b1f77a2daf1d965e933ae06`. `--verify-contract --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `f4ca724259b7fff047f5f6b060d491c21066231cd4f0c2e071259e25f9a911b8`. Refreshed downstream handoff artifacts after the docs verifier note: helper patch-plan remains `status=blocked` with payload SHA `86ade8cea392c3721640d5f6d94400c3db320893874d02492730e90182c544ef`; helper patch dry-run remains `status=blocked` with payload SHA `eaa5e83ff866d9d729bc19bf4c1d85858c1d70145c9bd7d833a17d2d839a1608`; helper readiness verification returns `"match"` with payload SHA `8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7`; remaining-blockers rollup stays blocked with payload SHA `7cf77e5291244c531ac4577d8cf7d75ab2d8bf0b0e1d3d9a740e3bfa0d4a41b5`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_helper_contract.py tests/test_stepfun_llamacpp_logits_helper_contract.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_helper_contract.py
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-failures-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --implementation-ready-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --missing-evidence-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --required-code-shapes-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --implementation-ready-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --missing-evidence-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --required-code-shapes-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-failures-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_llamacpp_logits_helper_contract.py tests/test_stepfun_llamacpp_logits_helper_contract.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-plan.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-failures-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --verify-contract --verification-sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 - <<'PY'
+from pathlib import Path
+import re
+print('NO_VERIFY artifact scripts:')
+for p in sorted(Path('scripts').glob('stepfun_*.py')):
+    s=p.read_text()
+    has_output='DEFAULT_OUTPUT' in s or '--default-output' in s
+    opts=sorted(set(re.findall(r'--verify-[a-z-]+', s)))
+    if has_output and not opts:
+        print(p.name)
+PY
+```
+
+Results: targeted llama.cpp logits helper-contract tests passed (`4` tests); contract verifier status returns `"match"`, verifier failures `[]`, verifier digest `f4ca724259b7fff047f5f6b060d491c21066231cd4f0c2e071259e25f9a911b8`; contract status remains `"blocked"`, `implementation_ready` remains `true`, missing evidence remains `same_prompt_logits_helper_built` and `llama_cpp_same_prompt_logits_artifact_present`, and stable payload SHA remains `925b75498650b21e83e9de4c2443b918b4b3b53e1b1f77a2daf1d965e933ae06`; refreshed patch-plan/dry-run/readiness artifacts retain their blocked/readiness statuses; helper readiness and remaining-blockers verification returned `"match"`; status/final-blocker/handoff verification returned `"match"`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `05185ebff81775a33fe573cbd9e5e96cdf3a65bf4eb7812991fc8df72a485d7c`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are helper contract `b9ec7de96c8b3d5fc764eae52931d83e7dd292c677017f3b002f1ecb7f7c3a58`, helper patch-plan `ee6fc06ccd33e9b3990749c72f2ea0e4c994d0b2ebe57679a793e1753500f45c`, helper patch dry-run `83bb9e4bcb1491606d02543a66083ae16ad22ba8187a5ff3426b5b31de2311e3`, helper readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, remaining-blockers rollup `fd1801383e7fa32f55a477d58a749c6be8be490d3454874193fc8a90a23bda31`, correctness-status `f3ae91dd167caeb0db34b7988d5e8aa6d4af59ca3822ed8121e7741cb1113140`, final-blocker `f18dffca3a6ee2fb0fba730af6b50e0b325cbcc7e86aadd08300b3ac84ae228b`, handoff `4a468af521ba17349c35f0b3bfb86875f40602657b34e8dbc9e450b913e63202`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed; remaining artifact scripts without verify options are the llama.cpp logits helper patch-plan/patch-dry-run/probe scripts.

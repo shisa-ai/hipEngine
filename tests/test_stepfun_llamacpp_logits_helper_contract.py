@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_llamacpp_logits_helper_contract import (
     build_llamacpp_logits_helper_contract,
     main,
+    verify_llamacpp_logits_helper_contract,
 )
 
 
@@ -212,3 +217,139 @@ def test_stepfun_llamacpp_logits_helper_contract_cli_modes(tmp_path: Path) -> No
     assert json.loads(output.read_text())[0] == "common_tokenize(ctx, params.prompt, add_bos, true)"
     assert main([*base_args, "--sha-only", "--output", str(output)]) == 0
     assert isinstance(json.loads(output.read_text()), str)
+
+
+def test_stepfun_llamacpp_logits_helper_contract_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "llama.cpp"
+    prompt = tmp_path / "prompt.json"
+    probe = tmp_path / "probe.json"
+    preflight = tmp_path / "preflight.json"
+    artifact = tmp_path / "contract.json"
+    output = tmp_path / "verify.json"
+    _write_llamacpp_source_tree(root)
+    _write_prompt_artifact(prompt)
+    _write_artifact(probe, kind="stepfun_llamacpp_logits_probe")
+    _write_artifact(preflight, kind="stepfun_llamacpp_logits_preflight")
+    base_args = [
+        "--llama-cpp-root",
+        str(root),
+        "--prompt-artifact",
+        str(prompt),
+        "--probe-artifact",
+        str(probe),
+        "--preflight-artifact",
+        str(preflight),
+        "--artifact-date",
+        "2030-04-07",
+    ]
+    current = build_llamacpp_logits_helper_contract(
+        llama_cpp_root=root,
+        prompt_artifact=prompt,
+        probe_artifact=probe,
+        preflight_artifact=preflight,
+        artifact_date="2030-04-07",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_helper_contract(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_implementation_ready"] is True
+    assert verification["current_implementation_ready"] is True
+    assert verification["persisted_source_hooks_ready"] is True
+    assert verification["current_source_hooks_ready"] is True
+    assert verification["persisted_source_hook_marker_failures"] == []
+    assert verification["current_source_hook_marker_failures"] == []
+    assert verification["persisted_missing_evidence"] == [
+        "same_prompt_logits_helper_built",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    assert verification["current_missing_evidence"] == [
+        "same_prompt_logits_helper_built",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    assert verification["persisted_required_code_shapes"][0] == (
+        "common_tokenize(ctx, params.prompt, add_bos, true)"
+    )
+    assert verification["current_required_code_shapes"][0] == (
+        "common_tokenize(ctx, params.prompt, add_bos, true)"
+    )
+    assert verification["persisted_prompt_input_ids"] == [0, 128006, 201, 128798]
+    assert verification["current_prompt_input_ids"] == [0, 128006, 201, 128798]
+    assert verification["persisted_expected_next_token_id"] == 369
+    assert verification["current_expected_next_token_id"] == 369
+    assert verification["persisted_generated_first_token_id"] == 671
+    assert verification["current_generated_first_token_id"] == 671
+    assert verification["persisted_prompt_sha256"] == _stable_json_sha256(
+        json.loads(prompt.read_text())
+    )
+    assert verification["current_prompt_sha256"] == _stable_json_sha256(
+        json.loads(prompt.read_text())
+    )
+    assert verification["persisted_probe_sha256"] == _stable_json_sha256(
+        json.loads(probe.read_text())
+    )
+    assert verification["current_probe_sha256"] == _stable_json_sha256(
+        json.loads(probe.read_text())
+    )
+    assert verification["persisted_preflight_sha256"] == _stable_json_sha256(
+        json.loads(preflight.read_text())
+    )
+    assert verification["current_preflight_sha256"] == _stable_json_sha256(
+        json.loads(preflight.read_text())
+    )
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-contract",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["implementation_ready"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_helper_contract(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "llamacpp_logits_helper_contract_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-contract",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "llamacpp_logits_helper_contract_drift"
+    )
