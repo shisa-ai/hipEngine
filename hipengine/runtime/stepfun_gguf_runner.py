@@ -1640,6 +1640,13 @@ class StepFunResidentSession:
         contract = self.kv_streaming_decode_contract(run_plan)
         upload_plan = run_plan.decode_input_upload_plan
         launch_trace = run_plan.streaming_decode_launch_trace
+        kv_dispatch_keys = {
+            name: _kernel_key_to_dict(key)
+            for name, key in run_plan.decode_plan.kv_dispatch_keys.items()
+        }
+        kv_dispatch_keys_sha256 = hashlib.sha256(
+            json.dumps(kv_dispatch_keys, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         upload_plan_sha256 = hashlib.sha256(
             json.dumps(upload_plan, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -1702,6 +1709,10 @@ class StepFunResidentSession:
             "decode_live_count": run_plan.decode_live_count,
             "stream": int(stream),
             "runtime_provided": runtime is not None,
+            "kv_dispatch_keys": kv_dispatch_keys,
+            "kv_dispatch_keys_sha256": kv_dispatch_keys_sha256,
+            "kv_dispatch_key_names": sorted(kv_dispatch_keys),
+            "all_kv_dispatch_keys_bound": bool(kv_dispatch_keys),
             "pre_run_upload_plan_sha256": upload_plan_sha256,
             "pre_run_upload_entry_count": upload_plan["entry_count"],
             "pre_run_upload_total_nbytes": upload_plan["total_nbytes"],

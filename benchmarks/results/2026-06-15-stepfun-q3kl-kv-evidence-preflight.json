@@ -8,7 +8,7 @@
   "kv_backed_decode_ready": false,
   "kv_blocker_status": {
     "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json",
-    "artifact_sha256": "7c1ba502a2894304561f01926a920038d05427561b21268e9157718ee066d879",
+    "artifact_sha256": "2aa86adf7706914fb0de4d261ca036acdf5caa62c56c2dcb878bcf3d131baac5",
     "blocked_count": 2,
     "missing_artifact_paths": [
       "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
@@ -59,7 +59,7 @@
   "schema_version": 1,
   "session_contract": {
     "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
-    "artifact_sha256": "9d2a8aa950fd5636503bfe986e9c698a0ee56ecff92399025a030142da720231",
+    "artifact_sha256": "19ef602ffec10b2c4e60ed3cb2150f4eaf64500e3a7caf788f50fec1361270d1",
     "blocked_by": "streaming_decode_loop_not_wired",
     "launch_operation_count": 135,
     "missing_evidence": [],

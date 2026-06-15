@@ -81,6 +81,35 @@ def test_stepfun_kv_session_contract_artifact_binds_session_contract() -> None:
     assert decode_entrypoint["kv_cache_tokens"] == 512
     assert decode_entrypoint["kv_cache_nbytes"] == 94371840
     assert decode_entrypoint["kv_cache_buffer_count"] == 0
+    assert decode_entrypoint["kv_dispatch_key_names"] == [
+        "decode_attention",
+        "decode_kv_write",
+        "prompt_kv_write",
+    ]
+    assert decode_entrypoint["all_kv_dispatch_keys_bound"] is True
+    assert decode_entrypoint["kv_dispatch_keys"] == {
+        "decode_attention": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_attn_decode",
+            "quant": "gguf_step35",
+            "variant": "bf16_split_k_gate_f32_spans",
+        },
+        "decode_kv_write": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_spans",
+        },
+        "prompt_kv_write": {
+            "backend": "hip_gfx1151",
+            "layer": "paged_kv_write",
+            "quant": "gguf_step35",
+            "variant": "mixed_bf16_prompt_spans",
+        },
+    }
+    assert decode_entrypoint["kv_dispatch_keys_sha256"] == (
+        "9457815868810189bc25a1897c24380f85dcdd76ef1a4cf4edd75491e794cff5"
+    )
     assert decode_entrypoint["kv_cache_layer_nbytes_match_expected"] is True
     assert decode_entrypoint["kv_cache_layer_nbytes_sha256"]
     assert decode_entrypoint["pre_run_upload_plan_sha256"]

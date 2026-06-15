@@ -810,6 +810,25 @@ def test_stepfun_resident_session_decode_one_token_kv_bf16_reports_blocker() -> 
     assert blocker["decode_live_count"] == run_plan.decode_live_count
     assert blocker["stream"] == 7
     assert blocker["runtime_provided"] is False
+    expected_dispatch_keys = {
+        name: {
+            "backend": key.backend,
+            "layer": key.layer,
+            "quant": key.quant,
+            "variant": key.variant,
+        }
+        for name, key in run_plan.decode_plan.kv_dispatch_keys.items()
+    }
+    assert blocker["kv_dispatch_keys"] == expected_dispatch_keys
+    assert blocker["kv_dispatch_key_names"] == [
+        "decode_attention",
+        "decode_kv_write",
+        "prompt_kv_write",
+    ]
+    assert blocker["all_kv_dispatch_keys_bound"] is True
+    assert blocker["kv_dispatch_keys_sha256"] == hashlib.sha256(
+        json.dumps(expected_dispatch_keys, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     expected_upload_plan = run_plan.decode_input_upload_plan
     expected_launch_trace = run_plan.streaming_decode_launch_trace
     assert blocker["pre_run_upload_plan_sha256"] == hashlib.sha256(

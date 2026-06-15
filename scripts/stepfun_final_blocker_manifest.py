@@ -375,6 +375,15 @@ def _kv_runner_prerequisite_handoff() -> dict[str, object]:
         "decode_entrypoint_no_kernel_launches": decode_entrypoint.get(
             "no_kernel_launches"
         ),
+        "decode_entrypoint_kv_dispatch_key_names": decode_entrypoint.get(
+            "kv_dispatch_key_names"
+        ),
+        "decode_entrypoint_kv_dispatch_keys_sha256": decode_entrypoint.get(
+            "kv_dispatch_keys_sha256"
+        ),
+        "decode_entrypoint_all_kv_dispatch_keys_bound": decode_entrypoint.get(
+            "all_kv_dispatch_keys_bound"
+        ),
         "decode_entrypoint_pre_run_upload_plan_sha256": decode_entrypoint.get(
             "pre_run_upload_plan_sha256"
         ),
