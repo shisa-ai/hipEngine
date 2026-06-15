@@ -95401,3 +95401,47 @@ Validation:
   no runtime backend/quant dispatch branch; no generation, MTP execution,
   sampling implementation, GPU kernel, attention/KV runtime path, or performance
   claim; future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF multi-depth draft batch scaffold
+
+Implemented `mtp-gguf` multiloop iteration 61: extended the GGUF MTP context
+state scaffold from B1-only rows to explicit multi-depth draft batches.
+
+Scope note:
+- State scaffold/test/docs only. No hipEngine runtime generation, GGUF tensor
+  loading, MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- Multi-depth rows require one explicit embedding seed row per proposed token;
+  this prevents B2-B4 scaffolding from silently reusing the original target seed
+  before native NextN execution can produce chained seeds.
+
+Changes:
+- Added `Qwen35GGUFMTPContext.build_draft_batch(...)`, which builds B1-B4
+  `Qwen35GGUFMTPDraftBatch` rows from a token-id sequence and matching seed rows.
+- `build_b1_draft_batch(...)` now delegates to the generic builder and retains
+  the pending-seed behavior for B1.
+- Added validation that multi-depth batches require explicit seed rows, seed-row
+  count matches token count, and all seed rows share `hidden_size`.
+- Added tests for B3 draft rows carrying token IDs, positions, parent
+  token/positions, and embedding seed pointers, plus error cases for missing or
+  inconsistent seed rows.
+- Updated `docs/MTP-gguf.md` M4/backlog text to state that the context scaffold
+  now covers B1-B4 seed/batch state while runtime execution/KV allocation remain
+  open.
+
+Validation:
+- GGUF MTP context tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py` -> `7` passed.
+- Public speculative import smoke passed:
+  `from hipengine.speculative import Qwen35GGUFMTPContext`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: state scaffold/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

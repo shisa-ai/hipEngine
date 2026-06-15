@@ -78,6 +78,48 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
     ]
 
 
+def test_gguf_mtp_context_builds_multi_depth_draft_batch_from_seed_rows() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8, source="target"),
+        Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8, source="draft[0]"),
+        Qwen35GGUFMTPSeedRow(token_id=12, position=7, hidden_ptr=0x3000, hidden_size=8, source="draft[1]"),
+    )
+
+    batch = context.build_draft_batch(request_id=4, token_ids=(101, 102, 103), seed_rows=seeds)
+
+    assert batch.request_ids == (4,)
+    assert batch.token_ids == (101, 102, 103)
+    assert batch.embedding_seed_ptrs == (0x1000, 0x2000, 0x3000)
+    assert [row.draft_depth for row in batch.rows] == [1, 2, 3]
+    assert [row.position for row in batch.rows] == [6, 7, 8]
+    assert [row.parent_token_id for row in batch.rows] == [10, 11, 12]
+    assert [row.parent_position for row in batch.rows] == [5, 6, 7]
+
+
+def test_gguf_mtp_context_requires_explicit_seed_rows_for_multi_depth_batch() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))
+
+    with pytest.raises(ValueError, match="multi-depth GGUF MTP draft batches require explicit seed_rows"):
+        context.build_draft_batch(request_id=0, token_ids=(11, 12))
+    with pytest.raises(ValueError, match="seed_rows length"):
+        context.build_draft_batch(
+            request_id=0,
+            token_ids=(11, 12),
+            seed_rows=(Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),),
+        )
+    with pytest.raises(ValueError, match="share hidden_size"):
+        context.build_draft_batch(
+            request_id=0,
+            token_ids=(11, 12),
+            seed_rows=(
+                Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+                Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=16),
+            ),
+        )
+
+
 def test_gguf_mtp_context_accept_reseeds_from_verify_row_min_accepted() -> None:
     context = Qwen35GGUFMTPContext(target_session=object())
     context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))

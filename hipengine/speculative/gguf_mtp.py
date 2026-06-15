@@ -227,20 +227,62 @@ class Qwen35GGUFMTPContext:
         return self.pending_seed
 
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
-        if self.pending_seed is None:
-            raise RuntimeError("pending GGUF MTP hidden seed is not populated")
-        seed = self.pending_seed
-        row = Qwen35GGUFMTPDraftRow(
-            request_id=int(request_id),
-            token_id=int(token_id),
-            position=seed.position + 1,
-            draft_depth=1,
-            embedding_seed_ptr=seed.hidden_ptr,
-            embedding_hidden_size=seed.hidden_size,
-            parent_token_id=seed.token_id,
-            parent_position=seed.position,
+        return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))
+
+    def build_draft_batch(
+        self,
+        *,
+        request_id: int,
+        token_ids: Sequence[int],
+        seed_rows: Sequence[Qwen35GGUFMTPSeedRow | _DraftSeedLike] | None = None,
+    ) -> Qwen35GGUFMTPDraftBatch:
+        """Build B1-B4 GGUF MTP draft rows with explicit embedding seeds.
+
+        B1 can use the context's ``pending_seed``.  B2-B4 must pass one seed row
+        per proposed token, because each deeper draft row consumes the previous
+        NextN/verify hidden state rather than reusing the original target seed.
+        """
+
+        tokens = tuple(int(token_id) for token_id in token_ids)
+        if not tokens:
+            raise ValueError("token_ids must contain at least one draft token")
+        if seed_rows is None:
+            if len(tokens) != 1:
+                raise ValueError("multi-depth GGUF MTP draft batches require explicit seed_rows")
+            if self.pending_seed is None:
+                raise RuntimeError("pending GGUF MTP hidden seed is not populated")
+            seeds = (self.pending_seed,)
+        else:
+            seeds = tuple(self._coerce_seed_row(seed, source=f"draft_seed[{index}]") for index, seed in enumerate(seed_rows))
+            if len(seeds) != len(tokens):
+                raise ValueError("seed_rows length must match token_ids length")
+        hidden_sizes = {seed.hidden_size for seed in seeds}
+        if len(hidden_sizes) != 1:
+            raise ValueError("all GGUF MTP draft seed rows must share hidden_size")
+        rows = tuple(
+            Qwen35GGUFMTPDraftRow(
+                request_id=int(request_id),
+                token_id=token_id,
+                position=seed.position + 1,
+                draft_depth=depth,
+                embedding_seed_ptr=seed.hidden_ptr,
+                embedding_hidden_size=seed.hidden_size,
+                parent_token_id=seed.token_id,
+                parent_position=seed.position,
+            )
+            for depth, (token_id, seed) in enumerate(zip(tokens, seeds, strict=True), 1)
         )
-        return Qwen35GGUFMTPDraftBatch(rows=(row,))
+        return Qwen35GGUFMTPDraftBatch(rows=rows)
+
+    @staticmethod
+    def _coerce_seed_row(
+        seed: Qwen35GGUFMTPSeedRow | _DraftSeedLike,
+        *,
+        source: str,
+    ) -> Qwen35GGUFMTPSeedRow:
+        if isinstance(seed, Qwen35GGUFMTPSeedRow):
+            return seed
+        return Qwen35GGUFMTPSeedRow.from_seed(seed, source=source)
 
     def as_dict(self) -> dict[str, object]:
         return {
