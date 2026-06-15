@@ -95670,3 +95670,53 @@ Validation:
   backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF draft sampler contract precheck
+
+Implemented `mtp-gguf` multiloop iteration 67: made the GGUF MTP B1-B4 preflight
+enforce the llama.cpp draft sampler contract against sampling fixtures.
+
+Scope note:
+- Preflight fixture/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation, native MTP draft execution, sampling implementation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This prevents artifacts from passing token/sampling parity while using stale
+  draft `top_k=1` settings even though the MTP metadata/call spec advertises the
+  llama.cpp contract (`top_k=10`, greedy top-1 from the top-k set).
+
+Changes:
+- Added `draft_sampling_contract_precheck` to
+  `scripts/gguf_mtp_b1_prompt_suite.py`, comparing both hipEngine and llama.cpp
+  sampling fixtures against the draft top-k contract embedded in the MTP draft
+  tensor plan (`top_k`, `selection`, `selected_index`).
+- Added a `draft_sampling_contract_mismatch` blocker before runtime metrics when
+  either engine's sampling fixture disagrees with that contract.
+- Updated `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` to
+  encode `draft.top_k=10`, `draft.selection=greedy_top1_from_topk`, and
+  `draft.selected_index=0`, plus matching request-map annotations.
+- Extended B1 preflight tests to assert the passing contract precheck and the
+  stale-top-k mismatch blocker.
+- Updated `docs/MTP-gguf.md` to document the contract-aware sampling fixture and
+  preflight artifact field.
+
+Validation:
+- Focused B1 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `9` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `blocked B1 True {'selected_index': 0, 'selection': 'greedy_top1_from_topk', 'top_k': 10} native_gguf_mtp_runtime_missing`.
+- Sampling/token parity precheck passed with the updated B1 fixture:
+  `scripts/gguf_mtp_parity_precheck.py --hipengine-token-inventory benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --llamacpp-token-inventory benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --hipengine-sampling benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json --llamacpp-sampling benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json --require-sampling --fail-on-mismatch --out /tmp/gguf-mtp-parity-sampling-contract.json` ->
+  `parity_precheck True sampling True`.
+- `py_compile`, JSON validation, and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py`,
+  `/home/lhl/miniforge3/envs/therock/bin/python -m json.tool benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json`, and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight fixture/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

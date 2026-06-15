@@ -60,6 +60,51 @@ def _sampling_draft_budget(settings: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sampling_draft_contract(settings: dict[str, Any]) -> dict[str, Any]:
+    draft = settings.get("draft") if isinstance(settings.get("draft"), dict) else {}
+    return {
+        "top_k": draft.get("top_k"),
+        "selection": draft.get("selection"),
+        "selected_index": draft.get("selected_index"),
+    }
+
+
+def _build_draft_sampling_contract_precheck(
+    *,
+    hipengine_sampling: dict[str, Any],
+    llamacpp_sampling: dict[str, Any],
+    draft_topk: dict[str, Any],
+) -> dict[str, Any]:
+    expected = {
+        "top_k": draft_topk.get("top_k"),
+        "selection": draft_topk.get("selection"),
+        "selected_index": draft_topk.get("selected_index"),
+    }
+    observed = {
+        "hipengine": _sampling_draft_contract(hipengine_sampling),
+        "llamacpp": _sampling_draft_contract(llamacpp_sampling),
+    }
+    mismatches: list[dict[str, Any]] = []
+    for engine, values in observed.items():
+        for field, expected_value in expected.items():
+            if values.get(field) != expected_value:
+                mismatches.append(
+                    {
+                        "engine": engine,
+                        "field": field,
+                        "expected": expected_value,
+                        "actual": values.get(field),
+                    }
+                )
+    return {
+        "checked": True,
+        "passed": not mismatches,
+        "expected": expected,
+        "observed": observed,
+        "mismatches": mismatches,
+    }
+
+
 def _build_draft_budget_precheck(
     *,
     hipengine_sampling: dict[str, Any],
@@ -123,6 +168,10 @@ def build_b1_prompt_suite_artifact(
     mtp_draft_tensor_plans = build_qwen35_gguf_mtp_draft_tensor_plans(model_info, strict=True)
     if not mtp_draft_tensor_plans:
         raise B1PromptSuitePreflightError(f"{model}: no MTP draft tensor plans found")
+    mtp_draft_tensor_plan_dicts = [plan.as_dict() for plan in mtp_draft_tensor_plans]
+    draft_topk_contract = mtp_draft_tensor_plan_dicts[0].get("draft_topk")
+    if not isinstance(draft_topk_contract, dict):
+        raise B1PromptSuitePreflightError(f"{model}: MTP draft plan did not expose draft_topk")
 
     hipengine_sampling_settings = load_sampling_settings(hipengine_sampling)
     llamacpp_sampling_settings = load_sampling_settings(llamacpp_sampling)
@@ -137,6 +186,11 @@ def build_b1_prompt_suite_artifact(
         hipengine_sampling=hipengine_sampling_settings,
         llamacpp_sampling=llamacpp_sampling_settings,
         draft_max=requested_draft_max,
+    )
+    draft_sampling_contract_precheck = _build_draft_sampling_contract_precheck(
+        hipengine_sampling=hipengine_sampling_settings,
+        llamacpp_sampling=llamacpp_sampling_settings,
+        draft_topk=draft_topk_contract,
     )
     oracle_gate = run_oracle_gate(oracle_fixture)
     blockers: list[dict[str, Any]] = []
@@ -158,6 +212,15 @@ def build_b1_prompt_suite_artifact(
                 "mismatches": draft_budget_precheck["mismatches"],
             }
         )
+    if not draft_sampling_contract_precheck["passed"]:
+        blockers.append(
+            {
+                "code": "draft_sampling_contract_mismatch",
+                "detail": "sampling fixtures must match the GGUF MTP draft top-k contract before metrics are comparable",
+                "expected": draft_sampling_contract_precheck["expected"],
+                "mismatches": draft_sampling_contract_precheck["mismatches"],
+            }
+        )
     if not oracle_gate["passed"]:
         blockers.append(
             {
@@ -167,7 +230,12 @@ def build_b1_prompt_suite_artifact(
                 "top1_agreement": float(oracle_gate["metrics"]["top1_agreement"]),
             }
         )
-    if parity["all_pass"] and draft_budget_precheck["passed"] and oracle_gate["passed"]:
+    if (
+        parity["all_pass"]
+        and draft_budget_precheck["passed"]
+        and draft_sampling_contract_precheck["passed"]
+        and oracle_gate["passed"]
+    ):
         blockers.append(
             {
                 "code": "native_gguf_mtp_runtime_missing",
@@ -203,12 +271,13 @@ def build_b1_prompt_suite_artifact(
             }
             for block in mtp_blocks
         ],
-        "mtp_draft_tensor_plans": [plan.as_dict() for plan in mtp_draft_tensor_plans],
+        "mtp_draft_tensor_plans": mtp_draft_tensor_plan_dicts,
         "mtp_draft_call_specs": [
             plan.cpu_reference_call_spec.as_dict() for plan in mtp_draft_tensor_plans
         ],
         "parity_precheck": parity,
         "draft_budget_precheck": draft_budget_precheck,
+        "draft_sampling_contract_precheck": draft_sampling_contract_precheck,
         "oracle_gate": oracle_gate,
         "execution": {
             "implemented": False,

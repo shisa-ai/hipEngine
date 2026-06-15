@@ -48,14 +48,28 @@ def _token_inventory(path: Path, *, token_ids: list[int] | None = None) -> Path:
     )
 
 
-def _sampling(path: Path, *, draft_max: int = 1) -> Path:
+def _sampling(
+    path: Path,
+    *,
+    draft_max: int = 1,
+    draft_top_k: int = 10,
+    draft_selection: str = "greedy_top1_from_topk",
+    selected_index: int = 0,
+) -> Path:
     return _write_json(
         path,
         {
             "schema": 1,
             "sampling": {
                 "target": {"temperature": 0.0, "seed": 12345},
-                "draft": {"budget": f"B{draft_max}", "draft_max": draft_max, "temperature": 0.0},
+                "draft": {
+                    "budget": f"B{draft_max}",
+                    "draft_max": draft_max,
+                    "selection": draft_selection,
+                    "selected_index": selected_index,
+                    "temperature": 0.0,
+                    "top_k": draft_top_k,
+                },
             },
         },
     )
@@ -141,7 +155,14 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False, draft_max: int = 1) -> dict[str, Path]:
+def _artifact_inputs(
+    tmp_path: Path,
+    *,
+    mismatch: bool = False,
+    draft_max: int = 1,
+    hipengine_draft_top_k: int = 10,
+    llamacpp_draft_top_k: int = 10,
+) -> dict[str, Path]:
     return {
         "model": tmp_path / "model.gguf",
         "prompts_file": _prompt_suite(tmp_path / "prompts.json"),
@@ -150,8 +171,16 @@ def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False, draft_max: int =
             tmp_path / "llama.json",
             token_ids=[1, 7, 3] if mismatch else [1, 2, 3],
         ),
-        "hipengine_sampling": _sampling(tmp_path / "hip-sampling.json", draft_max=draft_max),
-        "llamacpp_sampling": _sampling(tmp_path / "llama-sampling.json", draft_max=draft_max),
+        "hipengine_sampling": _sampling(
+            tmp_path / "hip-sampling.json",
+            draft_max=draft_max,
+            draft_top_k=hipengine_draft_top_k,
+        ),
+        "llamacpp_sampling": _sampling(
+            tmp_path / "llama-sampling.json",
+            draft_max=draft_max,
+            draft_top_k=llamacpp_draft_top_k,
+        ),
     }
 
 
@@ -210,6 +239,16 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "observed": {
             "hipengine": {"budget": "B1", "draft_max": 1},
             "llamacpp": {"budget": "B1", "draft_max": 1},
+        },
+        "mismatches": [],
+    }
+    assert artifact["draft_sampling_contract_precheck"] == {
+        "checked": True,
+        "passed": True,
+        "expected": {"top_k": 10, "selection": "greedy_top1_from_topk", "selected_index": 0},
+        "observed": {
+            "hipengine": {"top_k": 10, "selection": "greedy_top1_from_topk", "selected_index": 0},
+            "llamacpp": {"top_k": 10, "selection": "greedy_top1_from_topk", "selected_index": 0},
         },
         "mismatches": [],
     }
@@ -278,6 +317,31 @@ def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(
                 {"engine": "hipengine", "field": "draft_max", "expected": 2, "actual": 1},
                 {"engine": "llamacpp", "field": "budget", "expected": "B2", "actual": "B1"},
                 {"engine": "llamacpp", "field": "draft_max", "expected": 2, "actual": 1},
+            ],
+        }
+    ]
+
+
+def test_b1_prompt_suite_preflight_blocks_stale_draft_topk_sampling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    artifact = suite.build_b1_prompt_suite_artifact(
+        **_artifact_inputs(tmp_path, hipengine_draft_top_k=1, llamacpp_draft_top_k=1)
+    )
+
+    assert artifact["draft_budget_precheck"]["passed"] is True
+    assert artifact["draft_sampling_contract_precheck"]["passed"] is False
+    assert artifact["blockers"] == [
+        {
+            "code": "draft_sampling_contract_mismatch",
+            "detail": "sampling fixtures must match the GGUF MTP draft top-k contract before metrics are comparable",
+            "expected": {"top_k": 10, "selection": "greedy_top1_from_topk", "selected_index": 0},
+            "mismatches": [
+                {"engine": "hipengine", "field": "top_k", "expected": 10, "actual": 1},
+                {"engine": "llamacpp", "field": "top_k", "expected": 10, "actual": 1},
             ],
         }
     ]
