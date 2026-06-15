@@ -93687,3 +93687,25 @@ PY` -> `prefill_default_attn_aotriton_min_tokens 1024`, `readme_sweep_default_10
 - Result: `512/128` median prefill/decode `1516.828501 / 127.077740 tok/s`, stable candidate IDs `[318, 318, 318]`; `4K/128` median prefill/decode `1858.539787 / 115.795352 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Decision: no-hold/reverted. The candidate preserved memory and the `4K/128` ID, but changed the `512/128` final token versus retained/default (`220 -> 318`) and lowered short-prefill throughput (`1647.389814 -> 1516.828501 tok/s`); keep the GGUF AOTriton prefill threshold default at `512`.
+
+## 2026-06-15 - GGUF G-D4 split threshold=512 no-hold
+
+Tried lowering the GGUF full-attention split/gate fused decode threshold in
+`hipengine/runtime/qwen35_gguf_runner.py` from `1024` to `512`, so the short
+`512/128` gate used the existing warp-split fused decode path instead of the
+separate context + gate-mul path while `4K/128` stayed on grouped split decode.
+The code change was reverted after measurement.
+
+Validation and outcome:
+- Selection check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+import hipengine.runtime.qwen35_gguf_runner as r
+print('split_threshold', r._gguf_full_attention_split_decode_min_context())
+print('use_split_512', r._use_gguf_full_attention_split_decode(512))
+print('use_split_4k', r._use_gguf_full_attention_split_decode(4096))
+print('use_grouped_512_splits2', r._use_gguf_paged_attn_gqa_grouped(512, 2))
+print('use_grouped_4k_splits16', r._use_gguf_paged_attn_gqa_grouped(4096, 16))
+PY` -> `split_threshold=512`, `use_split_512=True`, `use_split_4k=True`, `use_grouped_512_splits2=False`, `use_grouped_4k_splits16=True`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-split512.json`.
+- Result: `512/128` median prefill/decode `1664.867098 / 113.634923 tok/s`, stable candidate IDs `[17, 17, 17]`; `4K/128` median prefill/decode `1853.810844 / 115.741708 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved memory and the `4K/128` ID, but changed the `512/128` final token versus retained/default (`220 -> 17`) and regressed decode sharply (`127.011979 -> 113.634923 tok/s`); keep the full-attention split decode threshold default at `1024`.

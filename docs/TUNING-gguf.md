@@ -215,6 +215,12 @@ No-hold notes:
   generated IDs and memory, but regressed the current lb1 gate metric
   (`115.114 -> 115.013 tok/s`) and lowered `512/128` prefill to `1635.484 tok/s`.
   Keep Q6_K T16 GEMV at `128,4`.
+- **G-D4 split decode threshold=512 rejected (2026-06-15).** Lowering the
+  full-attention split/gate fused decode threshold from `1024` to `512` routed
+  the short gate through the warp-split path and preserved memory, but changed
+  the `512/128` final token (`220 -> 17`) and regressed decode sharply
+  (`127.012 -> 113.635 tok/s`); `4K/128` decode also slipped
+  (`115.805 -> 115.742 tok/s`). Keep the split threshold default at `1024`.
 - **G-D4 grouped-GQA min-context=512 rejected (2026-06-15).** Lowering the
   grouped GQA split decode default threshold from `4096` to `512` enabled the
   grouped path on the short gate and preserved generated IDs and memory, but
