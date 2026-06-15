@@ -2772,7 +2772,8 @@ Current code reality:
   and replaces request strings plus compact sampler/agentic-control strings
   with SHA-256/length metadata. The explicit `none` mode stores raw strings for
   local debugging only.
-- Tests cover default-off behavior, failed HTTP request redaction, streaming
+- Tests cover default-off behavior for failed HTTP requests and normal HTTP 200
+  agentic result-validation failures, failed HTTP request redaction, streaming
   backend deadline/cancel errors, strict tool validation failures, streaming
   strict tool failures, completion structured failures, validation-only guided
   JSON/regex/choice/patch/diff failures, and streaming chat structured

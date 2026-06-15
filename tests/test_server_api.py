@@ -14778,6 +14778,62 @@ def test_replay_artifacts_are_default_off(tmp_path) -> None:
     assert not replay_dir.exists()
 
 
+@pytest.mark.parametrize(
+    ("payload", "output", "expected_finish_details"),
+    [
+        (
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "secret no replay tool task"}],
+                "tool_choice": "required",
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "read",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ],
+                "max_tokens": 16,
+            },
+            "ordinary answer",
+            _stateless_finish_details("tool_required_not_satisfied"),
+        ),
+        (
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "secret no replay structured task"}],
+                "response_format": {"type": "json_object"},
+                "max_tokens": 16,
+            },
+            "not json",
+            _stateless_finish_details("schema_violation"),
+        ),
+    ],
+)
+def test_replay_artifacts_are_default_off_for_agentic_result_failures(
+    tmp_path,
+    payload: dict[str, Any],
+    output: str,
+    expected_finish_details: dict[str, Any],
+) -> None:
+    replay_dir = tmp_path / "replay"
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=FakeLLM(outputs=[output]),
+    )
+    client = TestClient(app)
+
+    response = client.post("/v1/chat/completions", json=payload)
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_details"] == expected_finish_details
+    assert choice["message"] == {"role": "assistant", "content": ""}
+    assert not replay_dir.exists()
+
+
 def _load_single_replay_artifact(replay_dir: Path) -> tuple[dict[str, Any], str]:
     artifacts = list(replay_dir.glob("*.json"))
     assert len(artifacts) == 1

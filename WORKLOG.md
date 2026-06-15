@@ -93452,3 +93452,20 @@ Validation:
 - `uv run ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Replay artifacts default-off for agentic result failures
+
+Added endpoint-level coverage that normal HTTP 200 agentic result-validation
+failures do not write replay artifacts unless `--replay-dir` /
+`HIPENGINE_REPLAY_DIR` is explicitly configured. The new parametrized test
+covers both `tool_choice="required"` failures with
+`tool_required_not_satisfied` and structured JSON-object failures with
+`schema_violation`, complementing the existing default-off HTTP-error replay
+test and the enabled replay artifact tests.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'replay_artifacts_are_default_off or replay_artifact_captures_agentic_result_validation_failure or replay_artifact_captures_completion_structured_result_validation_failure or replay_artifact_captures_streaming_agentic_result_validation_failure or replay_artifact_captures_streaming_structured_result_validation_failure'` -> `7 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
