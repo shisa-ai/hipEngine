@@ -93449,3 +93449,8 @@ Validation and outcome:
 - Result: `512/128` median prefill/decode `1657.671726 / 122.386756 tok/s`, `4K/128` median prefill/decode `1856.359915 / 111.796561 tok/s`, tracked peak `21.334858 GiB`.
 - Full-model gate token IDs changed relative to baseline despite within-run stability: `512/128` `220 -> 97799`, `4K/128` `570 -> 28944`. This likely comes from a different accumulation grouping/order that the small synthetic Q8 fixture did not expose.
 - Decision: no-hold/reverted. It regressed decode vs the original baseline (`114.601613 -> 111.796561` primary metric) and failed the generated-token gate. Added a no-hold note to `docs/TUNING-gguf.md`; keep the 128-thread launch unless a new accumulation-order-safe variant is proven.
+
+Post-revert sanity:
+- Reran the GPU1 gate after reverting the Q8_0 T16 source to the original 128-thread/per-lane-scale path.
+- Result: `512/128` median prefill/decode `1638.547794 / 126.162259 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1851.950000 / 114.901837 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Multiloop iteration 5 logged this restoration metric (`114.901837 tok/s`) so future probes do not inherit the rejected block64 state.
