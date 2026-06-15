@@ -165,6 +165,12 @@ No-hold notes:
   1859.871 tok/s`), but regressed both retained decode medians (`127.012 ->
   126.995 tok/s`, `115.805 -> 115.610 tok/s`). Keep Q8_0 T16 prefill WMMA at
   `32,8` until a shape policy can protect decode.
+- **G-P2 Q8 T16 prefill tile_n=16 rejected (2026-06-15).** Changing the default
+  T16 WMMA prefill tile policy so rows `<2048` used `tile_n=16` preserved IDs
+  and memory, but regressed both prefill medians (`1647.390 -> 1621.701 tok/s`,
+  `1855.806 -> 1806.887 tok/s`) and both retained decode medians (`127.012 ->
+  126.991 tok/s`, `115.805 -> 115.624 tok/s`). Keep the default `tile_n=32` for
+  rows `>=32`.
 - **G-P4 chunk-min=8192 rejected (2026-06-15).** Raising the
   auto-chunk minimum from `1025` to `8192` disabled chunking for the 4K gate and
   preserved generated IDs, but raised tracked peak (`21.335 -> 21.416 GiB`),
