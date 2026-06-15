@@ -764,6 +764,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "array.maxItems",
             "string.minLength",
             "string.maxLength",
+            "string.pattern",
             "number.minimum",
             "number.maximum",
             "number.exclusiveMinimum",
@@ -828,6 +829,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "array.maxItems",
             "string.minLength",
             "string.maxLength",
+            "string.pattern",
             "number.minimum",
             "number.maximum",
             "number.exclusiveMinimum",
@@ -4322,9 +4324,11 @@ def test_chat_session_visible_only_downgrades_length_finish_to_prompt_only() -> 
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_prompt_only"
-    assert "continuation_id" not in first.json()["choices"][0]
-    assert first.json()["choices"][0]["finish_details"]["continuation_eligible"] is False
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert first_choice["finish_details"]["cache_action"] == "append_prompt_only"
+    assert first_choice["finish_details"]["continuation_eligible"] is True
+    assert first_choice["finish_details"]["continuation_id"] == continuation_id
     prompt = fake.calls[1][0][0]
     assert "start" in prompt
     assert "next" in prompt
@@ -4806,6 +4810,40 @@ def test_completions_response_format_json_schema_validates_result() -> None:
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_json_schema_validates_string_pattern() -> None:
+    schema = _response_json_schema()
+    schema["schema"]["properties"]["path"]["pattern"] = r"^README[.]md$"
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true,"path":"README.md"}']),
+        )
+    )
+    invalid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true,"path":"WORKLOG.md"}']),
+        )
+    )
+
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid = valid_client.post("/v1/completions", json=payload)
+    invalid = invalid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"ok":true,"path":"README.md"}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["text"] == ""
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_json_schema_length_rejects_invalid_json_continuation() -> None:
     client = TestClient(
         create_app(
@@ -5041,6 +5079,38 @@ def test_completions_response_format_rejects_unsupported_schema_keywords() -> No
     error = response.json()["error"]
     assert error["code"] == "invalid_request"
     assert error["param"] == "response_format.json_schema.schema.oneOf"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
+
+
+def test_completions_response_format_rejects_invalid_schema_pattern() -> None:
+    fake = FakeLLM(outputs=['{"ok":true,"path":"README.md"}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_result",
+                    "schema": {
+                        "type": "object",
+                        "properties": {"path": {"type": "string", "pattern": "["}},
+                    },
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "response_format.json_schema.schema.properties.path.pattern"
     assert error["hipengine"]["code"] == "schema_violation"
     assert error["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
@@ -8677,13 +8747,92 @@ def test_chat_completion_strict_tool_schema_rejects_unsupported_keywords() -> No
                         "strict": True,
                         "parameters": {
                             "type": "object",
-                            "properties": {
-                                "path": {
-                                    "type": "string",
-                                    "description": "Repository path",
-                                    "pattern": "^README",
-                                }
-                            },
+                            "oneOf": [{"required": ["path"]}],
+                            "properties": {"path": {"type": "string"}},
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "tools[0].function.parameters.oneOf"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
+
+
+def test_chat_completion_strict_tool_schema_validates_string_pattern() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string", "pattern": r"^README[.]md$"}},
+                    "required": ["path"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    valid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']),
+    )
+    invalid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md"}}</tool_call>']),
+    )
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "read the readme"}],
+        "tools": tools,
+    }
+
+    valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
+    invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["finish_reason"] == "tool_calls"
+    assert valid_choice["finish_details"]["reason"] == "tool_calls"
+    assert json.loads(valid_choice["message"]["tool_calls"][0]["function"]["arguments"]) == {
+        "path": "README.md"
+    }
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "tool_calls" not in invalid_choice["message"]
+
+
+def test_chat_completion_strict_tool_schema_rejects_invalid_pattern_without_generation() -> None:
+    fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"path": {"type": "string", "pattern": "["}},
                             "required": ["path"],
                             "additionalProperties": False,
                         },
@@ -11453,7 +11602,7 @@ def test_server_rejects_wrong_model_and_unsupported_options(caplog) -> None:
                 "continuation_id": "gen_missing",
                 "session": {"id": "session_123"},
             },
-            "continuation_id",
+            "messages",
         ),
         (
             "/v1/chat/completions",

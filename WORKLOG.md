@@ -91810,3 +91810,20 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema pattern validation
+
+Strict tool schemas and structured-output JSON Schema validation now support
+the string `pattern` keyword. Request validation rejects non-string or invalid
+regex patterns before generation, the capabilities manifest advertises
+`string.pattern`, and post-generation result validation applies Python regex
+search semantics to string values. Full server API validation also aligned stale
+session-continuation expectations from the session-backed continuation work.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_result tests/test_server_api.py::test_completions_response_format_json_schema_validates_string_pattern tests/test_server_api.py::test_completions_response_format_rejects_unsupported_schema_keywords tests/test_server_api.py::test_completions_response_format_rejects_invalid_schema_pattern tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_unsupported_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_string_pattern tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_invalid_pattern_without_generation -q` -> `8 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `140 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -173,6 +173,7 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "maxItems",
         "minLength",
         "maxLength",
+        "pattern",
         "minimum",
         "maximum",
         "exclusiveMinimum",
@@ -862,6 +863,7 @@ def _tool_schema_subset() -> list[str]:
         "array.maxItems",
         "string.minLength",
         "string.maxLength",
+        "string.pattern",
         "number.minimum",
         "number.maximum",
         "number.exclusiveMinimum",
@@ -9664,6 +9666,14 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     for key in ("minItems", "maxItems", "minLength", "maxLength"):
         if key in schema and _schema_nonnegative_int(schema.get(key)) is None:
             return (f"{path}.{key}", f"{path}.{key} must be a non-negative integer")
+    if "pattern" in schema:
+        pattern = schema.get("pattern")
+        if not isinstance(pattern, str):
+            return (f"{path}.pattern", f"{path}.pattern must be a string")
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            return (f"{path}.pattern", f"{path}.pattern must be a valid regular expression: {exc}")
     for key in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
         if key in schema and _schema_finite_number(schema.get(key)) is None:
             return (f"{path}.{key}", f"{path}.{key} must be a finite number")
@@ -9723,6 +9733,9 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
             max_length = _schema_nonnegative_int(schema.get("maxLength"))
             if max_length is not None and len(value) > max_length:
                 return f"{path} must have at most {max_length} characters"
+            pattern = schema.get("pattern")
+            if isinstance(pattern, str) and re.search(pattern, value) is None:
+                return f"{path} does not match pattern"
     elif schema_type in {"integer", "number"}:
         numeric = float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
         if numeric is not None:

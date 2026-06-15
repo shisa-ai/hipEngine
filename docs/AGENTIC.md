@@ -1554,10 +1554,12 @@ Current state:
   names, malformed tool-call blocks, and a minimal function `parameters` JSON
   schema subset: scalar types, `enum`, `const`, object `properties` /
   `required` / `additionalProperties=false`, array `items` / `minItems` /
-  `maxItems`, string `minLength` / `maxLength`, and numeric min/max bounds.
-  Unsupported validation keywords are rejected before generation when strict
-  validation would use the schema; annotation keys such as `title`,
-  `description`, and `default` are accepted but ignored by validation.
+  `maxItems`, string `minLength` / `maxLength` / `pattern`, and numeric min/max
+  bounds. String `pattern` uses Python regular-expression search semantics after
+  generation, and invalid regexes are rejected before generation. Unsupported
+  validation keywords are rejected before generation when strict validation
+  would use the schema; annotation keys such as `title`, `description`, and
+  `default` are accepted but ignored by validation.
 - Tool-policy and strict-validation failures return normal chat responses with
   no successful `tool_calls`, stable `finish_details.reason` values
   (`invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`),
@@ -1681,7 +1683,8 @@ Current code reality:
 
 - post-generation strict validation covers selected tool names, malformed tool
   blocks, required/extra arguments, scalar types, `enum`, `const`, nested
-  objects, arrays, array length bounds, string length bounds, and numeric bounds;
+  objects, arrays, array length bounds, string length bounds/patterns, and
+  numeric bounds;
 - strict schemas reject unsupported validation keywords before generation rather
   than silently ignoring constraints;
 - decode-time schema constraints and retry/repair remain future grammar work.

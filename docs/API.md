@@ -466,9 +466,11 @@ left partially emitted.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 object `properties` / `required` / `additionalProperties: false`, array `items`
-with `minItems` / `maxItems`, string `minLength` / `maxLength`, and numeric
-`minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`. Unsupported
-validation keywords such as `oneOf`, `anyOf`, `$ref`, `pattern`, and `format`
+with `minItems` / `maxItems`, string `minLength` / `maxLength` / `pattern`,
+and numeric `minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`.
+String `pattern` uses Python regular-expression search semantics after
+generation, and invalid regexes are rejected before generation. Unsupported
+validation keywords such as `oneOf`, `anyOf`, `$ref`, and `format`
 are rejected before generation when strict tool validation would use the schema;
 annotation keys such as `title`, `description`, and `default` are accepted but
 ignored by validation. This is result validation only; decode-time JSON/schema
@@ -505,9 +507,9 @@ reason under
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` / `required` /
 `additionalProperties: false`, array `items` / `minItems` / `maxItems`, string
-`minLength` / `maxLength`, and numeric min/max bounds. Unsupported validation
-keywords are rejected before generation instead of being silently ignored;
-annotation keys are accepted but ignored by validation. This is result
+`minLength` / `maxLength` / `pattern`, and numeric min/max bounds. Unsupported
+validation keywords are rejected before generation instead of being silently
+ignored; annotation keys are accepted but ignored by validation. This is result
 validation plus object close-suffix forcing, not grammar-constrained decoding.
 
 `guided_json` uses the same JSON result paths and object-root close-forcing
