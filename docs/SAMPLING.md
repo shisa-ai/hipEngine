@@ -116,6 +116,53 @@ the planner falls back before native execution:
 - broader retained benchmarks/profiler coverage beyond the first W7900 promotion
   smoke.
 
+### Native follow-up triage
+
+The supported native route is promotion-ready because it avoids full-vocabulary
+logits D2H and keeps unsupported shapes on the host fallback. The remaining
+native-vs-greedy gap is expected but has a few concrete places to tighten:
+
+- **Current closest-to-greedy mode:** bounded `top_k` sampling. It adds one
+  sampler kernel after projection and avoids the host full-vocab copy. This is
+  the mode to use for native/greedy performance comparisons.
+- **Expected slower native modes:** `top_k=0` full-vocab temperature sampling
+  still scans the vocabulary during selection, and exact full-vocab
+  `top_p`/`min_p` uses a correctness-first retained-set construction. They are
+  native correctness paths, not yet the performance shape to compare against
+  greedy argmax.
+- **Avoidable scalar traffic:** `_sample_from_hidden_native(...)` still reads
+  selected token/logprob/logit to host and then writes the selected id/value back
+  into the legacy `lm_out_index` / `lm_out_value` buffers. Those buffers are
+  part of the resident-session contract today, but the writeback should move
+  into the sampler kernels or become conditional once sampled AR no longer needs
+  the legacy lm-head outputs for compatibility tests.
+- **Avoidable per-step uploads:** temperature, top-p/min-p, seed, and compact
+  processor metadata are uploaded through the Python/ctypes path each sampled
+  step. Request-constant scalar buffers can be cached at sampler configuration
+  time; processor history uploads are still expected for penalties until row
+  history is resident on device.
+- **Processor overhead is real:** logit bias and repetition/presence/frequency
+  penalties add a full-vocab processor kernel before sampling. They are covered
+  for native correctness, but they should not be treated as greedy-adjacent
+  performance until the processor ABI and row-history uploads are tightened.
+- **Graph replay remains greedy-only:** sampled requests need mutable RNG,
+  row-history, and finish/constraint decisions. Do not block native promotion on
+  graph replay until that state is device-resident enough to make replay useful.
+
+Unsupported native cases, ranked by likely ease and payoff:
+
+| Priority | Case | Why first / blocker |
+| --- | --- | --- |
+| P1 | Native `top_logprobs` for bounded `top_k <= 64` | The top-k sampler already has optional top-index/top-logprob outputs. The work is mostly planner/result plumbing and server response tests. Full-vocab `top_logprobs` remains separate. |
+| P1 | `suppress_token_ids` and `min_tokens`/EOS suppression | These are simple mask processors after bias/penalties. Extending the processor kernel with suppress offsets unlocks common API shapes without changing RNG semantics. |
+| P1 | Combined `top_k` with `top_p`/`min_p` | Host order already applies probability filters after top-k. The bounded top-k candidate list can apply the same filters without the full-vocab top-p selector. |
+| P2 | Forced-token queues when already pending | A per-step forced-token fast path can emit the queued token and metadata without host logits sampling. It needs careful interaction with sequence repair, JSON close, and thinking-budget queues. |
+| P2 | Request-constant native scalar buffer caching | Small performance cleanup for the promoted route. Useful after a profiler pass confirms Python/H2D scalar traffic is visible. |
+| P3 | `top_k > 64` | Raises register/shared-memory pressure in the bounded sampler. Needs a measured reason before increasing the cap. |
+| P3 | GGUF native sampling | Useful eventually, but GGUF lacks the PARO resident scheduler/runtime shape that made scoped native promotion easy. |
+| P3 | True batched c>N native token selection | Requires row-aware projection/sampling into `batch_lm_out_index` plus generated-token equality and replay readiness. This is larger than sampler-only work. |
+| P3 | Faster full-vocab top-p/min-p selector | Performance work after correctness parity; current exact path is acceptable for scoped native coverage but not the greedy-comparison target. |
+
 ## Hardware lane for this work
 
 Standalone sampler development may use **GPU1**, the local AMD Radeon RX
@@ -169,8 +216,9 @@ logits level and record the memory blocker instead of weakening the test.
   relaxed/speculative documents because it changes the accept contract.
 - Matching another engine's exact random stream. hipEngine should define its own
   deterministic stream and document it.
-- Promoting GPU sampling performance. Native GPU sampling is a later retained
-  performance track after functional support is correct.
+- Broad native GPU sampling parity outside the scoped PARO default. The current
+  native route is promoted only for the covered request shapes; unsupported
+  processors and response shapes still fall back to host logits sampling.
 
 ## Parameter contract
 
@@ -492,8 +540,8 @@ fully vectorized at first:
 - `SamplerParamsBlock` represents all public sampler fields, not only
   temperature/top-k/top-p/repetition.
 - The first c>N functional paths project rows through native packed prefill and
-  sample each row serially: by host logits normally, or by the opt-in native GPU
-  sampler when all rows are covered by the native sampler contract.
+  sample each row serially: by the default native GPU sampler when all rows are
+  covered by the native sampler contract, otherwise by host logits fallback.
 - A true batched native c>N path should write selected token ids directly to
   `batch_lm_out_index` so graph replay can feed the next step without host
   token-list readback.

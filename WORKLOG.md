@@ -93753,3 +93753,26 @@ Validation:
 - `uv run ruff check hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> `All checks passed!`.
 - `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"` -> `hip OK`.
 - `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+
+## 2026-06-16 - Native sampler follow-up triage
+
+Audited the promoted PARO native sampler against the greedy runtime path and
+updated `docs/SAMPLING.md` with the next tightening targets. The closest
+native-vs-greedy comparison remains bounded `top_k` sampling; full-vocab
+temperature and exact top-p/min-p are correctness paths and should not be the
+first performance comparison target. Remaining avoidable overhead is scalar
+traffic and compatibility writeback around `_sample_from_hidden_native(...)`:
+it still reads selected token/logprob/logit to host and writes selected id/value
+back to legacy `lm_out_index` / `lm_out_value` buffers, which current tests
+assert. That should move into the sampler kernel or become conditional before
+being treated as removed.
+
+Ranked easiest unsupported native cases as bounded `top_logprobs` for
+`top_k <= 64`, suppress-token/min-token EOS masking, and combined top-k with
+top-p/min-p. Forced-token queues are P2 because they are feasible as a per-step
+forced-token fast path but interact with sequence repair, JSON close forcing,
+and thinking-budget queues. True batched c>N, GGUF native sampling, `top_k > 64`,
+and faster full-vocab top-p remain P3/native-surface work.
+
+Validation: docs-only; re-read changed `docs/SAMPLING.md` sections and reviewed
+`git diff -- docs/SAMPLING.md`.
