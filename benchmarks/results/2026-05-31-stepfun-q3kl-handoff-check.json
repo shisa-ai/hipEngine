@@ -577,15 +577,15 @@
     "final_blocker_manifest": {
       "all_match": true,
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json",
-      "current_manifest_sha256": "28abcefe17deef897ab00376c92def437816441f539dde0ad0ecae806f0337a5",
-      "persisted_manifest_sha256": "28abcefe17deef897ab00376c92def437816441f539dde0ad0ecae806f0337a5",
+      "current_manifest_sha256": "d4c456aec5765364cba15450abcbb3555aa2f6715e6a383aa1dc7eae82d97160",
+      "persisted_manifest_sha256": "d4c456aec5765364cba15450abcbb3555aa2f6715e6a383aa1dc7eae82d97160",
       "status": "match",
       "verification_failure_count": 0
     },
     "schema_version": 1,
     "status": "match"
   },
-  "artifact_verification_sha256": "eb8b1bebb7cc9ada44722eadbc78d86fa4091e2140af33da1bffeec1196d13cb",
+  "artifact_verification_sha256": "66490713ea3499614116bfaed3038d3a7b5c91b1db5901e12879587ba2ea8688",
   "blocker_status": {
     "blocked_gates": [
       "oracle_parity",
@@ -639,8 +639,8 @@
         "current": {
           "exists": true,
           "path": "docs/STEPFUN.md",
-          "sha256": "042ab3c883f40cc6804aa038cb18e73886020c55951ae4d88f4e958a3c6687b7",
-          "size_bytes": 100429
+          "sha256": "c9dedd8e3b35feb19c7fd4e6211ce1ee811feb9c04c2fe5d65268b49cca83740",
+          "size_bytes": 100701
         },
         "match": true,
         "matches": {
@@ -652,8 +652,8 @@
         "recorded": {
           "exists": true,
           "path": "docs/STEPFUN.md",
-          "sha256": "042ab3c883f40cc6804aa038cb18e73886020c55951ae4d88f4e958a3c6687b7",
-          "size_bytes": 100429
+          "sha256": "c9dedd8e3b35feb19c7fd4e6211ce1ee811feb9c04c2fe5d65268b49cca83740",
+          "size_bytes": 100701
         }
       },
       "oracle": {
@@ -830,22 +830,22 @@
   },
   "digest_summary": {
     "action_summary_sha256": "05984b8e6dd23a6cb5d515f928965100d62750d0b94ce83e35f03662f1639146",
-    "artifact_verification_sha256": "eb8b1bebb7cc9ada44722eadbc78d86fa4091e2140af33da1bffeec1196d13cb",
+    "artifact_verification_sha256": "66490713ea3499614116bfaed3038d3a7b5c91b1db5901e12879587ba2ea8688",
     "blocker_status_sha256": "02c1b1c7548460a19bf60143c070025ce9dc2c3be3a98214aa3542adb341216d",
     "e2e_readiness_gate_summary_sha256": "cd15a90ab830b8d40515b9cfc86782be6be61829742debe3cc68fa1ae3504f67",
     "exit_code_policy_sha256": "7ce7950143a5e4d2eb0767f511bbb915c71cf923953987d739ffcb687d7d0450",
     "final_blocker_manifest_summary_sha256": "ded5214a67b83ebf439877425bc2b34ac627123b5093a22fc792f32563cd0998",
-    "manifest_sha256": "28abcefe17deef897ab00376c92def437816441f539dde0ad0ecae806f0337a5",
+    "manifest_sha256": "d4c456aec5765364cba15450abcbb3555aa2f6715e6a383aa1dc7eae82d97160",
     "missing_artifact_summary_sha256": "c156a7a0c824fd318edab08b41f72aae39c4cfdcd9232cd8579dc29baad40bae",
-    "readiness_summary_sha256": "791093f53e761ae622b49298ad57d6c44cd61c3470af33769b939c45a9a774d7",
+    "readiness_summary_sha256": "d0956ae74cb0d365625b599d49c40b0726baf39d1f847cf6d28e80a5d94f7a1b",
     "schema_version": 1,
-    "source_artifacts_sha256": "09c1f62c1068848be9e2bad8cf25921c08bc694ade6651a44fa57bea406b9920",
+    "source_artifacts_sha256": "ce92dbef680c7506f1d2a9e70d9440f3531512003787a0a9a6ccae99dddb2dfa",
     "status": "blocked_verified",
-    "summary_sha256": "7f87908b97dcc86f73f07a0fbedeab944e2f87d1aa94ae19c128b21a875fb008",
+    "summary_sha256": "000a7fd27cc5d882161741177c9b5b3085d19f2fc1a9283808b25ff6a23985d0",
     "validator_command_summary_sha256": "e5bc7268fdcfefa0ee0d8e1a55fd99b44b1bb3fe17f8e86dd32c87e8bc0624dd",
     "verification_failures_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
-  "digest_summary_sha256": "c63a623c757b2d4f89a01ea6707f44719289f11f3e70ae7f60433aa1228daa77",
+  "digest_summary_sha256": "1ae3f8e5438f1d6adda907247d5dd8896f4b68bb7f5cf24bda181efe8a675642",
   "e2e_readiness_gate_summary": {
     "blocked_gates": [
       "oracle_parity",
@@ -1116,19 +1116,19 @@
   "final_blocker_manifest_summary_sha256": "ded5214a67b83ebf439877425bc2b34ac627123b5093a22fc792f32563cd0998",
   "final_blocker_manifest_verification": {
     "all_match": true,
-    "current_manifest_sha256": "28abcefe17deef897ab00376c92def437816441f539dde0ad0ecae806f0337a5",
+    "current_manifest_sha256": "d4c456aec5765364cba15450abcbb3555aa2f6715e6a383aa1dc7eae82d97160",
     "current_status_provenance": {
       "handoff_summary_sha256": "3eca8a98ad2cb76784938efadb5b08898a855247cf0938b08dc3980391bd413f",
       "next_action_commands_sha256": "8cbe625238b5b2e51914a2d479657fa73ae836d38205c29f45166748c5c59862",
       "oracle_partial_output_handoff_sha256": "181b866b8e2625e8d0b02780bda484767aaa96350158c3b0fb5c738f809171a0",
       "oracle_progress_sha256": "09e06b1655a5b56610a0550a8ad27a5add7d542d369b2420df6461cab1bd204f",
-      "readiness_summary_sha256": "791093f53e761ae622b49298ad57d6c44cd61c3470af33769b939c45a9a774d7",
+      "readiness_summary_sha256": "d0956ae74cb0d365625b599d49c40b0726baf39d1f847cf6d28e80a5d94f7a1b",
       "source_artifacts": {
         "docs": {
           "exists": true,
           "path": "docs/STEPFUN.md",
-          "sha256": "042ab3c883f40cc6804aa038cb18e73886020c55951ae4d88f4e958a3c6687b7",
-          "size_bytes": 100429
+          "sha256": "c9dedd8e3b35feb19c7fd4e6211ce1ee811feb9c04c2fe5d65268b49cca83740",
+          "size_bytes": 100701
         },
         "oracle": {
           "exists": true,
@@ -1155,23 +1155,23 @@
           "size_bytes": 178045
         }
       },
-      "source_artifacts_sha256": "09c1f62c1068848be9e2bad8cf25921c08bc694ade6651a44fa57bea406b9920",
+      "source_artifacts_sha256": "ce92dbef680c7506f1d2a9e70d9440f3531512003787a0a9a6ccae99dddb2dfa",
       "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
     },
     "manifest_path": "benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json",
-    "persisted_manifest_sha256": "28abcefe17deef897ab00376c92def437816441f539dde0ad0ecae806f0337a5",
+    "persisted_manifest_sha256": "d4c456aec5765364cba15450abcbb3555aa2f6715e6a383aa1dc7eae82d97160",
     "persisted_status_provenance": {
       "handoff_summary_sha256": "3eca8a98ad2cb76784938efadb5b08898a855247cf0938b08dc3980391bd413f",
       "next_action_commands_sha256": "8cbe625238b5b2e51914a2d479657fa73ae836d38205c29f45166748c5c59862",
       "oracle_partial_output_handoff_sha256": "181b866b8e2625e8d0b02780bda484767aaa96350158c3b0fb5c738f809171a0",
       "oracle_progress_sha256": "09e06b1655a5b56610a0550a8ad27a5add7d542d369b2420df6461cab1bd204f",
-      "readiness_summary_sha256": "791093f53e761ae622b49298ad57d6c44cd61c3470af33769b939c45a9a774d7",
+      "readiness_summary_sha256": "d0956ae74cb0d365625b599d49c40b0726baf39d1f847cf6d28e80a5d94f7a1b",
       "source_artifacts": {
         "docs": {
           "exists": true,
           "path": "docs/STEPFUN.md",
-          "sha256": "042ab3c883f40cc6804aa038cb18e73886020c55951ae4d88f4e958a3c6687b7",
-          "size_bytes": 100429
+          "sha256": "c9dedd8e3b35feb19c7fd4e6211ce1ee811feb9c04c2fe5d65268b49cca83740",
+          "size_bytes": 100701
         },
         "oracle": {
           "exists": true,
@@ -1198,7 +1198,7 @@
           "size_bytes": 178045
         }
       },
-      "source_artifacts_sha256": "09c1f62c1068848be9e2bad8cf25921c08bc694ade6651a44fa57bea406b9920",
+      "source_artifacts_sha256": "ce92dbef680c7506f1d2a9e70d9440f3531512003787a0a9a6ccae99dddb2dfa",
       "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
     },
     "schema_version": 1,
@@ -1522,10 +1522,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "d5a210f663d203bd6bb45c13a1f3499b76c8f6293070960a41b00e0a8c4897f8",
     "schema_version": 1,
-    "source_artifacts_sha256": "09c1f62c1068848be9e2bad8cf25921c08bc694ade6651a44fa57bea406b9920",
+    "source_artifacts_sha256": "ce92dbef680c7506f1d2a9e70d9440f3531512003787a0a9a6ccae99dddb2dfa",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "791093f53e761ae622b49298ad57d6c44cd61c3470af33769b939c45a9a774d7",
+  "readiness_summary_sha256": "d0956ae74cb0d365625b599d49c40b0726baf39d1f847cf6d28e80a5d94f7a1b",
   "schema_version": 1,
   "status": "blocked_verified",
   "summary": {
@@ -1536,7 +1536,7 @@
     ],
     "blocked_verified": true,
     "manifest_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json",
-    "manifest_sha256": "28abcefe17deef897ab00376c92def437816441f539dde0ad0ecae806f0337a5",
+    "manifest_sha256": "d4c456aec5765364cba15450abcbb3555aa2f6715e6a383aa1dc7eae82d97160",
     "open_or_partial_items_p0_p12": 2,
     "ready": false,
     "remaining_blocker_count": 2,
@@ -1545,13 +1545,13 @@
       "kv_backed_decode_not_wired"
     ],
     "schema_version": 1,
-    "source_artifacts_sha256": "09c1f62c1068848be9e2bad8cf25921c08bc694ade6651a44fa57bea406b9920",
+    "source_artifacts_sha256": "ce92dbef680c7506f1d2a9e70d9440f3531512003787a0a9a6ccae99dddb2dfa",
     "status": "blocked_verified",
     "status_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json",
     "verification_failure_count": 0,
     "verified": true
   },
-  "summary_sha256": "7f87908b97dcc86f73f07a0fbedeab944e2f87d1aa94ae19c128b21a875fb008",
+  "summary_sha256": "000a7fd27cc5d882161741177c9b5b3085d19f2fc1a9283808b25ff6a23985d0",
   "validator_command_summary": {
     "all_required_artifacts_satisfied": false,
     "no_claim_policy": {
