@@ -86,6 +86,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the artifact payload.",
     )
+    parser.add_argument(
+        "--verify-plan",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted llama.cpp logits plan artifact with current "
+            f"preflight/source-map/next-action metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-plan, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-plan, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-plan, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -281,6 +307,85 @@ def build_llamacpp_logits_plan(
     }
 
 
+def verify_llamacpp_logits_plan(
+    plan_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted llama.cpp logits plan artifact with current metadata."""
+
+    persisted = _load_json_object(plan_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_plan_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted llama.cpp logits plan artifact differs from current "
+                    "preflight/source-map/next-action metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(plan_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_ready": persisted.get("ready"),
+        "current_ready": current_report.get("ready"),
+        "persisted_implementation_ready": persisted.get("implementation_ready"),
+        "current_implementation_ready": current_report.get("implementation_ready"),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+        "persisted_step_keys": persisted.get("step_keys"),
+        "current_step_keys": current_report.get("step_keys"),
+        "persisted_blocked_reason": persisted.get("blocked_reason"),
+        "current_blocked_reason": current_report.get("blocked_reason"),
+        "persisted_preflight_sha256": (
+            persisted.get("preflight_artifact", {}).get("sha256")
+            if isinstance(persisted.get("preflight_artifact"), dict)
+            else None
+        ),
+        "current_preflight_sha256": (
+            current_report.get("preflight_artifact", {}).get("sha256")
+            if isinstance(current_report.get("preflight_artifact"), dict)
+            else None
+        ),
+        "persisted_source_map_sha256": (
+            persisted.get("source_map_artifact", {}).get("sha256")
+            if isinstance(persisted.get("source_map_artifact"), dict)
+            else None
+        ),
+        "current_source_map_sha256": (
+            current_report.get("source_map_artifact", {}).get("sha256")
+            if isinstance(current_report.get("source_map_artifact"), dict)
+            else None
+        ),
+        "persisted_next_action_sha256": (
+            persisted.get("next_action_manifest", {}).get("sha256")
+            if isinstance(persisted.get("next_action_manifest"), dict)
+            else None
+        ),
+        "current_next_action_sha256": (
+            current_report.get("next_action_manifest", {}).get("sha256")
+            if isinstance(current_report.get("next_action_manifest"), dict)
+            else None
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -291,6 +396,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         next_action_manifest=args.next_action_manifest,
         artifact_date=args.artifact_date,
     )
+    if args.verify_plan is not None:
+        verification = verify_llamacpp_logits_plan(
+            args.verify_plan,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.implementation_ready_only:

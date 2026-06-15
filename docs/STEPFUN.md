@@ -966,7 +966,9 @@ reporting.
   `scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json`, with ordered pending steps to
   add/build a same-prompt-capable logits helper, capture the same-prompt logits artifact, compare host vs
-  llama.cpp logits, and refresh the oracle handoff. `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty`
+  llama.cpp logits, and refresh the oracle handoff; `python3 scripts/stepfun_llamacpp_logits_plan.py --verify-plan --verification-status-only`
+  is the drift check for the implementation-ready status, missing-evidence inputs, ordered step keys,
+  and upstream preflight/source-map/next-action artifact hashes. `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json`,
   showing source-level candidates (`examples/debug/debug.cpp`, `include/llama.h`, `examples/batched/batched.cpp`)
   exist and the local Vulkan CMake build has built `llama-debug` (`build_readiness_status=built`).

@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_llamacpp_logits_plan import build_llamacpp_logits_plan, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_llamacpp_logits_plan import (
+    build_llamacpp_logits_plan,
+    main,
+    verify_llamacpp_logits_plan,
+)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -311,3 +319,127 @@ def test_stepfun_llamacpp_logits_plan_cli_compact_modes(tmp_path: Path) -> None:
         "compare_host_vs_llamacpp_logits",
         "refresh_oracle_handoff_artifacts",
     ]
+
+
+def test_stepfun_llamacpp_logits_plan_verifies_persisted_artifact(tmp_path: Path) -> None:
+    preflight, source_map, manifest = _write_inputs(tmp_path)
+    artifact = tmp_path / "plan.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--preflight-artifact",
+        str(preflight),
+        "--source-map-artifact",
+        str(source_map),
+        "--next-action-manifest",
+        str(manifest),
+        "--artifact-date",
+        "2030-02-03",
+    ]
+    current = build_llamacpp_logits_plan(
+        preflight_artifact=preflight,
+        source_map_artifact=source_map,
+        next_action_manifest=manifest,
+        artifact_date="2030-02-03",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_plan(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_ready"] is False
+    assert verification["current_ready"] is False
+    assert verification["persisted_implementation_ready"] is True
+    assert verification["current_implementation_ready"] is True
+    assert verification["persisted_missing_evidence"] == [
+        "llama_cpp_same_prompt_logits_artifact_present",
+        "llama_cpp_logits_dump_entrypoint_identified",
+    ]
+    assert verification["current_missing_evidence"] == [
+        "llama_cpp_same_prompt_logits_artifact_present",
+        "llama_cpp_logits_dump_entrypoint_identified",
+    ]
+    assert verification["persisted_step_keys"] == [
+        "identify_or_add_logits_dump_entrypoint",
+        "capture_same_prompt_llamacpp_logits",
+        "compare_host_vs_llamacpp_logits",
+        "refresh_oracle_handoff_artifacts",
+    ]
+    assert verification["current_step_keys"] == [
+        "identify_or_add_logits_dump_entrypoint",
+        "capture_same_prompt_llamacpp_logits",
+        "compare_host_vs_llamacpp_logits",
+        "refresh_oracle_handoff_artifacts",
+    ]
+    assert verification["persisted_blocked_reason"] == (
+        "same-prompt llama.cpp logits capture is not implemented or retained yet"
+    )
+    assert verification["current_blocked_reason"] == (
+        "same-prompt llama.cpp logits capture is not implemented or retained yet"
+    )
+    assert verification["persisted_preflight_sha256"] == _stable_json_sha256(
+        json.loads(preflight.read_text())
+    )
+    assert verification["current_preflight_sha256"] == _stable_json_sha256(
+        json.loads(preflight.read_text())
+    )
+    assert verification["persisted_source_map_sha256"] == _stable_json_sha256(
+        json.loads(source_map.read_text())
+    )
+    assert verification["current_source_map_sha256"] == _stable_json_sha256(
+        json.loads(source_map.read_text())
+    )
+    assert verification["persisted_next_action_sha256"] == _stable_json_sha256(
+        json.loads(manifest.read_text())
+    )
+    assert verification["current_next_action_sha256"] == _stable_json_sha256(
+        json.loads(manifest.read_text())
+    )
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-plan",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["step_keys"] = ["capture_same_prompt_llamacpp_logits"]
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_plan(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == "llamacpp_logits_plan_drift"
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-plan",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "llamacpp_logits_plan_drift"
