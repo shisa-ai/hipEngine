@@ -1939,13 +1939,20 @@ Current code reality:
   and preserved `index`; clients concatenate `function.arguments` chunks to
   recover the same JSON argument string as non-streaming responses. The first
   chunk carries the function name, and later chunks carry argument fragments.
+- Runtime-native `n>1` live streaming is intentionally disabled for chat tools,
+  logprobs, structured-output validation, OpenAI stop strings, and continuation
+  resumes. Those surfaces use the buffered path until live multi-row chunk/final
+  metadata can preserve the same validation, logprob, stop, and tool-call
+  semantics. Endpoint regressions pin this fail-closed gate even when an engine
+  advertises `stream_many_detailed`.
 - final streaming chunks report `finish_reason="tool_calls"` and
   `finish_details.reason="tool_calls"` for parsed tool calls, or the same
   strict-result failure details as non-streaming when validation rejects the
   parsed call;
 - covered fixtures include single-call streaming, malformed JSON strict failure,
   strict schema failure, duplicated-start compatibility recovery, multi-call
-  streaming with preserved indexes, and long argument chunk concatenation. True
+  streaming with preserved indexes, long argument chunk concatenation, and the
+  `n>1` live-many fail-closed gate for tools/logprobs/structured/stop. True
   token-live argument chunking before full parse/validation remains future
   decode/streaming work.
 
@@ -3000,7 +3007,10 @@ withholds ambiguous backend chunks with diagnostics.
    tool/structured/logprob streams still need emitted chunk/final metadata,
    public handling for invalid/unmappable tool-call chunks, live unmappable
    parser-final logprob spans, and lower-loop continuation creation/scoping.
-   Until then, buffering or withheld diagnostics is correct.
+   Until then, buffering or withheld diagnostics is correct. Current endpoint
+   tests pin that tools, logprobs, structured-output validation, and stop
+   strings stay on the buffered path even when the engine advertises live
+   multi-row streaming.
 2. **Native/scheduler controlled-decoding parity.** GGUF/native GPU sampler
    paths and live c>N surfaces should eventually match host AR sampling
    metadata and logprob semantics. Unsupported processor combinations may keep

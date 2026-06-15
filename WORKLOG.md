@@ -93581,3 +93581,19 @@ Validation:
 - `python3 -m pytest tests/test_generation_batch_scheduler.py -q -k 'speculative_verify_for_processed_sampling or sampler_params_block or native_gpu_unsupported_request'` -> `18 passed`.
 - `uv run ruff check hipengine/generation/sampling.py hipengine/generation/__init__.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-15 - Live-many unsupported-surface fail-closed coverage
+
+Pinned the P2 runtime-native `n>1` live-streaming gate for chat surfaces that
+still require buffered validation or complete metadata. A live-many-capable fake
+engine now verifies that tools, chat logprobs, structured JSON validation, and
+OpenAI stop strings do not call `stream_many_detailed`; they stay on the
+buffered path until live multi-row semantics match the existing tool/logprob/
+structured/stop contracts.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion_n_buffers_live_many_unsupported_surfaces'` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion_n_buffers_live_many_unsupported_surfaces or streaming_chat_completion_n_forwards_runtime_native_live_chunks or streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call or streaming_chat_completion_n_reports_unmappable_scheduler_tool_chunks or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `6 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.

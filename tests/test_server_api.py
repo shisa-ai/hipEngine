@@ -14471,6 +14471,139 @@ def test_streaming_chat_completion_n_forwards_runtime_native_live_chunks() -> No
     assert "data: [DONE]" in response.text
 
 
+def test_streaming_chat_completion_n_buffers_live_many_unsupported_surfaces() -> None:
+    class LiveManyCapableFakeLLM(FakeLLM):
+        supports_stream_many = True
+
+        def __init__(self, outputs: list[str], *, include_logprobs: bool = False) -> None:
+            super().__init__(outputs=outputs)
+            self.include_logprobs = bool(include_logprobs)
+            self.stream_many_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            if not self.include_logprobs:
+                return super().generate_detailed(prompts, sampling_params)
+            prompt_tuple = tuple(prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            return [
+                GenerationOutput(
+                    text=output,
+                    token_logprobs=(
+                        TokenLogprob(
+                            token_id=700 + index,
+                            token_text=output,
+                            logprob=-0.1,
+                            top_logprobs=((700 + index, output, -0.1),),
+                        ),
+                    ),
+                )
+                for index, output in enumerate(self.outputs or ())
+            ][: len(prompt_tuple)]
+
+        def stream_many_detailed(self, prompts, sampling_params: SamplingParams):
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.stream_many_calls.append((prompt_tuple, sampling_params))
+            raise AssertionError("unsupported live-many surfaces must use the buffered path")
+
+    tool_request = {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "description": "Run a command",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ]
+    }
+    cases: tuple[tuple[str, dict[str, Any], list[str], bool], ...] = (
+        (
+            "tools",
+            tool_request,
+            [
+                '<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>',
+                '<tool_call>{"name":"bash","arguments":{"command":"ls"}}</tool_call>',
+            ],
+            False,
+        ),
+        ("logprobs", {"logprobs": True}, ["alpha", "beta"], True),
+        ("response_format", {"response_format": {"type": "json_object"}}, ['{"ok":true}', '{"ok":false}'], False),
+        ("stop", {"stop": "<stop>"}, ["alpha<stop>tail", "beta<stop>tail"], False),
+    )
+
+    for label, request_extra, outputs, include_logprobs in cases:
+        fake = LiveManyCapableFakeLLM(outputs, include_logprobs=include_logprobs)
+        app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+        client = TestClient(app)
+
+        capabilities = client.get("/v1/hipengine/capabilities")
+        assert capabilities.status_code == 200
+        assert capabilities.json()["features"]["stream_metadata"]["live_many_chunks"]["available"] is True
+
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": f"{label} request"}],
+                "n": 2,
+                "stream": True,
+                "stream_options": {"include_hipengine": True},
+                **request_extra,
+            },
+        )
+
+        assert response.status_code == 200, (label, response.text)
+        assert fake.stream_many_calls == []
+        assert len(fake.calls) == 1
+        assert len(fake.calls[0][0]) == 2
+        assert "data: [DONE]" in response.text
+        payloads = _sse_payloads(response.text)
+        choices = [
+            payload["choices"][0]
+            for payload in payloads
+            if payload.get("choices")
+        ]
+        done = [choice for choice in choices if choice["finish_reason"] is not None]
+        assert [choice["index"] for choice in done] == [0, 1]
+        if label == "tools":
+            assert "<tool_call>" not in response.text
+            tool_choices = [
+                choice for choice in choices if choice["delta"].get("tool_calls")
+            ]
+            assert [choice["index"] for choice in tool_choices] == [0, 1]
+            for choice, command in zip(tool_choices, ("pwd", "ls"), strict=True):
+                _assert_openai_stream_tool_call_delta_shape(
+                    choice,
+                    name="bash",
+                    arguments={"command": command},
+                    index=choice["index"],
+                )
+            assert [choice["finish_reason"] for choice in done] == ["tool_calls", "tool_calls"]
+        elif label == "logprobs":
+            assert any(choice.get("logprobs") is not None for choice in choices)
+            assert [choice["finish_reason"] for choice in done] == ["stop", "stop"]
+        elif label == "response_format":
+            assert [choice["finish_details"]["reason"] for choice in done] == ["stop", "stop"]
+            content = "".join(
+                choice["delta"].get("content", "")
+                for choice in choices
+                if choice["index"] == 0
+            )
+            assert json.loads(content) == {"ok": True}
+        elif label == "stop":
+            content_by_index = {
+                index: "".join(
+                    choice["delta"].get("content", "")
+                    for choice in choices
+                    if choice["index"] == index
+                )
+                for index in (0, 1)
+            }
+            assert content_by_index == {0: "alpha", 1: "beta"}
+            assert [choice["finish_reason"] for choice in done] == ["stop", "stop"]
+
+
 def test_streaming_chat_completion_can_include_kv_pool_metadata() -> None:
     fake = FakeLLM(outputs=["should-not-buffer"], stream_chunks=["streamed reply"])
     fake.kv_pool_stats = _fake_kv_pool_stats()
