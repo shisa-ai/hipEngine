@@ -92375,3 +92375,22 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC tool transcript capability manifest
+
+Advertised the live/snapshot tool transcript validation rules in
+`/v1/hipengine/capabilities` under `features.tools.transcript_validation`.
+The manifest now exposes role-specific field validation, unique assistant
+tool-call ids, tool-result references to prior unconsumed ids, required
+tool-result ordering before non-tool messages, allowance for pending tool calls
+at transcript end, and snapshot-restore parity. Updated docs/API and
+docs/AGENTIC so local-agent harnesses can discover this contract from the
+manifest rather than hardcoding it.
+
+Validation:
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities or replay_artifact_redacts_failed_request'` -> `6 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

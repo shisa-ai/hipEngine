@@ -424,7 +424,8 @@ rendering: assistant tool-call ids must be unique in the transcript, and each
 After an assistant message with tool calls, subsequent transcript messages must
 be `role: "tool"` results until the pending ids are consumed; a transcript may
 still end with pending tool calls so clients can send results in the next
-session-backed request.
+session-backed request. The capabilities manifest reports these rules under
+`features.tools.transcript_validation`.
 Inconsistent request shapes fail before generation: `tool_choice="required"`
 or a specific function choice requires at least one `tools` entry, and a
 specific function choice must use a valid object shape and name a declared

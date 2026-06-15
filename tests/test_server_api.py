@@ -896,6 +896,14 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
+        "transcript_validation": {
+            "role_specific_fields": True,
+            "assistant_tool_call_ids_unique": True,
+            "tool_results_reference_prior_call_ids": True,
+            "tool_results_must_resolve_pending_calls_before_non_tool_messages": True,
+            "allows_pending_tool_calls_at_transcript_end": True,
+            "applies_to_session_snapshots": True,
+        },
         "parallel_tool_calls_requires_opt_in": True,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
@@ -12532,6 +12540,14 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     )
     assert artifact["capabilities"]["features"]["tools"]["strict_malformed_blocks_rejected"] is True
     assert artifact["capabilities"]["features"]["tools"]["declared_tool_name_validation"] is True
+    assert artifact["capabilities"]["features"]["tools"]["transcript_validation"] == {
+        "role_specific_fields": True,
+        "assistant_tool_call_ids_unique": True,
+        "tool_results_reference_prior_call_ids": True,
+        "tool_results_must_resolve_pending_calls_before_non_tool_messages": True,
+        "allows_pending_tool_calls_at_transcript_end": True,
+        "applies_to_session_snapshots": True,
+    }
     assert artifact["capabilities"]["features"]["tools"]["parallel_tool_calls_requires_opt_in"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunks"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunk_chars"] == 128

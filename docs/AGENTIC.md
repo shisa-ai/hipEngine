@@ -2257,6 +2257,8 @@ Current code reality:
   repairs, declared-tool-name validation, parallel-tool opt-in enforcement,
   tool-enabled malformed-JSON fail-closed policy, sampling parameters and execution
   modes, strict tool result-validation support,
+  transcript-level tool-call/tool-result validation under
+  `features.tools.transcript_validation`,
   JSON-object, JSON-schema, guided-JSON, guided-regex, and guided-choice
   structured-output result validation, the
   root-object JSON length-finish structural guard under
