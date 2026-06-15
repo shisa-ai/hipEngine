@@ -1197,11 +1197,13 @@ Current code reality:
   thinking controls, before counting. When a chat diagnostic request includes
   `session.id`, `count_tokens` prepends the stored app-local transcript exactly
   as stored. `fit_context` shares generation's overflow-policy decision: the
-  default is `reject`, `session.context_overflow_policy="new_session"` drops the
-  stored prefix only when prefix+request overflows and the current request alone
-  fits, and `truncate_oldest_visible` drops the shortest oldest prefix whose
-  retained suffix remains a valid rendered transcript and fits. The responses
-  report session prefix/request/rendered message counts plus
+  default is `reject`, `session.context_overflow_policy="auto_clear_transient"`
+  reports that there are currently no transient stored segments to clear,
+  `new_session` drops the stored prefix only when prefix+request overflows and
+  the current request alone fits, and `truncate_oldest_visible` drops the
+  shortest oldest prefix whose retained suffix remains a valid rendered
+  transcript and fits. The responses report session prefix/request/rendered
+  message counts plus
   `resident_state_reuse=false`. Chat count/fit diagnostics also expose lowered
   thinking-budget close tokens, the initialized
   `ThinkingBudgetState` payload, and `allow_unbounded=true` when that merged
@@ -1210,7 +1212,7 @@ Current code reality:
   token-budget enforcement.
 - `/fit_context` uses the same context arithmetic and chat default max-token
   policy as generation admission, reports the current clear policy, and includes
-  sanitized kept/dropped/reset segment metadata for `new_session`.
+  sanitized kept/dropped/reset segment metadata for the selected policy.
 - Endpoints return explicit unsupported-feature errors when the served model does
   not expose tokenizer/counting/decoding hooks.
 
@@ -2098,6 +2100,13 @@ Current code reality:
 - The default overflow policy is explicit `reject`: generation does not
   truncate, auto-clear, or drop request content.
 - Stateful buffered chat requests may set
+  `session.context_overflow_policy="auto_clear_transient"`. The current
+  app-local transcript store has no transient stored segments, so this policy is
+  deterministic and conservative: it reports `would_clear_transient=false` and
+  `transient_message_count=0`, preserves committed visible turns, never drops
+  current request messages, and rejects overflows with the normal
+  `fit_context` payload.
+- Stateful buffered chat requests may set
   `session.context_overflow_policy="new_session"`. Generation and
   `/fit_context` first render the stored app-local transcript prefix plus the
   current request; if that overflows but the current request alone fits, the
@@ -2126,9 +2135,10 @@ Current code reality:
   preflight endpoint without reverse-engineering the error message. For
   session-backed chat requests, generation overflow errors also include the
   same `session` prefix-count and overflow-policy metadata as `/fit_context`.
-- `auto_clear_transient`, `keep_pinned_prefix`, and summary compaction are still
-  future work; `new_session` and `truncate_oldest_visible` never drop current
-  request messages.
+- Transient-segment clearing beyond the current no-op policy,
+  `keep_pinned_prefix`, and summary compaction are still future work;
+  `auto_clear_transient`, `new_session`, and `truncate_oldest_visible` never
+  drop current request messages.
 
 Exit gates:
 
@@ -3026,11 +3036,13 @@ withholds ambiguous backend chunks with diagnostics.
    should reuse the shared DFA/forced-token path. Current result-validation plus
    narrow JSON close-suffix forcing is acceptable if strict decoding remains
    advertised as unsupported.
-5. **Additional context policies.** `new_session` and
+5. **Additional context policies.** `auto_clear_transient`, `new_session`, and
    `truncate_oldest_visible` cover the currently safe transcript-prefix
-   policies. `auto_clear_transient`, pinned-prefix preservation, and summary
-   compaction are P2 only when they can report deterministic kept/dropped/reset
-   segments and never drop current request content.
+   policies. The current `auto_clear_transient` path is a deterministic no-op
+   because app-local sessions have no transient stored segments; pinned-prefix
+   preservation and summary compaction are P2 only when they can report
+   deterministic kept/dropped/reset segments and never drop current request
+   content.
 6. **HTTP/SSE hard-error variants for invalid tool calls.** Normal chat
    responses with `finish_details.reason="invalid_tool_call"` remain acceptable
    until a target harness requires HTTP/SSE `invalid_tool_call` errors.

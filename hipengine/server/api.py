@@ -79,7 +79,12 @@ _SESSION_COMMIT_MODES = (
     "append_all",
 )
 _SESSION_STATEFUL_DEFAULT_COMMIT = "append_visible_only"
-_SESSION_CONTEXT_OVERFLOW_POLICIES = ("reject", "new_session", "truncate_oldest_visible")
+_SESSION_CONTEXT_OVERFLOW_POLICIES = (
+    "reject",
+    "auto_clear_transient",
+    "new_session",
+    "truncate_oldest_visible",
+)
 _SESSION_CONTEXT_OVERFLOW_POLICY_ALIASES = {"fail": "reject"}
 _SESSION_ALLOWED_STATEFUL_KEYS = frozenset({"id", "commit", "context_overflow_policy"})
 _SESSION_UNSAFE_VISIBLE_REASONS = frozenset(
@@ -1172,6 +1177,13 @@ def _session_commit_policy_capability() -> dict[str, Any]:
             "default": "reject",
             "modes": list(_SESSION_CONTEXT_OVERFLOW_POLICIES),
             "aliases": dict(_SESSION_CONTEXT_OVERFLOW_POLICY_ALIASES),
+            "auto_clear_transient": {
+                "scope": "transient_session_segments",
+                "drops_committed_visible_turns": False,
+                "drops_request_content": False,
+                "current_transient_segment_count": 0,
+                "metadata": ["clear_policy", "would_clear_transient", "transient_message_count"],
+            },
             "new_session": {
                 "scope": "app_local_chat_transcript_prefix",
                 "drops_request_content": False,
@@ -2685,11 +2697,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         policy = _session_context_overflow_policy(request)
         if (
             apply_context_policy
-            and policy in {"new_session", "truncate_oldest_visible"}
+            and policy in {"auto_clear_transient", "new_session", "truncate_oldest_visible"}
             and session_payload is not None
         ):
             dropped_message_count = 0
-            if prefix_messages and effective_max_context_tokens(engine) is not None:
+            if (
+                policy != "auto_clear_transient"
+                and prefix_messages
+                and effective_max_context_tokens(engine) is not None
+            ):
                 prefixed_fit = chat_context_fit_payload(render_request, prompt, engine)
                 if not prefixed_fit["fits"]:
                     candidate_drop_counts = (
@@ -8365,13 +8381,17 @@ def _context_policy_session_prefix_payload(
                 "message_count": int(dropped_message_count),
             }
         )
-    return {
+    payload = {
         "clear_policy": clear_policy,
         "would_truncate": clear_policy == "truncate_oldest_visible" and dropped_message_count > 0,
         "would_reset_session": bool(reset),
         "would_drop": would_drop,
         "kept_segments": kept_segments,
     }
+    if clear_policy == "auto_clear_transient":
+        payload["would_clear_transient"] = False
+        payload["transient_message_count"] = 0
+    return payload
 
 
 def _thinking_budget_sampling_kwargs(

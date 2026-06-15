@@ -93612,3 +93612,20 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-16 - Auto-clear transient context policy
+
+Implemented `session.context_overflow_policy="auto_clear_transient"` as an
+explicit deterministic no-op for the current app-local transcript store. The
+policy is now advertised in capabilities and fit-context metadata, reports
+`would_clear_transient=false` / `transient_message_count=0`, preserves committed
+visible turns and current request messages, and rejects overflows with the
+normal actionable fit payload instead of pretending committed transcript state
+is transient.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'auto_clear_transient'` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'auto_clear_transient or capabilities_endpoint_reports_manifest_and_auth or chat_context_overflow_reports_session_fit_context or fit_context_new_session_policy_reports_reset_when_prefix_overflows or chat_context_new_session_policy_resets_transcript_on_success or chat_context_new_session_policy_does_not_hide_request_overflow or chat_context_truncate_oldest_visible_policy_keeps_fitting_suffix or chat_context_truncate_oldest_visible_policy_skips_orphan_tool_suffix or chat_context_overflow_policy_requires_known_stateful_mode'` -> `9 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.

@@ -551,8 +551,15 @@ def _session_commit_policy_capability() -> dict[str, Any]:
         "context_overflow_policy": {
             "field": "session.context_overflow_policy",
             "default": "reject",
-            "modes": ["reject", "new_session", "truncate_oldest_visible"],
+            "modes": ["reject", "auto_clear_transient", "new_session", "truncate_oldest_visible"],
             "aliases": {"fail": "reject"},
+            "auto_clear_transient": {
+                "scope": "transient_session_segments",
+                "drops_committed_visible_turns": False,
+                "drops_request_content": False,
+                "current_transient_segment_count": 0,
+                "metadata": ["clear_policy", "would_clear_transient", "transient_message_count"],
+            },
             "new_session": {
                 "scope": "app_local_chat_transcript_prefix",
                 "drops_request_content": False,
@@ -793,7 +800,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "chat_default_mode": "bounded",
         "overflow_policy_field": "session.context_overflow_policy",
         "default_overflow_policy": "reject",
-        "overflow_policies": ["reject", "new_session", "truncate_oldest_visible"],
+        "overflow_policies": ["reject", "auto_clear_transient", "new_session", "truncate_oldest_visible"],
     }
     assert body["tokenizer"]["tokenize"] is True
     assert body["tokenizer"]["detokenize"] is True
@@ -1875,6 +1882,77 @@ def test_chat_context_new_session_policy_does_not_hide_request_overflow() -> Non
     assert error["fit_context"]["would_reset_session"] is False
     assert len(fake.calls) == 1
     assert app.state.hipengine_chat_sessions["too_large_session"].messages == (
+        {"role": "user", "content": "remember alpha"},
+        {"role": "assistant", "content": "stored answer"},
+    )
+
+
+def test_chat_context_auto_clear_transient_preserves_committed_prefix() -> None:
+    fake = SequentialFakeLLM(["stored answer"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=10,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "remember alpha"}],
+            "max_tokens": 1,
+            "session": {"id": "auto_clear_session"},
+        },
+    )
+    payload = {
+        "messages": [{"role": "user", "content": "now beta"}],
+        "max_tokens": 5,
+        "session": {"id": "auto_clear_session", "context_overflow_policy": "auto_clear_transient"},
+    }
+    fit = client.post("/v1/hipengine/fit_context", json=payload)
+    overflow = client.post("/v1/chat/completions", json={"model": "fake-model", **payload})
+
+    assert first.status_code == 200
+    assert fit.status_code == 200
+    assert overflow.status_code == 400
+    fit_body = fit.json()
+    assert fit_body["fits"] is False
+    assert fit_body["clear_policy"] == "auto_clear_transient"
+    assert fit_body["would_clear_transient"] is False
+    assert fit_body["transient_message_count"] == 0
+    assert fit_body["would_drop"] == []
+    assert fit_body["kept_segments"] == [
+        {
+            "kind": "session_prefix",
+            "session_id": "auto_clear_session",
+            "storage": "app_local_transcript",
+            "message_count": 2,
+        },
+        {"kind": "request_messages", "message_count": 1},
+    ]
+    assert fit_body["session"] == {
+        "id": "auto_clear_session",
+        "stateful": True,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": False,
+        "prefix_message_count": 2,
+        "request_message_count": 1,
+        "rendered_message_count": 3,
+        "cache_action": "append_visible_only",
+    }
+    error = overflow.json()["error"]
+    assert error["code"] == "context_length_exceeded"
+    assert error["fit_context"]["clear_policy"] == "auto_clear_transient"
+    assert error["fit_context"]["would_clear_transient"] is False
+    assert error["fit_context"]["transient_message_count"] == 0
+    assert error["fit_context"]["would_drop"] == []
+    assert len(fake.calls) == 1
+    assert app.state.hipengine_chat_sessions["auto_clear_session"].messages == (
         {"role": "user", "content": "remember alpha"},
         {"role": "assistant", "content": "stored answer"},
     )
