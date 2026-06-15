@@ -17,6 +17,7 @@ class PiConfigValidationError(ValueError):
 
 
 _EXPECTED_CHAT_SMOKE_RESULT = "ok"
+_EXPECTED_REASONING_SMOKE_ANSWER = "OK"
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -189,6 +190,27 @@ def build_pi_chat_smoke_payload(config: dict[str, Any], capabilities: dict[str, 
     }
 
 
+def build_pi_reasoning_smoke_payload(
+    config: dict[str, Any], capabilities: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "model": str(_object(capabilities, "model").get("id")),
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "Think briefly, then answer with exactly "
+                    f"{_EXPECTED_REASONING_SMOKE_ANSWER}."
+                ),
+            }
+        ],
+        "temperature": 0,
+        "max_tokens": 96,
+        "enable_thinking": True,
+        "session": {"commit": "append_none"},
+    }
+
+
 def fetch_capabilities(base_url: str, *, api_key: str | None = None, timeout: float = 10.0) -> dict[str, Any]:
     return _request_json(
         "GET",
@@ -214,6 +236,25 @@ def run_pi_chat_smoke(
         timeout=timeout,
     )
     validate_pi_chat_smoke_response(response)
+    return response
+
+
+def run_pi_reasoning_smoke(
+    base_url: str,
+    config: dict[str, Any],
+    capabilities: dict[str, Any],
+    *,
+    api_key: str | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    response = _request_json(
+        "POST",
+        _join_url(base_url, "/chat/completions"),
+        api_key=api_key,
+        payload=build_pi_reasoning_smoke_payload(config, capabilities),
+        timeout=timeout,
+    )
+    validate_pi_reasoning_smoke_response(response)
     return response
 
 
@@ -269,6 +310,40 @@ def validate_pi_chat_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_pi_reasoning_smoke_response(response: dict[str, Any]) -> dict[str, Any]:
+    choices = _list(response.get("choices"), "reasoning smoke response.choices")
+    if not choices:
+        raise PiConfigValidationError("reasoning smoke response.choices must contain at least one choice")
+    choice = _object_value(choices[0], "reasoning smoke response.choices[0]")
+    finish_reason = choice.get("finish_reason")
+    if finish_reason not in (None, "stop"):
+        raise PiConfigValidationError(
+            "reasoning smoke did not finish cleanly; "
+            f"finish_reason={finish_reason!r}"
+        )
+    message = _object(choice, "message", label="reasoning smoke response.choices[0].message")
+    content = message.get("content")
+    reasoning = message.get("reasoning_content")
+    if isinstance(content, str) and ("<think>" in content or "</think>" in content):
+        raise PiConfigValidationError(
+            "reasoning smoke returned raw <think> text instead of parsed message.reasoning_content; "
+            "check that pi is using the OpenAI chat-completions adapter with Qwen thinking enabled"
+        )
+    if isinstance(reasoning, str) and ("<think>" in reasoning or "</think>" in reasoning):
+        raise PiConfigValidationError("reasoning smoke reasoning_content still contains Qwen think tags")
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        raise PiConfigValidationError(
+            "reasoning smoke response did not include non-empty message.reasoning_content"
+        )
+    if not isinstance(content, str) or not content.strip():
+        raise PiConfigValidationError("reasoning smoke response did not include visible assistant content")
+    return {
+        "finish_reason": None if finish_reason is None else str(finish_reason),
+        "reasoning_chars": len(reasoning),
+        "answer_chars": len(content),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="docs/examples/pi-agent/models.json")
@@ -284,11 +359,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also POST a small Qwen tool-call smoke request to the running server.",
     )
+    parser.add_argument(
+        "--reasoning-smoke",
+        action="store_true",
+        help="Also POST a small Qwen thinking smoke request to the running server.",
+    )
     args = parser.parse_args(argv)
 
     try:
         config = load_config(args.config)
-        if args.base_url or args.chat_smoke:
+        if args.base_url or args.chat_smoke or args.reasoning_smoke:
             provider = _live_provider(config, provider_name=args.provider)
             base_url = str(args.base_url or provider["baseUrl"])
             api_key = args.api_key if args.api_key is not None else str(provider.get("apiKey") or "")
@@ -308,6 +388,16 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 summary["chat_smoke_object"] = response.get("object")
                 summary["chat_smoke"] = validate_pi_chat_smoke_response(response)
+            if args.reasoning_smoke:
+                response = run_pi_reasoning_smoke(
+                    base_url,
+                    config,
+                    capabilities,
+                    api_key=api_key,
+                    timeout=max(args.timeout, 30.0),
+                )
+                summary["reasoning_smoke_object"] = response.get("object")
+                summary["reasoning_smoke"] = validate_pi_reasoning_smoke_response(response)
         else:
             summary = validate_pi_models_config(config, provider_name=args.provider)
     except PiConfigValidationError as exc:

@@ -56,6 +56,16 @@ class _PiToolSmokeLLM(_FakeLLM):
         ]
 
 
+class _PiReasoningSmokeLLM(_FakeLLM):
+    def __init__(self) -> None:
+        self.calls = []
+
+    def generate(self, prompts, sampling_params):
+        prompts = tuple(str(prompt) for prompt in prompts)
+        self.calls.append((prompts, sampling_params))
+        return [GenerationOutput(text="<think>brief check</think>OK") for _ in prompts]
+
+
 def _capabilities(**overrides):
     payload = {
         "model": {"id": "fake-model"},
@@ -413,6 +423,24 @@ def test_pi_agent_chat_smoke_payload_uses_qwen_tool_shape() -> None:
     assert payload["tools"][0]["function"]["name"] == "record_result"
 
 
+def test_pi_agent_reasoning_smoke_payload_uses_qwen_thinking() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+
+    payload = validate_pi_agent_models.build_pi_reasoning_smoke_payload(
+        config,
+        {"model": {"id": model_id}},
+    )
+
+    assert payload["model"] == model_id
+    assert payload["temperature"] == 0
+    assert payload["max_tokens"] == 96
+    assert payload["enable_thinking"] is True
+    assert payload["session"] == {"commit": "append_none"}
+    assert "tools" not in payload
+    assert "tool_choice" not in payload
+
+
 def test_pi_agent_chat_smoke_payload_round_trips_through_server() -> None:
     config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
     model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
@@ -457,6 +485,47 @@ def test_pi_agent_chat_smoke_payload_round_trips_through_server() -> None:
     assert "<think>\n\n</think>" in prompt
 
 
+def test_pi_agent_reasoning_smoke_payload_round_trips_through_server() -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+    llm = _PiReasoningSmokeLLM()
+    client = TestClient(
+        create_app(
+            ServerConfig(
+                model="/models/fake",
+                served_model_name=model_id,
+                eager_load=False,
+            ),
+            llm=llm,
+        )
+    )
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    payload = validate_pi_agent_models.build_pi_reasoning_smoke_payload(config, capabilities)
+
+    response = client.post("/v1/chat/completions", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert validate_pi_agent_models.validate_pi_reasoning_smoke_response(body) == {
+        "finish_reason": "stop",
+        "reasoning_chars": len("brief check"),
+        "answer_chars": len("OK"),
+    }
+    choice = body["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["message"] == {
+        "role": "assistant",
+        "content": "OK",
+        "reasoning_content": "brief check",
+    }
+    assert "<think>" not in json.dumps(choice["message"])
+    assert len(llm.calls) == 1
+    prompt = llm.calls[0][0][0]
+    assert "Think briefly, then answer with exactly OK." in prompt
+    assert "<think>\n\n</think>" not in prompt
+    assert prompt.endswith("<|im_start|>assistant\n")
+
+
 def test_pi_agent_chat_smoke_response_requires_tool_call() -> None:
     summary = validate_pi_agent_models.validate_pi_chat_smoke_response(
         {
@@ -487,6 +556,30 @@ def test_pi_agent_chat_smoke_response_requires_tool_call() -> None:
         "tool_name": "record_result",
         "argument_keys": ["result"],
         "result": "ok",
+    }
+
+
+def test_pi_agent_reasoning_smoke_response_requires_reasoning_content() -> None:
+    summary = validate_pi_agent_models.validate_pi_reasoning_smoke_response(
+        {
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": "OK",
+                        "reasoning_content": "brief check",
+                    },
+                }
+            ],
+        }
+    )
+
+    assert summary == {
+        "finish_reason": "stop",
+        "reasoning_chars": len("brief check"),
+        "answer_chars": len("OK"),
     }
 
 
@@ -524,6 +617,36 @@ def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup(content: str)
                             "role": "assistant",
                             "content": content,
                         },
+                    }
+                ],
+            }
+        )
+
+
+def test_pi_agent_reasoning_smoke_response_rejects_missing_reasoning_content() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="reasoning_content"):
+        validate_pi_agent_models.validate_pi_reasoning_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "OK"},
+                    }
+                ],
+            }
+        )
+
+
+def test_pi_agent_reasoning_smoke_response_rejects_raw_think_markup() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="raw <think> text"):
+        validate_pi_agent_models.validate_pi_reasoning_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "<think>brief</think>OK"},
                     }
                 ],
             }

@@ -2352,9 +2352,14 @@ Current code reality:
   tool-call request and requires a parsed `record_result` tool call with JSON
   arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
   including a doubled start-marker form, is rejected as a tool-calling mismatch.
+  `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
+  parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
+  in assistant content as a Qwen thinking/parser mismatch.
 - `tests/test_local_agent_config.py` posts that exact pi smoke payload through a
   FastAPI `create_app()` test server with fake Qwen `<tool_call>` output and
-  asserts the response is parsed OpenAI `message.tool_calls`, not raw markup.
+  asserts the response is parsed OpenAI `message.tool_calls`, not raw markup. It
+  also posts the pi reasoning-smoke payload through the fake server and asserts
+  Qwen `<think>` output is split into OpenAI-compatible `message.reasoning_content`.
 - Existing server fake-session tests and the P5.3 golden trace harness cover
   parsed Qwen tool calls in non-streaming and streaming responses, including
   multi-turn tool loops and raw-markup rejection.

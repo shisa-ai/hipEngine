@@ -91875,3 +91875,21 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC pi reasoning smoke
+
+The pi-agent `models.json` validator now has a separate `--reasoning-smoke`
+live check alongside `--chat-smoke`. The new smoke sends a deterministic
+`enable_thinking=true` chat request, requires parsed non-empty
+`message.reasoning_content`, and fails if raw Qwen `<think>` markup leaks into
+assistant content. The fake-server tests pin the payload shape, Qwen
+`<think>...</think>` response splitting, and missing/raw reasoning failure
+cases without requiring a live GPU server in normal CI.
+
+Validation:
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `31 passed`.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `145 passed`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
