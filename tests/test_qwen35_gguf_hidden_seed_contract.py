@@ -55,7 +55,7 @@ def test_fp32_hidden_seed_contract_marks_m25_target_buffer_unpopulated() -> None
 def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without_gpu_init() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(hidden_size=8192)
-    session.scratch = SimpleNamespace(hidden_seed_fp32=object())
+    session.scratch = SimpleNamespace(hidden_seed_fp32=SimpleNamespace(ptr=12345))
     session._hidden_seed_fp32_populated = False
 
     current = session.hidden_seed_contract(rows=2)
@@ -75,12 +75,15 @@ def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without
     assert not fp32.populated_by_decode
     assert not fp32.llama_cpp_compatible
     assert not fp32.ready_for_mtp
+    with pytest.raises(RuntimeError, match="GGUF fp32 hidden seed is not populated"):
+        session.fp32_hidden_seed_ptr()
 
     session._hidden_seed_fp32_populated = True
     populated = session.fp32_hidden_seed_contract(rows=2)
     assert populated.populated_by_decode
     assert populated.llama_cpp_compatible
     assert populated.ready_for_mtp
+    assert session.fp32_hidden_seed_ptr() == 12345
 
 
 def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_requested(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,6 +153,8 @@ def test_resident_session_hidden_seed_contract_rejects_closed_session() -> None:
         session.hidden_seed_contract()
     with pytest.raises(RuntimeError, match="GGUF resident session is closed"):
         session.fp32_hidden_seed_contract()
+    with pytest.raises(RuntimeError, match="GGUF resident session is closed"):
+        session.fp32_hidden_seed_ptr()
 
 
 def test_fp32_hidden_seed_contract_is_llama_compatible() -> None:

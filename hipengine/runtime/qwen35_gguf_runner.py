@@ -2995,11 +2995,7 @@ class Qwen35GGUFResidentSession:
         )
 
     def fp32_hidden_seed_contract(self, *, rows: int = 1) -> Qwen35GGUFHiddenSeedContract:
-        """Return the allocated fp32 M2.5 hidden-seed target contract.
-
-        This only describes the scratch buffer ABI; the current kernels do not
-        write the fp32 seed yet.
-        """
+        """Return the allocated fp32 M2.5 hidden-seed target contract."""
 
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -3008,6 +3004,23 @@ class Qwen35GGUFResidentSession:
             rows=rows,
             populated_by_decode=self._hidden_seed_fp32_populated,
         )
+
+    def fp32_hidden_seed_ptr(self) -> int:
+        """Return the populated fp32 hidden-seed device pointer.
+
+        The pointer is only valid after a decode step with
+        ``capture_hidden_seed_fp32=True``.  This guard prevents future MTP code
+        from consuming the allocated scratch row before it is populated.
+        """
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if not self.fp32_hidden_seed_contract().ready_for_mtp:
+            raise RuntimeError(
+                "GGUF fp32 hidden seed is not populated; "
+                "call step(..., capture_hidden_seed_fp32=True) first"
+            )
+        return int(self.scratch.hidden_seed_fp32.ptr)
 
     def reset(self) -> None:
         """Reset sequence state without freeing resident weights or scratch."""

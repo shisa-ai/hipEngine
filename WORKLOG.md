@@ -93205,3 +93205,28 @@ Validation:
 - Prompt verifier passed: opt-in fp32 seed tap only, no torch hot-path import, no
   backend/quant dispatch branches, no attention/KV ABI changes, no NextN
   execution, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF guarded fp32 hidden seed pointer
+
+Implemented `mtp-gguf` multiloop iteration 13: a guarded accessor for the
+populated fp32 hidden-seed pointer.
+
+Changes:
+- Added `Qwen35GGUFResidentSession.fp32_hidden_seed_ptr()`.
+  - Returns the `scratch.hidden_seed_fp32` device pointer only when
+    `fp32_hidden_seed_contract().ready_for_mtp` is true.
+  - Raises if the session is closed or if no decode step has populated the fp32
+    seed with `capture_hidden_seed_fp32=True`.
+- Extended `tests/test_qwen35_gguf_hidden_seed_contract.py` to cover unpopulated
+  rejection, populated pointer return, readiness transitions, and closed-session
+  error handling.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Hidden-seed pointer tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `8` passed.
+- `py_compile` passed for `hipengine/runtime/qwen35_gguf_runner.py`.
+- Prompt verifier passed: guarded pointer accessor only, no torch hot-path import,
+  no backend/quant dispatch branches, no attention/KV ABI changes, no NextN
+  execution, and no performance claims.
