@@ -5200,6 +5200,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if not buffer_tool_output:
                 for field, chunk in splitter.finish():
                     phase = "think" if field == "reasoning_content" else "answer"
+                    finish_stream_chunk = (
+                        None
+                        if last_stream_chunk is None
+                        else _stream_chunk_with_phase(last_stream_chunk, phase)
+                    )
+                    logprobs = (
+                        _chat_stream_logprobs(last_stream_chunk, chunk)
+                        if request.logprobs and field == "content" and last_stream_chunk is not None
+                        else None
+                    )
+                    reasoning_logprobs = (
+                        _chat_reasoning_stream_logprobs(last_stream_chunk, chunk)
+                        if request.logprobs
+                        and include_hipengine
+                        and field == "reasoning_content"
+                        and last_stream_chunk is not None
+                        else None
+                    )
                     token_payload = (
                         token_accounting.observe(phase, chunk) if token_accounting is not None else None
                     )
@@ -5209,10 +5227,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         config.model_id,
                         field,
                         chunk,
+                        logprobs=logprobs,
+                        reasoning_logprobs=reasoning_logprobs,
                         tokens=token_payload,
+                        stream_chunk=finish_stream_chunk,
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
+                        phase=phase,
                     )
         except GenerationDeadlineExceeded as exc:
             openai_exc = _deadline_exceeded_error(exc.finish_details)

@@ -1034,10 +1034,12 @@ Current code reality:
   use PARO c>N and GGUF serial c>N scheduler token chunks as
   per-token public deltas for a single HTTP request when the chunks exactly
   reconstruct the final choice text and logprob chunks can be mapped to emitted
-  content/reasoning deltas. Coalesced multi-request batches, invalid or
+  content/reasoning deltas. Live parser-final splitter leftovers also reuse
+  last-chunk token metadata when the held public delta is mappable. Coalesced
+  multi-request batches, invalid or
   unmappable tool outputs, structured-output validation failures, public
   runtime-native live c>N stream chunk forwarding, canonical tool/structured
-  phases, parser-final leftover logprob mapping, and real continuation
+  phases, unmappable parser-final logprob spans, and real continuation
   eligibility remain future lower-loop work.
 
 Exit gates:
@@ -2893,8 +2895,10 @@ golden harness traces are now implemented. Good next logical units, in order:
    invalid/unmappable tool-call chunks are withheld fail-closed with private
    final-choice diagnostics. Live c=1 reasoning deltas with backend token
    logprobs now carry hipEngine-private reasoning logprob metadata.
+   Parser-final splitter leftovers on the live path reuse last-chunk logprob
+   metadata when the held delta is mappable.
    Runtime-native live c>N stream forwarding, public invalid/unmappable
-   tool-call chunk forwarding, parser-final leftover logprob mapping, and real
+   tool-call chunk forwarding, unmappable parser-final logprob spans, and real
    continuation eligibility still need lower-loop work instead of relying on
    server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token

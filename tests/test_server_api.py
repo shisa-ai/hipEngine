@@ -8471,6 +8471,127 @@ def test_streaming_chat_completion_uses_live_reasoning_private_logprobs() -> Non
     assert fake.calls[0][1].top_logprobs == 0
 
 
+def test_streaming_chat_completion_maps_live_final_content_logprobs() -> None:
+    fake = FakeLLM(
+        stream_chunks=[
+            GenerationStreamChunk(
+                text="<thi",
+                token_logprobs=(TokenLogprob(token_id=310, token_text="<thi", logprob=-0.7),),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=1,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+        ],
+    )
+    fake.supports_stream_logprobs = True
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "logprobs": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    )
+    assert content["delta"] == {"content": "<thi"}
+    assert content["logprobs"]["content"] == [
+        {"token": "<thi", "logprob": -0.7, "bytes": None, "top_logprobs": []}
+    ]
+    assert content["hipengine"]["decode_state"]["phase"] == "answer"
+    assert content["hipengine"]["decode_state"]["execution_path"] == "live_host_sampler_decode"
+
+
+def test_streaming_chat_completion_maps_live_final_reasoning_logprobs() -> None:
+    fake = FakeLLM(
+        stream_chunks=[
+            GenerationStreamChunk(
+                text="<think>plan",
+                token_logprobs=(TokenLogprob(token_id=320, token_text="<think>plan", logprob=-0.1),),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=1,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+            GenerationStreamChunk(
+                text="</thi",
+                token_logprobs=(TokenLogprob(token_id=321, token_text="</thi", logprob=-0.2),),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=2,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+        ],
+    )
+    fake.supports_stream_logprobs = True
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "logprobs": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    reasoning_deltas = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("reasoning_content")
+    ]
+    assert [choice["delta"] for choice in reasoning_deltas] == [
+        {"reasoning_content": "plan"},
+        {"reasoning_content": "</thi"},
+    ]
+    assert [choice["hipengine"]["decode_state"]["phase"] for choice in reasoning_deltas] == [
+        "think",
+        "think",
+    ]
+    assert reasoning_deltas[-1]["hipengine"]["reasoning_logprobs"] == {
+        "content": [
+            {
+                "token_id": 321,
+                "token": "</thi",
+                "logprob": -0.2,
+                "bytes": None,
+                "top_logprobs": [],
+            }
+        ],
+        "public_text": "</thi",
+        "refusal": None,
+    }
+
+
 def test_streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs() -> None:
     class SchedulerChunkFakeLLM(FakeLLM):
         def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
