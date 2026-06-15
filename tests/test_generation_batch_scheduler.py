@@ -16548,6 +16548,35 @@ def test_resident_scheduler_record_generated_events_emit_decode_telemetry() -> N
     }
 
 
+def test_resident_scheduler_record_generated_events_emit_stop_suffix_telemetry() -> None:
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    request_id = scheduler.submit(
+        [10, 11],
+        max_new_tokens=4,
+        sampling=PerRowSamplingParams(stop_token_sequences=((55, 56), (55, 57))),
+        sampling_row_index=2,
+    )
+    scheduler.admit_pending()
+    assert scheduler.next_prefill_work(chunk_size=8) is not None
+
+    partial_events = scheduler.record_generated_events([GeneratedToken(request_id, 55)])
+
+    partial_state = partial_events[0].stream_chunk.telemetry.to_json_dict()["decode_state"]
+    assert partial_state["stop_suffix_state"] == {
+        "partial_suffix": [55],
+        "candidate_sequences": [[55, 56], [55, 57]],
+    }
+    assert partial_state["active_processors"] == ["stop_token_sequences"]
+    assert partial_state["sampler_fast_path_blockers"] == ["stop_token_sequences"]
+
+    matched_events = scheduler.record_generated_events([GeneratedToken(request_id, 56, finished=True)])
+
+    matched_state = matched_events[0].stream_chunk.telemetry.to_json_dict()["decode_state"]
+    assert matched_state["stop_suffix_state"] == {"matched_sequence": [55, 56]}
+    assert matched_events[0].stream_chunk.finish_details is not None
+    assert matched_events[0].stream_chunk.finish_details.to_json_dict() == {"reason": "stop"}
+
+
 def test_resident_engine_loop_token_events_carry_stream_telemetry() -> None:
     loop = ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_chunk_size=8)
     request_id = loop.submit([10, 11], max_new_tokens=1)

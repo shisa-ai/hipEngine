@@ -393,6 +393,30 @@ def test_request_forced_tokens_seed_default_row_state() -> None:
     assert result.fast_path_blockers == ("forced_tokens_pending",)
 
 
+def test_row_sampling_state_tracks_stop_suffix_state() -> None:
+    params = _params(stop_token_sequences=((5, 6), (5, 7)))
+    state = RowSamplingState(stop_token_sequences=params.stop_token_sequences)
+
+    first = select_token(
+        np.array([0.0, 1.0, 2.0, 3.0, 4.0, 10.0, 0.0, 0.0], dtype=np.float32),
+        params,
+        state,
+    )
+    assert first.token_id == 5
+    assert state.stop_suffix_state == {
+        "partial_suffix": [5],
+        "candidate_sequences": [[5, 6], [5, 7]],
+    }
+
+    second = select_token(
+        np.array([0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 10.0, 0.0], dtype=np.float32),
+        params,
+        state,
+    )
+    assert second.token_id == 6
+    assert state.stop_suffix_state == {"matched_sequence": [5, 6]}
+
+
 def test_forced_token_queue_overrides_sampling() -> None:
     forced = RowSamplingState(seed=123, forced_tokens_pending=(3,), forced_token_reason="grammar")
     forced_result = select_token(

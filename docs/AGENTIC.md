@@ -125,7 +125,8 @@ Known baseline limitations:
   fallback/blocker metadata. Scheduler-owned submit/poll token events now carry
   telemetry-bearing `GenerationStreamChunk` snapshots synthesized from
   `RowSamplingState`, including sampler mode, active processors, native fallback,
-  forced-token queues, thinking-budget pressure, and scheduler execution flags.
+  token stop suffix state, forced-token queues, thinking-budget pressure, and
+  scheduler execution flags.
   PARO scheduler-owned c>N final telemetry reports scheduler execution path and
   native-prefill/native-decode/serial-fallback state. Buffered streaming
   preserves final backend telemetry on choice `done` chunks and, when
@@ -997,10 +998,11 @@ Current code reality:
   answer/reasoning/tool/structured deltas when tokenizer counting is available.
   Those buffered deltas inherit stable backend sampler/execution metadata from
   the final telemetry, but keep token-specific fields such as forced-token state,
-  stop suffixes, budget pressure, timing, and usage on the final/backend-authored
-  snapshots. Backend-authored buffered per-token snapshots, runtime-native c>N
-  stream chunk forwarding, canonical tool/structured phases, and real
-  continuation eligibility remain future lower-loop work.
+  stop suffixes, budget pressure, timing, and usage on final/backend-authored
+  snapshots or scheduler token-event chunks. Backend-authored buffered
+  per-token snapshots, runtime-native c>N stream chunk forwarding, canonical
+  tool/structured phases, and real continuation eligibility remain future
+  lower-loop work.
 
 Exit gates:
 
@@ -1335,6 +1337,9 @@ Current code reality:
   suffix reporting.
 - PARO/GGUF stop checks and final decode telemetry now use this shared helper
   for multi-token stop match state.
+- Scheduler-owned `RowSamplingState` now maintains the same ordinary stop
+  sequence DFA and emits partial/matched suffix state on per-token
+  `GenerationStreamChunk` telemetry.
 - PARO scheduler-owned c>N processed rows are covered by a regression that
   proves per-row stop handling across packed prefill and decode: one row can
   stop immediately on a stop token id while another continues until an
@@ -1345,7 +1350,6 @@ Current code reality:
 
 Implement:
 
-- move stop suffix state into decode state / DFA helper;
 - keep server post-trimming for response consistency;
 - ensure native c>N/GPU sampler paths consume the same stop metadata before they
   claim token-level stop parity.
@@ -2796,10 +2800,11 @@ golden harness traces are now implemented. Good next logical units, in order:
    backend sampler/execution metadata on opt-in deltas, the submit/poll wrapper
    preserves underlying `stream_detailed()` telemetry, and scheduler-owned
    submit/poll token events can carry `GenerationStreamChunk` snapshots for
-   forced-token state, budget pressure, sampler fallback, and execution flags.
+   token stop suffix state, forced-token state, budget pressure, sampler
+   fallback, and execution flags.
    Runtime-native c>N/PARO scheduler runners still need to forward or author
-   those per-token chunks from lower loops, including stop suffixes and real
-   continuation eligibility, instead of relying on server post-parse inference.
+   those per-token chunks from lower loops, including real continuation
+   eligibility, instead of relying on server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose

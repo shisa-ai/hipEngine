@@ -102,6 +102,7 @@ class RowSamplingState:
     row_index: int = 0
     generated_tokens: Sequence[int] = ()
     step_index: int = 0
+    stop_token_sequences: Sequence[Sequence[int]] = ()
     forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
     forced_token_reason: str | None = None
     post_thinking_forced_tokens_pending: Sequence[int] | ForcedTokenQueue = ()
@@ -111,6 +112,7 @@ class RowSamplingState:
     json_object_close_forcing: bool = False
     thinking_budget: ThinkingBudgetState | None = None
     _rng: np.random.Generator = field(init=False, repr=False)
+    _stop_sequence_state: TokenSequenceDFAState = field(init=False, repr=False)
     _force_sequence_state: TokenSequenceDFAState = field(init=False, repr=False)
     _json_object_constraint: JsonObjectConstraintState | None = field(init=False, repr=False)
 
@@ -121,6 +123,10 @@ class RowSamplingState:
         self.request_id = int(self.request_id)
         self.row_index = int(self.row_index)
         self.step_index = int(self.step_index)
+        try:
+            self.stop_token_sequences = normalize_token_sequences(self.stop_token_sequences)
+        except ValueError as exc:
+            raise ValueError("stop_token_sequences must contain non-negative token ids") from exc
         try:
             self.force_sequence_completion_token_sequences = normalize_token_sequences(
                 self.force_sequence_completion_token_sequences
@@ -159,7 +165,9 @@ class RowSamplingState:
         if self.step_index < 0:
             raise ValueError("step_index must be non-negative")
         self._force_sequence_state = TokenSequenceDFAState.from_sequences(self.force_sequence_completion_token_sequences)
+        self._stop_sequence_state = TokenSequenceDFAState.from_sequences(self.stop_token_sequences)
         if self.generated_tokens:
+            self._stop_sequence_state = self._stop_sequence_state.observe_many(self.generated_tokens)
             self._force_sequence_state = self._force_sequence_state.observe_many(self.generated_tokens)
             if self._force_sequence_state.matched:
                 self._force_sequence_state = TokenSequenceDFAState.from_sequences(
@@ -188,6 +196,7 @@ class RowSamplingState:
         self.step_index += 1
         if self.thinking_budget is not None:
             self.thinking_budget.observe(token)
+        self._stop_sequence_state = self._stop_sequence_state.observe(token)
         self._queue_force_sequence_completion_if_partial(token)
 
     @property
@@ -197,6 +206,11 @@ class RowSamplingState:
     @property
     def has_forced_tokens(self) -> bool:
         return bool(self.forced_tokens_pending)
+
+    @property
+    def stop_suffix_state(self) -> dict[str, Any] | None:
+        payload = self._stop_sequence_state.to_json_dict()
+        return payload or None
 
     def queue_forced_tokens(self, token_ids: Iterable[int], *, reason: str | None = None) -> None:
         self.forced_tokens_pending.extend(token_ids, reason=reason)
@@ -711,6 +725,7 @@ def select_token(
             seed=derive_row_seed(getattr(params, "seed", None), 0),
             forced_tokens_pending=_forced_tokens_pending(params),
             forced_token_reason=getattr(params, "forced_token_reason", None),
+            stop_token_sequences=normalize_stop_token_sequences(getattr(params, "stop_token_sequences", None)),
             post_thinking_forced_tokens_pending=_post_thinking_forced_tokens_pending(params),
             post_thinking_forced_token_reason=getattr(params, "post_thinking_forced_token_reason", None),
             force_sequence_completion_token_sequences=_force_sequence_completion_token_sequences(params),

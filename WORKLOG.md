@@ -92559,3 +92559,23 @@ Validation:
 - `uv run pytest tests/test_generation_batch_scheduler.py -q -k 'record_generated_events_emit_decode_telemetry or token_events_carry_stream_telemetry or sampler_states_track_generated_history or resident_engine_loop_submit_poll_cancel_and_reclaim'` -> `4 passed`.
 - `uv run pytest tests/test_generation_batch_scheduler.py -q -k 'resident_batch_scheduler_emits_speculative_verify_work or rejects_speculative_accept_over_budget or record_generated_events_emit_decode_telemetry or token_events_carry_stream_telemetry'` -> `4 passed`.
 - `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/engine_loop.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC scheduler stop suffix telemetry
+
+Moved ordinary token stop-sequence suffix tracking into `RowSamplingState` using
+the existing `TokenSequenceDFAState`, separate from the force-completion repair
+DFA. Scheduler-owned rows now initialize that state from per-row
+`stop_token_sequences`, update it for every recorded token, and include
+partial/matched suffix JSON in `GeneratedTokenEvent.stream_chunk.telemetry`.
+PARO/GGUF row-state constructors and PARO state clones preserve the configured
+stop sequences so runtime snapshots stay consistent with scheduler-owned
+telemetry. Updated `docs/AGENTIC.md` to mark scheduler stop-suffix telemetry as
+implemented while leaving runtime-native c>N stream chunk forwarding and real
+continuation eligibility open.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_batch_scheduler.py` -> passed.
+- `uv run pytest tests/test_sampling.py -q -k 'row_sampling_state_tracks_stop_suffix_state or stop_token_sequences_are_active_processors or force_sequence_completion_queues_remaining_suffix or request_forced_tokens_seed_default_row_state'` -> `4 passed`.
+- `uv run pytest tests/test_generation_batch_scheduler.py -q -k 'record_generated_events_emit_decode_telemetry or record_generated_events_emit_stop_suffix_telemetry or token_events_carry_stream_telemetry'` -> `3 passed`.
+- `uv run ruff check hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py hipengine/generation/qwen35_gguf.py tests/test_sampling.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md` -> clean.

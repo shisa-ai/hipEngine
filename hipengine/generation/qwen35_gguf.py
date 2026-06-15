@@ -452,6 +452,7 @@ def _gguf_row_sampling_state(
         prompt_tokens=tuple(int(token) for token in prompt_ids),
         seed=row_seed_for_index(request, row_index),
         row_index=row_index,
+        stop_token_sequences=request.stop_token_sequences,
         forced_tokens_pending=request.forced_tokens_pending,
         forced_token_reason=request.forced_token_reason,
         post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
