@@ -11939,6 +11939,149 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     )
 
 
+def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments() -> None:
+    raw_outputs = (
+        '<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>',
+        '<tool_call>{"name":"bash","arguments":{"command":"ls"}}</tool_call>',
+    )
+    chunk_texts = (
+        (
+            '<tool_call>{"name":"bash","arguments":',
+            '{"command":',
+            '"pwd"}',
+            "}</tool_call>",
+        ),
+        (
+            '<tool_call>{"name":"bash","arguments":',
+            '{"command":',
+            '"ls"}',
+            "}</tool_call>",
+        ),
+    )
+
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": request_id,
+                        "token_index": token_index,
+                        "token_id": 600 + request_id * 10 + token_index,
+                        "finished": token_index == len(row) - 1,
+                        "chunk": {
+                            "text": text,
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=token_index + 1,
+                                row_index=request_id,
+                                request_id=str(request_id),
+                                phase="answer",
+                                sampler_mode="greedy_fast",
+                                execution_path="scheduler_tool_call_chunks",
+                            ).to_json_dict(),
+                        },
+                    }
+                    for request_id, row in enumerate(chunk_texts)
+                    for token_index, text in enumerate(row)
+                ]
+            }
+            return [
+                GenerationOutput(
+                    text=raw_outputs[index],
+                    finish_details=FinishDetails(reason="stop", sampler_mode="greedy_fast"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=len(chunk_texts[index]),
+                        row_index=index,
+                        phase="done",
+                        sampler_mode="greedy_fast",
+                    ),
+                )
+                for index, _prompt in enumerate(prompt_tuple)
+            ]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run shell commands"}],
+            "n": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    payloads = _sse_payloads(response.text)
+    tool_choices = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert [
+        (
+            choice["index"],
+            choice["delta"]["tool_calls"][0]["function"].get("name"),
+            choice["delta"]["tool_calls"][0]["function"]["arguments"],
+        )
+        for choice in tool_choices
+    ] == [
+        (0, "bash", '{"command":'),
+        (0, None, '"pwd"}'),
+        (1, "bash", '{"command":'),
+        (1, None, '"ls"}'),
+    ]
+    arguments_by_choice: dict[int, str] = {}
+    for choice in tool_choices:
+        call = choice["delta"]["tool_calls"][0]
+        arguments_by_choice.setdefault(choice["index"], "")
+        arguments_by_choice[choice["index"]] += call["function"]["arguments"]
+    assert {index: json.loads(arguments) for index, arguments in arguments_by_choice.items()} == {
+        0: {"command": "pwd"},
+        1: {"command": "ls"},
+    }
+    assert {
+        choice["hipengine"]["phase"]
+        for choice in tool_choices
+    } == {"tool_call"}
+    assert {
+        choice["hipengine"]["decode_state"]["phase"]
+        for choice in tool_choices
+    } == {"tool_call"}
+    assert {
+        choice["hipengine"]["decode_state"]["execution_path"]
+        for choice in tool_choices
+    } == {"scheduler_tool_call_chunks"}
+    done = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "tool_calls"
+    ]
+    assert [choice["index"] for choice in done] == [0, 1]
+    assert {
+        choice["hipengine"]["decode_state"]["execution_path"]
+        for choice in done
+    } == {"scheduler_tool_call_chunks"}
+    assert fake.stream_calls == []
+
+
 def test_streaming_chat_completion_recovers_duplicated_tool_start_marker() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],

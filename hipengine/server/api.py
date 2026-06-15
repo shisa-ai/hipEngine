@@ -2032,6 +2032,14 @@ class _ToolValidationResult:
 
 
 @dataclass(frozen=True)
+class _SchedulerToolArgumentFragment:
+    tool_index: int
+    call: _ParsedToolCall
+    text: str
+    stream_chunk: GenerationStreamChunk
+
+
+@dataclass(frozen=True)
 class _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
@@ -4804,6 +4812,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     else "done"
                 )
                 scheduler_content_phase = "structured" if scheduler_done_phase == "structured" else "answer"
+                scheduler_tool_fragments = ()
+                if parsed.tool_calls and not request.logprobs:
+                    scheduler_tool_fragments = _scheduler_tool_call_argument_fragments(
+                        parsed,
+                        text,
+                        scheduler_chunks,
+                    )
+                use_scheduler_tool_chunks = (
+                    bool(scheduler_tool_fragments)
+                    and not tool_validation.failed
+                    and structured_failure is None
+                    and structured_length_failure is None
+                )
                 use_scheduler_chunks = (
                     not request.tools
                     and not parsed.tool_calls
@@ -4817,7 +4838,26 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         require_logprobs=use_scheduler_logprobs,
                     )
                 )
-                if use_scheduler_chunks:
+                if use_scheduler_tool_chunks:
+                    for event in _chat_stream_scheduler_tool_call_chunks(
+                        response_id,
+                        created,
+                        config.model_id,
+                        scheduler_tool_fragments,
+                        index=index,
+                        finish_details=finish_details,
+                        token_accounting=token_accounting,
+                        include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at,
+                        routing=routing_metadata,
+                        kv_pool=(
+                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            if include_hipengine
+                            else None
+                        ),
+                    ):
+                        yield event
+                elif use_scheduler_chunks:
                     for event in _chat_stream_scheduler_text_chunks(
                         response_id,
                         created,
@@ -11797,6 +11837,124 @@ def _chat_stream_parsed(
         routing=routing,
         kv_pool=kv_pool,
         phase=done_phase,
+    )
+
+
+def _scheduler_tool_call_argument_fragments(
+    parsed: _ParsedChatOutput,
+    raw_text: str,
+    scheduler_chunks: Sequence[Mapping[str, Any]],
+) -> tuple[_SchedulerToolArgumentFragment, ...]:
+    if not parsed.tool_calls or parsed.text.strip():
+        return ()
+    chunk_ranges: list[tuple[int, int, Mapping[str, Any], GenerationStreamChunk]] = []
+    pieces: list[str] = []
+    cursor = 0
+    for payload in scheduler_chunks:
+        stream_chunk = _scheduler_payload_stream_chunk(payload)
+        if stream_chunk is None:
+            return ()
+        text = stream_chunk.text
+        pieces.append(text)
+        next_cursor = cursor + len(text)
+        chunk_ranges.append((cursor, next_cursor, payload, stream_chunk))
+        cursor = next_cursor
+    reconstructed = "".join(pieces)
+    if reconstructed != str(raw_text):
+        return ()
+
+    fragments: list[_SchedulerToolArgumentFragment] = []
+    search_start = 0
+    for tool_index, call in enumerate(parsed.tool_calls):
+        if not call.raw_text or not call.arguments:
+            return ()
+        call_start = reconstructed.find(call.raw_text, search_start)
+        if call_start < 0:
+            return ()
+        call_end = call_start + len(call.raw_text)
+        argument_offset = call.raw_text.find(call.arguments)
+        if argument_offset < 0:
+            return ()
+        argument_start = call_start + argument_offset
+        argument_end = argument_start + len(call.arguments)
+        call_fragments: list[_SchedulerToolArgumentFragment] = []
+        for chunk_start, chunk_end, _payload, stream_chunk in chunk_ranges:
+            overlap_start = max(chunk_start, argument_start)
+            overlap_end = min(chunk_end, argument_end)
+            if overlap_start >= overlap_end:
+                continue
+            call_fragments.append(
+                _SchedulerToolArgumentFragment(
+                    tool_index=tool_index,
+                    call=call,
+                    text=reconstructed[overlap_start:overlap_end],
+                    stream_chunk=stream_chunk,
+                )
+            )
+        if "".join(fragment.text for fragment in call_fragments) != call.arguments:
+            return ()
+        fragments.extend(call_fragments)
+        search_start = call_end
+    return tuple(fragments)
+
+
+def _chat_stream_scheduler_tool_call_chunks(
+    response_id: str,
+    created: int,
+    model: str,
+    fragments: Sequence[_SchedulerToolArgumentFragment],
+    *,
+    index: int = 0,
+    finish_details: Mapping[str, Any] | None = None,
+    token_accounting: _StreamTokenAccounting | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: _StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
+) -> Iterator[str]:
+    last_stream_chunk: GenerationStreamChunk | None = None
+    emitted_by_tool: set[int] = set()
+    for fragment in fragments:
+        last_stream_chunk = _stream_chunk_with_phase(fragment.stream_chunk, "tool_call")
+        token_payload = (
+            token_accounting.observe("tool_call", fragment.text)
+            if token_accounting is not None
+            else None
+        )
+        include_name = fragment.tool_index not in emitted_by_tool
+        emitted_by_tool.add(fragment.tool_index)
+        yield _chat_stream_tool_call(
+            response_id,
+            created,
+            model,
+            fragment.call,
+            index=index,
+            tool_index=fragment.tool_index,
+            argument_chunk=fragment.text,
+            include_name=include_name,
+            tokens=token_payload,
+            stream_chunk=last_stream_chunk,
+            include_hipengine=include_hipengine,
+            stream_started_at=stream_started_at,
+            routing=routing,
+        )
+    final_tokens = None
+    if token_accounting is not None and token_accounting.streamed_tokens > 0:
+        final_tokens = token_accounting.snapshot()
+    yield _chat_stream_done(
+        response_id,
+        created,
+        model,
+        "tool_calls",
+        index=index,
+        finish_details=finish_details,
+        tokens=final_tokens,
+        stream_chunk=last_stream_chunk,
+        include_hipengine=include_hipengine,
+        stream_started_at=stream_started_at,
+        routing=routing,
+        kv_pool=kv_pool,
+        phase="tool_call",
     )
 
 

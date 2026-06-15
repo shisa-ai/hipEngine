@@ -242,16 +242,18 @@ pressure, and backend timing/usage remain final-chunk metadata unless the
 backend emits live `GenerationStreamChunk` telemetry for the token.
 For buffered `/v1/completions` streams, plain answer/reasoning buffered
 `/v1/chat/completions` streams without logprobs, and plain chat content streams
-with logprobs, plus validated structured chat content streams, if detailed
+with logprobs, validated structured chat content streams, and validated tool-call
+argument spans that can be mapped back to the raw tool-call block, if detailed
 backend generation reports `last_batch_generation.scheduler_token_chunks` for a
 single HTTP request and the scheduler chunk text exactly reconstructs each
 public choice text, the server emits those scheduler chunks as individual
-public SSE deltas. Chat requests with tools, structured-output validation
-failures, or reasoning spans when logprobs are requested keep the conservative
-buffered parser path. If the server batcher coalesced separate HTTP requests
-into one backend batch, or if the scheduler chunks no longer match the public
-post-processed text, the stream falls back to the conservative
-one-delta-per-choice buffered behavior.
+public SSE deltas or `delta.tool_calls` argument fragments. Chat requests with
+structured-output validation failures, invalid tool calls, tool outputs whose
+arguments cannot be mapped safely, or reasoning spans when logprobs are
+requested keep the conservative buffered parser path. If the server batcher
+coalesced separate HTTP requests into one backend batch, or if the scheduler
+chunks no longer match the public post-processed text, the stream falls back to
+the conservative one-delta-per-choice buffered behavior.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final
@@ -425,7 +427,10 @@ non-streaming responses or `delta.tool_calls` chunks in streaming responses, wit
 `finish_reason: "tool_calls"`. Long streaming `function.arguments` strings are
 split into concatenable fragments after the full tool-call block has been parsed
 and validated; the first chunk carries the function name, and all chunks carry
-the same tool-call id and index. Prior assistant `tool_calls` and `role: "tool"`
+the same tool-call id and index. Buffered c>N streams can preserve backend
+scheduler chunk telemetry on those argument fragments when the validated
+argument string is a contiguous span of the raw tool-call block. Prior assistant
+`tool_calls` and `role: "tool"`
 messages are also replayed into the prompt as `<tool_call>` and
 `<tool_response>` blocks so multi-turn tool loops can continue. Request message
 shapes are role-specific: `tool_calls` is accepted only on assistant messages,

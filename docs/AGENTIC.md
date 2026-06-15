@@ -135,21 +135,22 @@ Known baseline limitations:
   native-prefill/native-decode/serial-fallback state. Buffered completion
   streams, plain buffered chat answer/reasoning streams without logprobs, and
   plain chat content streams with logprobs, plus validated structured chat
-  content streams, for a single HTTP request can forward those scheduler chunks
-  as per-token public SSE deltas when the chunk text exactly reconstructs the
-  public choice text; if separate HTTP requests were coalesced into one backend
-  batch, the server withholds the backend row chunks instead of exposing
-  ambiguous row ids. Chat tool calls, structured-output validation failures,
-  and reasoning spans with requested logprobs keep the conservative buffered
-  parser paths. Other buffered streaming paths preserve final backend
+  content streams and validated tool-call argument spans, for a single HTTP
+  request can forward those scheduler chunks as per-token public SSE deltas or
+  `delta.tool_calls` argument fragments when the chunk text exactly reconstructs
+  the public choice text; if separate HTTP requests were coalesced into one
+  backend batch, the server withholds the backend row chunks instead of exposing
+  ambiguous row ids. Invalid tool calls, tool outputs whose argument spans
+  cannot be mapped safely, structured-output validation failures, and reasoning
+  spans with requested logprobs keep the conservative buffered parser paths.
+  Other buffered streaming paths preserve final backend
   telemetry on choice `done` chunks and, when tokenizer/counting hooks are
   available, emit server-derived per-delta token/decode-state snapshots for
   parsed answer/reasoning/tool/structured chunks while inheriting stable backend
   sampler/execution metadata such as processor blockers, sampler fallback,
   logits-readback state, and scheduler execution flags. Backend-authored
-  buffered tool per-token snapshots, reasoning-logprob scheduler chunks, and
-  canonical live reasoning/tool-call/structured phases still need lower-loop
-  signals.
+  reasoning-logprob scheduler chunks and canonical live
+  reasoning/tool-call/structured phases still need lower-loop signals.
 - Public finish metadata now carries basic PARO/GGUF backend reasons for EOS,
   token stop, stop sequence, length, sampler mode, server post-parse tool-call
   phase/counts, and host-sampled thinking-budget forced close. Cooperative
@@ -1019,13 +1020,14 @@ Current code reality:
   `last_batch_generation.scheduler_token_chunks` diagnostics.
   Buffered `/v1/completions` streams, plain answer/reasoning buffered
   `/v1/chat/completions` streams without logprobs, plain chat content logprob
-  streams, and validated structured chat content streams now use PARO c>N
-  scheduler token chunks as per-token public deltas for a single HTTP request
-  when the chunks exactly reconstruct the final choice text. Coalesced
-  multi-request batches, chat tools, structured-output validation failures,
-  reasoning-logprob chunk forwarding, public runtime-native live c>N stream
-  chunk forwarding, canonical tool/structured phases, and real continuation
-  eligibility remain future lower-loop work.
+  streams, validated structured chat content streams, and validated tool-call
+  argument spans now use PARO c>N scheduler token chunks as per-token public
+  deltas for a single HTTP request when the chunks exactly reconstruct the
+  final choice text. Coalesced multi-request batches, invalid or unmappable tool
+  outputs, structured-output validation failures, reasoning-logprob chunk
+  forwarding, public runtime-native live c>N stream chunk forwarding, canonical
+  tool/structured phases, and real continuation eligibility remain future
+  lower-loop work.
 
 Exit gates:
 
@@ -2524,7 +2526,8 @@ Current code reality:
   direct SSE-shape assertions outside the golden trace harness, including
   backend scheduler token chunks forwarded as buffered completion and plain
   chat answer/reasoning deltas, plus plain chat content logprob and validated
-  structured content deltas, with per-choice decode-state metadata.
+  structured content deltas and validated tool-call argument fragments, with
+  per-choice decode-state metadata.
 
 Exit gates:
 
@@ -2843,9 +2846,12 @@ golden harness traces are now implemented. Good next logical units, in order:
    deltas for a single HTTP request; content-only chat logprob streams also use
    scheduler chunks when chunk logprobs are present, and validated structured
    chat content streams use scheduler chunks with `phase="structured"`.
-   Public runtime-native live c>N stream forwarding, chat tool/reasoning-logprob
-   per-token forwarding, and real continuation eligibility still need lower-loop
-   work instead of relying on server post-parse inference.
+   Validated tool-call argument spans can likewise replay scheduler chunks as
+   OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
+   runtime-native live c>N stream forwarding, invalid/unmappable tool-call
+   chunk forwarding, reasoning-logprob per-token forwarding, and real
+   continuation eligibility still need lower-loop work instead of relying on
+   server post-parse inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
@@ -2853,9 +2859,9 @@ golden harness traces are now implemented. Good next logical units, in order:
    c>N sampled batches record it in runtime diagnostics, including per-token
    scheduler chunk diagnostics that buffered completion and plain chat streams
    can expose for single-request batches. GGUF/native GPU sampler paths plus
-   chat tool/reasoning-logprob c>N stream surfaces still need emitted
-   chunk/final metadata and logprob semantics to match host AR sampling
-   everywhere; structured validation failures still require full buffering.
+   chat reasoning-logprob c>N stream surfaces still need emitted chunk/final
+   metadata and logprob semantics to match host AR sampling everywhere; invalid
+   tool calls and structured validation failures still require full buffering.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path
    apply the same EOS finish, logit bias, penalties, suppressions, forced-token,

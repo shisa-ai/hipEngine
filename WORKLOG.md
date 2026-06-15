@@ -92705,6 +92705,27 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
 
+## 2026-06-15 - AGENTIC scheduler tool-call argument chunks
+
+Buffered chat streams can now replay scheduler token chunks as
+OpenAI-compatible `delta.tool_calls` argument fragments for validated tool-call
+outputs when the scheduler text reconstructs the raw generated output and the
+normalized argument JSON is a contiguous span of the raw tool-call block. The
+first fragment carries the function name, subsequent fragments are concatenable,
+and opt-in hipEngine metadata preserves backend decode-state execution path with
+`phase="tool_call"`. Invalid tool calls, unmappable argument spans, extra
+reasoning/answer text, and logprob tool streams remain on the conservative
+buffered parser path. Updated `docs/API.md` and `docs/AGENTIC.md`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'streaming_chat_completion_returns_tool_call_deltas or streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments or streaming_chat_completion_recovers_duplicated_tool_start_marker or streaming_chat_completion_preserves_reasoning_with_tool_call or streaming_chat_completion_preserves_parallel_tool_call_indexes or streaming_chat_completion_reports_strict_tool_schema_failure or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas'` -> `7 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or scheduler_token_chunks or streaming_chat_completion_returns_tool_call_deltas or streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments or streaming_chat_completion_recovers_duplicated_tool_start_marker or streaming_chat_completion_preserves_reasoning_with_tool_call or streaming_chat_completion_preserves_parallel_tool_call_indexes or streaming_chat_completion_reports_strict_tool_schema_failure or streaming_chat_completion_rejects_undeclared_auto_tool_name or streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas'` -> `23 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
 ## 2026-06-15 - AGENTIC visible-content chat logprobs
 
 Buffered chat logprobs now map token metadata onto visible assistant content
