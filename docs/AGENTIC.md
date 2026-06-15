@@ -2935,69 +2935,116 @@ Use this as the handoff for an implementation agent:
    Expose capabilities first so clients can detect what the server can actually
    do.
 
-## Near-term implementation slices
+## Remaining priority buckets
+
+The P0-P6 headings above are subsystem roadmap areas, not the order to finish
+the current agent runtime. Use the buckets below for remaining implementation
+priority:
+
+- **P1: core agent contract.** Incorrect behavior here can break a coding agent,
+  leak hidden state, poison a session, or make a client believe an unsafe path
+  is supported. P1 work should be implemented or covered by a deterministic
+  endpoint regression before moving to broad runtime parity.
+- **P2: core capability that may fail closed.** These are important features,
+  but the server may safely reject, buffer, withhold, or fall back while still
+  being a usable local agent runtime, as long as capabilities and finish/error
+  metadata are explicit.
+- **P3: later scale/performance/convenience.** Useful for production serving,
+  performance, or larger deployments, but not required for a correct
+  single-model local coding-agent loop.
+
+### P1 — Core agent contract
 
 The single-model server contract, capabilities manifest, token diagnostics,
 session transcript commit/context fitting policy, deterministic continuations,
 host processor stack, thinking-budget hard/soft close, strict tool result
-validation, and golden harness traces are now implemented. Good next logical
-units, in order:
+validation, replay artifacts, local/pi config validation, and golden harness
+traces are implemented. Remaining P1 work is therefore mostly audit and
+edge-case hardening:
 
-1. **Live backend DecodeState telemetry:** buffered streaming now carries safe
-   backend sampler/execution metadata on opt-in deltas, the submit/poll wrapper
-   preserves underlying `stream_detailed()` telemetry, and scheduler-owned
-   submit/poll token events can carry `GenerationStreamChunk` snapshots for
-   token stop suffix state, forced-token state, budget pressure, sampler
-   fallback, and execution flags.
-   PARO c>N batch generation and GGUF serial c>N final generation now author
-   JSON-ready scheduler token chunks in `last_batch_generation`, and buffered
-   completion plus plain buffered chat answer/reasoning streams can forward
-   those chunks as per-token public deltas for a single HTTP request;
-   content chat logprob streams and reasoning streams with hipEngine-private
-   logprob metadata also use scheduler chunks when chunk logprobs are present,
-   and validated structured chat content streams use scheduler chunks with
-   `phase="structured"`.
-   Validated tool-call argument spans can likewise replay scheduler chunks as
-   OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
-   invalid/unmappable tool-call chunks and unmappable scheduler logprob chunks
-   are withheld fail-closed with private final-choice diagnostics. Live c=1
-   reasoning deltas with backend token logprobs now carry hipEngine-private
-   reasoning logprob metadata.
-   Parser-final splitter leftovers on the live path reuse retained source-chunk
-   logprob metadata when the held delta is mappable.
-   Broader runtime-native live c>N parity for tool/structured/logprob streams,
-   public invalid/unmappable tool-call chunk forwarding, live unmappable
-   parser-final logprob spans, and full lower-loop continuation handle creation
-   and scoping still need work instead of relying on server post-parse
-   inference.
-   PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
-   snapshots.
-2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose
-   per-row planner metadata for native fallback/rejection decisions, and PARO
-   c>N sampled batches record it in runtime diagnostics, including per-token
-   scheduler chunk diagnostics that buffered completion and plain chat streams
-   can expose for single-request batches. GGUF/native GPU sampler paths plus
-   live c>N tool/structured/logprob surfaces still need emitted chunk/final
-   metadata and logprob semantics to match host AR sampling everywhere; invalid
-   tool calls and structured validation failures still require full buffering.
-3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
-   limited to greedy-fast requests and preserve the scheduler's explicit
-   `raw_target_top1` / `processed_target_verification=false` metadata until the
-   target verifier and commit path apply the same EOS finish, logit bias,
-   penalties, suppressions, forced-token, thinking-budget, and logprob policy as
-   AR sampling.
-4. **Decode-time grammar constraints:** add tokenizer-aware JSON/tool/patch
-   grammars on the shared DFA/forced-token path, including close-brace/quote and
-   tool-argument schema enforcement.
-5. **Resident KV session/cache work:** implement visible-only re-prefill,
-   forkable prefix/cache handles, rollback/delete semantics, and resident-state
-   continuation reuse.
-6. **Context policies beyond reject:** `new_session` and
-   `truncate_oldest_visible` now report kept/dropped/reset segments
-   deterministically; auto-clear, pinned-prefix, and summary policies remain
-   future work until they can do the same.
-7. **Multi-model routing and TP runtime:** build these after the single-model
-   agentic contract stays green, using `docs/TENSOR_PARALLEL.md` as the TP gate.
+1. **Contract regression map.** Keep the fake-engine endpoint matrix exhaustive
+   for reasoning spans, parsed tool calls, structured-output validation,
+   continuation/session behavior, replay artifacts, capability fields, and
+   unsupported/error taxonomy. Any reported client loop or malformed response
+   shape gets a direct non-streaming and, when applicable, streaming regression.
+2. **Session-state safety.** Preserve the invariant that hidden reasoning,
+   malformed tool calls, schema-violating structured output, cancelled/deadline
+   output, and synthetic/repair metadata are never silently committed to
+   visible-only transcript state. Session fork/rollback/snapshot/restore,
+   continuation resume, and context-overflow policies must continue to validate
+   tool transcripts and deep-copy nested `tool_calls`.
+3. **Supported reasoning controls.** Keep host/server Qwen thinking controls
+   correct where they are advertised: budget aliases/defaults/clamping, token
+   diagnostics, parser-close validation, soft-close bias, hard close forcing,
+   EOS suppression, forced-token telemetry, and
+   `thinking_budget_exhausted` finish details. Native GPU and MTP paths stay
+   blocked/fallback until they implement the same policy.
+4. **Tool and structured fail-safe behavior.** Keep prompt-and-parse tool calls
+   and post-generation structured-output validation fail-closed: no raw
+   `<tool_call>` or `<think>` leakage, no successful `tool_calls` on invalid
+   outputs, no successful visible content on suppressed schema violations, and
+   streaming/non-streaming envelope parity.
+5. **Sampler/MTP guard completeness.** Raw-argmax speculative/MTP verification
+   remains limited to greedy-fast rows. Every field that changes token
+   selection or post-accept finish behavior (`logit_bias`, penalties,
+   suppressions, min-token/EOS policy, stop controls, forced tokens, thinking
+   budgets, logprobs) must keep an advertised blocker and a test.
+
+### P2 — Core but allowed to fail closed
+
+These items should improve the runtime when feasible, but current behavior is
+acceptable when it rejects explicitly, falls back to host/server buffering, or
+withholds ambiguous backend chunks with diagnostics.
+
+1. **Runtime-native live c>N telemetry parity.** Broader c>N
+   tool/structured/logprob streams still need emitted chunk/final metadata,
+   public handling for invalid/unmappable tool-call chunks, live unmappable
+   parser-final logprob spans, and lower-loop continuation creation/scoping.
+   Until then, buffering or withheld diagnostics is correct.
+2. **Native/scheduler controlled-decoding parity.** GGUF/native GPU sampler
+   paths and live c>N surfaces should eventually match host AR sampling
+   metadata and logprob semantics. Unsupported processor combinations may keep
+   falling back or rejecting explicitly.
+3. **Speculative/MTP processed-target verification.** Processed-target MTP
+   should apply the same EOS, logit-bias, penalty, suppression, forced-token,
+   thinking-budget, stop, and logprob policy as AR sampling. Until that exists,
+   preserve `raw_target_top1` /
+   `processed_target_verification=false` metadata and block processed rows.
+4. **Decode-time grammar constraints.** Tokenizer-aware JSON/tool/patch grammars
+   should reuse the shared DFA/forced-token path. Current result-validation plus
+   narrow JSON close-suffix forcing is acceptable if strict decoding remains
+   advertised as unsupported.
+5. **Additional context policies.** `new_session` and
+   `truncate_oldest_visible` cover the currently safe transcript-prefix
+   policies. `auto_clear_transient`, pinned-prefix preservation, and summary
+   compaction are P2 only when they can report deterministic kept/dropped/reset
+   segments and never drop current request content.
+6. **HTTP/SSE hard-error variants for invalid tool calls.** Normal chat
+   responses with `finish_details.reason="invalid_tool_call"` remain acceptable
+   until a target harness requires HTTP/SSE `invalid_tool_call` errors.
+
+### P3 — Later scale, performance, and convenience
+
+These items should not displace P1 hardening or P2 fail-closed correctness work:
+
+1. **Resident KV session/cache work.** Visible-only KV re-prefill, forkable
+   resident prefix/cache handles, resident rollback/delete semantics,
+   resident-state continuation reuse, full tokenizer/decode/sampling state
+   snapshots, and prefix-vs-turn-history eviction policy.
+2. **Native sampler promotion and full sampler polish.** Performance promotion,
+   true batched c>N/GGUF native sampling, exact GPU top-p on every shape, and
+   `top_logprobs` parity are P3 while host fallback remains explicit and
+   correct.
+3. **Multi-model routing, model-family fallback, and TP runtime.** Build these
+   after the single-model contract stays green. `docs/TENSOR_PARALLEL.md`
+   remains the TP design gate.
+4. **Patch/tool/JSON grammar completeness and retry/repair policies.** Full
+   token-level patch grammar enforcement, broad JSON Schema decoding, and
+   automatic retry/repair are later policies unless a concrete agent harness
+   cannot operate with current fail-closed validation.
+5. **Production-serving polish.** True mid-kernel or mid-graph preemption,
+   richer cache/KV byte accounting, advanced fair-share routing, and other
+   production multi-tenant server features remain later work.
 
 ## Validation expectations
 

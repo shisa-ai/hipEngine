@@ -93469,3 +93469,16 @@ Validation:
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC remaining priority buckets
+
+Reorganized the remaining implementation queue in `docs/AGENTIC.md` from a
+single near-term ordered list into explicit priority buckets:
+P1 core agent contract, P2 core capability that may fail closed, and P3 later
+scale/performance/convenience work. The detailed subsystem roadmap remains
+intact; the new bucketed section is the triage layer for selecting the next
+implementation slice.
+
+Validation:
+- Re-read the changed `docs/AGENTIC.md` priority section.
+- `git diff --check -- docs/AGENTIC.md` -> clean.
