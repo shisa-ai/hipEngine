@@ -228,6 +228,12 @@ No-hold notes:
   generated IDs and memory, but regressed the current lb1 gate metric
   (`115.114 -> 115.013 tok/s`) and lowered `512/128` prefill to `1635.484 tok/s`.
   Keep Q6_K T16 GEMV at `128,4`.
+- **G-D5 Q6 launch-bound=5 rejected (2026-06-15).** Tightening the Q6_K T16
+  lm-head GEMV from `__launch_bounds__(128, 4)` to
+  `__launch_bounds__(128, 5)` preserved generated IDs and memory, but regressed
+  both retained decode medians (`127.012 -> 126.784 tok/s`, `115.805 ->
+  115.604 tok/s`) and lowered both prefill medians. Keep Q6_K T16 GEMV at
+  `128,4`.
 - **G-D4 split decode threshold=8192 rejected (2026-06-15).** Raising the
   full-attention split/gate fused decode threshold from `1024` to `8192` forced
   the `4K/128` gate onto the direct context + gate-mul path and looked faster
