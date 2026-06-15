@@ -93250,3 +93250,18 @@ Validation:
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
 - `uv run ruff check tests/test_local_agent_config.py scripts/validate_pi_agent_models.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_local_agent_config.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Agentic streamed tool-call shape coverage
+
+Tightened the OpenAI-compatible agentic server regressions around local-agent
+tool-call behavior. The streaming conformance tests now assert exact
+`delta.tool_calls` envelopes for single and parallel tool-call streams, including
+stable `index`, dynamic `call_*` ids, `type="function"`, function name/argument
+placement, and absence of stray content/reasoning fields in the tool-call delta.
+The capabilities/replay tests also compare the public speculative/MTP
+incompatible field and condition metadata directly to the sampler module
+constants, so the advertised raw-MTP guard cannot drift from the runtime policy.
+
+Validation:
+- `python3 -m pytest tests/test_agentic_server_conformance.py -q -k 'streaming_tool_call_matches_non_streaming_shape or streaming_parallel_tool_loop_continues_from_tool_results'` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or replay_artifact_redacts_failed_request'` -> `2 passed`.

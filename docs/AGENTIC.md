@@ -2568,8 +2568,10 @@ Current code reality:
   `session.commit="append_none"` finish metadata, app-local `session.id`
   visible-only transcript retention, snapshot export/restore of a hidden-
   reasoning tool-call loop, streaming tool-call parity without raw
-  `<tool_call>` leakage, and stateless streamed parallel tool-call continuation
-  from replayed `assistant.tool_calls` plus multiple `role="tool"` results. The
+  `<tool_call>` leakage, exact OpenAI-compatible streamed
+  `delta.tool_calls` envelopes without stray content/reasoning fields, and
+  stateless streamed parallel tool-call continuation from replayed
+  `assistant.tool_calls` plus multiple `role="tool"` results. The
   trace suite also includes representative
   completion/chat logprob success paths, explicit selected-score omission
   reasons when backend token metadata is partial, and the stable
@@ -2579,7 +2581,10 @@ Current code reality:
   backend scheduler token chunks forwarded as buffered completion and plain
   chat answer/reasoning deltas, plus plain chat content logprob and validated
   structured content deltas and validated tool-call argument fragments, with
-  per-choice decode-state metadata.
+  per-choice decode-state metadata. Capability and replay-artifact assertions
+  compare speculative/MTP incompatible fields and condition strings against the
+  sampler module constants so public metadata cannot drift from the runtime
+  guard source of truth.
 
 Exit gates:
 

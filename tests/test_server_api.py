@@ -26,6 +26,10 @@ from hipengine.generation import (
     GenerationTelemetry,
     TokenLogprob,
 )
+from hipengine.generation.sampling import (
+    SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
+    SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
+)
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
 from hipengine.server.api import (
@@ -1290,6 +1294,12 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         },
         "processed_target_verification": False,
     }
+    assert body["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
+        SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
+    )
+    assert body["sampling"]["speculative_mtp"]["incompatible_conditions"] == dict(
+        SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS
+    )
     mtp_incompatible = set(body["sampling"]["speculative_mtp"]["incompatible_fields"])
     assert {
         "response_format",
@@ -14603,6 +14613,12 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         },
         "processed_target_verification": False,
     }
+    assert artifact["capabilities"]["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
+        SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
+    )
+    assert artifact["capabilities"]["sampling"]["speculative_mtp"]["incompatible_conditions"] == dict(
+        SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS
+    )
     assert artifact["capabilities"]["sessions"] == {
         "resident_context": True,
         "commit_policy": _session_commit_policy_capability(),

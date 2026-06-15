@@ -487,8 +487,15 @@ def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -
     assert reasoning["choices"][0]["delta"]["reasoning_content"] == "need file"
 
     tool_payload = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
-    tool_call = tool_payload["choices"][0]["delta"]["tool_calls"][0]
+    tool_delta = tool_payload["choices"][0]["delta"]
+    assert set(tool_delta) == {"tool_calls"}
+    assert len(tool_delta["tool_calls"]) == 1
+    tool_call = tool_delta["tool_calls"][0]
+    assert set(tool_call) == {"index", "id", "type", "function"}
+    assert tool_call["index"] == 0
+    assert tool_call["id"].startswith("call_")
     assert tool_call["type"] == "function"
+    assert set(tool_call["function"]) == {"name", "arguments"}
     assert tool_call["function"]["name"] == "read"
     assert json.loads(tool_call["function"]["arguments"]) == {
         "path": "README.md",
@@ -547,12 +554,22 @@ def test_agentic_conformance_streaming_parallel_tool_loop_continues_from_tool_re
     assert first.status_code == 200
     assert "<tool_call>" not in first.text
     first_payloads = _sse_payloads(first.text)
-    tool_deltas = [
-        payload["choices"][0]["delta"]["tool_calls"][0]
+    tool_delta_payloads = [
+        payload
         for payload in first_payloads
         if payload.get("choices") and payload["choices"][0]["delta"].get("tool_calls")
     ]
+    assert [set(payload["choices"][0]["delta"]) for payload in tool_delta_payloads] == [
+        {"tool_calls"},
+        {"tool_calls"},
+    ]
+    tool_deltas = [payload["choices"][0]["delta"]["tool_calls"][0] for payload in tool_delta_payloads]
+    assert [set(delta) for delta in tool_deltas] == [
+        {"index", "id", "type", "function"},
+        {"index", "id", "type", "function"},
+    ]
     assert [delta["index"] for delta in tool_deltas] == [0, 1]
+    assert [delta["type"] for delta in tool_deltas] == ["function", "function"]
     assert [delta["function"]["name"] for delta in tool_deltas] == ["read", "read"]
     assert [json.loads(delta["function"]["arguments"]) for delta in tool_deltas] == [
         {"path": "README.md", "mode": "summary"},
