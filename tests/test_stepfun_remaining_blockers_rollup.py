@@ -4,9 +4,11 @@ import hashlib
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
 from scripts.stepfun_remaining_blockers_rollup import (
     build_remaining_blockers_rollup,
     main,
+    verify_remaining_blockers_rollup,
 )
 from test_stepfun_correctness_status import (  # type: ignore[import-not-found]
     _write_docs,
@@ -560,4 +562,97 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
     )
     assert commands["kv_evidence_preflight"].endswith(
         "stepfun_kv_evidence_preflight.py --default-output --pretty"
+    )
+
+
+def test_stepfun_remaining_blockers_rollup_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness, kv_session = (
+        _write_rollup_inputs(tmp_path)
+    )
+    artifact = tmp_path / "rollup.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--prompt-artifact",
+        str(prompt),
+        "--oracle-artifact",
+        str(oracle),
+        "--hip-artifact",
+        str(hip),
+        "--docs",
+        str(docs),
+        "--resource-artifact",
+        str(resource),
+        "--helper-readiness-artifact",
+        str(helper_readiness),
+        "--kv-session-contract-artifact",
+        str(kv_session),
+        "--llama-tokenize",
+        str(fake_tokenize),
+        "--tokenizer-model",
+        str(tmp_path / "model.gguf"),
+    ]
+    current = build_remaining_blockers_rollup(
+        prompt_artifact=prompt,
+        oracle_artifact=oracle,
+        hip_artifact=hip,
+        resource_artifact=resource,
+        helper_readiness_artifact=helper_readiness,
+        kv_session_contract_artifact=kv_session,
+        docs=docs,
+        llama_tokenize=fake_tokenize,
+        tokenizer_model=tmp_path / "model.gguf",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_remaining_blockers_rollup(artifact, current_rollup=current)
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_rollup_sha256"] == _stable_json_sha256(current)
+    assert verification["current_rollup_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_remaining_blocker_count"] == 2
+    assert verification["current_remaining_blocker_count"] == 2
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-rollup",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["remaining_blocker_count"] = 1
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_remaining_blockers_rollup(artifact, current_rollup=current)
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "remaining_blockers_rollup_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-rollup",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "remaining_blockers_rollup_drift"
     )

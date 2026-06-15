@@ -363,11 +363,11 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "2d5380dd121c4a18775b8b70e60524f56223b7acdfec926774f41fae380e4fd6",
+    "kv_blocker_status": "6ef4c60b2d9bdadb87ecee2b08702d629594673a8631707ef234acb8a22ec69a",
     "kv_session_contract": "501fb1f2fdc27ac12e8c1166be9738a503bdb015ee8d4d3b7c0f9f81a07ec23c",
     "llamacpp_logits_helper_readiness": "8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "692d3729e2353e64bd6f79d6f286e289d02e58ce894a0a2534a00f2caa4d6bbb"
+    "status": "d1fc2e45b99d2ee3fac14b06a2f9dc0e5ac4cd6a44a6615daddadc5d9014681a"
   },
   "status": "blocked"
 }

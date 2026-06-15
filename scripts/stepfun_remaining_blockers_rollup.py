@@ -134,6 +134,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the rollup payload.",
     )
+    parser.add_argument(
+        "--verify-rollup",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted remaining-blockers rollup with current inputs. "
+            f"If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-rollup, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-rollup, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-rollup, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -432,6 +458,53 @@ def build_remaining_blockers_rollup(
     }
 
 
+def verify_remaining_blockers_rollup(
+    rollup_artifact: Path,
+    *,
+    current_rollup: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted rollup artifact with the current rollup payload."""
+
+    persisted = json.loads(rollup_artifact.read_text())
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_rollup)
+    failures: list[dict[str, object]] = []
+    if persisted != current_rollup:
+        failures.append(
+            {
+                "name": "remaining_blockers_rollup_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted remaining-blockers rollup differs from current "
+                    "prompt/oracle/HIP/resource/helper/KV/docs inputs."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(rollup_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_rollup_sha256": persisted_sha256,
+        "current_rollup_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status")
+        if isinstance(persisted, dict)
+        else None,
+        "current_status": current_rollup.get("status"),
+        "persisted_remaining_blocker_count": persisted.get("remaining_blocker_count")
+        if isinstance(persisted, dict)
+        else None,
+        "current_remaining_blocker_count": current_rollup.get(
+            "remaining_blocker_count"
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -449,6 +522,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         tokenizer_timeout_s=args.tokenizer_timeout_s,
         artifact_date=args.artifact_date,
     )
+    if args.verify_rollup is not None:
+        verification = verify_remaining_blockers_rollup(
+            args.verify_rollup,
+            current_rollup=rollup,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        status_mod._emit_json(payload, pretty=args.pretty, output=args.output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = rollup["status"]
     elif args.open_count_only:
