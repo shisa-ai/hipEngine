@@ -35,7 +35,8 @@
   },
   "required_artifact_checks": [
     {
-      "checker_command": "python3 scripts/stepfun_kv_trace_check.py --trace benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json --summary-only --pretty",
+      "checker_command": "python3 scripts/stepfun_kv_trace_check.py --trace benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+      "checker_command_sha256": "62413aea4323a70ef13641c75406f17a8218dcdca0eec0c0ab6916738ae17ad4",
       "missing_evidence": [
         "artifact_file_present"
       ],
@@ -44,7 +45,8 @@
       "ready": false
     },
     {
-      "checker_command": "python3 scripts/stepfun_kv_next_token_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json --summary-only --pretty",
+      "checker_command": "python3 scripts/stepfun_kv_next_token_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
+      "checker_command_sha256": "350d9d427afc31cbaa3ab6da1cf7f14461439850094dc3e7f1532cb7cad8c13a",
       "missing_evidence": [
         "artifact_file_present"
       ],

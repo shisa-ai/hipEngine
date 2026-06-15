@@ -529,7 +529,7 @@
       "kv_runner_prerequisite_handoff": {
         "evidence_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json",
         "evidence_preflight_artifact_present": true,
-        "evidence_preflight_artifact_sha256": "d450b1b55db2dc26b87420d43cb6175ed2cc37c5d0b2938536176360891c4697",
+        "evidence_preflight_artifact_sha256": "9db59243d821ce91ff141bc01b5fa850136f8ab5c817c6cf241452c8828a5177",
         "evidence_preflight_next_action": "wire_streaming_decode_loop",
         "evidence_preflight_refresh_command": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
         "evidence_preflight_refresh_command_sha256": "6c500864f3f15b0a0f1a0e0adcb434ed53660ce8ae6394b71c675e6f9e9176f7",
@@ -718,7 +718,7 @@
       ]
     }
   ],
-  "entries_sha256": "76825c6f8080d7cc1c84956ec30358977e54f503665700ce1b9bbc7e17eae70e",
+  "entries_sha256": "96ea5d492c6271820b9b7e1dacef1a72e9839488303fdf744d26e60f704e945f",
   "entry_count": 2,
   "gate_status_handoff": [
     {
@@ -971,13 +971,13 @@
     "next_action_commands_sha256": "8cbe625238b5b2e51914a2d479657fa73ae836d38205c29f45166748c5c59862",
     "oracle_partial_output_handoff_sha256": "181b866b8e2625e8d0b02780bda484767aaa96350158c3b0fb5c738f809171a0",
     "oracle_progress_sha256": "09e06b1655a5b56610a0550a8ad27a5add7d542d369b2420df6461cab1bd204f",
-    "readiness_summary_sha256": "8939ae4c4a4c3034dc9d42a86e990fd558cd9deaa8ae2c14645c98f21e05b12b",
+    "readiness_summary_sha256": "2447ebd455656895010e389824d558ede122494e642ad7895f472ebb9f04e0ab",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "26d500c3f283a8811d989bb2c7473b7473ae58b8ef5ec9ba0953fb8a54b3f2b2",
-        "size_bytes": 108430
+        "sha256": "2f543c33dde498451e2348ec0897527d10430de1799050063d4635cc715dea2e",
+        "size_bytes": 108545
       },
       "oracle": {
         "exists": true,
@@ -1004,10 +1004,10 @@
         "size_bytes": 178045
       }
     },
-    "source_artifacts_sha256": "0aaff1ee5cffc2084b7878caa18a6c20c9c6d6f16d7721e1c86c736619538adc",
+    "source_artifacts_sha256": "6e0e39e5051b3b6200c329199e7529b66359127cd730018c03cb8f6b351e9dcd",
     "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
   },
-  "status_provenance_sha256": "09e348eb24519bb4f54dace67a870ee257c0f2c22cdaad37b4f52cbce5a89d08",
+  "status_provenance_sha256": "b03c75f8beaa37bc20161a6e371d13872eccca1c97a707c39ed376fae8865667",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",

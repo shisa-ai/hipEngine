@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    DEFAULT_PROMPT_ARTIFACT,
+    DEFAULT_RESOURCE_ARTIFACT,
+    _stable_json_sha256,
+)
 from scripts.stepfun_kv_evidence_preflight import build_kv_evidence_preflight, main
 
 
@@ -82,6 +87,24 @@ def test_stepfun_kv_evidence_preflight_reports_missing_required_artifacts(
         ["artifact_file_present"],
         ["artifact_file_present"],
     ]
+    trace_command = (
+        "python3 scripts/stepfun_kv_trace_check.py --trace "
+        f"{trace} --resource-artifact {DEFAULT_RESOURCE_ARTIFACT} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    next_token_command = (
+        "python3 scripts/stepfun_kv_next_token_check.py --artifact "
+        f"{next_token} --prompt-artifact {DEFAULT_PROMPT_ARTIFACT} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    assert report["required_artifact_checks"][0]["checker_command"] == trace_command
+    assert report["required_artifact_checks"][0]["checker_command_sha256"] == _stable_json_sha256(
+        trace_command
+    )
+    assert report["required_artifact_checks"][1]["checker_command"] == next_token_command
+    assert report["required_artifact_checks"][1]["checker_command_sha256"] == _stable_json_sha256(
+        next_token_command
+    )
     assert report["generator_commands"] == {
         "session_contract": (
             "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"

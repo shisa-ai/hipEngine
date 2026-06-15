@@ -190,6 +190,7 @@ def _required_file_check(path: Path, *, checker_command: str) -> dict[str, objec
         "ready": present,
         "missing_evidence": [] if present else ["artifact_file_present"],
         "checker_command": checker_command,
+        "checker_command_sha256": status_mod._stable_json_sha256(checker_command),
     }
 
 
@@ -209,14 +210,16 @@ def build_kv_evidence_preflight(
         trace_artifact,
         checker_command=(
             "python3 scripts/stepfun_kv_trace_check.py --trace "
-            f"{trace_artifact} --summary-only --pretty"
+            f"{trace_artifact} --resource-artifact {status_mod.DEFAULT_RESOURCE_ARTIFACT} "
+            "--summary-only --fail-on-missing --pretty"
         ),
     )
     next_token = _required_file_check(
         next_token_artifact,
         checker_command=(
             "python3 scripts/stepfun_kv_next_token_check.py --artifact "
-            f"{next_token_artifact} --summary-only --pretty"
+            f"{next_token_artifact} --prompt-artifact {status_mod.DEFAULT_PROMPT_ARTIFACT} "
+            "--summary-only --fail-on-missing --pretty"
         ),
     )
     missing_paths = [
