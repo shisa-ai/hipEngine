@@ -415,6 +415,132 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(
     assert not any(call[0] == "capture_decode_graph" for call in calls)
 
 
+def test_gguf_generate_detailed_records_scheduler_token_chunks_for_serial_rows(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path):
+            pass
+
+        def __enter__(self):
+            calls.append(("enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("exit", exc_type is None))
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 1.0, 5.0]], dtype=np.float32),
+            )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+
+    generator = _generator()
+    outputs = generator.generate_detailed(
+        _request(
+            prompts=("first", "second"),
+            temperature=0.7,
+            top_k=1,
+            logprobs=True,
+            top_logprobs=1,
+            seed=5,
+        )
+    )
+
+    assert [output.text for output in outputs] == ["BC", "BC"]
+    batch = generator.last_batch_generation
+    assert batch is not None
+    assert {key: value for key, value in batch.items() if key != "scheduler_token_chunks"} == {
+        "path": "gguf_serial_host_sampler_decode",
+        "batch_size": 2,
+        "request_ids": [0, 1],
+        "prompt_lengths": [2, 1],
+        "decode_steps": 2,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": True,
+        "native_compact_prefill": False,
+        "native_caware_decode": False,
+        "native_sampler_rows": False,
+        "throughput_claim_eligible": False,
+        "sampler_plan_metadata": [
+            {
+                "active_processors": [],
+                "sampler_fast_path_blockers": ["temperature", "logprobs", "top_logprobs"],
+                "native_gpu_available": False,
+                "sampler_fallback_reason": "host_sampling_required",
+                "sampler_mode": "host_logits_sample",
+            },
+            {
+                "active_processors": [],
+                "sampler_fast_path_blockers": ["temperature", "logprobs", "top_logprobs"],
+                "native_gpu_available": False,
+                "sampler_fallback_reason": "host_sampling_required",
+                "sampler_mode": "host_logits_sample",
+            },
+        ],
+    }
+    chunks = batch["scheduler_token_chunks"]
+    assert [
+        (chunk["request_id"], chunk["token_index"], chunk["token_id"], chunk["chunk"]["text"])
+        for chunk in chunks
+    ] == [
+        (0, 0, 1, "B"),
+        (0, 1, 2, "C"),
+        (1, 0, 1, "B"),
+        (1, 1, 2, "C"),
+    ]
+    assert [chunk["finished"] for chunk in chunks] == [False, True, False, True]
+    assert chunks[0]["chunk"]["token_logprobs"] == [
+        {
+            "token_id": 1,
+            "token_text": "B",
+            "logprob": 0.0,
+            "top_logprobs": [{"token_id": 1, "token_text": "B", "logprob": 0.0}],
+        }
+    ]
+    assert chunks[1]["chunk"]["finish_details"] == {
+        "reason": "length",
+        "length_limit": 2,
+        "sampler_mode": "host_logits_sample",
+    }
+    assert chunks[2]["chunk"]["telemetry"]["decode_state"] == {
+        "request_id": "1",
+        "row_index": 1,
+        "step_index": 1,
+        "prompt_tokens": 1,
+        "generated_tokens": 1,
+        "phase": "answer",
+        "continuation_eligible": False,
+        "sampler_fast_path_blockers": ["temperature", "logprobs", "top_logprobs"],
+        "sampler_fallback_reason": "host_sampling_required",
+        "sampler_mode": "host_logits_sample",
+        "execution_path": "gguf_serial_host_sampler_decode",
+        "native_compact_prefill": False,
+        "native_caware_decode": False,
+        "serial_decode_fallback": True,
+        "native_sampler_rows": False,
+    }
+    assert calls == [
+        ("enter",),
+        ("prefill", (10, 11), True),
+        ("step", 1, True),
+        ("prefill", (20,), True),
+        ("step", 1, True),
+        ("exit", True),
+    ]
+
+
 def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
     calls = []
 

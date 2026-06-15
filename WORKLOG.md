@@ -93011,3 +93011,19 @@ Validation:
 - `uv run pytest tests/test_server_api.py -q -k 'completion_length_finish_with_stop_is_continuation_ineligible or completion_length_finish_with_ignore_eos_is_continuation_ineligible or completion_continuation_resumes_buffered_length_finish_once'` -> `3 passed`.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - GGUF serial scheduler token diagnostics
+
+Added GGUF `generate_detailed()` `last_batch_generation` diagnostics for final
+serial c>N generations. The payload now mirrors the PARO scheduler-token shape
+with per-row request ids, scheduler plan metadata, per-token
+`GenerationStreamChunk` JSON, sampled logprob payloads when requested, and
+decode-state execution flags. Existing final `GenerationOutput` telemetry is
+unchanged; the new surface gives the OpenAI server's buffered replay path
+reconstructable GGUF chunks when a single HTTP request owns the backend batch.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py` -> passed.
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `21 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `3 passed`.
+- `uv run ruff check hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.

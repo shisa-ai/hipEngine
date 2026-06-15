@@ -40,6 +40,7 @@ class Qwen35GGUFBringupGenerator:
     weight_index: GGUFModelInfo
     model_plugin: Any
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
+    last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
@@ -61,6 +62,7 @@ class Qwen35GGUFBringupGenerator:
             yield chunk.text
 
     def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
+        self.last_batch_generation = None
         if len(request.prompts) != 1:
             raise ValueError("streaming currently supports exactly one prompt")
         if request.max_tokens < 0:
@@ -90,12 +92,16 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         plan = _gguf_sampler_plan(request)
         if request.max_tokens == 0:
+            prompt_rows_by_request = {
+                index: self.tokenizer.encode(prompt)
+                for index, prompt in enumerate(request.prompts)
+            }
             self.last_generation_outputs = tuple(
                 GenerationOutput(
                     text="",
                     finish_details=_gguf_finish_details((), self.tokenizer, request),
                     telemetry=_gguf_telemetry(
-                        self.tokenizer.encode(prompt),
+                        prompt_rows_by_request[index],
                         (),
                         request,
                         row_index=index,
@@ -103,17 +109,31 @@ class Qwen35GGUFBringupGenerator:
                 )
                 for index, prompt in enumerate(request.prompts)
             )
+            self.last_batch_generation = _gguf_last_batch_generation(
+                self.tokenizer,
+                request,
+                plan,
+                prompt_rows_by_request,
+                {index: [] for index in prompt_rows_by_request},
+                {index: [] for index in prompt_rows_by_request},
+                outputs=self.last_generation_outputs,
+            )
             return list(self.last_generation_outputs)
         outputs: list[GenerationOutput] = []
+        prompt_rows_by_request: dict[int, list[int]] = {}
+        generated_ids_by_request: dict[int, list[int]] = {}
+        token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
         with Qwen35GGUFResidentSession(self.model_path) as session:
             for row_index, prompt in enumerate(request.prompts):
                 raise_if_generation_deadline_expired(request)
                 prompt_ids = self.tokenizer.encode(prompt)
+                prompt_rows_by_request[row_index] = prompt_ids
                 raise_if_generation_deadline_expired(request)
                 if not prompt_ids:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 if plan.mode is SamplingMode.GREEDY_FAST:
                     generated_ids = self._generate_greedy(session, prompt_ids, request)
+                    generated_ids_by_request[row_index] = list(generated_ids)
                     finish_details = _gguf_finish_details(generated_ids, self.tokenizer, request)
                     outputs.append(
                         GenerationOutput(
@@ -128,15 +148,27 @@ class Qwen35GGUFBringupGenerator:
                         )
                     )
                 else:
-                    outputs.append(
-                        self._generate_sampled(
-                            session,
-                            prompt_ids,
-                            request,
-                            row_index=row_index,
-                        )
+                    output = self._generate_sampled(
+                        session,
+                        prompt_ids,
+                        request,
+                        row_index=row_index,
                     )
+                    outputs.append(output)
+                    token_logprobs_by_request[row_index] = list(output.token_logprobs)
+                    generated_ids_by_request[row_index] = [
+                        int(token.token_id) for token in output.token_logprobs
+                    ]
         self.last_generation_outputs = tuple(outputs)
+        self.last_batch_generation = _gguf_last_batch_generation(
+            self.tokenizer,
+            request,
+            plan,
+            prompt_rows_by_request,
+            generated_ids_by_request,
+            token_logprobs_by_request,
+            outputs=self.last_generation_outputs,
+        )
         return outputs
 
     def _generate_greedy(
@@ -509,6 +541,154 @@ def _gguf_token_text(tokenizer: Qwen35GGUFTokenizer, sample: Any) -> str:
     return tokenizer.decode([int(sample.token_id)])
 
 
+def _gguf_last_batch_generation(
+    tokenizer: Qwen35GGUFTokenizer,
+    request: GenerationRequest,
+    plan: Any,
+    prompt_rows_by_request: dict[int, list[int]],
+    generated_ids_by_request: dict[int, list[int]],
+    token_logprobs_by_request: dict[int, list[TokenLogprob]],
+    *,
+    outputs: tuple[GenerationOutput, ...],
+) -> dict[str, Any]:
+    request_ids = tuple(range(len(outputs)))
+    path = _gguf_execution_path(plan)
+    prompt_lengths = [len(prompt_rows_by_request.get(request_id, ())) for request_id in request_ids]
+    decode_steps = max((len(generated_ids_by_request.get(request_id, ())) for request_id in request_ids), default=0)
+    payload: dict[str, Any] = {
+        "path": path,
+        "batch_size": len(request_ids),
+        "request_ids": list(request_ids),
+        "prompt_lengths": prompt_lengths,
+        "decode_steps": decode_steps,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": len(request_ids) > 1,
+        "native_compact_prefill": False,
+        "native_caware_decode": False,
+        "native_sampler_rows": False,
+        "throughput_claim_eligible": False,
+        "sampler_plan_metadata": [
+            {
+                "active_processors": list(plan.active_processors),
+                "sampler_fast_path_blockers": list(plan.fast_path_blockers),
+                "native_gpu_available": False,
+                **(
+                    {"sampler_fallback_reason": plan.fallback_reason}
+                    if plan.fallback_reason is not None
+                    else {}
+                ),
+                "sampler_mode": plan.mode.value,
+            }
+            for _request_id in request_ids
+        ],
+    }
+    payload["scheduler_token_chunks"] = _gguf_scheduler_token_chunks(
+        request_ids,
+        prompt_rows_by_request,
+        generated_ids_by_request,
+        token_logprobs_by_request,
+        tokenizer=tokenizer,
+        request=request,
+        plan=plan,
+        execution_path=path,
+    )
+    return payload
+
+
+def _gguf_execution_path(plan: Any) -> str:
+    if plan.mode is SamplingMode.GREEDY_FAST:
+        return "gguf_serial_greedy_decode"
+    return "gguf_serial_host_sampler_decode"
+
+
+def _gguf_scheduler_token_chunks(
+    request_ids: tuple[int, ...],
+    prompt_rows_by_request: dict[int, list[int]],
+    generated_ids_by_request: dict[int, list[int]],
+    token_logprobs_by_request: dict[int, list[TokenLogprob]],
+    *,
+    tokenizer: Qwen35GGUFTokenizer,
+    request: GenerationRequest,
+    plan: Any,
+    execution_path: str,
+) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    for request_id in request_ids:
+        generated_ids = generated_ids_by_request.get(request_id, [])
+        token_logprobs = token_logprobs_by_request.get(request_id, [])
+        prefix: list[int] = []
+        for token_index, token_id in enumerate(generated_ids):
+            prefix.append(int(token_id))
+            final = token_index == len(generated_ids) - 1
+            token_logprob = token_logprobs[token_index] if token_index < len(token_logprobs) else None
+            token_text = (
+                token_logprob.token_text
+                if token_logprob is not None
+                else tokenizer.decode([int(token_id)])
+            )
+            chunk = GenerationStreamChunk(
+                text=token_text,
+                token_logprobs=(
+                    (token_logprob,)
+                    if token_logprob is not None and (request.logprobs or int(request.top_logprobs) > 0)
+                    else ()
+                ),
+                finish_details=(
+                    _gguf_finish_details(prefix, tokenizer, request)
+                    if final
+                    else None
+                ),
+                telemetry=_gguf_telemetry(
+                    prompt_rows_by_request.get(request_id, []),
+                    prefix,
+                    request,
+                    row_index=request_id,
+                    request_id=str(request_id),
+                    phase="answer",
+                    execution_path=execution_path,
+                    native_compact_prefill=False,
+                    native_caware_decode=False,
+                    serial_decode_fallback=len(request_ids) > 1,
+                    native_sampler_rows=False,
+                ),
+            )
+            chunks.append(_gguf_scheduler_token_chunk_payload(request_id, token_index, int(token_id), chunk))
+    return chunks
+
+
+def _gguf_scheduler_token_chunk_payload(
+    request_id: int,
+    token_index: int,
+    token_id: int,
+    chunk: GenerationStreamChunk,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "request_id": int(request_id),
+        "token_index": int(token_index),
+        "token_id": int(token_id),
+        "finished": chunk.finish_details is not None,
+        "chunk": {"text": chunk.text},
+    }
+    if chunk.token_logprobs:
+        payload["chunk"]["token_logprobs"] = [
+            {
+                "token_id": token.token_id,
+                "token_text": token.token_text,
+                "logprob": token.logprob,
+                "top_logprobs": [
+                    {"token_id": top_id, "token_text": top_text, "logprob": top_logprob}
+                    for top_id, top_text, top_logprob in token.top_logprobs
+                ],
+            }
+            for token in chunk.token_logprobs
+        ]
+    if chunk.finish_details is not None:
+        payload["chunk"]["finish_details"] = chunk.finish_details.to_json_dict()
+    if chunk.telemetry is not None:
+        payload["chunk"]["telemetry"] = chunk.telemetry.to_json_dict()
+    return payload
+
+
 def _gguf_queue_json_object_close_if_needed(
     state: RowSamplingState,
     tokenizer: Qwen35GGUFTokenizer,
@@ -529,16 +709,23 @@ def _gguf_telemetry(
     request: GenerationRequest,
     *,
     row_index: int,
+    request_id: str | None = None,
     sampling_state: RowSamplingState | None = None,
     phase: str | None = None,
     forced_sample: Any | None = None,
     full_vocab_logits_d2h: bool | None = None,
     logits_d2h_bytes: int | None = None,
+    execution_path: str | None = None,
+    native_compact_prefill: bool | None = None,
+    native_caware_decode: bool | None = None,
+    serial_decode_fallback: bool | None = None,
+    native_sampler_rows: bool | None = None,
 ) -> GenerationTelemetry:
     plan = _gguf_sampler_plan(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _gguf_forced_token_metadata(forced_sample)
     return GenerationTelemetry.from_decode_counts(
+        request_id=request_id,
         row_index=row_index,
         prompt_tokens=len(prompt_ids),
         generated_tokens=len(generated_ids),
@@ -563,6 +750,11 @@ def _gguf_telemetry(
         sampler_fallback_reason=plan.fallback_reason,
         full_vocab_logits_d2h=full_vocab_logits_d2h,
         logits_d2h_bytes=logits_d2h_bytes,
+        execution_path=execution_path,
+        native_compact_prefill=native_compact_prefill,
+        native_caware_decode=native_caware_decode,
+        serial_decode_fallback=serial_decode_fallback,
+        native_sampler_rows=native_sampler_rows,
     )
 
 

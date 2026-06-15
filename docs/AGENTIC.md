@@ -131,10 +131,11 @@ Known baseline limitations:
   `RowSamplingState`, including sampler mode, active processors, native fallback,
   token stop suffix state, forced-token queues, thinking-budget pressure, and
   scheduler execution flags.
-  PARO scheduler-owned c>N batch diagnostics retain JSON-ready
-  `scheduler_token_chunks` with per-token `GenerationStreamChunk` payloads,
-  and final telemetry reports scheduler execution path plus
-  native-prefill/native-decode/serial-fallback state. Buffered completion
+  PARO scheduler-owned c>N batch diagnostics and GGUF serial c>N final
+  diagnostics retain JSON-ready `scheduler_token_chunks` with per-token
+  `GenerationStreamChunk` payloads, and final telemetry reports scheduler
+  execution path plus native-prefill/native-decode/serial-fallback state where
+  the backend exposes those flags. Buffered completion
   streams, plain buffered chat answer/reasoning streams without logprobs, and
   plain chat content streams with logprobs, plus validated structured chat
   content streams and validated tool-call argument spans, for a single HTTP
@@ -1022,14 +1023,15 @@ Current code reality:
   Those buffered deltas inherit stable backend sampler/execution metadata from
   the final telemetry, but keep token-specific fields such as forced-token state,
   stop suffixes, budget pressure, timing, and usage on final/backend-authored
-  snapshots, scheduler token-event chunks, or PARO c>N
+  snapshots, scheduler token-event chunks, or PARO/GGUF c>N
   `last_batch_generation.scheduler_token_chunks` diagnostics.
   Buffered `/v1/completions` streams, plain answer/reasoning buffered
   `/v1/chat/completions` streams without logprobs, plain chat content logprob
   streams, validated structured chat content streams, and validated tool-call
-  argument spans now use PARO c>N scheduler token chunks as per-token public
-  deltas for a single HTTP request when the chunks exactly reconstruct the
-  final choice text. Coalesced multi-request batches, invalid or unmappable tool
+  argument spans now use PARO c>N and GGUF serial c>N scheduler token chunks as
+  per-token public deltas for a single HTTP request when the chunks exactly
+  reconstruct the final choice text. Coalesced multi-request batches, invalid or
+  unmappable tool
   outputs, structured-output validation failures, reasoning-logprob chunk
   forwarding, public runtime-native live c>N stream chunk forwarding, canonical
   tool/structured phases, and real continuation eligibility remain future
@@ -2150,10 +2152,10 @@ Current code reality:
   `last_batch_generation.sampler_plan_metadata` and builds final per-choice
   telemetry from the scheduler-owned row plans, so native-sampler request
   fallback and processor blockers are observable from the actual batch path.
-  Greedy and sampled PARO c>N batch paths also retain JSON-ready
-  `last_batch_generation.scheduler_token_chunks` with per-token text,
-  finish-details, decode-state telemetry, stop-suffix state, execution-path
-  flags, and sampled logprob payloads when requested.
+  Greedy and sampled PARO c>N batch paths and GGUF serial c>N final paths also
+  retain JSON-ready `last_batch_generation.scheduler_token_chunks` with
+  per-token text, finish-details, decode-state telemetry, stop-suffix state,
+  execution-path flags, and sampled logprob payloads when requested.
 - True batched sampled decode is still not native-promoted: env-enabled PARO
   c>N sampled batches can use native packed prefill plus serial per-slot native
   GPU sampling when every row is covered by the native sampler contract, but the
@@ -2871,11 +2873,12 @@ golden harness traces are now implemented. Good next logical units, in order:
    submit/poll token events can carry `GenerationStreamChunk` snapshots for
    token stop suffix state, forced-token state, budget pressure, sampler
    fallback, and execution flags.
-   PARO c>N batch generation now authors JSON-ready scheduler token chunks in
-   `last_batch_generation`, and buffered completion plus plain buffered
-   chat answer/reasoning streams can forward those chunks as per-token public
-   deltas for a single HTTP request; content-only chat logprob streams also use
-   scheduler chunks when chunk logprobs are present, and validated structured
+   PARO c>N batch generation and GGUF serial c>N final generation now author
+   JSON-ready scheduler token chunks in `last_batch_generation`, and buffered
+   completion plus plain buffered chat answer/reasoning streams can forward
+   those chunks as per-token public deltas for a single HTTP request;
+   content-only chat logprob streams also use scheduler chunks when chunk
+   logprobs are present, and validated structured
    chat content streams use scheduler chunks with `phase="structured"`.
    Validated tool-call argument spans can likewise replay scheduler chunks as
    OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
