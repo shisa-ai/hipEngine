@@ -209,6 +209,13 @@ No-hold notes:
   to `__launch_bounds__(128, 1)` preserved generated IDs and memory, but
   regressed the retained selected-down gate (`115.805 -> 115.570 tok/s`) and
   lowered both prefill medians. Keep selected-down T16 GEMV at `128,2`.
+- **G-D3 selected down launch-bound=3 rejected (2026-06-15).** Tightening
+  `qk_t16_selected_direct_gemv_kernel` from `__launch_bounds__(128, 2)` to
+  `__launch_bounds__(128, 3)` preserved generated IDs and memory and nudged
+  `512/128` decode up (`127.012 -> 127.040 tok/s`), but regressed `512/128`
+  prefill (`1647.390 -> 1618.596 tok/s`), `4K/128` prefill (`1855.806 ->
+  1850.923 tok/s`), and the retained `4K/128` decode gate (`115.805 ->
+  115.617 tok/s`). Keep selected-down T16 GEMV at `128,2`.
 - **G-D2 Q8 launch-bound=3 rejected (2026-06-15).** Relaxing all four Q8_0 T16
   GEMV decode kernels from `__launch_bounds__(128, 4)` to
   `__launch_bounds__(128, 3)` preserved generated IDs and memory and nudged
