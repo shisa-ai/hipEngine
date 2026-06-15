@@ -164,8 +164,8 @@ live or buffered stream can map reasoning-token metadata to a reasoning delta,
 opt-in stream metadata carries
 `choices[].hipengine.reasoning_logprobs`, advertised as
 `features.logprobs.chat_reasoning_private_stream_metadata`. Live deltas held
-until the reasoning parser finishes also use the last stream chunk's token
-metadata when the held text maps cleanly to that chunk.
+until the reasoning parser finishes also use retained live source-chunk token
+metadata when the held text maps cleanly across those chunks.
 
 ### Routing metadata
 

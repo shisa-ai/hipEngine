@@ -8475,11 +8475,23 @@ def test_streaming_chat_completion_maps_live_final_content_logprobs() -> None:
     fake = FakeLLM(
         stream_chunks=[
             GenerationStreamChunk(
-                text="<thi",
-                token_logprobs=(TokenLogprob(token_id=310, token_text="<thi", logprob=-0.7),),
+                text="<t",
+                token_logprobs=(TokenLogprob(token_id=310, token_text="<t", logprob=-0.7),),
                 telemetry=GenerationTelemetry.from_decode_counts(
                     prompt_tokens=1,
                     generated_tokens=1,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+            GenerationStreamChunk(
+                text="hi",
+                token_logprobs=(TokenLogprob(token_id=311, token_text="hi", logprob=-0.8),),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=2,
                     row_index=0,
                     phase="answer",
                     sampler_mode="host_logits_sample",
@@ -8512,7 +8524,8 @@ def test_streaming_chat_completion_maps_live_final_content_logprobs() -> None:
     )
     assert content["delta"] == {"content": "<thi"}
     assert content["logprobs"]["content"] == [
-        {"token": "<thi", "logprob": -0.7, "bytes": None, "top_logprobs": []}
+        {"token": "<t", "logprob": -0.7, "bytes": None, "top_logprobs": []},
+        {"token": "hi", "logprob": -0.8, "bytes": None, "top_logprobs": []},
     ]
     assert content["hipengine"]["decode_state"]["phase"] == "answer"
     assert content["hipengine"]["decode_state"]["execution_path"] == "live_host_sampler_decode"
@@ -8534,11 +8547,23 @@ def test_streaming_chat_completion_maps_live_final_reasoning_logprobs() -> None:
                 ),
             ),
             GenerationStreamChunk(
-                text="</thi",
-                token_logprobs=(TokenLogprob(token_id=321, token_text="</thi", logprob=-0.2),),
+                text="</t",
+                token_logprobs=(TokenLogprob(token_id=321, token_text="</t", logprob=-0.2),),
                 telemetry=GenerationTelemetry.from_decode_counts(
                     prompt_tokens=1,
                     generated_tokens=2,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+            GenerationStreamChunk(
+                text="hi",
+                token_logprobs=(TokenLogprob(token_id=322, token_text="hi", logprob=-0.3),),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=3,
                     row_index=0,
                     phase="answer",
                     sampler_mode="host_logits_sample",
@@ -8581,8 +8606,15 @@ def test_streaming_chat_completion_maps_live_final_reasoning_logprobs() -> None:
         "content": [
             {
                 "token_id": 321,
-                "token": "</thi",
+                "token": "</t",
                 "logprob": -0.2,
+                "bytes": None,
+                "top_logprobs": [],
+            },
+            {
+                "token_id": 322,
+                "token": "hi",
+                "logprob": -0.3,
                 "bytes": None,
                 "top_logprobs": [],
             }

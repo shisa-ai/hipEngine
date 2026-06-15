@@ -1035,7 +1035,8 @@ Current code reality:
   per-token public deltas for a single HTTP request when the chunks exactly
   reconstruct the final choice text and logprob chunks can be mapped to emitted
   content/reasoning deltas. Live parser-final splitter leftovers also reuse
-  last-chunk token metadata when the held public delta is mappable. Coalesced
+  retained source-chunk token metadata when the held public delta is mappable.
+  Coalesced
   multi-request batches, invalid or
   unmappable tool outputs, structured-output validation failures, public
   runtime-native live c>N stream chunk forwarding, canonical tool/structured
@@ -2895,8 +2896,8 @@ golden harness traces are now implemented. Good next logical units, in order:
    invalid/unmappable tool-call chunks are withheld fail-closed with private
    final-choice diagnostics. Live c=1 reasoning deltas with backend token
    logprobs now carry hipEngine-private reasoning logprob metadata.
-   Parser-final splitter leftovers on the live path reuse last-chunk logprob
-   metadata when the held delta is mappable.
+   Parser-final splitter leftovers on the live path reuse retained source-chunk
+   logprob metadata when the held delta is mappable.
    Runtime-native live c>N stream forwarding, public invalid/unmappable
    tool-call chunk forwarding, unmappable parser-final logprob spans, and real
    continuation eligibility still need lower-loop work instead of relying on

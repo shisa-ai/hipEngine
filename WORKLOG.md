@@ -93167,3 +93167,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs or streaming_chat_completion_uses_live_reasoning_private_logprobs or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs'` -> `7 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - Cross-chunk live splitter logprob mapping
+
+Extended the live chat reasoning splitter to retain the backend stream chunks
+that cover its pending parser buffer, then synthesize a phase-tagged
+`GenerationStreamChunk` when the final held delta spans more than one backend
+chunk. This keeps public content logprobs and private
+`choices[].hipengine.reasoning_logprobs` available for split parser suffixes
+such as partial `<think>` / `</think>` markers when token boundaries still map
+cleanly.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs'` -> `2 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs or streaming_chat_completion_uses_live_reasoning_private_logprobs or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_returns_logprobs_from_buffered_path'` -> `8 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

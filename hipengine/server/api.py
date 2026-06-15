@@ -5089,6 +5089,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             return
         full_text: list[str] = []
         last_stream_chunk: GenerationStreamChunk | None = None
+        splitter_source_chunks: list[GenerationStreamChunk] = []
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
 
@@ -5164,16 +5165,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 full_text.append(text)
                 if buffer_tool_output:
                     continue
+                splitter_source_chunks.append(stream_chunk)
                 for field, chunk in splitter.feed(text):
                     phase = "think" if field == "reasoning_content" else "answer"
-                    phase_stream_chunk = _stream_chunk_with_phase(stream_chunk, phase)
+                    phase_stream_chunk = _live_splitter_stream_chunk_for_delta(
+                        splitter_source_chunks,
+                        stream_chunk,
+                        chunk,
+                        phase=phase,
+                    )
                     logprobs = (
-                        _chat_stream_logprobs(stream_chunk, chunk)
+                        _chat_stream_logprobs(phase_stream_chunk, chunk)
                         if request.logprobs and field == "content"
                         else None
                     )
                     reasoning_logprobs = (
-                        _chat_reasoning_stream_logprobs(stream_chunk, chunk)
+                        _chat_reasoning_stream_logprobs(phase_stream_chunk, chunk)
                         if request.logprobs
                         and include_hipengine
                         and field == "reasoning_content"
@@ -5197,25 +5204,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         routing=routing_metadata,
                         phase=phase,
                     )
+                _trim_live_splitter_source_chunks(
+                    splitter_source_chunks,
+                    min_chars=splitter.pending_text_length,
+                )
             if not buffer_tool_output:
                 for field, chunk in splitter.finish():
                     phase = "think" if field == "reasoning_content" else "answer"
-                    finish_stream_chunk = (
-                        None
-                        if last_stream_chunk is None
-                        else _stream_chunk_with_phase(last_stream_chunk, phase)
+                    finish_stream_chunk = _live_splitter_stream_chunk_for_delta(
+                        splitter_source_chunks,
+                        last_stream_chunk,
+                        chunk,
+                        phase=phase,
                     )
                     logprobs = (
-                        _chat_stream_logprobs(last_stream_chunk, chunk)
-                        if request.logprobs and field == "content" and last_stream_chunk is not None
+                        _chat_stream_logprobs(finish_stream_chunk, chunk)
+                        if request.logprobs and field == "content" and finish_stream_chunk is not None
                         else None
                     )
                     reasoning_logprobs = (
-                        _chat_reasoning_stream_logprobs(last_stream_chunk, chunk)
+                        _chat_reasoning_stream_logprobs(finish_stream_chunk, chunk)
                         if request.logprobs
                         and include_hipengine
                         and field == "reasoning_content"
-                        and last_stream_chunk is not None
+                        and finish_stream_chunk is not None
                         else None
                     )
                     token_payload = (
@@ -9824,6 +9836,85 @@ def _validate_stream_logprob_chunk(stream_chunk: GenerationStreamChunk) -> None:
         raise _unsupported_stream_logprobs_error()
 
 
+def _live_splitter_stream_chunk_for_delta(
+    source_chunks: Sequence[GenerationStreamChunk],
+    fallback_chunk: GenerationStreamChunk | None,
+    text: str,
+    *,
+    phase: str,
+) -> GenerationStreamChunk | None:
+    source_chunk = _live_splitter_tail_stream_chunk(source_chunks, text, phase=phase)
+    if source_chunk is not None:
+        return source_chunk
+    if fallback_chunk is None:
+        return None
+    return _stream_chunk_with_phase(fallback_chunk, phase)
+
+
+def _trim_live_splitter_source_chunks(
+    source_chunks: list[GenerationStreamChunk],
+    *,
+    min_chars: int,
+) -> None:
+    if min_chars <= 0:
+        source_chunks.clear()
+        return
+    retained = 0
+    start = len(source_chunks)
+    for index in range(len(source_chunks) - 1, -1, -1):
+        retained += len(source_chunks[index].text)
+        start = index
+        if retained >= min_chars:
+            break
+    del source_chunks[:start]
+
+
+def _live_splitter_tail_stream_chunk(
+    source_chunks: Sequence[GenerationStreamChunk],
+    text: str,
+    *,
+    phase: str,
+) -> GenerationStreamChunk | None:
+    if not text or not source_chunks:
+        return None
+    remaining = len(text)
+    pieces_reversed: list[str] = []
+    token_groups_reversed: list[tuple[TokenLogprob, ...]] = []
+    tail_chunk: GenerationStreamChunk | None = None
+    for stream_chunk in reversed(source_chunks):
+        chunk_text = stream_chunk.text
+        if not chunk_text:
+            continue
+        take = min(len(chunk_text), remaining)
+        start = len(chunk_text) - take
+        end = len(chunk_text)
+        piece = chunk_text[start:end]
+        tokens = _stream_token_logprobs_for_text_span(stream_chunk, start, end)
+        if piece and not tokens:
+            return None
+        if tail_chunk is None:
+            tail_chunk = stream_chunk
+        pieces_reversed.append(piece)
+        token_groups_reversed.append(tokens)
+        remaining -= take
+        if remaining == 0:
+            break
+    if remaining != 0 or tail_chunk is None:
+        return None
+    if "".join(reversed(pieces_reversed)) != text:
+        return None
+    token_logprobs: list[TokenLogprob] = []
+    for group in reversed(token_groups_reversed):
+        token_logprobs.extend(group)
+    chunk = GenerationStreamChunk(
+        text=text,
+        token_logprobs=tuple(token_logprobs),
+        finish_details=tail_chunk.finish_details,
+        telemetry=tail_chunk.telemetry,
+    )
+    return _stream_chunk_with_phase(chunk, phase)
+
+
 def _unsupported_stream_logprobs_error() -> OpenAIHTTPError:
     return OpenAIHTTPError(
         501,
@@ -9847,6 +9938,22 @@ def _stream_token_logprobs_for_text(
     if start < 0:
         return ()
     end = start + len(text)
+    return _stream_token_logprobs_for_text_span(stream_chunk, start, end)
+
+
+def _stream_token_logprobs_for_text_span(
+    stream_chunk: GenerationStreamChunk,
+    start: int,
+    end: int,
+) -> tuple[TokenLogprob, ...]:
+    if (
+        not stream_chunk.token_logprobs
+        or start < 0
+        or end < start
+        or end > len(stream_chunk.text)
+        or start == end
+    ):
+        return ()
     cursor = 0
     selected: list[TokenLogprob] = []
     for token in stream_chunk.token_logprobs:
@@ -9860,7 +9967,7 @@ def _stream_token_logprobs_for_text(
         selected.append(token)
         if token_end == end:
             break
-    if "".join(token.token_text for token in selected) != text:
+    if "".join(token.token_text for token in selected) != stream_chunk.text[start:end]:
         return ()
     return tuple(selected)
 
@@ -9914,6 +10021,10 @@ class _ReasoningSplitter:
     def __init__(self) -> None:
         self._buffer = ""
         self._in_reasoning = False
+
+    @property
+    def pending_text_length(self) -> int:
+        return len(self._buffer)
 
     def feed(self, text: str) -> list[tuple[str, str]]:
         if not text:
