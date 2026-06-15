@@ -46,6 +46,7 @@ DEFAULT_LLAMACPP_TOKENS = Path(
     "benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
 )
 DEFAULT_SAMPLING = Path("benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json")
+DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json")
 
 
 class B1PromptSuitePreflightError(RuntimeError):
@@ -137,6 +138,95 @@ def _build_draft_budget_precheck(
     }
 
 
+def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> dict[str, Any]:
+    trace = load_json(trace_fixture)
+    checks: list[dict[str, Any]] = []
+
+    def check(name: str, passed: bool, detail: str) -> None:
+        checks.append({"name": name, "passed": bool(passed), "detail": detail})
+
+    calls = trace.get("calls")
+    summary = trace.get("summary") if isinstance(trace.get("summary"), dict) else {}
+    timing = trace.get("llamacpp_timing_summary") if isinstance(trace.get("llamacpp_timing_summary"), dict) else {}
+    metadata = trace.get("metadata") if isinstance(trace.get("metadata"), dict) else {}
+    server_command = metadata.get("server_command") if isinstance(metadata.get("server_command"), list) else []
+    request = metadata.get("request") if isinstance(metadata.get("request"), dict) else {}
+
+    check(
+        "kind",
+        trace.get("kind") == "llamacpp_mtp_draft_candidate_trace",
+        "fixture kind must be llamacpp_mtp_draft_candidate_trace",
+    )
+    check("calls_present", isinstance(calls, list) and bool(calls), "fixture must contain at least one draft call")
+    call_items = calls if isinstance(calls, list) else []
+    candidate_count = 0
+    selected_token_ids: list[int] = []
+    max_candidates = 0
+    calls_valid = True
+    for index, call in enumerate(call_items):
+        candidates = call.get("candidates") if isinstance(call, dict) else None
+        if not isinstance(candidates, list) or not candidates:
+            calls_valid = False
+            continue
+        max_candidates = max(max_candidates, len(candidates))
+        candidate_count += len(candidates)
+        selected = candidates[0]
+        if not isinstance(selected, dict):
+            calls_valid = False
+            continue
+        token_id = selected.get("token_id")
+        if selected.get("rank") != 0 or not isinstance(token_id, int):
+            calls_valid = False
+            continue
+        selected_token_ids.append(token_id)
+        generated = call.get("generated") if isinstance(call, dict) else None
+        if isinstance(generated, int) and generated > draft_max:
+            calls_valid = False
+            check(
+                f"call_{index}_generated_budget",
+                False,
+                f"generated={generated} exceeds requested draft_max={draft_max}",
+            )
+    check("candidate_rows", calls_valid, "each draft call must expose a rank-0 token and stay within draft_max")
+    check(
+        "candidate_count",
+        summary.get("candidate_count") == candidate_count,
+        "summary candidate_count must equal summed candidate rows",
+    )
+    check(
+        "draft_call_count",
+        summary.get("draft_call_count") == len(call_items),
+        "summary draft_call_count must equal calls length",
+    )
+    check(
+        "observed_top_k",
+        isinstance(summary.get("observed_top_k"), int) and summary.get("observed_top_k") >= 1,
+        "summary observed_top_k must be a positive integer",
+    )
+    check(
+        "debug_trace_not_benchmark",
+        "--no-spec-draft-backend-sampling" in [str(item) for item in server_command],
+        "trace fixture must be marked as debug/provenance, not a backend-sampling benchmark",
+    )
+
+    passed = all(item["passed"] for item in checks)
+    return {
+        "fixture": str(trace_fixture),
+        "passed": passed,
+        "kind": trace.get("kind"),
+        "prompt_name": request.get("prompt_name"),
+        "prompt_tokens": trace.get("prompt_tokens"),
+        "draft_call_count": len(call_items),
+        "candidate_count": candidate_count,
+        "observed_top_k": summary.get("observed_top_k", max_candidates),
+        "selected_token_ids": selected_token_ids,
+        "draft_acceptance": timing.get("draft_acceptance", summary.get("draft_acceptance")),
+        "draft_n": timing.get("draft_n", summary.get("draft_n")),
+        "draft_n_accepted": timing.get("draft_n_accepted", summary.get("draft_n_accepted")),
+        "checks": checks,
+    }
+
+
 def build_b1_prompt_suite_artifact(
     *,
     model: Path,
@@ -146,6 +236,7 @@ def build_b1_prompt_suite_artifact(
     hipengine_sampling: Path,
     llamacpp_sampling: Path,
     oracle_fixture: Path = DEFAULT_ORACLE_FIXTURE,
+    llamacpp_trace_fixture: Path = DEFAULT_LLAMACPP_TRACE_FIXTURE,
     prompt_limit: int | None = None,
     draft_max: int = 1,
 ) -> dict[str, Any]:
@@ -193,6 +284,10 @@ def build_b1_prompt_suite_artifact(
         draft_topk=draft_topk_contract,
     )
     oracle_gate = run_oracle_gate(oracle_fixture)
+    llamacpp_trace_oracle = _validate_llamacpp_trace_oracle(
+        llamacpp_trace_fixture,
+        draft_max=requested_draft_max,
+    )
     blockers: list[dict[str, Any]] = []
     if not parity["all_pass"]:
         blockers.append(
@@ -230,11 +325,22 @@ def build_b1_prompt_suite_artifact(
                 "top1_agreement": float(oracle_gate["metrics"]["top1_agreement"]),
             }
         )
+    if not llamacpp_trace_oracle["passed"]:
+        blockers.append(
+            {
+                "code": "llamacpp_trace_oracle_failed",
+                "detail": "captured llama.cpp GGUF MTP draft trace must validate before accepted/output metrics are comparable",
+                "failed_checks": [
+                    item for item in llamacpp_trace_oracle["checks"] if not item["passed"]
+                ],
+            }
+        )
     if (
         parity["all_pass"]
         and draft_budget_precheck["passed"]
         and draft_sampling_contract_precheck["passed"]
         and oracle_gate["passed"]
+        and llamacpp_trace_oracle["passed"]
     ):
         blockers.append(
             {
@@ -279,9 +385,10 @@ def build_b1_prompt_suite_artifact(
         "draft_budget_precheck": draft_budget_precheck,
         "draft_sampling_contract_precheck": draft_sampling_contract_precheck,
         "oracle_gate": oracle_gate,
+        "llamacpp_trace_oracle": llamacpp_trace_oracle,
         "execution": {
             "implemented": False,
-            "exactness_gate": "passed" if oracle_gate["passed"] else "failed",
+            "exactness_gate": "passed" if oracle_gate["passed"] and llamacpp_trace_oracle["passed"] else "failed",
             "accepted_output_metrics": "not_run",
             "next_action": f"implement native GGUF MTP draft execution and re-run this harness for {requested_budget}",
         },
@@ -298,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hipengine-sampling", type=Path, default=DEFAULT_SAMPLING)
     parser.add_argument("--llamacpp-sampling", type=Path, default=DEFAULT_SAMPLING)
     parser.add_argument("--oracle-fixture", type=Path, default=DEFAULT_ORACLE_FIXTURE)
+    parser.add_argument("--llamacpp-trace-fixture", type=Path, default=DEFAULT_LLAMACPP_TRACE_FIXTURE)
     parser.add_argument("--prompt-limit", type=int)
     parser.add_argument(
         "--draft-max",
@@ -323,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
         hipengine_sampling=args.hipengine_sampling,
         llamacpp_sampling=args.llamacpp_sampling,
         oracle_fixture=args.oracle_fixture,
+        llamacpp_trace_fixture=args.llamacpp_trace_fixture,
         prompt_limit=args.prompt_limit,
         draft_max=args.draft_max,
     )

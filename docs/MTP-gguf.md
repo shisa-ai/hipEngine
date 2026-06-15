@@ -573,7 +573,9 @@ Current status:
   short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
   and 0/2 accepted drafts. It was captured with backend draft sampling disabled
   only to expose candidate probabilities in the log; it is an oracle/debug
-  fixture, not a performance benchmark.
+  fixture, not a performance benchmark. The B1 preflight child validates and
+  embeds a compact `llamacpp_trace_oracle` summary from this fixture so blocked
+  artifacts carry both CPU-reference and captured llama.cpp oracle provenance.
 
 Acceptance:
 
@@ -648,8 +650,8 @@ Deliverables:
   and the llama.cpp draft sampler contract (`top_k=10`, greedy top-1 from top-k)
   match both engines' sampling fixtures, embeds the MTP draft tensor/call specs
   (including KVLiveSpans dynamic inputs), runs the CPU-reference oracle exactness
-  gate, and emits a blocked artifact until native GGUF MTP draft execution is
-  implemented.
+  gate plus the captured llama.cpp draft-trace oracle summary, and emits a
+  blocked artifact until native GGUF MTP draft execution is implemented.
 - Run matched prompt/token suite against:
   - hipEngine GGUF AR;
   - hipEngine GGUF MTP B1-B4;
@@ -837,8 +839,8 @@ is now answered by the M1 required/optional table.)
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
-      specs and CPU-reference oracle gate output; B1 runtime execution remains in
-      the next backlog row.
+      specs, CPU-reference oracle gate output, and captured llama.cpp draft-trace
+      oracle provenance; B1 runtime execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the

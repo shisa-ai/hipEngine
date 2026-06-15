@@ -95720,3 +95720,51 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF llama.cpp trace oracle in preflight
+
+Implemented `mtp-gguf` multiloop iteration 68: embedded a validated llama.cpp
+GGUF MTP draft-trace oracle summary in the B1/B1-B4 preflight artifact.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation,
+  native MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- This gives blocked artifacts both CPU-reference exactness-gate provenance and
+  captured llama.cpp M0 draft top-k trace provenance before runtime execution is
+  implemented.
+
+Changes:
+- Added `DEFAULT_LLAMACPP_TRACE_FIXTURE` and `_validate_llamacpp_trace_oracle()`
+  to `scripts/gguf_mtp_b1_prompt_suite.py`.
+- The preflight artifact now includes `llamacpp_trace_oracle` with fixture path,
+  prompt name/tokens, draft call count, candidate count, observed top-k,
+  selected rank-0 token ids, acceptance summary, and validation checks.
+- Added a `llamacpp_trace_oracle_failed` blocker before runtime metrics when the
+  captured trace fixture is missing/corrupt/not clearly marked as debug trace
+  (`--no-spec-draft-backend-sampling`).
+- Added `--llamacpp-trace-fixture` CLI override for alternate captured traces.
+- Extended B1 preflight tests to assert the passing trace summary and a failing
+  trace-oracle blocker.
+- Updated `docs/MTP-gguf.md` to document that blocked B1 artifacts now embed the
+  captured llama.cpp draft-trace oracle summary alongside the CPU-reference gate.
+
+Validation:
+- Focused B1 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `10` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `blocked B1 True [8068, 271] 3 native_gguf_mtp_runtime_missing`, meaning the
+  llama.cpp trace oracle passed with selected rank-0 token ids `[8068, 271]` and
+  observed top-k `3` while runtime execution remains the blocker.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

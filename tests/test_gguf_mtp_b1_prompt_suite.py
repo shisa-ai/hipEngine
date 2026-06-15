@@ -253,6 +253,9 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "mismatches": [],
     }
     assert artifact["oracle_gate"]["passed"] is True
+    assert artifact["llamacpp_trace_oracle"]["passed"] is True
+    assert artifact["llamacpp_trace_oracle"]["selected_token_ids"] == [8068, 271]
+    assert artifact["llamacpp_trace_oracle"]["observed_top_k"] == 3
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "passed",
@@ -355,6 +358,38 @@ def test_b1_prompt_suite_preflight_rejects_out_of_range_budget(
 
     with pytest.raises(suite.B1PromptSuitePreflightError, match="draft_max"):
         suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path), draft_max=5)
+
+
+def test_b1_prompt_suite_preflight_reports_llamacpp_trace_blocker_before_runtime_blocker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    trace = _write_json(
+        tmp_path / "bad-trace.json",
+        {
+            "schema": 1,
+            "kind": "llamacpp_mtp_draft_candidate_trace",
+            "calls": [],
+            "summary": {"candidate_count": 0, "draft_call_count": 0, "observed_top_k": 0},
+            "metadata": {"server_command": []},
+        },
+    )
+
+    artifact = suite.build_b1_prompt_suite_artifact(
+        **_artifact_inputs(tmp_path),
+        llamacpp_trace_fixture=trace,
+    )
+
+    assert artifact["status"] == "blocked"
+    assert artifact["llamacpp_trace_oracle"]["passed"] is False
+    assert artifact["execution"]["exactness_gate"] == "failed"
+    assert artifact["blockers"][0]["code"] == "llamacpp_trace_oracle_failed"
+    assert {item["name"] for item in artifact["blockers"][0]["failed_checks"]} >= {
+        "calls_present",
+        "observed_top_k",
+        "debug_trace_not_benchmark",
+    }
 
 
 def test_b1_prompt_suite_preflight_reports_oracle_gate_blocker_before_runtime_blocker(
