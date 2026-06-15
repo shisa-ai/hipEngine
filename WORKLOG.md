@@ -93528,3 +93528,20 @@ Validation and outcome:
 - Result: `512/128` median prefill/decode `1635.148420 / 126.905447 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1846.226281 / 112.596686 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Decision: no-hold/reverted. It preserved IDs and memory, but regressed `4K/128` decode `115.113564 -> 112.596686 tok/s`; keep grouped GQA split decode enabled for mid-context GGUF.
+
+## 2026-06-15 - GGUF G-D3 selected dual+SiLU GEMV launch-bound retained
+
+Changed `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip` so
+`q4_k_t16_selected_dual_silu_direct_gemv_kernel` uses
+`__launch_bounds__(256, 1)` instead of `__launch_bounds__(256, 2)`. This targets
+the selected Q4_K T16 dual+SiLU GEMV decode bucket (`~12-13%` of decode kernel
+time) without changing accumulation order, dispatch keys, or residency.
+
+Validation and outcome:
+- Prebuilt cached object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-c04facbc5a800955/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-silu-lb1.json`.
+- Result: `512/128` median prefill/decode `1644.663784 / 126.992572 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1851.329997 / 115.703013 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Compared to the retained selected-WMMA lb1 baseline, min-gate decode moved `115.113564 -> 115.703013 tok/s` (`+0.51%`); `512/128` decode moved `126.333886 -> 126.992572 tok/s` (`+0.52%`).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-silu-gemv-lb1-gate.json`.
+- Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.

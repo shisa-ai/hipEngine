@@ -97,13 +97,13 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1658.695` | `126.334` | `21.335 GiB` | `21.954 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `1850.311` | `115.114` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1644.664` | `126.993` | `21.335 GiB` | `21.952 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `1851.330` | `115.703` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `115.114 tok/s` after
-G-P1 lowered the selected Q4_K T16 WMMA prefill launch-bound default from `2` to
-`1`.
+multiloop metric is the minimum gate decode rate, currently `115.703 tok/s` after
+G-D3 relaxed the selected Q4_K T16 dual+SiLU GEMV launch-bound default from `2`
+to `1` on top of the retained G-P1 selected-WMMA prefill launch-bound change.
 
 ## Active GPU1 profile findings
 
@@ -124,8 +124,14 @@ Retained notes:
   `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS` from `2` to `1` in the selected Q4_K
   T16 WMMA prefill kernel kept gate IDs stable, kept tracked peak at
   `21.335 GiB`, and moved the GPU1 gate medians to `1658.695 / 126.334 tok/s`
-  (`512/128`) and `1850.311 / 115.114 tok/s` (`4K/128`). Final promotion still
-  needs the `128K/128` memory/throughput check.
+  (`512/128`) and `1850.311 / 115.114 tok/s` (`4K/128`).
+- **G-D3 selected dual+SiLU GEMV launch-bound retained (2026-06-15).** Relaxing
+  `q4_k_t16_selected_dual_silu_direct_gemv_kernel` from
+  `__launch_bounds__(256, 2)` to `__launch_bounds__(256, 1)` preserved gate IDs,
+  kept tracked peak at `21.335 GiB`, and moved the GPU1 gate medians to
+  `1644.664 / 126.993 tok/s` (`512/128`) and `1851.330 / 115.703 tok/s`
+  (`4K/128`). Final promotion still needs the `128K/128` memory/throughput
+  check.
 
 Initial focused lanes from evidence:
 
