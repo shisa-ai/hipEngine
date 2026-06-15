@@ -93040,3 +93040,17 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m pytest tests/test_server_api.py -q -k 'backend_scheduler_token_chunks_reads_wrapped_text_generator or generation_batcher_returns_scheduler_chunks_for_single_metadata_submission or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `5 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-15 - Scheduler chunk capability source alignment
+
+Aligned the `/v1/hipengine/capabilities` manifest and AGENTIC/API docs with the
+server's actual scheduler-token lookup. The server now advertises the buffered
+chunk source as the engine or wrapped generator
+`last_batch_generation.scheduler_token_chunks`, matching the public `LLM`
+wrapper reachability fix.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities'` -> `5 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

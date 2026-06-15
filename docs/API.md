@@ -246,8 +246,9 @@ For buffered `/v1/completions` streams, plain answer/reasoning buffered
 `/v1/chat/completions` streams without logprobs, and plain chat content streams
 with logprobs, validated structured chat content streams, and validated tool-call
 argument spans that can be mapped back to the raw tool-call block, if detailed
-backend generation reports `last_batch_generation.scheduler_token_chunks` for a
-single HTTP request and the scheduler chunk text exactly reconstructs each
+backend generation reports
+`engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks` for
+a single HTTP request and the scheduler chunk text exactly reconstructs each
 public choice text, the server emits those scheduler chunks as individual
 public SSE deltas or `delta.tool_calls` argument fragments. Chat requests with
 structured-output validation failures, invalid tool calls, tool outputs whose
@@ -274,8 +275,9 @@ token-accounting/decode-state scopes (`live_delta`, `buffered_delta`, and
 backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `buffered_done`) for engines that emit `GenerationStreamChunk` or
 `GenerationOutput` telemetry. `features.stream_metadata.buffered_scheduler_chunks`
-lists the public surfaces where `last_batch_generation.scheduler_token_chunks`
-can be replayed (`completion_delta`, answer/reasoning chat deltas without
+lists the public surfaces where
+`engine_or_wrapped_generator.last_batch_generation.scheduler_token_chunks` can
+be replayed (`completion_delta`, answer/reasoning chat deltas without
 reasoning logprobs, visible chat content-logprob deltas, validated structured
 content deltas, and validated tool-call argument deltas), plus the fallback
 conditions that force conservative buffering. It also reports the optional

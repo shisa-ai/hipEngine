@@ -1023,8 +1023,8 @@ Current code reality:
   Those buffered deltas inherit stable backend sampler/execution metadata from
   the final telemetry, but keep token-specific fields such as forced-token state,
   stop suffixes, budget pressure, timing, and usage on final/backend-authored
-  snapshots, scheduler token-event chunks, or PARO/GGUF c>N
-  `last_batch_generation.scheduler_token_chunks` diagnostics.
+  snapshots, scheduler token-event chunks, or PARO/GGUF c>N engine/wrapped-
+  generator `last_batch_generation.scheduler_token_chunks` diagnostics.
   Buffered `/v1/completions` streams, plain answer/reasoning buffered
   `/v1/chat/completions` streams without logprobs, plain chat content logprob
   streams, validated structured chat content streams, and validated tool-call
@@ -1135,8 +1135,9 @@ Current code reality:
   scopes cover `live_chunk`, `buffered_delta_safe_decode_state`, and
   `buffered_done` when generation telemetry is emitted. It also reports
   `features.stream_metadata.buffered_scheduler_chunks` so clients can see which
-  buffered c>N surfaces may replay `last_batch_generation.scheduler_token_chunks`
-  and which conditions force conservative buffering.
+  buffered c>N surfaces may replay engine or wrapped-generator
+  `last_batch_generation.scheduler_token_chunks` and which conditions force
+  conservative buffering.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
