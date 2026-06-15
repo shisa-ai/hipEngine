@@ -43426,3 +43426,75 @@ PY
 ```
 
 Results: targeted llama.cpp logits probe tests passed (`10` tests); probe verifier status returns `"match"`, verifier failures `[]`, verifier digest `4fcd750986691dc3b8e1aed65d69de2f2e8157f2328a1fc0f82aedd7fa500a87`; probe status remains `"blocked"`, `same_prompt_tokens_match` remains `null`, `expected_outranks_generated` remains `null`, missing evidence remains `llama_debug_retained_token_ids_input_present`, and stable payload SHA remains `e88ada1c1a6be91077b941567bc27e3a14ebd0f643a809bf032da070f2a35163`; preflight/plan/helper-readiness/remaining-blockers verification returned `"match"`; status/final-blocker/handoff verification returned `"match"`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `3c33a6042defa224c87cd88fd3fb12aba7f25f8f52ff167db61e021f2ef57ed4`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are probe `ba95bd134e2b8be906c8af15ee00175c46f9b1bddcd2b6ed3fec5ace3340fd75`, preflight `51dea6cf123f97f1fa8ab38821cd65fc0a806ca5cff1fcc97124aaf43a15088e`, plan `c40df6a6130f4d86617447665e191e7100c9c904d7780f3038d94524ec3c11c1`, helper readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, remaining-blockers rollup `b1d6932424929ce23e6b674ca61f365803c255ff0fc4cfdb881ca63ff68c0951`, correctness-status `b69633df22f3fe0153d4268d448ff3183dac44fdc1e0ec80ff3befe26e224f16`, final-blocker `d403d526fa98abe04ffc6e2dbd3d81ffaba73949a1d287668cf0297ab9ec4e95`, handoff `34f074ec5b42fe11089fa44009e29bdd2c70d65a7fe6966b4270347aaa79485f`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed; no StepFun `DEFAULT_OUTPUT`/`--default-output` artifact scripts remain without a `--verify-*` option.
+
+## 2026-06-15 - StepFun artifact verifier coverage regression test
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 548. Added `tests/test_stepfun_artifact_verifier_coverage.py`, a regression test that scans every `scripts/stepfun_*.py` artifact script with `DEFAULT_OUTPUT` or `--default-output` behavior and fails if any lacks at least one `--verify-*` drift-check option. This locks the newly completed verifier coverage for retained StepFun handoff artifacts before future default-output artifacts can feed the oracle/KV handoff without a stale-artifact check. It does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, capture same-prompt logits, or make performance/e2e claims.
+
+Retained evidence: the coverage scan currently finds `23` default-output StepFun artifact scripts, `missing_verify_count=0`, and coverage digest `852cee4aed64a24759b5158edd9f78b4ae7cfd74819fd635d91fe9209fec0c5b`. Representative enforced verifier flags include `stepfun_kv_blocker_status.py --verify-blocker-status`, `stepfun_oracle_token_mismatch.py --verify-token-mismatch`, `stepfun_llamacpp_logits_probe.py --verify-probe`, `stepfun_llamacpp_logits_helper_patch_dry_run.py --verify-patch-dry-run`, `stepfun_remaining_blockers_rollup.py --verify-rollup`, and `stepfun_final_blocker_manifest.py --verify-manifest`. Refreshed downstream status artifacts after documenting the coverage test: remaining-blockers rollup stays blocked with payload SHA `a652dd1f3fdc0d70aad8e77442eb1f893f36fdc285f0b1e09270029e82ef5031`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q tests/test_stepfun_artifact_verifier_coverage.py
+python3 -m pytest -q tests/test_stepfun_artifact_verifier_coverage.py
+python3 - <<'PY'
+from pathlib import Path
+import re
+scripts=[]
+missing=[]
+for p in sorted(Path('scripts').glob('stepfun_*.py')):
+    text=p.read_text()
+    if 'DEFAULT_OUTPUT' in text or '--default-output' in text:
+        flags=sorted(set(re.findall(r'--verify-[a-z-]+', text)))
+        scripts.append((p.name, flags))
+        if not flags:
+            missing.append(p.name)
+print('artifact_script_count', len(scripts))
+print('missing_verify_count', len(missing))
+for name in missing:
+    print(name)
+print('coverage_sha', __import__('hashlib').sha256('\n'.join(f"{name}:{','.join(flags)}" for name,flags in scripts).encode()).hexdigest())
+PY
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n tests/test_stepfun_artifact_verifier_coverage.py || true
+sha256sum tests/test_stepfun_artifact_verifier_coverage.py benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 - <<'PY'
+from pathlib import Path
+import hashlib, re
+scripts=[]
+missing=[]
+for p in sorted(Path('scripts').glob('stepfun_*.py')):
+    text=p.read_text()
+    if 'DEFAULT_OUTPUT' in text or '--default-output' in text:
+        flags=sorted(set(re.findall(r'--verify-[a-z-]+', text)))
+        scripts.append((p.name, flags))
+        if not flags:
+            missing.append(p.name)
+print('artifact_script_count', len(scripts))
+print('missing_verify_count', len(missing))
+print('coverage_sha', hashlib.sha256('\n'.join(f"{name}:{','.join(flags)}" for name, flags in scripts).encode()).hexdigest())
+for name, flags in scripts:
+    print(name, ','.join(flags))
+PY
+```
+
+Results: targeted coverage test passed (`1` test); coverage scan reports `artifact_script_count=23`, `missing_verify_count=0`, and coverage digest `852cee4aed64a24759b5158edd9f78b4ae7cfd74819fd635d91fe9209fec0c5b`; P0-P12 open/partial count remains `2`; full StepFun guard passed; remaining-blockers, source-artifacts, final-blocker, and handoff verifiers returned `"match"`; file SHAs are coverage test `a444555d615addaca2ea55e55e841e6f29b89a519e36f3d853c568d78bb6cf19`, remaining-blockers rollup `a16893fd8922a8f4df5fda621cc73b61003a5cf2eade6281f0d8bb6680730783`, correctness-status `89dce4296634b39c4ed14031f72a7e0da88eb795d1657b6b0ea9856c8aa4a3c8`, final-blocker `a5f4a1111d13ced812fd73a9f1363b8b2f0c1e681852b6d7c1c0f2e184fe9773`, handoff `c42cb12c80df215a89cc0afc8c8b1c521ff9a2bd130634ac3b549d1b9d39cc66`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `7779346dc8183755ec3bac8fe601c177174ecf439e022439301d1880ddcd6e5e`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched test has no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
