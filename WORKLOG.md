@@ -93365,3 +93365,17 @@ Validation:
 - `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md docs/SAMPLING.md` -> clean.
+
+## 2026-06-15 - GGUF tuning worktree and playbook
+
+Created a separate `gguf-tuning` branch/worktree at
+`/home/lhl/hipEngine-gguf-tuning` from `main` (`efcc321f`) so GGUF performance
+work can proceed without disturbing the shared main worktree. Added
+`docs/TUNING-gguf.md` as the active GGUF tuning playbook: current scorecard,
+baseline refresh commands for hipEngine/llama.cpp/PARO, correctness gates,
+rocprof summary flow, and lane backlog modeled on the successful MTP/DFlash /
+megakernel tuning cadence. Linked the new document from `docs/README.md`.
+
+Validation:
+- Re-read `docs/TUNING-gguf.md` and `docs/README.md` after edits.
+- `git -C ../hipEngine-gguf-tuning diff --check -- docs/TUNING-gguf.md docs/README.md WORKLOG.md` -> clean.
