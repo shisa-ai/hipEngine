@@ -151,6 +151,12 @@ No-hold notes:
   gate tokens (`220 -> 97799`, `570 -> 28944`) and still regressed decode vs the
   original baseline (`114.602 -> 111.797 tok/s` primary metric). Keep the 128-
   thread launch unless a new accumulation-order-safe variant is proven.
+- **G-D2 Q8 launch-bound=2 rejected (2026-06-15).** Relaxing the Q8_0 T16 GEMV
+  `__launch_bounds__(128, 4)` minimum-block count to `2` preserved generated IDs
+  and memory, but slightly regressed the current lb1 gate metric
+  (`115.114 -> 115.085 tok/s`) and hurt `512/128` prefill noise. Keep the Q8_0
+  T16 GEMV launch-bound at `128,4` unless an occupancy/code-object census shows
+  a clearer pressure problem.
 - **G-H2 graph4 rejected (2026-06-15).** `--graph-steps-per-replay 4` reused the
   existing multi-step capture support and kept the 4K token stable, but changed
   the `512/128` final token (`220 -> 11`). Treat GGUF multi-step graph replay as
