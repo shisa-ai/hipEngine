@@ -290,11 +290,23 @@ class Qwen35GGUFMTPDraftCPUCallSpec:
     tensor_bindings: tuple[Qwen35GGUFMTPDraftTensorBinding, ...]
     fallback_slots: Mapping[str, str]
 
+    @property
+    def direct_tensor_arguments(self) -> Mapping[str, str]:
+        dynamic_arguments = {item.argument for item in self.dynamic_inputs}
+        return MappingProxyType(
+            {
+                argument: tensor_name
+                for argument, tensor_name in self.tensor_arguments.items()
+                if argument not in dynamic_arguments
+            }
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "layer_id": self.layer_id,
             "cpu_reference_kernel": list(self.cpu_reference_kernel),
             "tensor_arguments": dict(self.tensor_arguments),
+            "direct_tensor_arguments": dict(self.direct_tensor_arguments),
             "qtype_arguments": {
                 argument: qtype.name for argument, qtype in self.qtype_arguments.items()
             },

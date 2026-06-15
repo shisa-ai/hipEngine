@@ -300,7 +300,10 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     call_spec = plan.cpu_reference_call_spec
     assert call_spec.layer_id == 2
     assert call_spec.cpu_reference_kernel == plan.cpu_reference_kernel
+    assert dict(call_spec.tensor_arguments)["token_embedding"] == "token_embd.weight"
     assert dict(call_spec.tensor_arguments)["wq_weight"] == "blk.2.attn_q.weight"
+    assert "token_embedding" not in dict(call_spec.direct_tensor_arguments)
+    assert dict(call_spec.direct_tensor_arguments)["wq_weight"] == "blk.2.attn_q.weight"
     assert dict(call_spec.qtype_arguments)["gate_qtype"] is GGMLQuantizationType.F32
     assert dict(call_spec.keyword_arguments) == dict(plan.kernel_kwargs)
     assert call_spec.dynamic_inputs == plan.dynamic_inputs
@@ -344,6 +347,8 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     assert plan_dict["cpu_reference_call_spec"] == call_spec.as_dict()
     assert plan_dict["cpu_reference_call_spec"]["dynamic_inputs"] == plan_dict["dynamic_inputs"]
     assert plan_dict["cpu_reference_call_spec"]["tensor_arguments"]["wq_weight"] == "blk.2.attn_q.weight"
+    assert plan_dict["cpu_reference_call_spec"]["direct_tensor_arguments"]["wq_weight"] == "blk.2.attn_q.weight"
+    assert "token_embedding" not in plan_dict["cpu_reference_call_spec"]["direct_tensor_arguments"]
     assert plan_dict["cpu_reference_call_spec"]["qtype_arguments"] == {
         "gate_qtype": "F32",
         "up_qtype": "F32",
@@ -387,11 +392,15 @@ def test_qwen35moe_gguf_mtp_cpu_call_spec_matches_reference_signature() -> None:
     parameters = inspect.signature(qwen35_gguf_mtp_nextn_layer_logits).parameters
     parameter_names = tuple(parameters)
     tensor_args = tuple(call_spec.tensor_arguments)
+    direct_tensor_args = tuple(call_spec.direct_tensor_arguments)
     qtype_args = tuple(call_spec.qtype_arguments)
     keyword_args = tuple(call_spec.keyword_arguments)
     dynamic_args = tuple(item.argument for item in call_spec.dynamic_inputs)
 
     assert tuple(name for name in parameter_names if name in tensor_args) == tensor_args
+    assert tuple(name for name in parameter_names if name in direct_tensor_args) == direct_tensor_args
+    assert "token_embedding" in tensor_args
+    assert "token_embedding" not in direct_tensor_args
     assert tuple(name for name in parameter_names if name in qtype_args) == qtype_args
     assert set(keyword_args).issubset(parameters)
     assert set(dynamic_args).issubset(parameters)

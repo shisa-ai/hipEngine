@@ -94298,3 +94298,58 @@ Validation:
 - Prompt verifier passed: test-only CLI metadata coverage, no torch import, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF direct tensor argument call spec view
+
+Implemented `mtp-gguf` multiloop iteration 37: clarified the CPU call-spec tensor
+argument metadata by adding a direct-tensor view.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI.
+
+Rationale:
+- `token_embedding` in the CPU-reference function is a runtime-provided row
+  tensor, while the GGUF plan also needs to remember the source embedding matrix
+  (`nextn.embed_tokens`, commonly the `token_embd.weight` fallback). The previous
+  call spec exposed that source via `tensor_arguments`; future parity harnesses
+  also need an unambiguous list of tensors that are passed directly to the CPU
+  oracle.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftCPUCallSpec.direct_tensor_arguments`.
+  - Filters `tensor_arguments` by dynamic input names.
+  - Keeps `token_embedding` in `tensor_arguments` as source provenance.
+  - Excludes `token_embedding` from `direct_tensor_arguments`, because the CPU
+    oracle consumes gathered embedding rows dynamically.
+- Added `direct_tensor_arguments` to `Qwen35GGUFMTPDraftCPUCallSpec.as_dict()`.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to assert source provenance,
+  direct tensor exclusion, serialization, and signature coverage.
+
+Evidence:
+- Real GGUF smoke over `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` reported:
+  - `token_embedding_source token_embd.weight`
+  - `token_embedding_is_direct False`
+  - `direct_count 21`
+  - direct samples `eh_proj_weight -> blk.40.nextn.eh_proj.weight`,
+    `wq_weight -> blk.40.attn_q.weight`, `shared_head_weight -> output.weight`.
+- Signature check confirmed direct tensor args and dynamic args are accepted by
+  `qwen35_gguf_mtp_nextn_layer_logits(...)`, `token_embedding` is dynamic-not-direct,
+  and no required signature args are missing when using direct tensors plus
+  dynamic inputs, qtype args, and scalar kwargs.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Focused mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py -k 'call_spec_matches_reference_signature or tensor_plan'` -> `5` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
