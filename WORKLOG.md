@@ -95266,3 +95266,50 @@ Validation:
   execution, sampling implementation, GPU kernel, or performance claim; the full
   NextN oracle now explicitly carries the KVLiveSpans-shaped `(base_offsets,
   live_counts, token_positions, evict_mask)` ABI for future M4/HIP work.
+
+## 2026-06-15 - MTP-GGUF call spec KVLiveSpans inputs
+
+Implemented `mtp-gguf` multiloop iteration 58: updated the GGUF MTP draft tensor
+plan/call spec to advertise the KVLiveSpans dynamic inputs supported by the
+CPU-reference NextN oracle.
+
+Scope note:
+- Metadata/spec/test/docs only. No hipEngine runtime generation, GGUF tensor
+  loading, MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- This closes a spec drift introduced after the CPU-reference oracle gained
+  KVLiveSpans-shaped paged-cache support: downstream harnesses now see the same
+  `(base_offsets, live_counts, token_positions, evict_mask)` contract in the
+  call spec.
+
+Changes:
+- `Qwen35GGUFMTPDraftTensorPlan.dynamic_inputs` now includes optional
+  `kv_base_offsets`, `kv_live_counts`, `kv_token_positions`, `kv_evict_mask`, and
+  `block_size` entries, in addition to the existing dense cache placeholders and
+  RoPE tables.
+- The `key_cache` / `value_cache` dynamic input shapes now document dense or
+  paged cache layouts.
+- Updated `tests/test_qwen35_gguf_mtp_mapping.py` expectations so the call spec
+  and reference signature coverage includes the KVLiveSpans inputs.
+- Updated `docs/MTP-gguf.md` M3/backlog text to state that the metadata-only call
+  spec now advertises the KVLiveSpans dynamic inputs.
+
+Validation:
+- Focused MTP mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `19` passed.
+- Real MTP-bearing GGUF call-spec smoke passed:
+  `scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --require-mtp --layer 40 --indent 2` -> dynamic inputs
+  `hidden_seed, token_embedding, positions, context_counts, key_cache, value_cache, kv_base_offsets, kv_live_counts, kv_token_positions, kv_evict_mask, block_size, rope_cos, rope_sin`, `kv_inputs_present True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py` and
+  `git diff --check -- hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mtp_mapping.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/spec/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no hipEngine generation, MTP execution,
+  sampling implementation, GPU kernel, attention/KV runtime path, or performance
+  claim; the call spec now explicitly carries the KVLiveSpans-shaped
+  `(base_offsets, live_counts, token_positions, evict_mask)` ABI for future
+  M4/HIP work.

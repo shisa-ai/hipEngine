@@ -338,15 +338,25 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "context_counts",
         "key_cache",
         "value_cache",
+        "kv_base_offsets",
+        "kv_live_counts",
+        "kv_token_positions",
+        "kv_evict_mask",
+        "block_size",
         "rope_cos",
         "rope_sin",
     ]
     assert plan.dynamic_inputs[0].required is True
     assert plan.dynamic_inputs[0].shape == ("tokens", 8)
     assert plan.dynamic_inputs[1].source_tensor_argument == "token_embedding"
-    assert plan.dynamic_inputs[4].shape == ("cache_tokens", 1, 4)
-    assert plan.dynamic_inputs[5].shape == ("cache_tokens", 1, 4)
-    assert plan.dynamic_inputs[6].paired_with == "rope_sin"
+    assert plan.dynamic_inputs[4].shape == ("cache_tokens|blocks", "block_size?", 1, 4)
+    assert plan.dynamic_inputs[5].shape == ("cache_tokens|blocks", "block_size?", 1, 4)
+    assert plan.dynamic_inputs[6].shape == ("tokens", "logical_blocks")
+    assert plan.dynamic_inputs[7].shape == ("tokens",)
+    assert plan.dynamic_inputs[8].shape == ("tokens",)
+    assert plan.dynamic_inputs[9].shape == ("tokens", "max_live_count")
+    assert plan.dynamic_inputs[10].shape == ()
+    assert plan.dynamic_inputs[11].paired_with == "rope_sin"
     assert call_spec.tensor_bindings == plan.tensor_bindings
     assert dict(call_spec.fallback_slots) == dict(plan.fallback_slots)
     assert plan.tensor_bindings[0].fallback_slot == "token_embedding"

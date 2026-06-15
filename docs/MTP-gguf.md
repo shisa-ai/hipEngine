@@ -553,7 +553,10 @@ Current status:
   The attention sublayer and full NextN logits path now have both the older
   dense CPU-cache path and a NumPy-only KVLiveSpans-shaped paged-cache path using
   `(kv_base_offsets, kv_live_counts, kv_token_positions, kv_evict_mask)`, so the
-  M4 ABI can be exercised before HIP kernels exist.
+  M4 ABI can be exercised before HIP kernels exist. The metadata-only draft call
+  spec emitted by `scripts/gguf_mtp_call_spec.py` now advertises those
+  KVLiveSpans dynamic inputs plus `block_size` in addition to the dense-cache
+  placeholders.
 - llama.cpp verbose `draft-mtp` candidate fixture
   `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` captures a
   short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
@@ -808,10 +811,10 @@ is now answered by the M1 required/optional table.)
       qwen35_dense_logits)` as the offline oracle, with a deterministic fixture:
       `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
 - [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
-      attention path and dense fallback; CPU-reference coverage now includes
-      dense and KVLiveSpans-shaped paged-cache paths through the full NextN
-      logits oracle, and `Qwen35GGUFMTPContext` covers the B1 seed/batch state
-      scaffold, but HIP/runtime registration under
+      attention path and dense fallback; CPU-reference coverage and call specs
+      now include dense and KVLiveSpans-shaped paged-cache paths through the full
+      NextN logits oracle, and `Qwen35GGUFMTPContext` covers the B1 seed/batch
+      state scaffold, but HIP/runtime registration under
       `KernelKey(backend, layer, quant='w4_gguf', variant)` remains open.
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements

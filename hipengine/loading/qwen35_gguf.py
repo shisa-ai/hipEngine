@@ -454,14 +454,44 @@ class Qwen35GGUFMTPDraftTensorPlan:
             Qwen35GGUFMTPDraftDynamicInput(
                 argument="key_cache",
                 required=False,
-                shape=("cache_tokens", self.num_kv_heads, self.qk_head_dim),
-                description="Already-materialized dense CPU key cache for MTP attention.",
+                shape=("cache_tokens|blocks", "block_size?", self.num_kv_heads, self.qk_head_dim),
+                description="Dense [cache_tokens, kv_heads, qk_head_dim] or paged [blocks, block, kv_heads, qk_head_dim] CPU key cache for MTP attention.",
             ),
             Qwen35GGUFMTPDraftDynamicInput(
                 argument="value_cache",
                 required=False,
-                shape=("cache_tokens", self.num_kv_heads, self.value_head_dim),
-                description="Already-materialized dense CPU value cache for MTP attention.",
+                shape=("cache_tokens|blocks", "block_size?", self.num_kv_heads, self.value_head_dim),
+                description="Dense [cache_tokens, kv_heads, value_head_dim] or paged [blocks, block, kv_heads, value_head_dim] CPU value cache for MTP attention.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="kv_base_offsets",
+                required=False,
+                shape=("tokens", "logical_blocks"),
+                description="KVLiveSpans block-table/base-offset rows for paged MTP attention.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="kv_live_counts",
+                required=False,
+                shape=("tokens",),
+                description="KVLiveSpans live logical-slot counts for paged MTP attention.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="kv_token_positions",
+                required=False,
+                shape=("tokens",),
+                description="KVLiveSpans current token positions for paged causal masking.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="kv_evict_mask",
+                required=False,
+                shape=("tokens", "max_live_count"),
+                description="Optional KVLiveSpans eviction mask; true entries are invisible to draft attention.",
+            ),
+            Qwen35GGUFMTPDraftDynamicInput(
+                argument="block_size",
+                required=False,
+                shape=(),
+                description="Paged KV block size used with KVLiveSpans cache tensors.",
             ),
             Qwen35GGUFMTPDraftDynamicInput(
                 argument="rope_cos",
