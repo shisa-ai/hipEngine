@@ -93345,6 +93345,21 @@ Validation:
 - `sed -n '3019,3062p' docs/AGENTIC.md` -> re-read updated P2 bucket.
 - `git diff -- docs/AGENTIC.md` -> doc-only P2 status update.
 
+## 2026-06-16 - AGENTIC P2 regression sweep
+
+Re-ran the focused fail-closed P2 matrix after the AGENTIC status audit. Server
+API coverage still pins live c>N buffering/withheld diagnostics, continuation
+resume rejection, grammar unsupported-field rejection, invalid tool-call
+hard-error mode, and safe context-overflow policy metadata. Sampling and
+scheduler coverage still pins native sampler unsupported capability guards,
+raw-argmax MTP blocker completeness, scheduler per-row sampler fallback
+metadata, and speculative verify `processed_target_verification=false`.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'streaming_chat_completion_n_buffers_live_many_unsupported_surfaces or chat_continuation_resume_rejects_lower_loop_fields_without_consuming_handle or capabilities_endpoint_reports_manifest_and_auth or capabilities_advertised_unsupported_fields_are_rejected_before_generation or server_rejects_known_unsupported_agentic_fields or invalid_tool_call_can_return_hard_error or invalid_tool_call_can_return_sse_error or rejects_invalid_tool_call_error_mode_before_generation or chat_context_auto_clear_transient_preserves_committed_prefix or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call or streaming_chat_completion_n_reports_unmappable_scheduler_tool_chunks or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs'` -> `19 passed`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'speculative_mtp_sampling_allows_only_greedy_fast_policy or speculative_mtp_incompatible_fields_match_blocker_policy or native_gpu_sampler_support_rejects_unwired_shapes or native_gpu_unsupported_capabilities_match_guard_policy'` -> `4 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q -k 'speculative_verify_for_processed_sampling or emits_speculative_verify_work or per_row_sampler_block_keeps_incompatible_rows_together or record_generated_events_emit_decode_telemetry'` -> `21 passed`.
+
 ## 2026-06-15 - Scheduler logprob fallback diagnostics
 
 Added sanitized final-choice diagnostics when buffered chat streams request
