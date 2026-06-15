@@ -351,9 +351,11 @@ trace artifact lacks visible output-token counts and therefore cannot support
 `accepted_per_output` comparisons. Matrix artifacts also carry an M6
 performance-comparison readiness rollup (`performance_comparison_ready_by_budget`,
 `performance_comparison_blockers_by_budget`, `performance_unready_budgets`, and
-`all_performance_comparisons_ready`); `--fail-on-performance-unready` returns
-exit code `5` until parity, exactness, full trace-budget coverage, comparable
-denominators, native runtime kernels, and hipEngine metrics are all present.
+`all_performance_comparisons_ready`). The blocker derivation is shared through
+the torch-free `Qwen35GGUFMTPPerformanceReadiness` speculative contract;
+`--fail-on-performance-unready` returns exit code `5` until parity, exactness,
+full trace-budget coverage, comparable denominators, native runtime kernels, and
+hipEngine metrics are all present.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -932,7 +934,7 @@ is now answered by the M1 required/optional table.)
       trace provenance, `--fail-on-noncomparable-accepted-output` exits `4`
       when accepted/output denominators are not comparable, and
       `--fail-on-performance-unready` exits `5` until the combined M6 readiness
-      rollup is clean); actual B2-B4
+      rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean); actual B2-B4
       execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU

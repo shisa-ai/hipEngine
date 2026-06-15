@@ -30,6 +30,12 @@ from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     qwen35_gguf_fp32_hidden_seed_contract,
 )
 from hipengine.speculative import (  # noqa: E402
+    GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+    GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+    GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+    GGUF_MTP_METRICS_CONTRACT_READY,
+    GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
+    Qwen35GGUFMTPPerformanceReadiness,
     Qwen35GGUFMTPRuntimeKernelPlan,
     Qwen35GGUFMTPVerificationMetrics,
 )
@@ -62,11 +68,11 @@ DEFAULT_SAMPLING_BY_DRAFT_MAX = {
     4: Path("benchmarks/fixtures/gguf_mtp_b4_sampling_greedy_seed12345.json"),
 }
 DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json")
-FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
-PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
-ACCEPTED_OUTPUT_COMPARABLE = "computed"
-ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = "not_comparable_debug_trace_missing_visible_output_count"
-METRICS_CONTRACT_READY = "ready"
+FULL_TRACE_BUDGET_COVERAGE = GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE
+PARTIAL_TRACE_BUDGET_COVERAGE = GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE
+ACCEPTED_OUTPUT_COMPARABLE = GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE
+ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE
+METRICS_CONTRACT_READY = GGUF_MTP_METRICS_CONTRACT_READY
 
 
 class B1PromptSuitePreflightError(RuntimeError):
@@ -628,26 +634,19 @@ def build_b1_prompt_suite_artifact(
 
 
 def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
-    blockers: list[str] = []
-    if not readiness["parity_precheck"]:
-        blockers.append("parity_precheck_failed")
-    if not readiness["draft_budget_precheck"]:
-        blockers.append("draft_budget_precheck_failed")
-    if not readiness["draft_sampling_contract_precheck"]:
-        blockers.append("draft_sampling_contract_precheck_failed")
-    if not readiness["hidden_seed_contract_precheck"]:
-        blockers.append("hidden_seed_contract_precheck_failed")
-    if readiness["exactness_gate"] != "passed":
-        blockers.append("exactness_gate_failed")
-    if readiness["llamacpp_trace_budget_coverage"] != FULL_TRACE_BUDGET_COVERAGE:
-        blockers.append("partial_llamacpp_trace_budget_coverage")
-    if readiness["accepted_per_output_status"] != ACCEPTED_OUTPUT_COMPARABLE:
-        blockers.append("accepted_output_denominator_not_comparable")
-    if not readiness["native_runtime_kernels_ready"]:
-        blockers.append("native_runtime_kernels_missing")
-    if readiness["metrics_contract_status"] != METRICS_CONTRACT_READY:
-        blockers.append("hipengine_metrics_not_ready")
-    return blockers
+    return list(
+        Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+            parity_precheck=bool(readiness["parity_precheck"]),
+            draft_budget_precheck=bool(readiness["draft_budget_precheck"]),
+            draft_sampling_contract_precheck=bool(readiness["draft_sampling_contract_precheck"]),
+            hidden_seed_contract_precheck=bool(readiness["hidden_seed_contract_precheck"]),
+            exactness_gate=str(readiness["exactness_gate"]),
+            llamacpp_trace_budget_coverage=str(readiness["llamacpp_trace_budget_coverage"]),
+            accepted_per_output_status=str(readiness["accepted_per_output_status"]),
+            native_runtime_kernels_ready=bool(readiness["native_runtime_kernels_ready"]),
+            metrics_contract_status=str(readiness["metrics_contract_status"]),
+        ).blockers
+    )
 
 
 def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:

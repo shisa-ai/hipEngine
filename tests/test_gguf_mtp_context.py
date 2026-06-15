@@ -7,12 +7,18 @@ import pytest
 
 from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
 from hipengine.speculative.gguf_mtp import (
+    GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+    GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+    GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+    GGUF_MTP_METRICS_CONTRACT_READY,
+    GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPDraftBatch,
     Qwen35GGUFMTPDraftExecutionPlan,
     Qwen35GGUFMTPDraftProposal,
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPKVLiveSpansPlan,
+    Qwen35GGUFMTPPerformanceReadiness,
     Qwen35GGUFMTPRuntimeKernelPlan,
     Qwen35GGUFMTPSeedRow,
     Qwen35GGUFMTPVerificationMetrics,
@@ -391,6 +397,51 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
         Qwen35GGUFMTPVerificationMetrics.from_results((result,), output_token_count=0)
     with pytest.raises(ValueError, match="visible output"):
         Qwen35GGUFMTPVerificationMetrics.from_results((result, result), output_token_count=1)
+
+
+def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:
+    readiness = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+        parity_precheck=True,
+        draft_budget_precheck=True,
+        draft_sampling_contract_precheck=True,
+        hidden_seed_contract_precheck=True,
+        exactness_gate="passed",
+        llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+        native_runtime_kernels_ready=True,
+        metrics_contract_status=GGUF_MTP_METRICS_CONTRACT_READY,
+    )
+
+    assert readiness.ready is True
+    assert readiness.blockers == ()
+    assert readiness.as_dict() == {"ready": True, "blockers": []}
+
+
+def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
+    readiness = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+        parity_precheck=False,
+        draft_budget_precheck=False,
+        draft_sampling_contract_precheck=False,
+        hidden_seed_contract_precheck=False,
+        exactness_gate="blocked",
+        llamacpp_trace_budget_coverage=GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
+        accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
+        native_runtime_kernels_ready=False,
+        metrics_contract_status="not_run",
+    )
+
+    assert readiness.ready is False
+    assert readiness.blockers == (
+        "parity_precheck_failed",
+        "draft_budget_precheck_failed",
+        "draft_sampling_contract_precheck_failed",
+        "hidden_seed_contract_precheck_failed",
+        "exactness_gate_failed",
+        "partial_llamacpp_trace_budget_coverage",
+        "accepted_output_denominator_not_comparable",
+        "native_runtime_kernels_missing",
+        "hipengine_metrics_not_ready",
+    )
 
 
 def test_gguf_mtp_context_rejects_incomplete_verification_inputs() -> None:

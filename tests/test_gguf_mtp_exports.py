@@ -5,8 +5,12 @@ from hipengine.speculative import (
     DEFAULT_DRAFT_SELECTION,
     DEFAULT_DRAFT_TOPK,
     DEFAULT_DRAFT_TOPK_KERNEL,
+    GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+    GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+    GGUF_MTP_METRICS_CONTRACT_READY,
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPKVLiveSpansPlan,
+    Qwen35GGUFMTPPerformanceReadiness,
     Qwen35GGUFMTPRuntimeKernelPlan,
     Qwen35GGUFMTPSeedRow,
     Qwen35GGUFMTPVerificationMetrics,
@@ -45,6 +49,17 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
         output_token_count=1,
     )
     runtime_plan = Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend="hip_gfx1100")
+    readiness = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+        parity_precheck=True,
+        draft_budget_precheck=True,
+        draft_sampling_contract_precheck=True,
+        hidden_seed_contract_precheck=True,
+        exactness_gate="passed",
+        llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+        native_runtime_kernels_ready=True,
+        metrics_contract_status=GGUF_MTP_METRICS_CONTRACT_READY,
+    )
 
     assert plan.as_dict()["token_positions"] == [3]
     assert metrics.as_dict()["denominators"] == {
@@ -52,3 +67,4 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
         "accepted_per_output": "accepted_token_count / output_token_count",
     }
     assert runtime_plan.exactness_oracles_ready is True
+    assert readiness.ready is True

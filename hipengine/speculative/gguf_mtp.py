@@ -21,6 +21,11 @@ DEFAULT_NEXTN_LAYER = "mtp_nextn_layer"
 DEFAULT_NEXTN_QUANT = "w4_gguf"
 DEFAULT_NEXTN_VARIANT = "qwen35_dense_logits"
 DEFAULT_DRAFT_TOPK_DEVICE_VARIANT = "topk_device"
+GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
+GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
+GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE = "computed"
+GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = "not_comparable_debug_trace_missing_visible_output_count"
+GGUF_MTP_METRICS_CONTRACT_READY = "ready"
 
 
 class _HiddenSeedContractLike(Protocol):
@@ -638,6 +643,64 @@ class Qwen35GGUFMTPVerificationMetrics:
             "accepted_per_output": self.accepted_per_output,
             "denominators": self.denominator_labels(),
             "results": [result.as_dict() for result in self.results],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPPerformanceReadiness:
+    """M6 readiness gate for GGUF MTP performance comparisons.
+
+    This shared contract intentionally consumes only booleans/status strings from
+    preflight/runtime artifacts.  It does not inspect backend names, quant names,
+    tensors, or device buffers; runtime dispatch stays behind the four-axis
+    kernel registry.
+    """
+
+    blockers: tuple[str, ...]
+
+    @classmethod
+    def from_gate_inputs(
+        cls,
+        *,
+        parity_precheck: bool,
+        draft_budget_precheck: bool,
+        draft_sampling_contract_precheck: bool,
+        hidden_seed_contract_precheck: bool,
+        exactness_gate: str,
+        llamacpp_trace_budget_coverage: str,
+        accepted_per_output_status: str,
+        native_runtime_kernels_ready: bool,
+        metrics_contract_status: str,
+    ) -> "Qwen35GGUFMTPPerformanceReadiness":
+        blockers: list[str] = []
+        if not parity_precheck:
+            blockers.append("parity_precheck_failed")
+        if not draft_budget_precheck:
+            blockers.append("draft_budget_precheck_failed")
+        if not draft_sampling_contract_precheck:
+            blockers.append("draft_sampling_contract_precheck_failed")
+        if not hidden_seed_contract_precheck:
+            blockers.append("hidden_seed_contract_precheck_failed")
+        if exactness_gate != "passed":
+            blockers.append("exactness_gate_failed")
+        if llamacpp_trace_budget_coverage != GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE:
+            blockers.append("partial_llamacpp_trace_budget_coverage")
+        if accepted_per_output_status != GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE:
+            blockers.append("accepted_output_denominator_not_comparable")
+        if not native_runtime_kernels_ready:
+            blockers.append("native_runtime_kernels_missing")
+        if metrics_contract_status != GGUF_MTP_METRICS_CONTRACT_READY:
+            blockers.append("hipengine_metrics_not_ready")
+        return cls(blockers=tuple(blockers))
+
+    @property
+    def ready(self) -> bool:
+        return not self.blockers
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "ready": self.ready,
+            "blockers": list(self.blockers),
         }
 
 

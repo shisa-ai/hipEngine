@@ -96878,3 +96878,49 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. The new readiness gate only summarizes existing preflight evidence;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF shared performance readiness contract
+
+Implemented `mtp-gguf` multiloop iteration 93: moved the combined M6
+performance-comparison readiness blocker derivation into the torch-free
+`hipengine.speculative` GGUF MTP contract.
+
+Scope note:
+- Preflight/docs/tests/refactor only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- The readiness contract consumes booleans/status strings from artifacts and does
+  not branch on backend or quant names; dispatch remains behind the four-axis
+  kernel registry.
+
+Changes:
+- Added shared GGUF MTP readiness/status constants and
+  `Qwen35GGUFMTPPerformanceReadiness` to `hipengine/speculative/gguf_mtp.py`.
+- Exported the readiness contract and constants from `hipengine.speculative`.
+- Updated `scripts/gguf_mtp_b1_prompt_suite.py` to derive
+  `performance_comparison_blockers` through the shared contract instead of a
+  script-local blocker implementation.
+- Added focused speculative contract/export tests.
+- Updated `docs/MTP-gguf.md` to identify the shared readiness contract behind
+  the M6 performance-unready gate.
+
+Validation:
+- Focused shared-contract/prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py` -> `47` passed.
+- Real local compact B1-B4 matrix gate smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --fail-on-performance-unready --out <tmp>` ->
+  exit code `5`, `performance_ready False`, `unready B1,B2,B3,B4`, and B1 blockers
+  `accepted_output_denominator_not_comparable,native_runtime_kernels_missing,hipengine_metrics_not_ready`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests/refactor only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. The shared readiness contract only summarizes existing
+  preflight evidence; future MTP attention/KV-write execution remains
+  KVLiveSpans-gated.
