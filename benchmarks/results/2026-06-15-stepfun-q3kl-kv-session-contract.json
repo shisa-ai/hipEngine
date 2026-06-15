@@ -123,6 +123,7 @@
     "decode_live_count": 23,
     "decode_position": 23,
     "executable": false,
+    "input_ids_sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
     "kv_cache_buffer_count": 0,
     "kv_cache_context_pages": 1,
     "kv_cache_layer_nbytes_match_expected": true,
@@ -180,6 +181,23 @@
       "prompt_base_offsets",
       "input_ids"
     ],
+    "pre_run_input_ids_payload": {
+      "dtype": "int32",
+      "nbytes": 92,
+      "preview_values": [
+        0,
+        128006,
+        27824,
+        201,
+        77666,
+        288,
+        28,
+        3157
+      ],
+      "sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
+      "value_count": 23
+    },
+    "pre_run_payload_fingerprints_sha256": "e6371af9e76f2a399dff5cb6a006dc24e66b6bf26f4cce45642517a9e66e793a",
     "pre_run_upload_checks_passed": true,
     "pre_run_upload_entry_count": 6,
     "pre_run_upload_order": [
@@ -193,6 +211,7 @@
     "pre_run_upload_plan_sha256": "b3f9e94d49b59caf8b4239ae04437d42045f8ec73d21d1eed6cd55d64e91a1d6",
     "pre_run_upload_total_nbytes": 484,
     "ready": false,
+    "rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
     "required_artifacts": [
       "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
       "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
@@ -211,6 +230,93 @@
     "session_backend": "hip_gfx1151",
     "session_layer_count": 45,
     "source": "StepFunResidentSession.decode_one_token_kv_bf16",
+    "span_input_payload_entries": [
+      {
+        "byte_order": "little",
+        "dtype": "int32",
+        "name": "prompt_base_offsets",
+        "nbytes": 184,
+        "preview_values": [
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        "sha256": "8cd1157e2fa1a251ffd11f340d49cb9d20935865fd05b603a8857c93a020eb03",
+        "source": "prompt_span_inputs.base_offsets",
+        "value_count": 46
+      },
+      {
+        "byte_order": "little",
+        "dtype": "int64",
+        "name": "prompt_live_counts",
+        "nbytes": 184,
+        "preview_values": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "sha256": "632d419b42ca8862d252d5d083a4e61b18906b9eef31d2098744b69fd8ca9726",
+        "source": "prompt_span_inputs.live_counts",
+        "value_count": 23
+      },
+      {
+        "byte_order": "little",
+        "dtype": "int32",
+        "name": "decode_base_offsets",
+        "nbytes": 8,
+        "preview_values": [
+          0,
+          1
+        ],
+        "sha256": "01acecb507abfe1a354aa8064f4af5d3f1acd019e37db3c11c97523b71c76e9d",
+        "source": "decode_span_inputs.base_offsets",
+        "value_count": 2
+      },
+      {
+        "byte_order": "little",
+        "dtype": "int64",
+        "name": "decode_kv_write_position",
+        "nbytes": 8,
+        "preview_values": [
+          23
+        ],
+        "sha256": "c69a9157638e69fb692d827383c3f27e586e0c98989cffdf8bd4c982ad837a4c",
+        "source": "decode_span_inputs.kv_write_position",
+        "value_count": 1
+      },
+      {
+        "byte_order": "little",
+        "dtype": "int64",
+        "name": "decode_attention_live_counts",
+        "nbytes": 8,
+        "preview_values": [
+          23
+        ],
+        "sha256": "c69a9157638e69fb692d827383c3f27e586e0c98989cffdf8bd4c982ad837a4c",
+        "source": "decode_span_inputs.attention_live_counts",
+        "value_count": 1
+      }
+    ],
+    "span_input_payload_entry_count": 5,
+    "span_input_payload_entry_names": [
+      "prompt_base_offsets",
+      "prompt_live_counts",
+      "decode_base_offsets",
+      "decode_kv_write_position",
+      "decode_attention_live_counts"
+    ],
+    "span_input_payload_total_nbytes": 392,
+    "span_input_payloads_sha256": "a2dcb099b05a765efe42e053b716101632dc244cd30ccccc184840a8af01ee88",
     "stream": 0
   },
   "gguf_dir": "/models/gguf",

@@ -602,7 +602,7 @@ reporting.
   `benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json`, which now embeds the guarded
   `decode_entrypoint_blocker` returned by `StepFunResidentSession.decode_one_token_kv_bf16` (`executable=false`,
   `ready=false`, `no_kernel_launches=true`, exact per-layer KV-cache byte geometry validated, `gguf_step35` KV dispatch
-  key digest bound, and pre-run upload plus launch-trace digests bound to the run plan); `scripts/stepfun_kv_evidence_preflight.py --default-output --pretty`
+  key digest bound, canonical input-token/KVLiveSpans payload digests bound, and pre-run upload plus launch-trace digests bound to the run plan); `scripts/stepfun_kv_evidence_preflight.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json`, which confirms the metadata
   contract exists but the required KV trace and KV-backed next-token artifacts are still absent, records exact
   `--fail-on-missing` trace/next-token checker commands with the retained resource/prompt artifacts, plus the planned per-layer KV launch

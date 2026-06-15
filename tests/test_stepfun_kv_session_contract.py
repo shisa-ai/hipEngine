@@ -110,6 +110,27 @@ def test_stepfun_kv_session_contract_artifact_binds_session_contract() -> None:
     assert decode_entrypoint["kv_dispatch_keys_sha256"] == (
         "9457815868810189bc25a1897c24380f85dcdd76ef1a4cf4edd75491e794cff5"
     )
+    input_payload = decode_entrypoint["pre_run_input_ids_payload"]
+    assert decode_entrypoint["rendered_prompt_sha256"]
+    assert decode_entrypoint["input_ids_sha256"] == input_payload["sha256"]
+    assert input_payload["dtype"] == "int32"
+    assert input_payload["value_count"] == contract["prompt_length"]
+    assert input_payload["nbytes"] == contract["prompt_length"] * 4
+    assert input_payload["preview_values"]
+    assert decode_entrypoint["span_input_payload_entry_names"] == [
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts",
+    ]
+    assert decode_entrypoint["span_input_payload_entry_count"] == 5
+    assert decode_entrypoint["span_input_payload_total_nbytes"] == (
+        decode_entrypoint["pre_run_upload_total_nbytes"] - input_payload["nbytes"]
+    )
+    assert len(decode_entrypoint["span_input_payload_entries"]) == 5
+    assert decode_entrypoint["span_input_payloads_sha256"]
+    assert decode_entrypoint["pre_run_payload_fingerprints_sha256"]
     assert decode_entrypoint["kv_cache_layer_nbytes_match_expected"] is True
     assert decode_entrypoint["kv_cache_layer_nbytes_sha256"]
     assert decode_entrypoint["pre_run_upload_plan_sha256"]

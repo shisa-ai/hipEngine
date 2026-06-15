@@ -157,6 +157,17 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ]
     assert kv_runner_handoff["decode_entrypoint_kv_dispatch_keys_sha256"]
     assert kv_runner_handoff["decode_entrypoint_all_kv_dispatch_keys_bound"] is True
+    assert kv_runner_handoff["decode_entrypoint_rendered_prompt_sha256"]
+    assert kv_runner_handoff["decode_entrypoint_input_ids_sha256"]
+    assert kv_runner_handoff["decode_entrypoint_span_input_payload_entry_names"] == [
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts",
+    ]
+    assert kv_runner_handoff["decode_entrypoint_span_input_payloads_sha256"]
+    assert kv_runner_handoff["decode_entrypoint_pre_run_payload_fingerprints_sha256"]
     assert kv_runner_handoff["decode_entrypoint_pre_run_upload_plan_sha256"]
     assert kv_runner_handoff["decode_entrypoint_pre_run_upload_entry_count"] == 6
     assert kv_runner_handoff["decode_entrypoint_pre_run_upload_total_nbytes"] == 484

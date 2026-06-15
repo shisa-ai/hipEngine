@@ -1640,6 +1640,21 @@ class StepFunResidentSession:
         contract = self.kv_streaming_decode_contract(run_plan)
         upload_plan = run_plan.decode_input_upload_plan
         launch_trace = run_plan.streaming_decode_launch_trace
+        span_input_payloads = run_plan.span_input_host_payloads
+        pre_run_input_ids_payload = {
+            "dtype": run_plan.input_ids_dtype,
+            "value_count": run_plan.prompt_length,
+            "nbytes": run_plan.input_ids_nbytes,
+            "sha256": run_plan.input_ids_sha256,
+            "preview_values": list(run_plan.input_ids[:8]),
+        }
+        span_input_payload_entry_names = [
+            str(entry["name"]) for entry in span_input_payloads["entries"]
+        ]
+        pre_run_payload_fingerprints = {
+            "input_ids": pre_run_input_ids_payload,
+            "span_inputs": span_input_payloads,
+        }
         kv_dispatch_keys = {
             name: _kernel_key_to_dict(key)
             for name, key in run_plan.decode_plan.kv_dispatch_keys.items()
@@ -1713,6 +1728,17 @@ class StepFunResidentSession:
             "kv_dispatch_keys_sha256": kv_dispatch_keys_sha256,
             "kv_dispatch_key_names": sorted(kv_dispatch_keys),
             "all_kv_dispatch_keys_bound": bool(kv_dispatch_keys),
+            "rendered_prompt_sha256": run_plan.rendered_prompt_sha256,
+            "input_ids_sha256": run_plan.input_ids_sha256,
+            "pre_run_input_ids_payload": pre_run_input_ids_payload,
+            "span_input_payload_entry_names": span_input_payload_entry_names,
+            "span_input_payload_entry_count": span_input_payloads["entry_count"],
+            "span_input_payload_total_nbytes": span_input_payloads["total_nbytes"],
+            "span_input_payload_entries": list(span_input_payloads["entries"]),
+            "span_input_payloads_sha256": _stable_json_sha256(span_input_payloads),
+            "pre_run_payload_fingerprints_sha256": _stable_json_sha256(
+                pre_run_payload_fingerprints
+            ),
             "pre_run_upload_plan_sha256": upload_plan_sha256,
             "pre_run_upload_entry_count": upload_plan["entry_count"],
             "pre_run_upload_total_nbytes": upload_plan["total_nbytes"],

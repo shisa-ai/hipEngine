@@ -384,6 +384,21 @@ def _kv_runner_prerequisite_handoff() -> dict[str, object]:
         "decode_entrypoint_all_kv_dispatch_keys_bound": decode_entrypoint.get(
             "all_kv_dispatch_keys_bound"
         ),
+        "decode_entrypoint_rendered_prompt_sha256": decode_entrypoint.get(
+            "rendered_prompt_sha256"
+        ),
+        "decode_entrypoint_input_ids_sha256": decode_entrypoint.get(
+            "input_ids_sha256"
+        ),
+        "decode_entrypoint_span_input_payload_entry_names": decode_entrypoint.get(
+            "span_input_payload_entry_names"
+        ),
+        "decode_entrypoint_span_input_payloads_sha256": decode_entrypoint.get(
+            "span_input_payloads_sha256"
+        ),
+        "decode_entrypoint_pre_run_payload_fingerprints_sha256": decode_entrypoint.get(
+            "pre_run_payload_fingerprints_sha256"
+        ),
         "decode_entrypoint_pre_run_upload_plan_sha256": decode_entrypoint.get(
             "pre_run_upload_plan_sha256"
         ),

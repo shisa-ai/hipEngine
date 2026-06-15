@@ -829,6 +829,41 @@ def test_stepfun_resident_session_decode_one_token_kv_bf16_reports_blocker() -> 
     assert blocker["kv_dispatch_keys_sha256"] == hashlib.sha256(
         json.dumps(expected_dispatch_keys, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+    expected_span_payloads = run_plan.span_input_host_payloads
+    expected_input_payload = {
+        "dtype": run_plan.input_ids_dtype,
+        "value_count": run_plan.prompt_length,
+        "nbytes": run_plan.input_ids_nbytes,
+        "sha256": run_plan.input_ids_sha256,
+        "preview_values": list(run_plan.input_ids[:8]),
+    }
+    expected_payload_fingerprints = {
+        "input_ids": expected_input_payload,
+        "span_inputs": expected_span_payloads,
+    }
+    assert blocker["rendered_prompt_sha256"] == run_plan.rendered_prompt_sha256
+    assert blocker["input_ids_sha256"] == run_plan.input_ids_sha256
+    assert blocker["pre_run_input_ids_payload"] == expected_input_payload
+    assert blocker["span_input_payload_entry_names"] == [
+        entry["name"] for entry in expected_span_payloads["entries"]
+    ]
+    assert blocker["span_input_payload_entry_count"] == expected_span_payloads[
+        "entry_count"
+    ]
+    assert blocker["span_input_payload_total_nbytes"] == expected_span_payloads[
+        "total_nbytes"
+    ]
+    assert blocker["span_input_payload_entries"] == expected_span_payloads["entries"]
+    assert blocker["span_input_payloads_sha256"] == hashlib.sha256(
+        json.dumps(expected_span_payloads, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert blocker["pre_run_payload_fingerprints_sha256"] == hashlib.sha256(
+        json.dumps(
+            expected_payload_fingerprints,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     expected_upload_plan = run_plan.decode_input_upload_plan
     expected_launch_trace = run_plan.streaming_decode_launch_trace
     assert blocker["pre_run_upload_plan_sha256"] == hashlib.sha256(
