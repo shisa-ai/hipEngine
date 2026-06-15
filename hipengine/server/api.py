@@ -148,6 +148,7 @@ _JSON_SCHEMA_ANNOTATION_KEYWORDS = (
     "deprecated",
     "readOnly",
     "writeOnly",
+    "format",
 )
 _JSON_SCHEMA_SUPPORTED_TYPES = frozenset(
     {

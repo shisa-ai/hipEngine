@@ -470,11 +470,11 @@ with `minItems` / `maxItems`, string `minLength` / `maxLength` / `pattern`,
 and numeric `minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`.
 String `pattern` uses Python regular-expression search semantics after
 generation, and invalid regexes are rejected before generation. Unsupported
-validation keywords such as `oneOf`, `anyOf`, `$ref`, and `format`
+validation keywords such as `oneOf`, `anyOf`, and `$ref`
 are rejected before generation when strict tool validation would use the schema;
-annotation keys such as `title`, `description`, and `default` are accepted but
-ignored by validation. This is result validation only; decode-time JSON/schema
-constraints remain unsupported.
+annotation keys such as `title`, `description`, `default`, and `format` are
+accepted but ignored by validation. This is result validation only; decode-time
+JSON/schema constraints remain unsupported.
 
 ### Structured outputs
 
@@ -509,8 +509,9 @@ argument validation: `type`, `enum`, `const`, object `properties` / `required` /
 `additionalProperties: false`, array `items` / `minItems` / `maxItems`, string
 `minLength` / `maxLength` / `pattern`, and numeric min/max bounds. Unsupported
 validation keywords are rejected before generation instead of being silently
-ignored; annotation keys are accepted but ignored by validation. This is result
-validation plus object close-suffix forcing, not grammar-constrained decoding.
+ignored; annotation keys, including `format`, are accepted but ignored by
+validation. This is result validation plus object close-suffix forcing, not
+grammar-constrained decoding.
 
 `guided_json` uses the same JSON result paths and object-root close-forcing
 behavior as `response_format`. It accepts `true` for JSON-object validation, a

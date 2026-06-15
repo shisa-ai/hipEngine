@@ -1559,7 +1559,7 @@ Current state:
   generation, and invalid regexes are rejected before generation. Unsupported
   validation keywords are rejected before generation when strict validation
   would use the schema; annotation keys such as `title`, `description`, and
-  `default` are accepted but ignored by validation.
+  `default`, plus schema `format`, are accepted but ignored by validation.
 - Tool-policy and strict-validation failures return normal chat responses with
   no successful `tool_calls`, stable `finish_details.reason` values
   (`invalid_tool_call`, `tool_required_not_satisfied`, or `schema_violation`),
@@ -1720,8 +1720,8 @@ Current code reality:
   invalid JSON is not emitted as successful deltas;
 - JSON-schema requests use the same fail-closed subset validation as strict tool
   schemas: supported validation keywords are enforced, unsupported validation
-  keywords are rejected before generation, and annotation keys are ignored by
-  validation;
+  keywords are rejected before generation, and annotation keys, including
+  `format`, are ignored by validation;
 - `response_format={"type":"text"}` is a no-op;
 - `guided_json` is implemented as an alternate request field for JSON-object
   and JSON-schema result validation plus object-root close-suffix forcing, with

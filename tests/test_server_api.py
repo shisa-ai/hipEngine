@@ -779,6 +779,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "deprecated",
             "readOnly",
             "writeOnly",
+            "format",
         ],
     }
     assert body["features"]["grammars"] == {
@@ -844,6 +845,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "deprecated",
             "readOnly",
             "writeOnly",
+            "format",
         ],
         "format": "qwen_tool_call_json",
         "compatibility_parser_repairs": ["duplicated_tool_call_start"],
@@ -5137,7 +5139,11 @@ def test_completions_response_format_accepts_annotation_schema_keywords() -> Non
                         "type": "object",
                         "properties": {
                             "ok": {"type": "boolean", "description": "success flag"},
-                            "path": {"type": "string", "examples": ["README.md"]},
+                            "path": {
+                                "type": "string",
+                                "examples": ["README.md"],
+                                "format": "uri-reference",
+                            },
                         },
                         "required": ["ok", "path"],
                         "additionalProperties": False,
@@ -8877,6 +8883,7 @@ def test_chat_completion_strict_tool_schema_accepts_annotation_keywords() -> Non
                                     "type": "string",
                                     "description": "Repository path",
                                     "examples": ["README.md"],
+                                    "format": "uri-reference",
                                 }
                             },
                             "required": ["path"],
