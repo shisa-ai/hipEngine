@@ -80,6 +80,44 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     ]
     assert manifest["entry_count"] == 2
     assert manifest["artifact_count"] == 3
+    oracle_helper_handoff = manifest["entries"][0]["oracle_helper_prerequisite_handoff"]
+    assert oracle_helper_handoff["schema_version"] == 1
+    assert oracle_helper_handoff["source"] == "stepfun_llamacpp_logits_helper_readiness"
+    assert oracle_helper_handoff["readiness_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json"
+    )
+    assert oracle_helper_handoff["patch_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+    )
+    assert oracle_helper_handoff["patch_dry_run_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json"
+    )
+    assert oracle_helper_handoff["patch_apply_command"] == (
+        "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
+        "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+    )
+    assert oracle_helper_handoff["readiness_refresh_command"] == (
+        "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
+    )
+    assert oracle_helper_handoff["dry_run_refresh_command"] == (
+        "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty"
+    )
+    assert oracle_helper_handoff["probe_command_after_build"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+    assert oracle_helper_handoff["patch_apply_command_sha256"] == _stable_json_sha256(
+        oracle_helper_handoff["patch_apply_command"]
+    )
+    assert oracle_helper_handoff["no_claim_policy"] == {
+        "oracle_parity_claim_allowed": False,
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "These are helper readiness prerequisites; same-prompt logits/oracle "
+            "parity remains blocked until the retained-token probe captures evidence."
+        ),
+    }
     assert manifest["entries_sha256"] == _stable_json_sha256(manifest["entries"])
     assert manifest["artifacts_to_collect_sha256"] == _stable_json_sha256(
         manifest["artifacts_to_collect"]

@@ -16,6 +16,8 @@ if str(REPO_ROOT) not in sys.path:
 from scripts import stepfun_correctness_status as status_mod
 from scripts import stepfun_kv_next_token_check as kv_next_token_check_mod
 from scripts import stepfun_kv_trace_check as kv_trace_check_mod
+from scripts import stepfun_llamacpp_logits_helper_patch_dry_run as oracle_patch_mod
+from scripts import stepfun_llamacpp_logits_helper_readiness as oracle_readiness_mod
 from scripts import stepfun_oracle_artifact_check as oracle_check_mod
 
 DEFAULT_KV_TRACE_ARTIFACT = Path(
@@ -55,6 +57,31 @@ def _artifact_file_present(path_value: object) -> bool:
     if not isinstance(path_value, str) or not path_value:
         return False
     return Path(path_value).exists()
+
+
+def _load_json_object_if_present(path: Path) -> dict[str, object] | None:
+    """Return a JSON object artifact when present, otherwise None."""
+
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    return payload if isinstance(payload, dict) else None
+
+
+def _file_sha256_if_present(path: Path) -> str | None:
+    """Return a file SHA-256 digest when a path exists."""
+
+    if not path.exists():
+        return None
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _repo_relative_path(path: Path) -> Path:
+    """Resolve a repo artifact path independent of caller cwd."""
+
+    return path if path.is_absolute() else REPO_ROOT / path
 
 
 def _artifact_evidence_satisfied(artifact: dict[str, object]) -> bool:
@@ -179,6 +206,89 @@ def _summarize_validator_commands(
         for record in artifact_status
         if record.get("validator_command_kind") not in (None, "")
     ]
+
+
+def _oracle_helper_prerequisite_handoff() -> dict[str, object]:
+    """Return same-prompt llama.cpp helper prerequisite handoff metadata."""
+
+    readiness_path = oracle_readiness_mod.DEFAULT_OUTPUT
+    patch_path = oracle_patch_mod.DEFAULT_PATCH_OUTPUT
+    dry_run_path = oracle_patch_mod.DEFAULT_OUTPUT
+    readiness_file = _repo_relative_path(readiness_path)
+    patch_file = _repo_relative_path(patch_path)
+    dry_run_file = _repo_relative_path(dry_run_path)
+    readiness = _load_json_object_if_present(readiness_file) or {}
+    patch_dry_run = readiness.get("patch_dry_run_artifact")
+    patch_dry_run_record = patch_dry_run if isinstance(patch_dry_run, dict) else {}
+    patch_apply_command = None
+    required_commands = readiness.get("required_next_commands")
+    if isinstance(required_commands, list) and required_commands:
+        patch_apply_command = required_commands[0]
+    if patch_apply_command is None:
+        patch_apply_command = (
+            "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
+            "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+        )
+    readiness_command = (
+        "python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty"
+    )
+    dry_run_command = (
+        "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty"
+    )
+    probe_command = (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+    return {
+        "schema_version": 1,
+        "source": "stepfun_llamacpp_logits_helper_readiness",
+        "readiness_artifact": str(readiness_path),
+        "readiness_artifact_present": readiness_file.exists(),
+        "readiness_artifact_sha256": _file_sha256_if_present(readiness_file),
+        "readiness_status": readiness.get("status"),
+        "readiness_ready": readiness.get("ready"),
+        "readiness_missing_evidence": list(readiness.get("missing_evidence", []))
+        if isinstance(readiness.get("missing_evidence"), list)
+        else [],
+        "patch_artifact": str(patch_path),
+        "patch_artifact_present": patch_file.exists(),
+        "patch_artifact_sha256": _file_sha256_if_present(patch_file),
+        "patch_dry_run_artifact": str(dry_run_path),
+        "patch_dry_run_artifact_present": dry_run_file.exists(),
+        "patch_dry_run_artifact_sha256": _file_sha256_if_present(dry_run_file),
+        "patch_dry_run_ready": patch_dry_run_record.get("patch_ready"),
+        "patch_dry_run_apply_check_status": patch_dry_run_record.get(
+            "git_apply_check_status"
+        ),
+        "patch_artifact_sha256_matches_dry_run": patch_dry_run_record.get(
+            "patch_artifact_sha256_matches"
+        ),
+        "patch_apply_command": patch_apply_command,
+        "patch_apply_command_sha256": status_mod._stable_json_sha256(
+            patch_apply_command
+        ),
+        "dry_run_refresh_command": dry_run_command,
+        "dry_run_refresh_command_sha256": status_mod._stable_json_sha256(
+            dry_run_command
+        ),
+        "readiness_refresh_command": readiness_command,
+        "readiness_refresh_command_sha256": status_mod._stable_json_sha256(
+            readiness_command
+        ),
+        "probe_command_after_build": probe_command,
+        "probe_command_after_build_sha256": status_mod._stable_json_sha256(
+            probe_command
+        ),
+        "no_claim_policy": {
+            "oracle_parity_claim_allowed": False,
+            "kv_backed_decode_claim_allowed": False,
+            "e2e_inference_claim_allowed": False,
+            "performance_claim_allowed": False,
+            "reason": (
+                "These are helper readiness prerequisites; same-prompt logits/oracle "
+                "parity remains blocked until the retained-token probe captures evidence."
+            ),
+        },
+    }
 
 
 def _oracle_validator_handoff(
@@ -573,6 +683,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                     oracle_source.get("path"),
                 )
             )
+            entry["oracle_helper_prerequisite_handoff"] = _oracle_helper_prerequisite_handoff()
             entry["artifact_handoff"] = artifact
             artifacts_to_collect.append(artifact)
         elif blocker_kind == "kv_backed_decode_not_wired":

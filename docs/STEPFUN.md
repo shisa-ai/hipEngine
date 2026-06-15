@@ -681,7 +681,11 @@ reporting.
   `--recommended-commands-only` / `--recommended-commands-sha-only` outputs expose
   the two blocker records, three required evidence artifacts, per-blocker
   completion criteria, claim gate, blocked readiness-gate chain, source/status
-  hash bundle, and exact recommended commands directly. Its `--verify-manifest`
+  hash bundle, and exact recommended commands directly. The oracle entry now also
+  embeds `oracle_helper_prerequisite_handoff`, linking the retained-token helper
+  readiness/dry-run/patch artifacts, exact `git apply --unidiff-zero` command,
+  readiness refresh command, and retained-token probe command before same-prompt
+  oracle capture. Its `--verify-manifest`
   mode compares a persisted manifest with the current
   prompt/oracle/resource/docs inputs, while `--verification-status-only` and
   `--verification-failures-only` provide compact drift routing. `scripts/stepfun_handoff_check.py`

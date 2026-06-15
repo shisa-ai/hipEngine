@@ -41593,3 +41593,33 @@ git diff --check
 ```
 
 Results: targeted readiness/rollup/dry-run tests passed (`10` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count remains `2`; full StepFun guard passed. Readiness status is `"blocked"`, patch-applied scalar is `false`, helper-capable scalar is `false`, missing evidence remains `["llama_cpp_token_ids_helper_patch_applied", "llama_debug_retained_token_ids_input_present", "llama_cpp_same_prompt_logits_artifact_present"]`, readiness stable payload SHA is `6b9ec549630dda53e93ac1469b4470b2b9f84357ead1a773cdf14862054f64b6`, and remaining-blockers stable payload SHA is `3fefa2d674e403cc88f87b6d3015dee8113805727dbb4ee54dc820c6444f0b72`. File SHAs: readiness `8e8d78b1ba6fd5e007916b5a153ae96fb4335e84b45d7d913cc77fc637d1b496`, remaining-blockers `f42a28f49e4d850c655be07f3ecf3314b1be417fd1cfba86816008419bfe883c`, correctness-status `67a1e00128d975ca1b82a79dce1b377e06b3c1f0f969ec51d55579f73950c9b6`, final-blocker `6474480f55458466aaed9538725cd745b64fa2c28c322a1cd075396b9845d6f2`, handoff `ebd73180a943148645da1048e6a4aed0e9c7cd45d2a2771c9d8b1368dc72a3b9`. Next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle helper prerequisite handoff
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 513. Extended `scripts/stepfun_final_blocker_manifest.py` and `tests/test_stepfun_final_blocker_manifest.py` so the oracle blocker entry embeds `oracle_helper_prerequisite_handoff`. The top-level final-blocker report now links the retained-token helper readiness artifact, dry-run artifact, canonical patch artifact, exact `git apply --unidiff-zero` command, dry-run/readiness refresh commands, and retained-token probe command before any same-prompt oracle capture. The helper metadata is resolved relative to the hipEngine repo root so persisted handoff verification stays stable even when tests or callers change cwd. This is prerequisite handoff only; oracle/KV/e2e/performance claims remain blocked.
+
+Retained evidence: `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json` now includes `entries[0].oracle_helper_prerequisite_handoff` with readiness artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json`, patch artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch`, dry-run artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json`, patch apply command `git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch`, and no-claim policy. Updated `docs/STEPFUN.md` P11 to call out the embedded helper prerequisite handoff and refreshed correctness-status/final-blocker/handoff artifacts.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_final_blocker_manifest.py tests/test_stepfun_final_blocker_manifest.py
+python3 -m pytest -q tests/test_stepfun_final_blocker_manifest.py tests/test_stepfun_handoff_check.py
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_final_blocker_manifest.py tests/test_stepfun_final_blocker_manifest.py || true
+sha256sum benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+```
+
+Results: targeted final-manifest/handoff tests passed (`9` tests); status/manifest/handoff verification returned `"match"`; final manifest entries SHA `62a67a946470142b6ffdb68590a2a2cbe4217f687737a3dc746a3ff82c74884c`, manifest SHA `7755f824cd3f4a1c1b37a96215100a1e39ba120452682b65c2cc63081ef1493f`; P0-P12 open/partial count remains `2`; full StepFun guard passed; final-blocker/handoff/correctness-status file SHAs are `a5557d8cb9b931fc8e9456128e5a44ff7a2bdb4fbe9426755bb8f155c847ceae`, `141bb7498ee5bba1fb6223458fdb0e3b02b45dce3be2d7e286ee559626f10b09`, and `6699fe6f7a6bf368f37f5e980921410a97a6eae80b2fb911f4427551024f8187`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
