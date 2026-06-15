@@ -230,6 +230,50 @@ def test_agentic_conformance_reasoning_structured_json_response_shape() -> None:
     assert "reserve at least 32 tokens for the final answer or tool call" in prompt
 
 
+def test_agentic_conformance_streaming_reasoning_structured_json_shape() -> None:
+    llm = AgenticFakeLLM(
+        outputs=['<think>shape it</think>{"result":"ok"}'],
+        stream_chunks=["should-not-stream-raw"],
+    )
+    response = _client(llm).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Return status."}],
+            "response_format": {"type": "json_object"},
+            "reasoning": {"enabled": True, "effort": "minimal"},
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "max_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "should-not-stream-raw" not in response.text
+    assert "<think>" not in response.text
+    payloads = _sse_payloads(response.text)
+    reasoning = next(payload for payload in payloads if payload["choices"][0]["delta"].get("reasoning_content"))
+    assert reasoning["choices"][0]["delta"] == {"reasoning_content": "shape it"}
+    assert reasoning["choices"][0]["hipengine"]["phase"] == "think"
+
+    structured = next(payload for payload in payloads if payload["choices"][0]["delta"].get("content"))
+    assert structured["choices"][0]["delta"] == {"content": '{"result":"ok"}'}
+    assert json.loads(structured["choices"][0]["delta"]["content"]) == {"result": "ok"}
+    assert structured["choices"][0]["hipengine"]["phase"] == "structured"
+    assert structured["choices"][0]["hipengine"]["decode_state"]["structured_tokens"] == 1
+
+    done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
+    assert done["choices"][0]["hipengine"]["phase"] == "structured"
+    assert done["choices"][0]["hipengine"]["finish_details"] == {
+        "reason": "stop",
+        "cache_action": "append_none",
+    }
+    assert llm.calls
+    assert not llm.stream_calls
+
+
 def test_agentic_conformance_visible_session_replays_tool_loop_without_reasoning() -> None:
     llm = AgenticFakeLLM(
         outputs=[

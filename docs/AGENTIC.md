@@ -2561,8 +2561,9 @@ Current code reality:
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
   rendering exactly once, live and snapshot prior-assistant tool-call shape
   rejection plus orphan/duplicate/skipped tool-result rejection before
-  generation, reasoning-only final-answer responses, reasoning plus structured JSON
-  responses, `enable_thinking=false` pre-close rendering,
+  generation, reasoning-only final-answer responses, reasoning plus structured
+  JSON responses in buffered and streaming modes, `enable_thinking=false`
+  pre-close rendering,
   duplicated-start tool-call recovery, malformed tool JSON fail-closed behavior,
   streamed malformed tool JSON fail-closed behavior,
   `session.commit="append_none"` finish metadata, app-local `session.id`

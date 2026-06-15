@@ -93265,3 +93265,16 @@ constants, so the advertised raw-MTP guard cannot drift from the runtime policy.
 Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py -q -k 'streaming_tool_call_matches_non_streaming_shape or streaming_parallel_tool_loop_continues_from_tool_results'` -> `2 passed`.
 - `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or replay_artifact_redacts_failed_request'` -> `2 passed`.
+
+## 2026-06-15 - Streaming structured conformance coverage
+
+Added a compact `/v1/chat/completions` conformance regression for streamed
+structured JSON with parsed reasoning. The test verifies streaming
+`response_format={"type":"json_object"}` buffers raw generation for validation,
+does not leak the fake raw live stream or `<think>` markup, emits a
+`delta.reasoning_content` chunk, emits the validated JSON as a content delta
+with `hipengine.phase="structured"` and structured-token decode state, and
+finishes with stable stop finish details.
+
+Validation:
+- `python3 -m pytest tests/test_agentic_server_conformance.py -q -k 'streaming_reasoning_structured_json_shape or reasoning_structured_json_response_shape'` -> `2 passed`.
