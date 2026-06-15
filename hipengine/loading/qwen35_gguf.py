@@ -203,6 +203,62 @@ class Qwen35GGUFMTPBlockMap:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftTensorSlot:
+    """Resolved GGUF tensor slot for one CPU-reference MTP draft layer input."""
+
+    slot: str
+    tensor_name: str
+    shape: tuple[int, ...]
+    ggml_type_name: str
+    fallback_slot: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "slot": self.slot,
+            "tensor_name": self.tensor_name,
+            "shape": list(self.shape),
+            "ggml_type_name": self.ggml_type_name,
+        }
+        if self.fallback_slot is not None:
+            result["fallback_slot"] = self.fallback_slot
+        return result
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFMTPDraftTensorPlan:
+    """Ordered tensor plan for feeding one GGUF MTP draft layer CPU oracle."""
+
+    layer_id: int
+    hidden_size: int
+    vocab_size: int
+    cpu_reference_kernel: tuple[str, str, str, str]
+    slots: tuple[Qwen35GGUFMTPDraftTensorSlot, ...]
+    fallback_slots: Mapping[str, str]
+
+    def slot(self, slot: str) -> Qwen35GGUFMTPDraftTensorSlot:
+        for item in self.slots:
+            if item.slot == slot:
+                return item
+        raise MissingGGUFTensorError(
+            f"MTP draft tensor plan for block {self.layer_id} has no slot {slot!r}"
+        )
+
+    @property
+    def tensor_names(self) -> tuple[str, ...]:
+        return tuple(item.tensor_name for item in self.slots)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "layer_id": self.layer_id,
+            "hidden_size": self.hidden_size,
+            "vocab_size": self.vocab_size,
+            "cpu_reference_kernel": list(self.cpu_reference_kernel),
+            "slots": [slot.as_dict() for slot in self.slots],
+            "fallback_slots": dict(self.fallback_slots),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftSpec:
     """Shape contract for draft-only GGUF NextN execution."""
 
@@ -483,6 +539,44 @@ def build_qwen35_gguf_mtp_block_maps(
     return tuple(maps)
 
 
+def build_qwen35_gguf_mtp_draft_tensor_plans(
+    info: GGUFModelInfo,
+    *,
+    strict: bool = True,
+) -> tuple[Qwen35GGUFMTPDraftTensorPlan, ...]:
+    """Return ordered GGUF tensor plans for CPU-reference MTP draft oracles."""
+
+    specs = build_qwen35_gguf_mtp_draft_specs(info, strict=strict)
+    block_maps = build_qwen35_gguf_mtp_block_maps(info, strict=strict)
+    spec_by_layer = {spec.layer_id: spec for spec in specs}
+    plans: list[Qwen35GGUFMTPDraftTensorPlan] = []
+    for block_map in block_maps:
+        spec = spec_by_layer[block_map.layer_id]
+        slots: list[Qwen35GGUFMTPDraftTensorSlot] = []
+        for slot in _MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS:
+            tensor = block_map.tensor(slot)
+            slots.append(
+                Qwen35GGUFMTPDraftTensorSlot(
+                    slot=slot,
+                    tensor_name=tensor.name,
+                    shape=tensor.shape,
+                    ggml_type_name=tensor.ggml_type_name,
+                    fallback_slot=block_map.fallback_slots.get(slot),
+                )
+            )
+        plans.append(
+            Qwen35GGUFMTPDraftTensorPlan(
+                layer_id=block_map.layer_id,
+                hidden_size=spec.hidden_size,
+                vocab_size=spec.vocab_size,
+                cpu_reference_kernel=_MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL,
+                slots=tuple(slots),
+                fallback_slots=block_map.fallback_slots,
+            )
+        )
+    return tuple(plans)
+
+
 def build_qwen35_gguf_mtp_draft_specs(
     info: GGUFModelInfo,
     *,
@@ -554,6 +648,39 @@ def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPB
     if errors:
         raise MissingGGUFTensorError("; ".join(errors))
     return inventories
+
+
+_MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL = (
+    "cpu_reference",
+    "mtp_nextn_layer",
+    "gguf_moe",
+    "qwen35_dense_logits",
+)
+
+_MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
+    "nextn.embed_tokens",
+    "nextn.eh_proj",
+    "nextn.hnorm",
+    "nextn.enorm",
+    "attn_norm",
+    "attn_q",
+    "attn_k",
+    "attn_v",
+    "attn_output",
+    "attn_q_norm",
+    "attn_k_norm",
+    "post_attention_norm",
+    "ffn_gate_inp",
+    "ffn_gate_exps",
+    "ffn_up_exps",
+    "ffn_down_exps",
+    "ffn_gate_inp_shexp",
+    "ffn_gate_shexp",
+    "ffn_up_shexp",
+    "ffn_down_shexp",
+    "nextn.shared_head_norm",
+    "nextn.shared_head_head",
+)
 
 
 def _mtp_draft_shape_errors(
@@ -838,10 +965,13 @@ __all__ = [
     "Qwen35GGUFLayerMap",
     "Qwen35GGUFMTPBlockInventory",
     "Qwen35GGUFMTPBlockMap",
+    "Qwen35GGUFMTPDraftTensorPlan",
+    "Qwen35GGUFMTPDraftTensorSlot",
     "Qwen35GGUFMappingValidation",
     "Qwen35GGUFModelMap",
     "build_qwen35_gguf_mtp_block_maps",
     "build_qwen35_gguf_mtp_draft_specs",
+    "build_qwen35_gguf_mtp_draft_tensor_plans",
     "build_qwen35_gguf_tensor_map",
     "qwen35_gguf_config_from_metadata",
     "qwen35_gguf_mtp_block_inventories",

@@ -93795,3 +93795,59 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata change only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU oracle tensor plan bridge
+
+Implemented `mtp-gguf` multiloop iteration 27: added a torch-free loader-side
+ordered tensor plan for feeding one validated Qwen35 GGUF MTP draft layer into
+the CPU-reference NextN oracle.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this plan only records which GGUF tensors future parity harnesses should
+  retrieve for the dense CPU oracle.
+
+Evidence:
+- Real GGUF smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... build_qwen35_gguf_mtp_draft_tensor_plans(GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf').info) ... PY`
+  passed and reported:
+  - kernel key `('cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits')`
+  - `nextn.embed_tokens -> token_embd.weight (248320, 2048) Q8_0`, fallback `token_embedding`
+  - `nextn.eh_proj -> blk.40.nextn.eh_proj.weight (2048, 4096) Q8_0`
+  - `attn_q -> blk.40.attn_q.weight (8192, 2048) Q8_0`
+  - `attn_output -> blk.40.attn_output.weight (2048, 4096) Q8_0`
+  - `ffn_gate_exps -> blk.40.ffn_gate_exps.weight (256, 512, 2048) Q4_K`
+  - `ffn_down_shexp -> blk.40.ffn_down_shexp.weight (2048, 512) Q8_0`
+  - `nextn.shared_head_head -> output.weight (248320, 2048) Q6_K`, fallback `lm_head`.
+- llama.cpp source check:
+  `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '604,735p'`
+  matches the plan ordering: embedding/hidden norms + `eh_proj`, attention,
+  post-attention routed/shared FFN, then shared-head norm/head fallback.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftTensorSlot` and `Qwen35GGUFMTPDraftTensorPlan`.
+  - Slots carry logical slot name, resolved GGUF tensor name, shape, GGML type
+    name, and optional fallback provenance.
+  - Plans carry hidden/vocab sizes and the CPU-reference kernel key
+    `('cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits')`.
+- Added `build_qwen35_gguf_mtp_draft_tensor_plans(info, strict=True)`.
+  - Derives plans from already validated draft specs and block maps.
+  - Preserves the CPU-reference NextN layer tensor order used by the M3 oracle.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` with ordered-slot,
+  fallback, and present-optional tensor plan coverage.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `23` selected tests (`17` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `14` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.

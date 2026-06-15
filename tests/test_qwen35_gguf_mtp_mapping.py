@@ -15,6 +15,7 @@ from hipengine.loading.qwen35_gguf import (
     LINEAR_ATTENTION,
     build_qwen35_gguf_mtp_block_maps,
     build_qwen35_gguf_mtp_draft_specs,
+    build_qwen35_gguf_mtp_draft_tensor_plans,
     build_qwen35_gguf_tensor_map,
     qwen35_gguf_mtp_block_inventories,
     required_qwen35_gguf_tensor_names,
@@ -186,6 +187,76 @@ def test_qwen35moe_gguf_mtp_draft_spec_prefers_present_optional_tensors() -> Non
     assert spec.embed_tokens_tensor == "blk.2.nextn.embed_tokens.weight"
     assert spec.shared_head_tensor == "blk.2.nextn.shared_head_head.weight"
     assert dict(spec.fallback_slots) == {}
+
+
+def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
+    info = _synthetic_qwen35moe_mtp_info()
+
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+
+    assert plan.layer_id == 2
+    assert plan.hidden_size == 8
+    assert plan.vocab_size == 11
+    assert plan.cpu_reference_kernel == (
+        "cpu_reference",
+        "mtp_nextn_layer",
+        "gguf_moe",
+        "qwen35_dense_logits",
+    )
+    assert [slot.slot for slot in plan.slots] == [
+        "nextn.embed_tokens",
+        "nextn.eh_proj",
+        "nextn.hnorm",
+        "nextn.enorm",
+        "attn_norm",
+        "attn_q",
+        "attn_k",
+        "attn_v",
+        "attn_output",
+        "attn_q_norm",
+        "attn_k_norm",
+        "post_attention_norm",
+        "ffn_gate_inp",
+        "ffn_gate_exps",
+        "ffn_up_exps",
+        "ffn_down_exps",
+        "ffn_gate_inp_shexp",
+        "ffn_gate_shexp",
+        "ffn_up_shexp",
+        "ffn_down_shexp",
+        "nextn.shared_head_norm",
+        "nextn.shared_head_head",
+    ]
+    assert plan.slot("nextn.embed_tokens").tensor_name == "token_embd.weight"
+    assert plan.slot("nextn.embed_tokens").fallback_slot == "token_embedding"
+    assert plan.slot("nextn.shared_head_head").tensor_name == "output.weight"
+    assert plan.slot("nextn.shared_head_head").fallback_slot == "lm_head"
+    assert plan.slot("ffn_gate_exps").shape == (3, 5, 8)
+    assert plan.slot("ffn_gate_exps").ggml_type_name == "F32"
+    assert plan.as_dict()["slots"][0] == {
+        "slot": "nextn.embed_tokens",
+        "tensor_name": "token_embd.weight",
+        "shape": [11, 8],
+        "ggml_type_name": "F32",
+        "fallback_slot": "token_embedding",
+    }
+
+
+def test_qwen35moe_gguf_mtp_draft_tensor_plan_prefers_present_optional_tensors() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.nextn.embed_tokens.weight", (11, 8)),
+            _tensor("blk.2.nextn.shared_head_head.weight", (11, 8)),
+        ],
+    )
+
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+
+    assert plan.slot("nextn.embed_tokens").tensor_name == "blk.2.nextn.embed_tokens.weight"
+    assert plan.slot("nextn.embed_tokens").fallback_slot is None
+    assert plan.slot("nextn.shared_head_head").tensor_name == "blk.2.nextn.shared_head_head.weight"
+    assert plan.slot("nextn.shared_head_head").fallback_slot is None
+    assert dict(plan.fallback_slots) == {}
 
 
 def test_qwen35moe_gguf_mtp_draft_spec_rejects_bad_nextn_shape() -> None:
