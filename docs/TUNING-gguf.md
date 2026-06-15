@@ -140,6 +140,11 @@ No-hold notes:
   gate tokens (`220 -> 97799`, `570 -> 28944`) and still regressed decode vs the
   original baseline (`114.602 -> 111.797 tok/s` primary metric). Keep the 128-
   thread launch unless a new accumulation-order-safe variant is proven.
+- **G-H2 graph4 rejected (2026-06-15).** `--graph-steps-per-replay 4` reused the
+  existing multi-step capture support and kept the 4K token stable, but changed
+  the `512/128` final token (`220 -> 11`). Treat GGUF multi-step graph replay as
+  correctness-blocked until a fixture proves the captured position/token state
+  advances exactly across replay groups.
 
 ## What we copy from the MTP/DFlash/megakernel successes
 
