@@ -71,6 +71,12 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     ]
     assert oracle_blocker["canonical_backend"] == "vulkan"
     assert oracle_blocker["oracle_parity_ready"] is False
+    assert oracle_blocker["rank_check_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json"
+    )
+    assert oracle_blocker["rank_check_generator_command"] == (
+        "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty"
+    )
     assert kv_blocker["readiness_gate"] == "kv_backed_decode"
     assert kv_blocker["generator_command_kind"] == "kv_blocker_status"
     assert kv_blocker["kv_decode_dispatch_ready"] is True
@@ -102,6 +108,9 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         ),
         "oracle_token_mismatch": (
             "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty"
+        ),
+        "oracle_rank_check": (
+            "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty"
         ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
@@ -207,6 +216,9 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
     commands = json.loads(output.read_text())
     assert commands["oracle_backend_matrix"].endswith(
         "stepfun_oracle_backend_matrix.py --default-output --pretty"
+    )
+    assert commands["oracle_rank_check"].endswith(
+        "stepfun_oracle_rank_check.py --default-output --pretty"
     )
     assert commands["kv_blocker_status"].endswith(
         "stepfun_kv_blocker_status.py --default-output --pretty"

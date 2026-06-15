@@ -40874,3 +40874,33 @@ git diff --check
 ```
 
 Results: targeted KV preflight/rollup tests passed (`6` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; remaining-blockers rollup file SHA `5769b5a9990df2ba0208077f312e09207b13e50252365f3a5620ca5c1625ac51`; rollup stable payload SHA `a3b8c4ac238e21b5967ad0b029160a3c83eb4c6021401f5bdf7351de66336e46`; correctness-status file SHA `a67c0114eea6316bff51484044f33433d7dba2d44f9e451cb25a514a2daf8301`; final-blocker file SHA `b52cc13926e2d10478ca459282bd0b55061b20b054a13a9546d6a11593667caa`; handoff file SHA `6ef82fa888fe769ffa249dd6541875916bfe491d62f5d53897203708edf264c5`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L oracle generated token absent from host top-5
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 489. Added `scripts/stepfun_oracle_rank_check.py`, a reproducible rank-check generator that compares the retained llama.cpp generated token from `scripts/stepfun_oracle_token_mismatch.py` against the host-composed top-token list in `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`. Added `tests/test_stepfun_oracle_rank_check.py` coverage for the builder, CLI output, and compact modes. Updated `scripts/stepfun_remaining_blockers_rollup.py` and its tests so the rollup links the rank-check artifact/generator, and updated `docs/STEPFUN.md`.
+
+The retained rank-check artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json` reports `status=failed`, `generated_first_token_id=671`, `generated_token_in_host_top_tokens=false`, `generated_token_host_rank=null`, and missing evidence `generated_token_in_host_top_tokens`. Host-composed top token IDs are `[369, 5, 15251, 223, 201]`, so the canonical Vulkan llama.cpp generated token is absent from the retained host top-5, not merely lower-ranked within it. This narrows the oracle blocker but makes no oracle/e2e/performance claim. Rank-check file SHA is `65e438721e638f1ac6b5b2f5536e9d0f4fa738ee335cc1c68130ff6238d949ff`; stable payload SHA from `scripts/stepfun_oracle_rank_check.py --sha-only` is `2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_rank_check.py tests/test_stepfun_oracle_rank_check.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_oracle_rank_check.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty
+python3 scripts/stepfun_oracle_rank_check.py --sha-only
+python3 scripts/stepfun_oracle_rank_check.py --generated-in-top-list-only
+python3 scripts/stepfun_oracle_rank_check.py --generated-rank-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted oracle-rank/rollup tests passed (`6` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; remaining-blockers rollup file SHA `69c1a6897a28727dcb956922eb694b581c7d5646760e323cc190f2d4653a7555`; rollup stable payload SHA `bdc7c0683f1340bcba70d236d93dc72239efc4226862c0e8311621a46a5a3081`; correctness-status file SHA `0e2e91a7592a9f5da80d6fb263eef02f710edb235f6fb59fe97df5860e97403b`; final-blocker file SHA `3ebb6a14bfabcc10595bd7d8efebda64f1272c6787da9b6b86b96ec4d69a9f8e`; handoff file SHA `441f0e34c289c8b693cf6af9aad7432d613edafe24f45facc3ca954e935f1408`; full StepFun guard passed; `git diff --check` passed.

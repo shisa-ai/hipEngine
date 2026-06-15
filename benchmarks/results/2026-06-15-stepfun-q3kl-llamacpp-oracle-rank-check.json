@@ -1,0 +1,91 @@
+{
+  "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+  "artifact_kind": "stepfun_llamacpp_oracle_rank_check",
+  "artifact_sha256": "69c4e284610aca73a270b0532ddca8dd3fd2efc723d9244eb29aa44a792ee1bc",
+  "conclusion": "generated token is absent from host top-token list",
+  "date": "2026-06-15",
+  "expected_next_token_id": 369,
+  "expected_next_token_text": " |",
+  "expected_top_record": {
+    "logit": 19.158626556396484,
+    "rank": 1,
+    "token_id": 369,
+    "token_text": " |"
+  },
+  "generated_first_token_id": 671,
+  "generated_first_token_matches_expected_id": false,
+  "generated_text": "The\n\n",
+  "generated_text_stripped_token_ids": [
+    671
+  ],
+  "generated_text_token_ids": [
+    671,
+    271
+  ],
+  "generated_token_host_rank": null,
+  "generated_token_host_top_record": null,
+  "generated_token_in_host_top_tokens": false,
+  "host_top_record": {
+    "logit": 19.158626556396484,
+    "rank": 1,
+    "token_id": 369,
+    "token_text": " |"
+  },
+  "host_top_token_count": 5,
+  "host_top_token_ids": [
+    369,
+    5,
+    15251,
+    223,
+    201
+  ],
+  "host_top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ],
+  "missing_evidence": [
+    "generated_token_in_host_top_tokens"
+  ],
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This rank check only compares retained oracle/token artifacts with the host top-token list; it does not resolve the oracle mismatch."
+  },
+  "oracle_returncode": 0,
+  "oracle_status": "executed",
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "prompt_artifact_sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+  "ready": false,
+  "schema_version": 1,
+  "status": "failed"
+}

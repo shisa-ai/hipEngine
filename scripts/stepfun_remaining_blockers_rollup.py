@@ -157,6 +157,9 @@ def _generator_commands() -> dict[str, str]:
         "oracle_token_mismatch": (
             "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty"
         ),
+        "oracle_rank_check": (
+            "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -239,6 +242,8 @@ def build_remaining_blockers_rollup(
                 "backend_outcomes": oracle_matrix.get("backend_outcomes"),
                 "canonical_backend": oracle_matrix.get("canonical_backend"),
                 "oracle_parity_ready": oracle_matrix.get("oracle_parity_ready"),
+                "rank_check_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+                "rank_check_generator_command": commands["oracle_rank_check"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

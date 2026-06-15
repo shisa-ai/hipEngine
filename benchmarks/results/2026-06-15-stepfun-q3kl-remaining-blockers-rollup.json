@@ -8,6 +8,7 @@
     "kv_evidence_preflight": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
     "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
+    "oracle_rank_check": "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty",
     "oracle_token_mismatch": "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
     "status_refresh": "python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
   },
@@ -83,6 +84,8 @@
       "generator_command_kind": "oracle_backend_matrix",
       "oracle_parity_ready": false,
       "primary_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
+      "rank_check_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+      "rank_check_generator_command": "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty",
       "readiness_gate": "oracle_parity",
       "status": "blocked"
     },
@@ -231,9 +234,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "54384ef21228803395de80f8fa587f5b1508c370bee4d287991c96b99ccce3ea",
+    "kv_blocker_status": "22cc6ab2212554191f1424746e385e55861505d3d7f7077f1155512ede599520",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "c5cece532b9163c8ed1597e73c0d7cad15cfceb3917bec107c9326a9dd5f63e1"
+    "status": "330fd41f97c092e2024bda8e070a28405129ade4fdf68ea84d5e3e896cf768b9"
   },
   "status": "blocked"
 }
