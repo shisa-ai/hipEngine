@@ -92915,3 +92915,37 @@ Validation:
 - Prompt verifier passed: tokenizer/oracle scaffold only, no torch hot-path
   import, no backend/quant dispatch branches, no attention/KV/runtime generation
   path changes, no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF prompt token comparison gate
+
+Implemented the next `mtp-gguf` multiloop M0 parity scaffold: an exact token-id
+comparison helper for hipEngine-vs-llama.cpp prompt inventory JSON files. This is
+the mechanical gate for Parity Precondition (a) before any accepted/output metric
+is compared across engines.
+
+Changes:
+- Added `scripts/compare_prompt_token_inventories.py`.
+  - Compares prompt inventories by prompt name.
+  - Requires exact integer `token_ids` arrays.
+  - Reports matched prompts, prompts missing on either side, first mismatch index,
+    token IDs, and context windows.
+  - Supports `--fail-on-mismatch` for CI/bench gates.
+- Added `tests/test_gguf_prompt_token_inventory_compare.py` so the comparison
+  behavior is tested even when optional local GGUF tokenizer fixtures are absent.
+
+Smoke:
+- Built a one-prompt hipEngine inventory from the real MTP GGUF using
+  `scripts/gguf_prompt_token_inventory.py`.
+- Command: `/home/lhl/miniforge3/envs/therock/bin/python scripts/compare_prompt_token_inventories.py --left /tmp/mtp-gguf-token-left.json --right /tmp/mtp-gguf-token-left.json --left-label hipengine --right-label hipengine-copy --fail-on-mismatch --out /tmp/mtp-gguf-token-compare.json`
+- Result: `prompt_token_inventory_comparison`, `all_match=True`,
+  `compared_prompts=1`, matched prompt `code_python`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `12` selected tests (`6` pass, `6` skip).
+- New helper tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_prompt_token_inventory_compare.py` -> `2` passed.
+- `py_compile` passed for the new script.
+- Prompt verifier passed: oracle/parity tooling only, no torch hot-path import,
+  no backend/quant dispatch branches, no attention/KV/runtime generation path
+  changes, no NextN math, and no performance claims.
