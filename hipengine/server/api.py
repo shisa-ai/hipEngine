@@ -4798,9 +4798,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 scheduler_logprob_safe_text = (
                     not use_scheduler_logprobs or _split_reasoning(text).content == text
                 )
+                scheduler_done_phase = (
+                    "structured"
+                    if _structured_result_validation(request) and not parsed.tool_calls
+                    else "done"
+                )
+                scheduler_content_phase = "structured" if scheduler_done_phase == "structured" else "answer"
                 use_scheduler_chunks = (
                     not request.tools
-                    and not _structured_result_validation(request)
                     and not parsed.tool_calls
                     and not tool_validation.failed
                     and structured_failure is None
@@ -4821,6 +4826,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         finish_reason,
                         index=index,
                         include_logprobs=use_scheduler_logprobs,
+                        content_phase=scheduler_content_phase,
                         finish_details=finish_details,
                         token_accounting=token_accounting,
                         include_hipengine=include_hipengine,
@@ -4831,6 +4837,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             if include_hipengine
                             else None
                         ),
+                        done_phase=scheduler_done_phase,
                     ):
                         yield event
                 else:
@@ -4853,11 +4860,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             if include_hipengine
                             else None
                         ),
-                        done_phase=(
-                            "structured"
-                            if _structured_result_validation(request) and not parsed.tool_calls
-                            else "done"
-                        ),
+                        done_phase=scheduler_done_phase,
                     ):
                         yield event
             if _stream_include_usage(request):
@@ -11733,6 +11736,7 @@ def _chat_stream_scheduler_text_chunks(
     *,
     index: int = 0,
     include_logprobs: bool = False,
+    content_phase: str = "answer",
     finish_details: Mapping[str, Any] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
@@ -11750,7 +11754,7 @@ def _chat_stream_scheduler_text_chunks(
         last_stream_chunk = stream_chunk
         if include_logprobs:
             token_payload = (
-                token_accounting.observe("answer", stream_chunk.text)
+                token_accounting.observe(content_phase, stream_chunk.text)
                 if token_accounting is not None
                 else None
             )
@@ -11763,15 +11767,15 @@ def _chat_stream_scheduler_text_chunks(
                 index=index,
                 logprobs=_chat_stream_logprobs(stream_chunk, stream_chunk.text),
                 tokens=token_payload,
-                stream_chunk=_stream_chunk_with_phase(stream_chunk, "answer"),
+                stream_chunk=_stream_chunk_with_phase(stream_chunk, content_phase),
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing,
-                phase="answer",
+                phase=content_phase,
             )
             continue
         for delta_field, chunk in splitter.feed(stream_chunk.text):
-            phase = "think" if delta_field == "reasoning_content" else "answer"
+            phase = "think" if delta_field == "reasoning_content" else content_phase
             token_payload = (
                 token_accounting.observe(phase, chunk) if token_accounting is not None else None
             )
@@ -11790,7 +11794,7 @@ def _chat_stream_scheduler_text_chunks(
                 phase=phase,
             )
     for delta_field, chunk in splitter.finish():
-        phase = "think" if delta_field == "reasoning_content" else "answer"
+        phase = "think" if delta_field == "reasoning_content" else content_phase
         token_payload = (
             token_accounting.observe(phase, chunk) if token_accounting is not None else None
         )
@@ -11813,6 +11817,9 @@ def _chat_stream_scheduler_text_chunks(
     final_tokens = None
     if token_accounting is not None and token_accounting.streamed_tokens > 0:
         final_tokens = token_accounting.snapshot()
+    done_stream_chunk = (
+        None if last_stream_chunk is None else _stream_chunk_with_phase(last_stream_chunk, done_phase)
+    )
     yield _chat_stream_done(
         response_id,
         created,
@@ -11821,7 +11828,7 @@ def _chat_stream_scheduler_text_chunks(
         index=index,
         finish_details=finish_details,
         tokens=final_tokens,
-        stream_chunk=last_stream_chunk,
+        stream_chunk=done_stream_chunk,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,

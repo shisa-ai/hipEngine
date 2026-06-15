@@ -239,15 +239,16 @@ pressure, and backend timing/usage remain final-chunk metadata unless the
 backend emits live `GenerationStreamChunk` telemetry for the token.
 For buffered `/v1/completions` streams, plain answer/reasoning buffered
 `/v1/chat/completions` streams without logprobs, and plain chat content streams
-with logprobs, if detailed backend generation reports
-`last_batch_generation.scheduler_token_chunks` for a single HTTP request and
-the scheduler chunk text exactly reconstructs each public choice text, the
-server emits those scheduler chunks as individual public SSE deltas. Chat
-requests with tools, structured-output result validation, or reasoning spans
-when logprobs are requested keep the conservative buffered parser path. If the
-server batcher coalesced separate HTTP requests into one backend batch, or if
-the scheduler chunks no longer match the public post-processed text, the stream
-falls back to the conservative one-delta-per-choice buffered behavior.
+with logprobs, plus validated structured chat content streams, if detailed
+backend generation reports `last_batch_generation.scheduler_token_chunks` for a
+single HTTP request and the scheduler chunk text exactly reconstructs each
+public choice text, the server emits those scheduler chunks as individual
+public SSE deltas. Chat requests with tools, structured-output validation
+failures, or reasoning spans when logprobs are requested keep the conservative
+buffered parser path. If the server batcher coalesced separate HTTP requests
+into one backend batch, or if the scheduler chunks no longer match the public
+post-processed text, the stream falls back to the conservative
+one-delta-per-choice buffered behavior.
 Final choice chunks include the same `finish_details` under
 `choices[].hipengine.finish_details`, and usage chunks mirror usage under
 `hipengine.usage`. When the served engine exposes KV pool stats, final

@@ -9872,7 +9872,35 @@ def test_chat_continuation_resume_rejects_explicit_response_format_override() ->
 
 
 def test_streaming_chat_completion_response_format_buffers_validation() -> None:
-    fake = FakeLLM(outputs=["not json"])
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": 0,
+                        "token_index": 0,
+                        "token_id": 400,
+                        "finished": True,
+                        "chunk": {
+                            "text": "not json",
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=1,
+                                row_index=0,
+                                request_id="0",
+                                phase="answer",
+                                sampler_mode="greedy_fast",
+                                execution_path="scheduler_invalid_should_not_surface",
+                            ).to_json_dict(),
+                        },
+                    }
+                ]
+            }
+            return [GenerationOutput(text="not json") for _prompt in prompt_tuple]
+
+    fake = SchedulerChunkFakeLLM()
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -9896,6 +9924,7 @@ def test_streaming_chat_completion_response_format_buffers_validation() -> None:
         "phase": "structured",
         "finish_details": _stateless_finish_details("schema_violation"),
     }
+    assert "scheduler_invalid_should_not_surface" not in response.text
 
 
 def test_streaming_chat_completion_response_format_emits_structured_metadata() -> None:
@@ -9954,6 +9983,95 @@ def test_streaming_chat_completion_response_format_emits_structured_metadata() -
     assert done_hipengine["decode_state"]["structured_tokens"] == 4
     usage = next(payload for payload in payloads if payload.get("usage"))
     assert usage["usage"]["completion_tokens"] == 4
+    assert fake.stream_calls == []
+
+
+def test_streaming_chat_completion_response_format_uses_scheduler_structured_chunks() -> None:
+    structured_text = '{"ok": true}'
+    chunk_texts = ('{"ok":', " true}")
+
+    class SchedulerChunkFakeLLM(FakeLLM):
+        def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append((prompt_tuple, sampling_params))
+            self.last_batch_generation = {
+                "scheduler_token_chunks": [
+                    {
+                        "request_id": 0,
+                        "token_index": token_index,
+                        "token_id": 500 + token_index,
+                        "finished": token_index == len(chunk_texts) - 1,
+                        "chunk": {
+                            "text": chunk_text,
+                            "telemetry": GenerationTelemetry.from_decode_counts(
+                                prompt_tokens=1,
+                                generated_tokens=token_index + 1,
+                                row_index=0,
+                                request_id="0",
+                                phase="answer",
+                                sampler_mode="greedy_fast",
+                                execution_path="scheduler_structured_chunks",
+                            ).to_json_dict(),
+                        },
+                    }
+                    for token_index, chunk_text in enumerate(chunk_texts)
+                ]
+            }
+            return [
+                GenerationOutput(
+                    text=structured_text,
+                    finish_details=FinishDetails(reason="stop", sampler_mode="greedy_fast"),
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1,
+                        generated_tokens=len(chunk_texts),
+                        row_index=0,
+                        phase="done",
+                        sampler_mode="greedy_fast",
+                    ),
+                )
+                for _prompt in prompt_tuple
+            ]
+
+    fake = SchedulerChunkFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    ]
+    assert [choice["delta"]["content"] for choice in content] == list(chunk_texts)
+    assert [choice["hipengine"]["phase"] for choice in content] == ["structured", "structured"]
+    assert {
+        choice["hipengine"]["decode_state"]["execution_path"]
+        for choice in content
+    } == {"scheduler_structured_chunks"}
+    assert {
+        choice["hipengine"]["decode_state"]["phase"]
+        for choice in content
+    } == {"structured"}
+    done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["finish_details"] == {
+        "reason": "stop",
+        "cache_action": "append_none",
+        "sampler_mode": "greedy_fast",
+    }
+    assert done["choices"][0]["hipengine"]["phase"] == "structured"
+    assert done["choices"][0]["hipengine"]["decode_state"]["execution_path"] == "scheduler_structured_chunks"
     assert fake.stream_calls == []
 
 

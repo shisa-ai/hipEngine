@@ -92682,3 +92682,25 @@ Validation:
 - `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC structured chat scheduler chunks
+
+Buffered structured `/v1/chat/completions` streams can now forward
+single-request `last_batch_generation.scheduler_token_chunks` after result
+validation succeeds and the chunks exactly reconstruct the public content. The
+forwarded deltas report `phase="structured"` while preserving backend
+decode-state execution metadata; validation failures, tool calls, and
+reasoning+logprob streams remain on conservative buffered parser paths. Added a
+regression proving invalid structured output does not leak available scheduler
+chunks, plus a positive structured scheduler-chunk SSE test. Updated
+`docs/API.md` and `docs/AGENTIC.md` to distinguish validated structured content
+from structured-output validation failures.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'streaming_chat_completion_response_format_buffers_validation or streaming_chat_completion_response_format_emits_structured_metadata or streaming_chat_completion_response_format_uses_scheduler_structured_chunks or streaming_chat_completion_response_format_json_schema_buffers_validation or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `6 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or scheduler_token_chunks or response_format_buffers_validation or response_format_emits_structured_metadata or response_format_uses_scheduler_structured_chunks or stream_logprobs or streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser or streaming_chat_completion_returns_logprobs_from_buffered_path or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas'` -> `26 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
