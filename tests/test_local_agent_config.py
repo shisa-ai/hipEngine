@@ -288,6 +288,35 @@ def test_local_agent_chat_smoke_response_rejects_raw_tool_call_markup() -> None:
         )
 
 
+def test_local_agent_chat_smoke_response_rejects_raw_tool_call_content_leak() -> None:
+    with pytest.raises(validate_local_agent_config.ConfigValidationError, match="raw <tool_call> text"):
+        validate_local_agent_config.validate_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "record_result",
+                                        "arguments": json.dumps({"result": "ok"}),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+            expect_tool_call=True,
+        )
+
+
 def test_local_agent_chat_smoke_response_rejects_wrong_tool_argument() -> None:
     with pytest.raises(validate_local_agent_config.ConfigValidationError, match="result.*'ok'"):
         validate_local_agent_config.validate_chat_smoke_response(
@@ -616,6 +645,34 @@ def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup(content: str)
                         "message": {
                             "role": "assistant",
                             "content": content,
+                        },
+                    }
+                ],
+            }
+        )
+
+
+def test_pi_agent_chat_smoke_response_rejects_raw_tool_call_content_leak() -> None:
+    with pytest.raises(validate_pi_agent_models.PiConfigValidationError, match="raw <tool_call> text"):
+        validate_pi_agent_models.validate_pi_chat_smoke_response(
+            {
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": '<tool_call>{"name":"record_result","arguments":{"result":"ok"}}</tool_call>',
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "record_result",
+                                        "arguments": json.dumps({"result": "ok"}),
+                                    },
+                                }
+                            ],
                         },
                     }
                 ],

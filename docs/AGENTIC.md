@@ -2348,9 +2348,10 @@ Current code reality:
   list and prove the generated smoke payload strips every `do_not_send` field.
   When tools are enabled, the local-agent `--chat-smoke` request forces the
   `record_result` function and requires a parsed tool call with valid JSON
-  arguments that set `result` to `"ok"`; raw `<tool_call>` assistant text or
-  wrong tool arguments are rejected as a config/server mismatch. When tools are
-  disabled, it only validates a normal chat response.
+  arguments that set `result` to `"ok"`; raw `<tool_call>` assistant text,
+  including leakage in assistant `content` alongside a parsed `tool_calls`
+  payload, or wrong tool arguments are rejected as a config/server mismatch.
+  When tools are disabled, it only validates a normal chat response.
 - `scripts/validate_pi_agent_models.py` validates the checked-in pi
   `models.json` shape offline and fails on the common `reasoning=false` or
   missing `compat.thinkingFormat="qwen"` misconfiguration that disables pi's
@@ -2364,7 +2365,8 @@ Current code reality:
   `/v1/hipengine/capabilities`; `--chat-smoke` additionally POSTs a small Qwen
   tool-call request and requires a parsed `record_result` tool call with JSON
   arguments that set `result` to `"ok"`. Raw `<tool_call>` assistant text,
-  including a doubled start-marker form, is rejected as a tool-calling mismatch.
+  including a doubled start-marker form or assistant `content` leakage alongside
+  parsed `tool_calls`, is rejected as a tool-calling mismatch.
   `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
   parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
   in assistant content as a Qwen thinking/parser mismatch.

@@ -92176,3 +92176,22 @@ Validation:
 - `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
 - `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json` -> clean.
+
+## 2026-06-15 - AGENTIC agent config raw tool-call leak checks
+
+Tightened the local-agent and pi-agent chat smoke validators so raw
+`<tool_call>` markup in assistant `content` fails validation even when the
+response also carries a parsed `message.tool_calls` payload. This catches
+adapter/server mismatches where tools appear partially parsed but raw Qwen tool
+markup would still leak into an agent transcript. Updated `docs/API.md` and
+`docs/AGENTIC.md` to state that leak contract explicitly.
+
+Validation:
+- `python3 -m pytest tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_rejects_raw_tool_call_markup tests/test_local_agent_config.py::test_local_agent_chat_smoke_response_rejects_raw_tool_call_content_leak tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_rejects_raw_tool_call_markup tests/test_local_agent_config.py::test_pi_agent_chat_smoke_response_rejects_raw_tool_call_content_leak -q` -> `5 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `33 passed`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `python3 -m py_compile scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
+- `python3 -m ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `python3 scripts/validate_local_agent_config.py --help` -> printed help successfully.
+- `python3 scripts/validate_pi_agent_models.py --help` -> printed help successfully.
+- `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
