@@ -153,6 +153,11 @@ Initial focused lanes from evidence:
 
 No-hold notes:
 
+- **G-P2 AOTriton prefill threshold=1024 rejected (2026-06-15).** Raising
+  the default GGUF AOTriton prefill threshold from `512` to `1024` preserved
+  memory and the `4K/128` generated ID, but changed the `512/128` final token
+  (`220 -> 318`) and dropped short-prefill throughput (`1647.390 ->
+  1516.829 tok/s`). Keep the GGUF AOTriton prefill threshold default at `512`.
 - **G-P4 MoE-only chunk=2048 rejected (2026-06-15).** Raising only the default
   auto-tuned MoE prefill chunk from `1024` to `2048` preserved generated IDs and
   memory and improved `4K/128` prefill (`1855.806 -> 1857.311 tok/s`), but left
