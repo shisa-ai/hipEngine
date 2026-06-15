@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_oracle_blocker_diagnosis import build_oracle_blocker_diagnosis
 from scripts.stepfun_oracle_evidence_consistency_check import (
     build_oracle_evidence_consistency_check,
@@ -10,6 +14,7 @@ from scripts.stepfun_oracle_evidence_consistency_check import (
 from scripts.stepfun_oracle_next_action_manifest import (
     build_oracle_next_action_manifest,
     main,
+    verify_oracle_next_action_manifest,
 )
 from test_stepfun_oracle_blocker_diagnosis import _write_inputs, _write_json  # type: ignore[import-not-found]
 
@@ -235,3 +240,89 @@ def test_stepfun_oracle_next_action_manifest_cli_compact_modes(tmp_path: Path) -
     assert json.loads(output.read_text()).startswith("investigate logits/backend parity")
     assert main([*base_args, "--required-inputs-only", "--output", str(output)]) == 0
     assert len(json.loads(output.read_text())) == 8
+
+
+def test_stepfun_oracle_next_action_manifest_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    diagnosis, consistency, host_margin = _write_manifest_inputs(tmp_path)
+    artifact = tmp_path / "next-action.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--diagnosis-artifact",
+        str(diagnosis),
+        "--consistency-artifact",
+        str(consistency),
+        "--host-logit-margin-artifact",
+        str(host_margin),
+        "--artifact-date",
+        "2030-01-27",
+    ]
+    current = build_oracle_next_action_manifest(
+        diagnosis_artifact=diagnosis,
+        consistency_artifact=consistency,
+        host_logit_margin_artifact=host_margin,
+        artifact_date="2030-01-27",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_oracle_next_action_manifest(
+        artifact,
+        current_manifest=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_investigation_ready"] is True
+    assert verification["current_investigation_ready"] is True
+    assert verification["persisted_next_action"] == current["next_action"]
+    assert verification["current_next_action"] == current["next_action"]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-manifest",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["investigation_ready"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_oracle_next_action_manifest(
+        artifact,
+        current_manifest=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "oracle_next_action_manifest_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-manifest",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "oracle_next_action_manifest_drift"
+    )

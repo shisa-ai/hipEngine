@@ -942,7 +942,8 @@ reporting.
   logits/backend parity investigation. `scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`,
   pinning the follow-up target to canonical Vulkan logits/backend parity until
-  `generated_text_matches_target` passes. `scripts/stepfun_oracle_source_map.py --default-output --pretty`
+  `generated_text_matches_target` passes; `python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only`
+  is the drift check for that diagnosis/consistency/logit-margin handoff. `scripts/stepfun_oracle_source_map.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json`, mapping the
   in-tree owners for host prompt logits, llama.cpp oracle execution, and blocker handoff before
   that investigation. `scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty`
