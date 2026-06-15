@@ -5,6 +5,7 @@
     "final_blocker_refresh": "python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json",
     "handoff_refresh": "python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json",
     "kv_blocker_status": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
+    "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
     "oracle_token_mismatch": "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
     "status_refresh": "python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
@@ -30,13 +31,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 851,
+        "line": 853,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ],
     "last_item": {
-      "line": 851,
+      "line": 853,
       "state": "partial",
       "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
     },
@@ -193,6 +194,8 @@
           }
         ]
       },
+      "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
+      "session_contract_generator_command": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
       "status": "blocked",
       "streaming_runner_source_status": {
         "blocked_by": "streaming_decode_loop_not_wired",
@@ -225,9 +228,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "3d3f1e31d71e471780f3fa930073e68abc9b9706c89cd8a1c35302368749f46d",
+    "kv_blocker_status": "e09e23286d0aaba242a8dc62bde7738a655410f07c9215c80f1794e8499a61b2",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "1672c2b74c577a27878f39c16b07c5b97f63d272064a53abea1d6e770cdbd177"
+    "status": "0a088e6f833c4554ac3ee148350af98d4baa5253a5d9df40da47ce2dd10bffa0"
   },
   "status": "blocked"
 }

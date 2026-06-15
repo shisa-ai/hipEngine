@@ -40816,3 +40816,32 @@ git diff --check
 ```
 
 Results: direct session-contract tests passed (`2` tests with `HIPENGINE_STEPFUN_GGUF_DIR=/models/gguf`); targeted KV blocker generator tests passed (`2` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; KV blocker artifact file SHA `97c8bb2dd6dd983983e6b656aa9c29fe8d4e8032e5f114eb6a653f2116e8bcbc`; KV blocker stable payload SHA `7f494effe529930c69fb6419a9d05d531416829010de1281ba0df77a6d11b2cd`; remaining-blockers rollup file SHA `36655917d02147eedceeb6078e0f7c593fb5ba7002ab08f07e91ae89dc998b2d`; rollup stable payload SHA `b5a23a91d24a27002f171f64a702dcc0720b10a610f374e6e7c357b06e354dea`; correctness-status file SHA `eefaebd57a973180ebce2172e390cff565fb2e1fd15a49cd9f38c1c2ab90be47`; final-blocker file SHA `790d0c2c5956f4f53bd2afff83cd8e4030a776dcf2000f81f357be0d7933a714`; handoff file SHA `5a1d974bb59700e7de0940d902512e852f5c34bd6ef98f4b78bcd32485b18eea`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L KV session contract artifact added
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 487. Added `scripts/stepfun_kv_session_contract.py`, a reproducible generator for the metadata-only `StepFunResidentSession.kv_streaming_decode_contract` evidence path. The generator builds a short-context StepFun Q3_K_L planner from `/models/gguf`, creates a resident-session shell without materializing weights, asks the session for the KV streaming decode contract, and writes `benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json` with `--default-output --pretty`. Added `tests/test_stepfun_kv_session_contract.py` coverage for the builder, CLI output, and compact modes. Updated the remaining-blockers rollup to include the `kv_session_contract` generator command and session-contract artifact path, and updated `docs/STEPFUN.md` to cite the retained artifact.
+
+The retained session-contract artifact reports `status=blocked`, `blocked_by=streaming_decode_loop_not_wired`, `next_action=wire_streaming_decode_loop`, `session_layer_count=45`, `plan_layer_count=45`, `pre_run_upload_entry_count=6`, `launch_operation_count=135`, `no_kernel_launches=true`, and the two required KV evidence artifacts. It does not materialize weights, launch kernels, or generate a token, and makes no KV/e2e/performance claim. Session-contract file SHA is `65a9d3f48e05b0659d4547f1cfe5cc645e9a57e9b861c4aa9e3eec0dd7f03532`; stable payload SHA from `scripts/stepfun_kv_session_contract.py --sha-only` is `38a8835e3ff0abdb677aca2cee6c19cfdb80c611e4d6b0252e41042caea9e76c`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_kv_session_contract.py tests/test_stepfun_kv_session_contract.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_kv_session_contract.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_kv_session_contract.py --default-output --pretty
+python3 scripts/stepfun_kv_session_contract.py --sha-only
+python3 scripts/stepfun_kv_session_contract.py --blocked-by-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted session-contract/rollup tests passed (`6` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; remaining-blockers rollup file SHA `bd88c32fc7c56da7057d432b2a3a52f508615ed713ba909b03b3ef184b273510`; rollup stable payload SHA `b3a90da6f8eca2247ae4b91d5ecab1ad574ca46e060e5d747a1694562da257fd`; correctness-status file SHA `8b5108d7a3c25b5d48d14d3b1546fc12965ee51cd32ac6d7d75490ddc18e89c4`; final-blocker file SHA `2f6373ac8326f3ea88a93a999894a68635db32e25f5ff25f0087ddc6d04ec3d1`; handoff file SHA `9f75a0bd1c0b7564d6a6de13b1663e3136bd6901314421941480181eaca7a67c`.

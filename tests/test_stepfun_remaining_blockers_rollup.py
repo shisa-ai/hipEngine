@@ -80,6 +80,12 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
     ]
+    assert kv_blocker["session_contract_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json"
+    )
+    assert kv_blocker["session_contract_generator_command"] == (
+        "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
+    )
     assert kv_blocker["streaming_runner_source_status"]["next_action"] == (
         "wire_streaming_decode_loop"
     )
@@ -93,6 +99,9 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
+        ),
+        "kv_session_contract": (
+            "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
         ),
         "status_refresh": (
             "python3 scripts/stepfun_correctness_status.py --pretty "
@@ -192,4 +201,7 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
     )
     assert commands["kv_blocker_status"].endswith(
         "stepfun_kv_blocker_status.py --default-output --pretty"
+    )
+    assert commands["kv_session_contract"].endswith(
+        "stepfun_kv_session_contract.py --default-output --pretty"
     )

@@ -1,0 +1,134 @@
+{
+  "artifact_kind": "stepfun_kv_session_streaming_decode_contract",
+  "backend": "hip_gfx1151",
+  "context_pages": 1,
+  "contract": {
+    "all_launches_have_dispatch_keys": true,
+    "all_launches_ready": true,
+    "backend_matches": true,
+    "blocked_by": "streaming_decode_loop_not_wired",
+    "decode_live_count": 23,
+    "decode_position": 23,
+    "executable": false,
+    "launch_first_operation": {
+      "blocked_by": "streaming_decode_loop_not_wired",
+      "dispatch_key_name": "prompt_kv_write",
+      "execution_status": "not_launched_metadata_only",
+      "expected_runtime_inputs": [
+        "layer_prompt_key",
+        "layer_prompt_value"
+      ],
+      "kernel_key": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_prompt_spans"
+      },
+      "launch_ready": true,
+      "layer": 0,
+      "name": "prompt_kv_write",
+      "op_index": 0,
+      "operation": "layers.0.prompt_kv_write",
+      "pre_run_uploads": [
+        "prompt_base_offsets",
+        "prompt_live_counts"
+      ],
+      "span_contract": "prompt_span",
+      "stage_name": "prompt_prefill_kv_write"
+    },
+    "launch_last_operation": {
+      "blocked_by": "streaming_decode_loop_not_wired",
+      "dispatch_key_name": "decode_attention",
+      "execution_status": "not_launched_metadata_only",
+      "expected_runtime_inputs": [
+        "layer_decode_query",
+        "layer_decode_attention_gate"
+      ],
+      "kernel_key": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_attn_decode",
+        "quant": "gguf_step35",
+        "variant": "bf16_split_k_gate_f32_spans"
+      },
+      "launch_ready": true,
+      "layer": 44,
+      "name": "decode_attention",
+      "op_index": 134,
+      "operation": "layers.44.decode_attention",
+      "pre_run_uploads": [
+        "decode_base_offsets",
+        "decode_attention_live_counts"
+      ],
+      "span_contract": "decode_span",
+      "stage_name": "one_token_gated_attention_decode"
+    },
+    "launch_operation_count": 135,
+    "launch_operation_records_sha256": "92a34ac5ef9cdd00df33da1e6ab72adb2e269be03346a2259316209a00bafafe",
+    "launch_operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+    "launch_per_layer_order": [
+      "prompt_kv_write",
+      "decode_kv_write",
+      "decode_attention"
+    ],
+    "layer_count_matches": true,
+    "next_action": "wire_streaming_decode_loop",
+    "no_claim_policy": {
+      "e2e_inference_claim_allowed": false,
+      "kv_backed_decode_claim_allowed": false,
+      "performance_claim_allowed": false,
+      "reason": "This session contract validates metadata for the future streaming decode loop but does not launch kernels or generate a token."
+    },
+    "no_kernel_launches": true,
+    "plan_backend": "hip_gfx1151",
+    "plan_layer_count": 45,
+    "pre_run_cleanup_order": [
+      "decode_attention_live_counts",
+      "decode_kv_write_position",
+      "decode_base_offsets",
+      "prompt_live_counts",
+      "prompt_base_offsets",
+      "input_ids"
+    ],
+    "pre_run_upload_checks_passed": true,
+    "pre_run_upload_entry_count": 6,
+    "pre_run_upload_order": [
+      "input_ids",
+      "prompt_base_offsets",
+      "prompt_live_counts",
+      "decode_base_offsets",
+      "decode_kv_write_position",
+      "decode_attention_live_counts"
+    ],
+    "pre_run_upload_total_nbytes": 484,
+    "prompt_length": 23,
+    "ready": false,
+    "required_artifacts": [
+      "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+      "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    ],
+    "schema_version": 1,
+    "session_backend": "hip_gfx1151",
+    "session_layer_count": 45,
+    "source": "StepFunResidentSession.kv_streaming_decode_contract"
+  },
+  "date": "2026-06-15",
+  "gguf_dir": "/models/gguf",
+  "gguf_paths": [
+    "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "/models/gguf/Step-3.7-flash-Q3_K_L-00002-of-00003.gguf",
+    "/models/gguf/Step-3.7-flash-Q3_K_L-00003-of-00003.gguf"
+  ],
+  "max_context": 512,
+  "max_new_tokens": 1,
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact captures the resident-session streaming decode contract but does not materialize weights, launch kernels, or generate a token."
+  },
+  "page_size": 512,
+  "prompt": "hello",
+  "reasoning_effort": "low",
+  "schema_version": 1,
+  "status": "blocked"
+}

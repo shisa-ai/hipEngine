@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from scripts.stepfun_kv_session_contract import (
+    build_kv_session_contract_artifact,
+    main,
+    stepfun_gguf_paths,
+)
+
+
+def _available_stepfun_gguf_dir() -> Path:
+    root = Path(os.environ.get("HIPENGINE_STEPFUN_GGUF_DIR", "/models/gguf"))
+    try:
+        stepfun_gguf_paths(root)
+    except FileNotFoundError as exc:
+        pytest.skip(str(exc))
+    return root
+
+
+def test_stepfun_kv_session_contract_artifact_binds_session_contract() -> None:
+    gguf_dir = _available_stepfun_gguf_dir()
+
+    artifact = build_kv_session_contract_artifact(gguf_dir=gguf_dir)
+
+    assert artifact["schema_version"] == 1
+    assert artifact["artifact_kind"] == "stepfun_kv_session_streaming_decode_contract"
+    assert artifact["status"] == "blocked"
+    assert artifact["backend"] == "hip_gfx1151"
+    assert artifact["prompt"] == "hello"
+    assert artifact["reasoning_effort"] == "low"
+    assert artifact["max_context"] == 512
+    assert artifact["max_new_tokens"] == 1
+    assert artifact["context_pages"] == 1
+    assert artifact["page_size"] == 512
+    assert len(artifact["gguf_paths"]) == 3
+    contract = artifact["contract"]
+    assert contract["schema_version"] == 1
+    assert contract["source"] == "StepFunResidentSession.kv_streaming_decode_contract"
+    assert contract["executable"] is False
+    assert contract["ready"] is False
+    assert contract["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert contract["next_action"] == "wire_streaming_decode_loop"
+    assert contract["backend_matches"] is True
+    assert contract["layer_count_matches"] is True
+    assert contract["session_layer_count"] == 45
+    assert contract["plan_layer_count"] == 45
+    assert contract["pre_run_upload_entry_count"] == 6
+    assert contract["pre_run_upload_checks_passed"] is True
+    assert contract["launch_operation_count"] == 135
+    assert contract["launch_per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert contract["all_launches_have_dispatch_keys"] is True
+    assert contract["all_launches_ready"] is True
+    assert contract["no_kernel_launches"] is True
+    assert contract["required_artifacts"] == [
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
+    assert artifact["no_claim_policy"] == {
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "This artifact captures the resident-session streaming decode contract "
+            "but does not materialize weights, launch kernels, or generate a token."
+        ),
+    }
+
+
+def test_stepfun_kv_session_contract_cli_writes_artifact(tmp_path: Path) -> None:
+    gguf_dir = _available_stepfun_gguf_dir()
+    output = tmp_path / "kv-session-contract.json"
+
+    rc = main(
+        [
+            "--gguf-dir",
+            str(gguf_dir),
+            "--artifact-date",
+            "2030-01-08",
+            "--output",
+            str(output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(output.read_text())
+    assert payload["date"] == "2030-01-08"
+    assert payload["status"] == "blocked"
+    assert payload["contract"]["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert payload["contract"]["launch_operation_count"] == 135
+
+
+def test_stepfun_kv_session_contract_cli_compact_modes(tmp_path: Path) -> None:
+    gguf_dir = _available_stepfun_gguf_dir()
+    output = tmp_path / "compact.json"
+    base_args = ["--gguf-dir", str(gguf_dir)]
+
+    assert main([*base_args, "--status-only", "--output", str(output)]) == 0
+    assert json.loads(output.read_text()) == "blocked"
+    assert main([*base_args, "--blocked-by-only", "--output", str(output)]) == 0
+    assert json.loads(output.read_text()) == "streaming_decode_loop_not_wired"
+    assert main([*base_args, "--sha-only", "--output", str(output)]) == 0
+    assert isinstance(json.loads(output.read_text()), str)

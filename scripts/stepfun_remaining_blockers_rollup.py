@@ -160,6 +160,9 @@ def _generator_commands() -> dict[str, str]:
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
+        "kv_session_contract": (
+            "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
+        ),
         "status_refresh": (
             "python3 scripts/stepfun_correctness_status.py --pretty "
             "--output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
@@ -246,6 +249,8 @@ def build_remaining_blockers_rollup(
                 "kv_backed_decode_ready": kv_blocker.get("kv_backed_decode_ready"),
                 "blocked_count": kv_blocker.get("blocked_count"),
                 "missing_artifact_paths": kv_blocker.get("missing_artifact_paths"),
+                "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
+                "session_contract_generator_command": commands["kv_session_contract"],
                 "streaming_runner_source_status": kv_blocker.get(
                     "streaming_runner_source_status"
                 ),
