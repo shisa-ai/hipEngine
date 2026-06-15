@@ -106,6 +106,8 @@
       "llamacpp_logits_entrypoint_inventory_generator_command": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
       "llamacpp_logits_helper_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json",
       "llamacpp_logits_helper_contract_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty",
+      "llamacpp_logits_helper_patch_apply_command": "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+      "llamacpp_logits_helper_patch_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
       "llamacpp_logits_helper_patch_dry_run_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json",
       "llamacpp_logits_helper_patch_dry_run_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty",
       "llamacpp_logits_helper_patch_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-plan.json",
@@ -276,9 +278,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "099a212b5d67cb6ff745df728b1e63f471ecd03d49bb69233c33daa71a2c645f",
+    "kv_blocker_status": "cceee0fa3a0655ef62958f70fb74a4d69be9123236782bc80bf9a2d46443e0ff",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "8c140ebbe1fe70b0df5485b3e2d45e071c662e7bb495334177de75335788a6e6"
+    "status": "d082c4fc68f9ae9ce43c0cfa6c625f220b63bf7025e0263133f5b76c2afaaac3"
   },
   "status": "blocked"
 }

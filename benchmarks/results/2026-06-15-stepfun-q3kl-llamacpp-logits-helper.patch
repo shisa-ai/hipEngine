@@ -1,0 +1,120 @@
+--- a/examples/debug/debug.cpp
++++ b/examples/debug/debug.cpp
+@@ -13,0 +14 @@
++#include <sstream>
+@@ -27,0 +29,7 @@
++
++          StepFun retained-token oracle helper:
++
++          {prog} -m model.gguf -p "<|im_start|>..." --save-logits --token-ids 0,128006,...
++
++          Use --token-ids to decode an explicit comma-separated prompt token list.
++          Use --parse-special to tokenize -p with special-token parsing enabled.
+@@ -34,0 +43,67 @@
++}
++
++
++struct stepfun_debug_extra_params {
++    bool parse_special = false;
++    std::vector<llama_token> token_ids;
++};
++
++static std::vector<llama_token> stepfun_parse_token_ids_csv(const std::string & value) {
++    std::vector<llama_token> result;
++    std::stringstream stream(value);
++    std::string item;
++
++    while (std::getline(stream, item, ',')) {
++        if (item.empty()) {
++            throw std::runtime_error("empty token id in --token-ids");
++        }
++        std::size_t consumed = 0;
++        const long parsed = std::stol(item, &consumed, 10);
++        if (consumed != item.size()) {
++            throw std::runtime_error("invalid token id in --token-ids: " + item);
++        }
++        result.push_back(static_cast<llama_token>(parsed));
++    }
++
++    if (result.empty()) {
++        throw std::runtime_error("--token-ids requires at least one token id");
++    }
++
++    return result;
++}
++
++static std::vector<std::string> stepfun_filter_debug_args(int argc, char ** argv, stepfun_debug_extra_params & extra) {
++    std::vector<std::string> filtered;
++    filtered.reserve(argc);
++
++    const std::string token_ids_prefix = "--token-ids=";
++    for (int i = 0; i < argc; ++i) {
++        const std::string arg(argv[i]);
++        if (arg == "--parse-special") {
++            extra.parse_special = true;
++            continue;
++        }
++        if (arg == "--token-ids") {
++            if (i + 1 >= argc) {
++                throw std::runtime_error("--token-ids requires a comma-separated value");
++            }
++            extra.token_ids = stepfun_parse_token_ids_csv(argv[++i]);
++            continue;
++        }
++        if (arg.rfind(token_ids_prefix, 0) == 0) {
++            extra.token_ids = stepfun_parse_token_ids_csv(arg.substr(token_ids_prefix.size()));
++            continue;
++        }
++        filtered.push_back(arg);
++    }
++
++    return filtered;
++}
++
++static std::vector<char *> stepfun_argv_pointers(std::vector<std::string> & args) {
++    std::vector<char *> ptrs;
++    ptrs.reserve(args.size());
++    for (std::string & arg : args) {
++        ptrs.push_back(arg.data());
++    }
++    return ptrs;
+@@ -55 +130 @@
+-    output_data(llama_context * ctx, const llama_model * model, const common_params & params) {
++    output_data(llama_context * ctx, const llama_model * model, const common_params & params, const std::vector<llama_token> & input_tokens) {
+@@ -57,3 +132,2 @@
+-        const bool add_bos = llama_vocab_get_add_bos(vocab);
+-
+-        tokens = common_tokenize(ctx, params.prompt, add_bos);
++
++        tokens = input_tokens;
+@@ -184 +258 @@
+-static bool run(llama_context * ctx, const common_params & params) {
++static bool run(llama_context * ctx, const common_params & params, const stepfun_debug_extra_params & extra) {
+@@ -188,3 +262,5 @@
+-    const bool add_bos = llama_vocab_get_add_bos(vocab);
+-
+-    std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, add_bos);
++    const bool add_bos = extra.token_ids.empty() ? llama_vocab_get_add_bos(vocab) : false;
++
++    std::vector<llama_token> tokens = extra.token_ids.empty()
++        ? common_tokenize(ctx, params.prompt, add_bos, extra.parse_special)
++        : extra.token_ids;
+@@ -206 +282 @@
+-            output_data output {ctx, model, params};
++            output_data output {ctx, model, params, tokens};
+@@ -223 +299,11 @@
+-    if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_DEBUG, print_usage)) {
++    stepfun_debug_extra_params stepfun_extra;
++    std::vector<std::string> filtered_args;
++    try {
++        filtered_args = stepfun_filter_debug_args(argc, argv, stepfun_extra);
++    } catch (const std::exception & e) {
++        LOG_ERR("%s : error parsing StepFun debug helper args: %s\n", __func__, e.what());
++        return 1;
++    }
++    std::vector<char *> filtered_argv = stepfun_argv_pointers(filtered_args);
++
++    if (!common_params_parse(static_cast<int>(filtered_argv.size()), filtered_argv.data(), params, LLAMA_EXAMPLE_DEBUG, print_usage)) {
+@@ -251 +337 @@
+-    if (!run(ctx, params)) {
++    if (!run(ctx, params, stepfun_extra)) {

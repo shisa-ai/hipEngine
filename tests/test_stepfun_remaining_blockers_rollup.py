@@ -161,6 +161,13 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     assert oracle_blocker["llamacpp_logits_helper_patch_dry_run_generator_command"] == (
         "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty"
     )
+    assert oracle_blocker["llamacpp_logits_helper_patch_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+    )
+    assert oracle_blocker["llamacpp_logits_helper_patch_apply_command"] == (
+        "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
+        "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+    )
     assert kv_blocker["readiness_gate"] == "kv_backed_decode"
     assert kv_blocker["generator_command_kind"] == "kv_blocker_status"
     assert kv_blocker["kv_decode_dispatch_ready"] is True

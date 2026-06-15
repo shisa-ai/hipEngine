@@ -29,9 +29,15 @@
     "edits_external_tree": false,
     "reason": "This artifact proves the patch applies but does not modify /home/lhl/llama.cpp."
   },
-  "patch_line_count": 170,
+  "patch_artifact": {
+    "absolute_path": "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+    "apply_command": "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+    "sha256": "fa733be08306aa52af23cf154002cec9c4ed7cd5f671cd2444b0a5cb144838f9"
+  },
+  "patch_line_count": 120,
   "patch_ready": true,
-  "patch_sha256": "2ba6415bc82d5d91d424ab66bf953467549db4194ee93cbcafd24d7423a92373",
+  "patch_sha256": "a159fcf3b633e012578a75e18ad3ba1c571c2437d57f768a7f1ffd160bab2357",
   "patch_summary": {
     "adds_debug_local_parse_special_flag": true,
     "adds_debug_local_token_ids_flag": true,

@@ -314,6 +314,11 @@ def build_remaining_blockers_rollup(
                 "llamacpp_logits_helper_patch_plan_generator_command": commands["llamacpp_logits_helper_patch_plan"],
                 "llamacpp_logits_helper_patch_dry_run_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json",
                 "llamacpp_logits_helper_patch_dry_run_generator_command": commands["llamacpp_logits_helper_patch_dry_run"],
+                "llamacpp_logits_helper_patch_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch",
+                "llamacpp_logits_helper_patch_apply_command": (
+                    "git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero "
+                    "/home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+                ),
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

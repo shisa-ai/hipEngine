@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -53,6 +54,13 @@ def test_stepfun_llamacpp_logits_helper_patch_dry_run_generates_applyable_recipe
     assert report["missing_transforms"] == []
     assert all(result["applied"] is True for result in report["transform_results"])
     assert report["patch_ready"] is True
+    assert report["patch_artifact"]["path"].endswith(
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+    )
+    assert report["patch_artifact"]["sha256"]
+    assert report["patch_artifact"]["apply_command"].endswith(
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
+    )
     assert report["git_apply_check"] == {
         "status": "skipped",
         "returncode": None,
@@ -107,12 +115,15 @@ def test_stepfun_llamacpp_logits_helper_patch_dry_run_reports_missing_transform(
 def test_stepfun_llamacpp_logits_helper_patch_dry_run_cli_modes(tmp_path: Path) -> None:
     _write_debug_source(tmp_path)
     output = tmp_path / "dry-run.json"
+    patch_output = tmp_path / "helper.patch"
     base_args = [
         "--llama-cpp-root",
         str(tmp_path),
         "--skip-apply-check",
         "--artifact-date",
         "2030-04-10",
+        "--patch-output",
+        str(patch_output),
     ]
 
     assert main([*base_args, "--output", str(output), "--pretty"]) == 0
@@ -120,6 +131,14 @@ def test_stepfun_llamacpp_logits_helper_patch_dry_run_cli_modes(tmp_path: Path) 
     assert payload["date"] == "2030-04-10"
     assert payload["patch_ready"] is True
     assert payload["git_apply_check"]["status"] == "skipped"
+    assert payload["patch_artifact"]["path"] == str(patch_output)
+    assert patch_output.exists()
+    assert payload["patch_artifact"]["sha256"] == hashlib.sha256(
+        patch_output.read_bytes()
+    ).hexdigest()
+    assert payload["patch_artifact"]["apply_command"] == (
+        f"git -C {tmp_path} apply --unidiff-zero {patch_output}"
+    )
 
     assert main([*base_args, "--status-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()) == "blocked"

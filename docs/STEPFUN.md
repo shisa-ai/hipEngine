@@ -958,8 +958,12 @@ reporting.
   then rerun the retained-token probe. `scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json`, which generates the
   debug.cpp unified diff in memory and runs `git apply --check -` against the external checkout without applying it;
-  it reports `patch_ready=true`, `git_apply_check.status=passed`, and patch SHA
-  `2ba6415bc82d5d91d424ab66bf953467549db4194ee93cbcafd24d7423a92373`. The patch plan reports `anchors_ready=true`
+  it now also materializes the exact apply input at
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch` with file SHA
+  `fa733be08306aa52af23cf154002cec9c4ed7cd5f671cd2444b0a5cb144838f9` and apply command
+  `git -C /home/lhl/llama.cpp/llama.cpp-vulkan apply --unidiff-zero /home/lhl/hipEngine-stepfun-3.7-flash/benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch`;
+  it reports `patch_ready=true`, `git_apply_check.status=passed`, and stable patch payload SHA
+  `a159fcf3b633e012578a75e18ad3ba1c571c2437d57f768a7f1ffd160bab2357`. The patch plan reports `anchors_ready=true`
   and remains `status=blocked` on
   `llama_cpp_token_ids_helper_patch_applied`, `same_prompt_logits_helper_built`, and
   `llama_cpp_same_prompt_logits_artifact_present`. The dry-run has the same missing applied/build/capture evidence.

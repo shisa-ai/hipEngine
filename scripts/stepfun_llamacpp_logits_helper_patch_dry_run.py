@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 import subprocess
 import sys
@@ -28,6 +29,9 @@ from scripts import stepfun_llamacpp_logits_helper_patch_plan as patch_plan_mod
 
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json"
+)
+DEFAULT_PATCH_OUTPUT = Path(
+    "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper.patch"
 )
 DEFAULT_ARTIFACT_DATE = "2026-06-15"
 DEBUG_RELATIVE_PATH = Path("examples/debug/debug.cpp")
@@ -146,6 +150,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-apply-check", action="store_true", help="Do not run git apply --check.")
     parser.add_argument("--output", type=Path, default=None, help="Write JSON output atomically to this path.")
     parser.add_argument("--default-output", action="store_true", help=f"Write to {DEFAULT_OUTPUT}.")
+    parser.add_argument("--patch-output", type=Path, default=None, help="Write the generated patch atomically to this path.")
+    parser.add_argument("--default-patch-output", action="store_true", help=f"Write the generated patch to {DEFAULT_PATCH_OUTPUT}.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     parser.add_argument("--status-only", action="store_true", help="Emit only status.")
     parser.add_argument("--patch-ready-only", action="store_true", help="Emit only patch readiness boolean.")
@@ -171,13 +177,14 @@ def _generate_patch(original: str, transformed: str, relative_path: Path) -> str
             transformed.splitlines(keepends=True),
             fromfile=f"a/{relative_path.as_posix()}",
             tofile=f"b/{relative_path.as_posix()}",
+            n=0,
         )
     )
 
 
 def _git_apply_check(llama_cpp_root: Path, patch_text: str) -> dict[str, object]:
     completed = subprocess.run(
-        ["git", "apply", "--check", "-"],
+        ["git", "apply", "--check", "--unidiff-zero", "-"],
         cwd=llama_cpp_root,
         input=patch_text,
         text=True,
@@ -193,11 +200,35 @@ def _git_apply_check(llama_cpp_root: Path, patch_text: str) -> dict[str, object]
     }
 
 
+def _patch_artifact_record(
+    *,
+    patch_artifact: Path | None,
+    patch_text: str,
+    llama_cpp_root: Path,
+) -> dict[str, object]:
+    patch_file_sha256 = hashlib.sha256(patch_text.encode()).hexdigest() if patch_text else None
+    if patch_artifact is None:
+        return {
+            "path": None,
+            "absolute_path": None,
+            "sha256": patch_file_sha256,
+            "apply_command": None,
+        }
+    absolute_path = patch_artifact if patch_artifact.is_absolute() else REPO_ROOT / patch_artifact
+    return {
+        "path": str(patch_artifact),
+        "absolute_path": str(absolute_path),
+        "sha256": patch_file_sha256,
+        "apply_command": f"git -C {llama_cpp_root} apply --unidiff-zero {absolute_path}",
+    }
+
+
 def build_llamacpp_logits_helper_patch_dry_run(
     *,
     llama_cpp_root: Path = contract_mod.DEFAULT_LLAMA_CPP_ROOT,
     artifact_date: str = DEFAULT_ARTIFACT_DATE,
     skip_apply_check: bool = False,
+    patch_artifact: Path | None = DEFAULT_PATCH_OUTPUT,
 ) -> dict[str, object]:
     """Return a read-only dry-run report for the retained-token helper patch."""
 
@@ -212,6 +243,11 @@ def build_llamacpp_logits_helper_patch_dry_run(
     missing_transforms = [result["key"] for result in transform_results if not result["applied"]]
     patch_text = _generate_patch(original, transformed, DEBUG_RELATIVE_PATH) if source_exists else ""
     patch_sha256 = status_mod._stable_json_sha256(patch_text)
+    patch_artifact_record = _patch_artifact_record(
+        patch_artifact=patch_artifact,
+        patch_text=patch_text,
+        llama_cpp_root=llama_cpp_root,
+    )
     apply_check = {"status": "skipped", "returncode": None, "stdout": "", "stderr": ""}
     if source_exists and patch_text and not missing_transforms and not skip_apply_check:
         apply_check = _git_apply_check(llama_cpp_root, patch_text)
@@ -244,6 +280,7 @@ def build_llamacpp_logits_helper_patch_dry_run(
         "patch_ready": patch_ready,
         "patch_line_count": len(patch_text.splitlines()),
         "patch_sha256": patch_sha256,
+        "patch_artifact": patch_artifact_record,
         "git_apply_check": apply_check,
         "patch_application_policy": {
             "edits_external_tree": False,
@@ -304,13 +341,26 @@ def _write_payload(payload: object, *, output: Path | None, pretty: bool, raw_te
     tmp.replace(output)
 
 
+def _write_patch_artifact(patch_text: str, *, patch_output: Path | None) -> None:
+    if patch_output is None:
+        return
+    patch_output.parent.mkdir(parents=True, exist_ok=True)
+    tmp = patch_output.with_suffix(patch_output.suffix + ".tmp")
+    tmp.write_text(patch_text)
+    tmp.replace(patch_output)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     output = DEFAULT_OUTPUT if args.default_output else args.output
+    patch_output = args.patch_output
+    if args.default_patch_output or args.default_output:
+        patch_output = DEFAULT_PATCH_OUTPUT
     report = build_llamacpp_logits_helper_patch_dry_run(
         llama_cpp_root=args.llama_cpp_root,
         artifact_date=args.artifact_date,
         skip_apply_check=args.skip_apply_check,
+        patch_artifact=patch_output,
     )
     debug_path = args.llama_cpp_root / DEBUG_RELATIVE_PATH
     patch_text = ""
@@ -320,6 +370,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for key, old, new in TRANSFORMS:
             transformed, _ = _apply_transform(transformed, key, old, new)
         patch_text = _generate_patch(original, transformed, DEBUG_RELATIVE_PATH)
+    _write_patch_artifact(patch_text, patch_output=patch_output)
     payload = _select_payload(report, patch_text, args)
     raw_text = args.patch_only and not args.sha_only
     if args.sha_only:
