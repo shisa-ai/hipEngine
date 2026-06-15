@@ -94696,3 +94696,48 @@ Validation:
   runtime backend/quant dispatch branch, no attention/KV path change, no MTP
   execution or performance claim, and future MTP attention/KV-write work remains
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF CPU-reference NextN oracle fixture
+
+Implemented `mtp-gguf` multiloop iteration 46: promoted the existing NumPy
+`cpu_reference` full NextN layer from code-only scaffold to a committed M3
+offline oracle fixture.
+
+Scope note:
+- CPU/test/plan artifact only. No runtime generation, GGUF loading, GPU kernels,
+  attention/KV runtime paths, MTP draft execution, sampling, or performance path
+  changed.
+- Runtime MTP attention/KV-write work remains gated on the KVLiveSpans ABI; this
+  fixture uses dense CPU arrays only as an offline oracle.
+
+Changes:
+- Added `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`
+  with one deterministic synthetic hidden/token row, full `eh_proj -> attention
+  -> MoE/shared expert -> shared head` inputs, expected finite logits, and top-k
+  IDs for the registered kernel key
+  `(cpu_reference, mtp_nextn_layer, gguf_moe, qwen35_dense_logits)`.
+- Added a fixture-loading test that resolves the registered CPU-reference kernel,
+  recomputes logits, checks finite `float32` output, and verifies expected top-k
+  token IDs/logits.
+- Updated `docs/MTP-gguf.md` M3 current status and checked off the
+  `cpu_reference` NextN forward backlog row. The llama.cpp draft trace and D32
+  token-id capture rows remain open.
+
+Validation:
+- CPU-reference MTP tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `16` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile tests/test_gguf_mtp_cpu_reference.py` and
+  `git diff --check -- tests/test_gguf_mtp_cpu_reference.py docs/MTP-gguf.md benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
+- Fixture smoke:
+  kernel `cpu_reference/mtp_nextn_layer/gguf_moe/qwen35_dense_logits`, logits
+  `[[0.630980908870697, -1.5820587873458862, 1.8975492715835571, -1.3442893028259277]]`,
+  top_k_ids `[2, 0, 3]`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: offline CPU-reference fixture only; no torch import; no
+  backend/quant dispatch branch; no runtime attention/KV path change; the doc
+  still requires KVLiveSpans for runtime MTP attention/KV-write work; no
+  performance claim.

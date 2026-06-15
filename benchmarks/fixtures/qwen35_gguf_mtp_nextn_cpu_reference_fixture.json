@@ -1,0 +1,273 @@
+{
+  "cpu_reference_kernel": [
+    "cpu_reference",
+    "mtp_nextn_layer",
+    "gguf_moe",
+    "qwen35_dense_logits"
+  ],
+  "description": "Synthetic Qwen35 GGUF MTP NextN CPU-reference oracle: one hidden/token row, full eh_proj + dense attention + MoE/shared expert + shared head.",
+  "expected": {
+    "logits": [
+      [
+        0.630980908870697,
+        -1.5820587873458862,
+        1.8975492715835571,
+        -1.3442893028259277
+      ]
+    ],
+    "top_k_logits": [
+      1.8975492715835571,
+      0.630980908870697,
+      -1.3442893028259277
+    ],
+    "top_k_token_ids": [
+      2,
+      0,
+      3
+    ]
+  },
+  "inputs": {
+    "attn_norm_weight": [
+      1.0,
+      1.0
+    ],
+    "attn_post_norm_weight": [
+      1.0,
+      1.0
+    ],
+    "down_qtype": "F32",
+    "down_qweight": [
+      [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0
+        ]
+      ],
+      [
+        [
+          2.0,
+          0.0
+        ],
+        [
+          0.0,
+          2.0
+        ]
+      ]
+    ],
+    "eh_proj_weight": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "enorm_weight": [
+      0.5,
+      2.0
+    ],
+    "gate_qtype": "F32",
+    "gate_qweight": [
+      [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0
+        ]
+      ],
+      [
+        [
+          0.5,
+          0.0
+        ],
+        [
+          0.0,
+          0.5
+        ]
+      ]
+    ],
+    "hidden_seed": [
+      [
+        0.20000000298023224,
+        -0.4000000059604645
+      ]
+    ],
+    "hnorm_weight": [
+      1.0,
+      1.5
+    ],
+    "k_norm_weight": [
+      1.0,
+      1.0
+    ],
+    "q_norm_weight": [
+      1.0,
+      1.0
+    ],
+    "router_weight": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        -1.0
+      ]
+    ],
+    "shared_down_qweight": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ],
+    "shared_gate_logit_weight": [
+      0.75,
+      -0.25
+    ],
+    "shared_gate_qweight": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ],
+    "shared_head_norm_weight": [
+      1.0,
+      1.25
+    ],
+    "shared_head_weight": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ],
+      [
+        0.5,
+        -1.0
+      ],
+      [
+        -0.25,
+        0.75
+      ]
+    ],
+    "shared_qtype": "F32",
+    "shared_up_qweight": [
+      [
+        0.5,
+        0.0
+      ],
+      [
+        0.0,
+        0.5
+      ]
+    ],
+    "token_embedding": [
+      [
+        0.30000001192092896,
+        0.10000000149011612
+      ]
+    ],
+    "up_qtype": "F32",
+    "up_qweight": [
+      [
+        [
+          0.25,
+          0.0
+        ],
+        [
+          0.0,
+          0.25
+        ]
+      ],
+      [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0
+        ]
+      ]
+    ],
+    "wk_weight": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "wo_weight": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ],
+    "wq_weight": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        -1.0
+      ]
+    ],
+    "wv_weight": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "kwargs": {
+    "eps": 1e-06,
+    "experts_used": 1,
+    "num_heads": 1,
+    "num_kv_heads": 1
+  },
+  "schema": 1,
+  "top_k": 3
+}

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -16,9 +19,16 @@ from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 
 
+NEXTN_FIXTURE = Path("benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json")
+
+
 def _rmsnorm(x: np.ndarray, weight: np.ndarray, eps: float = 1.0e-6) -> np.ndarray:
     variance = np.mean(x * x, axis=-1, keepdims=True)
     return (x * np.reciprocal(np.sqrt(variance + eps))) * weight
+
+
+def _f32(value: object) -> np.ndarray:
+    return np.asarray(value, dtype=np.float32)
 
 
 def test_qwen35_gguf_mtp_eh_proj_normalizes_and_concatenates_embedding_then_hidden() -> None:
@@ -569,6 +579,70 @@ def test_qwen35_gguf_mtp_nextn_layer_logits_composes_pinned_sublayers() -> None:
     )
     expected = qwen35_gguf_mtp_shared_head_logits(ffn_out, shared_norm, shared_head)
     np.testing.assert_allclose(logits, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_nextn_fixture_produces_finite_logits_and_topk() -> None:
+    fixture = json.loads(NEXTN_FIXTURE.read_text())
+    assert fixture["cpu_reference_kernel"] == [
+        "cpu_reference",
+        "mtp_nextn_layer",
+        "gguf_moe",
+        "qwen35_dense_logits",
+    ]
+    kernel = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_layer",
+        quant="gguf_moe",
+        variant="qwen35_dense_logits",
+    )
+    inputs = fixture["inputs"]
+    logits = kernel(
+        _f32(inputs["hidden_seed"]),
+        _f32(inputs["token_embedding"]),
+        _f32(inputs["eh_proj_weight"]),
+        _f32(inputs["hnorm_weight"]),
+        _f32(inputs["enorm_weight"]),
+        _f32(inputs["attn_norm_weight"]),
+        _f32(inputs["wq_weight"]),
+        _f32(inputs["wk_weight"]),
+        _f32(inputs["wv_weight"]),
+        _f32(inputs["wo_weight"]),
+        _f32(inputs["q_norm_weight"]),
+        _f32(inputs["k_norm_weight"]),
+        _f32(inputs["attn_post_norm_weight"]),
+        _f32(inputs["router_weight"]),
+        _f32(inputs["gate_qweight"]),
+        _f32(inputs["up_qweight"]),
+        _f32(inputs["down_qweight"]),
+        GGMLQuantizationType[inputs["gate_qtype"]],
+        GGMLQuantizationType[inputs["up_qtype"]],
+        GGMLQuantizationType[inputs["down_qtype"]],
+        _f32(inputs["shared_gate_logit_weight"]),
+        _f32(inputs["shared_gate_qweight"]),
+        _f32(inputs["shared_up_qweight"]),
+        _f32(inputs["shared_down_qweight"]),
+        GGMLQuantizationType[inputs["shared_qtype"]],
+        _f32(inputs["shared_head_norm_weight"]),
+        _f32(inputs["shared_head_weight"]),
+        **fixture["kwargs"],
+    )
+
+    expected_logits = _f32(fixture["expected"]["logits"])
+    assert logits.dtype == np.float32
+    assert np.isfinite(logits).all()
+    np.testing.assert_allclose(logits, expected_logits, rtol=1.0e-6, atol=1.0e-6)
+    top_k = int(fixture["top_k"])
+    top_k_ids = np.argsort(-logits[0], kind="stable")[:top_k]
+    np.testing.assert_array_equal(
+        top_k_ids,
+        np.asarray(fixture["expected"]["top_k_token_ids"]),
+    )
+    np.testing.assert_allclose(
+        logits[0, top_k_ids],
+        _f32(fixture["expected"]["top_k_logits"]),
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )
 
 
 def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:

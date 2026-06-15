@@ -522,6 +522,14 @@ attention/KV-write requirement. Use `--layer` for exact block selection;
 `--require-mtp` makes non-MTP files or over-filtered selections fail fast instead
 of emitting an empty spec list.
 
+Current status:
+
+- The NumPy `cpu_reference` full NextN layer is registered as
+  `KernelKey("cpu_reference", "mtp_nextn_layer", "gguf_moe", "qwen35_dense_logits")`.
+  Fixture `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`
+  pins a deterministic hidden/token row, finite logits, and top-k IDs for the
+  full `eh_proj -> attention -> MoE/shared expert -> shared head` oracle.
+
 Acceptance:
 
 - Fixed hidden/token fixture produces deterministic finite logits.
@@ -746,9 +754,10 @@ is now answered by the M1 required/optional table.)
       (missing/mis-shaped required, tolerated optional).
 - [ ] **M2.5:** expose the fp32 post-`output_norm` per-token hidden seed from the
       GGUF decode path (per-token tap; `run_prompt_hidden` returns BF16 today).
-- [ ] **Add a `cpu_reference` NextN forward** in `kernels/cpu_reference/ops.py`
-      (none exists) registered under `(cpu_reference, nextn, …)` as the offline
-      KL/top-1 oracle, with a RED fixture.
+- [x] **Add a `cpu_reference` NextN forward** in `kernels/cpu_reference/ops.py`
+      registered under `(cpu_reference, mtp_nextn_layer, gguf_moe,
+      qwen35_dense_logits)` as the offline oracle, with a deterministic fixture:
+      `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
 - [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
       attention path and dense fallback; register under
       `KernelKey(backend, layer, quant='w4_gguf', variant)`.
