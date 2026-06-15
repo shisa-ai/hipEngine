@@ -2041,6 +2041,21 @@ class _SchedulerToolArgumentFragment:
 
 
 @dataclass(frozen=True)
+class _ReasoningPart:
+    field: str
+    text: str
+    source_start: int
+    source_end: int
+
+
+@dataclass(frozen=True)
+class _LiveSourceChunk:
+    source_start: int
+    source_end: int
+    stream_chunk: GenerationStreamChunk
+
+
+@dataclass(frozen=True)
 class _ThinkingControl:
     enabled: bool | None = None
     effort: str | None = None
@@ -5089,7 +5104,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             return
         full_text: list[str] = []
         last_stream_chunk: GenerationStreamChunk | None = None
-        splitter_source_chunks: list[GenerationStreamChunk] = []
+        splitter_source_chunks: list[_LiveSourceChunk] = []
+        splitter_source_offset = 0
         splitter = _ReasoningSplitter()
         buffer_tool_output = bool(request.tools)
 
@@ -5165,36 +5181,47 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 full_text.append(text)
                 if buffer_tool_output:
                     continue
-                splitter_source_chunks.append(stream_chunk)
-                for field, chunk in splitter.feed(text):
-                    phase = "think" if field == "reasoning_content" else "answer"
+                source_start = splitter_source_offset
+                source_end = source_start + len(text)
+                splitter_source_offset = source_end
+                splitter_source_chunks.append(
+                    _LiveSourceChunk(
+                        source_start=source_start,
+                        source_end=source_end,
+                        stream_chunk=stream_chunk,
+                    )
+                )
+                for part in splitter.feed_parts(text):
+                    phase = "think" if part.field == "reasoning_content" else "answer"
                     phase_stream_chunk = _live_splitter_stream_chunk_for_delta(
                         splitter_source_chunks,
                         stream_chunk,
-                        chunk,
+                        part.text,
+                        source_start=part.source_start,
+                        source_end=part.source_end,
                         phase=phase,
                     )
                     logprobs = (
-                        _chat_stream_logprobs(phase_stream_chunk, chunk)
-                        if request.logprobs and field == "content"
+                        _chat_stream_logprobs(phase_stream_chunk, part.text)
+                        if request.logprobs and part.field == "content"
                         else None
                     )
                     reasoning_logprobs = (
-                        _chat_reasoning_stream_logprobs(phase_stream_chunk, chunk)
+                        _chat_reasoning_stream_logprobs(phase_stream_chunk, part.text)
                         if request.logprobs
                         and include_hipengine
-                        and field == "reasoning_content"
+                        and part.field == "reasoning_content"
                         else None
                     )
                     token_payload = (
-                        token_accounting.observe(phase, chunk) if token_accounting is not None else None
+                        token_accounting.observe(phase, part.text) if token_accounting is not None else None
                     )
                     yield _chat_stream_delta(
                         response_id,
                         created,
                         config.model_id,
-                        field,
-                        chunk,
+                        part.field,
+                        part.text,
                         logprobs=logprobs,
                         reasoning_logprobs=reasoning_logprobs,
                         tokens=token_payload,
@@ -5206,39 +5233,41 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     )
                 _trim_live_splitter_source_chunks(
                     splitter_source_chunks,
-                    min_chars=splitter.pending_text_length,
+                    min_source_start=splitter.pending_source_start,
                 )
             if not buffer_tool_output:
-                for field, chunk in splitter.finish():
-                    phase = "think" if field == "reasoning_content" else "answer"
+                for part in splitter.finish_parts():
+                    phase = "think" if part.field == "reasoning_content" else "answer"
                     finish_stream_chunk = _live_splitter_stream_chunk_for_delta(
                         splitter_source_chunks,
                         last_stream_chunk,
-                        chunk,
+                        part.text,
+                        source_start=part.source_start,
+                        source_end=part.source_end,
                         phase=phase,
                     )
                     logprobs = (
-                        _chat_stream_logprobs(finish_stream_chunk, chunk)
-                        if request.logprobs and field == "content" and finish_stream_chunk is not None
+                        _chat_stream_logprobs(finish_stream_chunk, part.text)
+                        if request.logprobs and part.field == "content" and finish_stream_chunk is not None
                         else None
                     )
                     reasoning_logprobs = (
-                        _chat_reasoning_stream_logprobs(finish_stream_chunk, chunk)
+                        _chat_reasoning_stream_logprobs(finish_stream_chunk, part.text)
                         if request.logprobs
                         and include_hipengine
-                        and field == "reasoning_content"
+                        and part.field == "reasoning_content"
                         and finish_stream_chunk is not None
                         else None
                     )
                     token_payload = (
-                        token_accounting.observe(phase, chunk) if token_accounting is not None else None
+                        token_accounting.observe(phase, part.text) if token_accounting is not None else None
                     )
                     yield _chat_stream_delta(
                         response_id,
                         created,
                         config.model_id,
-                        field,
-                        chunk,
+                        part.field,
+                        part.text,
                         logprobs=logprobs,
                         reasoning_logprobs=reasoning_logprobs,
                         tokens=token_payload,
@@ -9837,13 +9866,21 @@ def _validate_stream_logprob_chunk(stream_chunk: GenerationStreamChunk) -> None:
 
 
 def _live_splitter_stream_chunk_for_delta(
-    source_chunks: Sequence[GenerationStreamChunk],
+    source_chunks: Sequence[_LiveSourceChunk],
     fallback_chunk: GenerationStreamChunk | None,
     text: str,
     *,
+    source_start: int,
+    source_end: int,
     phase: str,
 ) -> GenerationStreamChunk | None:
-    source_chunk = _live_splitter_tail_stream_chunk(source_chunks, text, phase=phase)
+    source_chunk = _live_splitter_span_stream_chunk(
+        source_chunks,
+        source_start=source_start,
+        source_end=source_end,
+        text=text,
+        phase=phase,
+    )
     if source_chunk is not None:
         return source_chunk
     if fallback_chunk is None:
@@ -9852,60 +9889,46 @@ def _live_splitter_stream_chunk_for_delta(
 
 
 def _trim_live_splitter_source_chunks(
-    source_chunks: list[GenerationStreamChunk],
+    source_chunks: list[_LiveSourceChunk],
     *,
-    min_chars: int,
+    min_source_start: int,
 ) -> None:
-    if min_chars <= 0:
-        source_chunks.clear()
-        return
-    retained = 0
-    start = len(source_chunks)
-    for index in range(len(source_chunks) - 1, -1, -1):
-        retained += len(source_chunks[index].text)
-        start = index
-        if retained >= min_chars:
-            break
-    del source_chunks[:start]
+    while source_chunks and source_chunks[0].source_end <= min_source_start:
+        del source_chunks[0]
 
 
-def _live_splitter_tail_stream_chunk(
-    source_chunks: Sequence[GenerationStreamChunk],
-    text: str,
+def _live_splitter_span_stream_chunk(
+    source_chunks: Sequence[_LiveSourceChunk],
     *,
+    source_start: int,
+    source_end: int,
+    text: str,
     phase: str,
 ) -> GenerationStreamChunk | None:
-    if not text or not source_chunks:
+    if not text or not source_chunks or source_end <= source_start:
         return None
-    remaining = len(text)
-    pieces_reversed: list[str] = []
-    token_groups_reversed: list[tuple[TokenLogprob, ...]] = []
-    tail_chunk: GenerationStreamChunk | None = None
-    for stream_chunk in reversed(source_chunks):
-        chunk_text = stream_chunk.text
-        if not chunk_text:
-            continue
-        take = min(len(chunk_text), remaining)
-        start = len(chunk_text) - take
-        end = len(chunk_text)
-        piece = chunk_text[start:end]
-        tokens = _stream_token_logprobs_for_text_span(stream_chunk, start, end)
-        if piece and not tokens:
-            return None
-        if tail_chunk is None:
-            tail_chunk = stream_chunk
-        pieces_reversed.append(piece)
-        token_groups_reversed.append(tokens)
-        remaining -= take
-        if remaining == 0:
-            break
-    if remaining != 0 or tail_chunk is None:
-        return None
-    if "".join(reversed(pieces_reversed)) != text:
-        return None
+    pieces: list[str] = []
     token_logprobs: list[TokenLogprob] = []
-    for group in reversed(token_groups_reversed):
-        token_logprobs.extend(group)
+    tail_chunk: GenerationStreamChunk | None = None
+    for source_chunk in source_chunks:
+        overlap_start = max(source_start, source_chunk.source_start)
+        overlap_end = min(source_end, source_chunk.source_end)
+        if overlap_start >= overlap_end:
+            continue
+        stream_chunk = source_chunk.stream_chunk
+        local_start = overlap_start - source_chunk.source_start
+        local_end = overlap_end - source_chunk.source_start
+        piece = stream_chunk.text[local_start:local_end]
+        tokens = _stream_token_logprobs_for_text_span(stream_chunk, local_start, local_end)
+        if piece and stream_chunk.token_logprobs and not tokens:
+            return None
+        pieces.append(piece)
+        token_logprobs.extend(tokens)
+        tail_chunk = stream_chunk
+    if tail_chunk is None:
+        return None
+    if "".join(pieces) != text:
+        return None
     chunk = GenerationStreamChunk(
         text=text,
         token_logprobs=tuple(token_logprobs),
@@ -10020,47 +10043,72 @@ class _ReasoningSplitter:
 
     def __init__(self) -> None:
         self._buffer = ""
+        self._buffer_start = 0
+        self._input_length = 0
         self._in_reasoning = False
 
     @property
     def pending_text_length(self) -> int:
         return len(self._buffer)
 
+    @property
+    def pending_source_start(self) -> int:
+        return self._buffer_start
+
     def feed(self, text: str) -> list[tuple[str, str]]:
-        if not text:
-            return []
-        self._buffer += text
-        return self._drain(final=False)
+        return [(part.field, part.text) for part in self.feed_parts(text)]
 
     def finish(self) -> list[tuple[str, str]]:
+        return [(part.field, part.text) for part in self.finish_parts()]
+
+    def feed_parts(self, text: str) -> list[_ReasoningPart]:
+        if not text:
+            return []
+        if not self._buffer:
+            self._buffer_start = self._input_length
+        self._buffer += text
+        self._input_length += len(text)
+        return self._drain(final=False)
+
+    def finish_parts(self) -> list[_ReasoningPart]:
         return self._drain(final=True)
 
-    def _drain(self, *, final: bool) -> list[tuple[str, str]]:
-        outputs: list[tuple[str, str]] = []
+    def _drain(self, *, final: bool) -> list[_ReasoningPart]:
+        outputs: list[_ReasoningPart] = []
         while self._buffer:
             tag = _REASONING_CLOSE_TAG if self._in_reasoning else _REASONING_OPEN_TAG
             index = self._buffer.find(tag)
             if index >= 0:
-                self._append(outputs, self._buffer[:index])
+                self._append(outputs, self._buffer[:index], self._buffer_start)
                 self._buffer = self._buffer[index + len(tag) :]
+                self._buffer_start += index + len(tag)
                 self._in_reasoning = not self._in_reasoning
                 continue
             if final:
-                self._append(outputs, self._buffer)
+                self._append(outputs, self._buffer, self._buffer_start)
+                self._buffer_start += len(self._buffer)
                 self._buffer = ""
                 break
             keep = _tag_suffix_len(self._buffer, tag)
             emit_len = len(self._buffer) - keep
             if emit_len > 0:
-                self._append(outputs, self._buffer[:emit_len])
+                self._append(outputs, self._buffer[:emit_len], self._buffer_start)
                 self._buffer = self._buffer[emit_len:]
+                self._buffer_start += emit_len
             break
         return outputs
 
-    def _append(self, outputs: list[tuple[str, str]], text: str) -> None:
+    def _append(self, outputs: list[_ReasoningPart], text: str, source_start: int) -> None:
         if text:
             field = "reasoning_content" if self._in_reasoning else "content"
-            outputs.append((field, text))
+            outputs.append(
+                _ReasoningPart(
+                    field=field,
+                    text=text,
+                    source_start=int(source_start),
+                    source_end=int(source_start) + len(text),
+                )
+            )
 
 
 def _tag_suffix_len(text: str, tag: str) -> int:

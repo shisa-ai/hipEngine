@@ -93183,3 +93183,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs or streaming_chat_completion_uses_live_reasoning_private_logprobs or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_returns_logprobs_from_buffered_path'` -> `8 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - Source-span live splitter logprob mapping
+
+Reworked the live reasoning splitter metadata path to track raw source spans for
+emitted deltas while preserving the existing tuple API for non-stream callers.
+The live stream path now retains source chunk offsets and can synthesize
+phase-tagged stream chunks for mappable reasoning/content spans anywhere in the
+retained parser buffer, not only tail suffixes. Added a middle-span regression
+where `<think>plan</think>A<thi` emits reasoning logprobs for the `plan` token
+only, instead of falling back to all tag/content tokens from the source chunk.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'maps_live_middle_reasoning_span_logprobs or maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs'` -> `3 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'maps_live_middle_reasoning_span_logprobs or maps_live_final_content_logprobs or maps_live_final_reasoning_logprobs or streaming_chat_completion_uses_live_reasoning_private_logprobs or streaming_chat_completion_uses_scheduler_reasoning_private_logprobs or streaming_chat_completion_returns_live_chunk_logprobs_when_backend_supports_metadata or streaming_chat_live_logprobs_omitted_selected_score_reports_reason or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_returns_logprobs_from_buffered_path or streaming_chat_completion_preserves_reasoning_with_tool_call'` -> `10 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py` -> clean.

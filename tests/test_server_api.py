@@ -8471,6 +8471,79 @@ def test_streaming_chat_completion_uses_live_reasoning_private_logprobs() -> Non
     assert fake.calls[0][1].top_logprobs == 0
 
 
+def test_streaming_chat_completion_maps_live_middle_reasoning_span_logprobs() -> None:
+    fake = FakeLLM(
+        stream_chunks=[
+            GenerationStreamChunk(
+                text="<think>plan</think>A<thi",
+                token_logprobs=(
+                    TokenLogprob(token_id=330, token_text="<think>", logprob=-0.1),
+                    TokenLogprob(token_id=331, token_text="plan", logprob=-0.2),
+                    TokenLogprob(token_id=332, token_text="</think>", logprob=-0.3),
+                    TokenLogprob(token_id=333, token_text="A", logprob=-0.4),
+                    TokenLogprob(token_id=334, token_text="<thi", logprob=-0.5),
+                ),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=5,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="host_logits_sample",
+                    execution_path="live_host_sampler_decode",
+                ),
+            ),
+        ],
+    )
+    fake.supports_stream_logprobs = True
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "logprobs": True,
+            "stream_options": {"include_hipengine": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    reasoning = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("reasoning_content")
+    )
+    content = [
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("content")
+    ]
+    assert reasoning["delta"] == {"reasoning_content": "plan"}
+    assert reasoning["hipengine"]["reasoning_logprobs"] == {
+        "content": [
+            {
+                "token_id": 331,
+                "token": "plan",
+                "logprob": -0.2,
+                "bytes": None,
+                "top_logprobs": [],
+            }
+        ],
+        "public_text": "plan",
+        "refusal": None,
+    }
+    assert [choice["delta"] for choice in content] == [{"content": "A"}, {"content": "<thi"}]
+    assert content[0]["logprobs"]["content"] == [
+        {"token": "A", "logprob": -0.4, "bytes": None, "top_logprobs": []}
+    ]
+    assert content[1]["logprobs"]["content"] == [
+        {"token": "<thi", "logprob": -0.5, "bytes": None, "top_logprobs": []}
+    ]
+
+
 def test_streaming_chat_completion_maps_live_final_content_logprobs() -> None:
     fake = FakeLLM(
         stream_chunks=[
