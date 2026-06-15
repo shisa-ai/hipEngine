@@ -92924,3 +92924,42 @@ Validation:
 - `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - Gate direct INT8 prefill after GPU1 regression
+
+Gated the post-#88 direct streaming INT8 prefill path so the 512/4K/128K
+throughput regression is not silently used by speed-sensitive INT8 KV runs.
+Default behavior is now `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION=auto`:
+
+- `int8_per_token_head` prompts below
+  `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS` (default `200000`) use
+  the previous temporary BF16-oracle bridge and can use AOTriton when
+  `attn_aotriton_min_tokens` permits it.
+- Prompts at or above that gate use the no-oracle direct streaming INT8 prefill
+  path for the very-long/262K memory-gate case.
+- `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION=streaming` forces direct streaming for
+  diagnostics; `=oracle` forces the BF16-oracle path for comparison.
+
+Regression numbers that motivated the gate, from
+`benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json`:
+
+| Workload | Direct streaming prefill tok/s | Direct streaming decode tok/s |
+| --- | ---: | ---: |
+| 512/128 | 2045.109 | 120.075 |
+| 4K/128 | 772.551 | 117.868 |
+| 128K/128 | 23.425 | 68.118 |
+
+The fair 128K comparison against the prior INT8 BF16-oracle/AOTriton artifact
+`benchmarks/results/2026-05-23-rx7900xtx-hipengine-paro-int8kv-131072-128.json`
+was prefill `1020.723 -> 23.425 tok/s` (`-97.7%`) and decode
+`60.404 -> 68.118 tok/s` (`+12.8%`). The direct path remains useful for the
+262K scratch/headroom gate because it removes the BF16 oracle transient, but it
+is now explicitly gated until a memory-safe fast INT8 prefill path exists.
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py` -> passed.
+- `uv run pytest tests/test_qwen35_prefill_workspace_policy.py -q` -> `6 passed`.
+- `uv run pytest tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py -q -k 'prefill or int8 or native'` -> `55 passed`.
+- `uv run pytest tests/test_qwen35_resident_batch_layout.py -q` -> passed.
+- `uv run ruff check hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_resident_batch_layout.py docs/REFACTOR.md WORKLOG.md` -> clean.

@@ -472,7 +472,7 @@ def test_qwen35_resident_slot_full_spans_use_live_counts_for_decode_threshold() 
     assert decode_spans1.max_live_count == 8
 
 
-def test_qwen35_resident_native_prefill_layers_use_direct_int8_prefill_cache() -> None:
+def test_qwen35_resident_native_prefill_layers_gate_int8_to_bf16_oracle_by_default() -> None:
     device = Device("hip", 0)
     session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")
     session.config = SimpleNamespace(
@@ -543,22 +543,25 @@ def test_qwen35_resident_native_prefill_layers_use_direct_int8_prefill_cache() -
     assert out.shape == (4, 8)
     assert len(state.run_calls) == 2
     assert [call[1]["tokens"] for call in state.run_calls] == [2, 2]
-    assert all(call[1]["aotriton_attention"] is False for call in state.run_calls)
+    assert all(call[1]["aotriton_attention"] is True for call in state.run_calls)
     assert [call[1]["aotriton_kv_rows"] for call in state.run_calls] == [2, 4]
-    assert all(call[1]["cu_seqlens_q"] is None for call in state.run_calls)
-    assert all(call[1]["cu_seqlens_k"] is None for call in state.run_calls)
-    assert workspace.calls == []
+    assert all(call[1]["cu_seqlens_q"] is not None for call in state.run_calls)
+    assert all(call[1]["cu_seqlens_k"] is not None for call in state.run_calls)
+    assert [call[0] for call in workspace.calls] == ["prefill.int8_oracle_key", "prefill.int8_oracle_value"]
+    assert all(call[1] == (1, 256, 2, 4) for call in workspace.calls)
+    assert all(call[2] is DType.BF16 for call in workspace.calls)
     for _hidden, kwargs in state.run_calls:
-        assert kwargs["key_cache"].dtype is DType.INT8
-        assert kwargs["value_cache"].dtype is DType.INT8
-        assert kwargs["append_spans"].storage_dtype is DType.INT8_PER_TOKEN_HEAD
-        assert kwargs["prefill_spans"].storage_dtype is DType.INT8_PER_TOKEN_HEAD
-        assert kwargs["append_spans"].scale_metadata is not None
-        assert kwargs["append_spans"].scale_metadata.k_scale.dtype is DType.FP16
-        assert kwargs["prefill_spans"].scale_metadata is kwargs["append_spans"].scale_metadata
-        assert kwargs.get("retained_key_cache") is None
-        assert kwargs.get("retained_value_cache") is None
-        assert kwargs.get("retained_append_spans") is None
+        assert kwargs["key_cache"].dtype is DType.BF16
+        assert kwargs["value_cache"].dtype is DType.BF16
+        assert kwargs["append_spans"].storage_dtype is DType.BF16
+        assert kwargs["prefill_spans"].storage_dtype is DType.BF16
+        assert kwargs["append_spans"].scale_metadata is None
+        assert kwargs["prefill_spans"].scale_metadata is None
+        assert kwargs["retained_key_cache"].dtype is DType.INT8
+        assert kwargs["retained_value_cache"].dtype is DType.INT8
+        assert kwargs["retained_append_spans"].storage_dtype is DType.INT8_PER_TOKEN_HEAD
+        assert kwargs["retained_append_spans"].scale_metadata is not None
+        assert kwargs["retained_append_spans"].scale_metadata.k_scale.dtype is DType.FP16
     assert len(runtime.memcpy_async_calls) == 2
     assert [call[0] for call in runtime.memcpy_async_calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
 

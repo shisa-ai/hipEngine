@@ -125,6 +125,9 @@ from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitP
 
 
 _PREFILL_OVERLAP_MIN_TOKENS = 32768
+_INT8_PREFILL_ATTENTION_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION"
+_INT8_PREFILL_STREAMING_MIN_TOKENS_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS"
+_INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT = 200_000
 _LOGGER = logging.getLogger(__name__)
 _VERIFY_DYNAMIC_METADATA_FIELDS = 5
 
@@ -2298,8 +2301,21 @@ class Qwen35ParoResidentSession:
                 "kv_storage_dtype": self.kv_storage_dtype.value,
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
-                "int8_prefill_oracle": False,
-                "int8_prefill_attention": "streaming" if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+                "int8_prefill_oracle": self._prefill_int8_uses_oracle_attention(len(tokens)),
+                "int8_prefill_attention": self._prefill_int8_attention_path(len(tokens)),
+                "int8_prefill_attention_env": (
+                    os.environ.get(_INT8_PREFILL_ATTENTION_ENV, "auto")
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_streaming_min_tokens": (
+                    _env_int(
+                        _INT8_PREFILL_STREAMING_MIN_TOKENS_ENV,
+                        _INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT,
+                    )
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             if not sample:
@@ -2759,6 +2775,21 @@ class Qwen35ParoResidentSession:
         )
         return append_spans, prefill_spans
 
+    def _prefill_int8_oracle_cache(self, layer_id: int, *, total_tokens: int) -> tuple[Tensor, Tensor]:
+        """Return temporary BF16 K/V cache used only for gated INT8 native prefill attention."""
+
+        blocks = max(1, (int(total_tokens) + self.block_size - 1) // self.block_size)
+        shape = (blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
+        # The BF16 oracle cache is needed only while processing the current
+        # full-attention layer. Reuse the same workspace slots across layers so
+        # long-context INT8 prefill does not retain one full BF16 shadow per
+        # layer before _restore_decode_scratch_after_prefill() releases the
+        # prefill workspace.
+        _ = layer_id
+        key = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_key", shape, DType.BF16)
+        value = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_value", shape, DType.BF16)
+        return key, value
+
     def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:
         cache_key = int(layer_id)
         if self._resident_tensor_view_cache_enabled():
@@ -3012,13 +3043,44 @@ class Qwen35ParoResidentSession:
         threshold = int(self.prefill_config.attn_aotriton_min_tokens)
         return threshold > 0 and int(tokens) >= threshold
 
+    def _prefill_int8_attention_path(self, tokens: int) -> str | None:
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return None
+        value = os.environ.get(_INT8_PREFILL_ATTENTION_ENV, "auto").strip().lower()
+        if value in {"", "auto"}:
+            min_tokens = max(
+                0,
+                _env_int(
+                    _INT8_PREFILL_STREAMING_MIN_TOKENS_ENV,
+                    _INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT,
+                ),
+            )
+            return "streaming_direct" if int(tokens) >= min_tokens else "oracle_bf16"
+        if value in {"streaming", "streaming_direct", "direct", "direct_streaming"}:
+            return "streaming_direct"
+        if value in {"oracle", "bf16_oracle", "aotriton", "oracle_aotriton"}:
+            return "oracle_bf16"
+        raise ValueError(
+            f"{_INT8_PREFILL_ATTENTION_ENV} must be auto, streaming, or oracle "
+            f"(got {value!r})"
+        )
+
+    def _prefill_int8_uses_direct_attention(self, tokens: int) -> bool:
+        return self._prefill_int8_attention_path(tokens) == "streaming_direct"
+
+    def _prefill_int8_uses_oracle_attention(self, tokens: int) -> bool:
+        return self._prefill_int8_attention_path(tokens) == "oracle_bf16"
+
     def _prefill_use_aotriton_attention_resolved(self, tokens: int) -> bool:
         if not self._prefill_use_aotriton_attention(tokens):
             return False
-        # AOTriton currently consumes BF16 K/V. INT8-retained sessions use the
-        # streaming INT8 prefill kernel directly and must not reintroduce the
-        # temporary BF16 oracle workspace just to satisfy AOTriton.
-        return self.kv_storage_dtype == DType.BF16
+        if self.kv_storage_dtype == DType.BF16:
+            return True
+        # AOTriton consumes BF16 K/V. For INT8-retained sessions, use it only
+        # when the INT8 prefill gate selects the temporary BF16 oracle bridge;
+        # the slow direct streaming INT8 path remains available for explicit
+        # diagnostics and very-long memory-gate prompts.
+        return self._prefill_int8_uses_oracle_attention(tokens)
 
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
@@ -3551,6 +3613,11 @@ class Qwen35ParoResidentSession:
                         aotriton_attention=use_aotriton_attention,
                     )
                     self._ensure_moe_prefill_scratch(None, tokens=full_chunk_rows)
+                    if self._prefill_int8_uses_oracle_attention(prompt_rows):
+                        key, value = self._prefill_int8_oracle_cache(0, total_tokens=prompt_rows)
+                        int8_oracle_bytes = int(
+                            key.numel * key.dtype.itemsize + value.numel * value.dtype.itemsize
+                        )
                     capture_live_memory("full_prefill_scratch_live")
 
             peak_memory = None
@@ -3568,6 +3635,20 @@ class Qwen35ParoResidentSession:
                 "linear_prefill_tree_state_full_bytes": int(linear_tree_state_full_bytes),
                 "linear_prefill_tree_state_saved_bytes": int(max(0, linear_tree_state_full_bytes - linear_tree_state_bytes)),
                 "int8_oracle_bytes": int(int8_oracle_bytes),
+                "int8_prefill_attention": self._prefill_int8_attention_path(prompt_rows),
+                "int8_prefill_attention_env": (
+                    os.environ.get(_INT8_PREFILL_ATTENTION_ENV, "auto")
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
+                "int8_prefill_streaming_min_tokens": (
+                    _env_int(
+                        _INT8_PREFILL_STREAMING_MIN_TOKENS_ENV,
+                        _INT8_PREFILL_STREAMING_MIN_TOKENS_DEFAULT,
+                    )
+                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                    else None
+                ),
                 "decode_scratch_released_for_probe": bool(minimize_workspace_overlap),
                 "workspace_overlap_minimized": bool(minimize_workspace_overlap),
                 "prefill_phase_order": list(phase_order),
@@ -4033,10 +4114,17 @@ class Qwen35ParoResidentSession:
                         stream,
                     )
             elif layer_type == "full_attention":
-                key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                retained_key_cache, retained_value_cache = self._slot_full_cache(layer_id, 0)
                 int8_retained = self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
-                prefill_storage_dtype = DType.INT8_PER_TOKEN_HEAD if int8_retained else DType.BF16
-                prefill_scale_metadata = self._slot_full_scale_metadata(layer_id, 0) if int8_retained else None
+                direct_int8_prefill = self._prefill_int8_uses_direct_attention(tokens)
+                if int8_retained and not direct_int8_prefill:
+                    key_cache, value_cache = self._prefill_int8_oracle_cache(layer_id, total_tokens=tokens)
+                    prefill_storage_dtype = DType.BF16
+                    prefill_scale_metadata = None
+                else:
+                    key_cache, value_cache = retained_key_cache, retained_value_cache
+                    prefill_storage_dtype = DType.INT8_PER_TOKEN_HEAD if int8_retained else DType.BF16
+                    prefill_scale_metadata = self._slot_full_scale_metadata(layer_id, 0) if int8_retained else None
                 chunk_size = self._full_attention_prefill_layer_chunk_size(tokens)
                 for start, end in self._chunk_ranges(tokens, chunk_size, min_chunk_size=2):
                     rows = end - start
@@ -4048,6 +4136,15 @@ class Qwen35ParoResidentSession:
                         storage_dtype=prefill_storage_dtype,
                         scale_metadata=prefill_scale_metadata,
                     )
+                    retained_append_spans = None
+                    if int8_retained and not direct_int8_prefill:
+                        retained_append_spans, _ = self._prefill_full_attention_spans(
+                            rows,
+                            start=start,
+                            total_tokens=tokens,
+                            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+                            scale_metadata=self._slot_full_scale_metadata(layer_id, 0),
+                        )
                     positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
                     if use_aotriton_attention:
                         cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
@@ -4074,6 +4171,9 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_k=cu_seqlens_k,
                         aotriton_attention=use_aotriton_attention,
                         aotriton_kv_rows=end,
+                        retained_key_cache=retained_key_cache if retained_append_spans is not None else None,
+                        retained_value_cache=retained_value_cache if retained_append_spans is not None else None,
+                        retained_append_spans=retained_append_spans,
                         tokens=rows,
                         block_size=self.block_size,
                         library=self.libraries,
