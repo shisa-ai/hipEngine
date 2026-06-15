@@ -40623,3 +40623,30 @@ git diff --check
 ```
 
 Results: targeted KV blocker generator tests passed (`2` tests); regenerated KV blocker artifact file SHA `1a195d4408e89b27ec2175a0c702e86e3f75b737e7775990f0d052650da3f063`; stable JSON payload SHA `b129f4b030799e2eedc6f97698f0ffd6cbb584553f204a960531236691b0f88c`; status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `59eea0bc740d9998c13c9d45c570ebb3b139dcfc76050cd492665c57864bf84d`; final-blocker file SHA `fc90e5c7676a1f0d33e7ece2656586053b8fbef48bec1b3308571a9405bb2223`; handoff file SHA `21338ac0ba8788d939169eaa6b7574220edcc6d182b9d02fdcc26f670ee1c4d6`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L oracle token mismatch generator added
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 480. Added `scripts/stepfun_oracle_token_mismatch.py`, a reproducible wrapper around `scripts/stepfun_oracle_artifact_check.py --summary-only --llama-tokenize` for the retained oracle token-level mismatch artifact. The wrapper regenerates `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json` with `--default-output --pretty`, exposes compact status/missing-evidence/token-id-only modes, and keeps the artifact focused on blocker evidence only. Added `tests/test_stepfun_oracle_token_mismatch.py` coverage for the builder, CLI output, and token-id-only summary. Updated `docs/STEPFUN.md` to cite the generator command.
+
+The regenerated oracle token mismatch artifact remains unchanged at file SHA `d12555c25716c97e7b1d63562f4b1e0d3d898b6b0389db9e949bf584e84598b3`; `scripts/stepfun_oracle_token_mismatch.py --sha-only` reports compact summary payload SHA `206f04205bc9cd48f6c23d19d4b74e203974c1b4ccd74dea3b1d5a61e9ee0979`. The token-id-only summary still pins the blocker as expected `[369]` vs generated `[671, 271]` / stripped `[671]`, with missing evidence `generated_text_matches_target`. No oracle/e2e/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_token_mismatch.py tests/test_stepfun_oracle_token_mismatch.py
+python3 -m pytest -q tests/test_stepfun_oracle_token_mismatch.py
+python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty
+python3 scripts/stepfun_oracle_token_mismatch.py --sha-only
+python3 scripts/stepfun_oracle_token_mismatch.py --token-ids-only --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted oracle token mismatch generator tests passed (`3` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `47a53c5ae8420b25e59a8fa60b21784fd9daa83fc76d96b89bac59e92802315b`; final-blocker file SHA `d5b56d460d862559ec3cadf5d6cc02008ecca6299a6f083da1ae058d5627e05b`; handoff file SHA `bde398f910ce151085dd1f34dbe7d8ffc11193dd7b4dd9787c2d482a860b8b93`; full StepFun guard passed; `git diff --check` passed.
