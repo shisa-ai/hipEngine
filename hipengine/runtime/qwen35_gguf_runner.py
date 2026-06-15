@@ -194,6 +194,7 @@ class Qwen35GGUFHiddenSeedContract:
     rows: int
     hidden_size: int
     source_buffer: str
+    populated_by_decode: bool
     llama_cpp_compatible: bool
 
     def __post_init__(self) -> None:
@@ -203,13 +204,19 @@ class Qwen35GGUFHiddenSeedContract:
             raise ValueError("GGUF MTP hidden seed rows must be positive")
         if self.hidden_size <= 0:
             raise ValueError("GGUF MTP hidden seed hidden_size must be positive")
-        expected = self.dtype is DType.FP32
+        expected = self.dtype is DType.FP32 and self.populated_by_decode
         if self.llama_cpp_compatible != expected:
-            raise ValueError("llama_cpp_compatible must reflect whether dtype is FP32")
+            raise ValueError(
+                "llama_cpp_compatible must reflect whether the seed is FP32 and populated by decode"
+            )
 
     @property
     def requires_fp32_tap(self) -> bool:
         return self.dtype is not DType.FP32
+
+    @property
+    def ready_for_mtp(self) -> bool:
+        return self.llama_cpp_compatible
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -218,8 +225,10 @@ class Qwen35GGUFHiddenSeedContract:
             "rows": self.rows,
             "hidden_size": self.hidden_size,
             "source_buffer": self.source_buffer,
+            "populated_by_decode": self.populated_by_decode,
             "llama_cpp_compatible": self.llama_cpp_compatible,
             "requires_fp32_tap": self.requires_fp32_tap,
+            "ready_for_mtp": self.ready_for_mtp,
         }
 
 
@@ -227,6 +236,7 @@ def qwen35_gguf_fp32_hidden_seed_contract(
     hidden_size: int,
     *,
     rows: int = 1,
+    populated_by_decode: bool = False,
 ) -> Qwen35GGUFHiddenSeedContract:
     """Describe the M2.5 fp32 GGUF hidden seed target buffer."""
 
@@ -236,7 +246,8 @@ def qwen35_gguf_fp32_hidden_seed_contract(
         rows=int(rows),
         hidden_size=int(hidden_size),
         source_buffer="Qwen35GGUFResidentSession.scratch.hidden_seed_fp32",
-        llama_cpp_compatible=True,
+        populated_by_decode=bool(populated_by_decode),
+        llama_cpp_compatible=bool(populated_by_decode),
     )
 
 
@@ -258,6 +269,7 @@ def qwen35_gguf_current_hidden_seed_contract(
         rows=int(rows),
         hidden_size=int(hidden_size),
         source_buffer="Qwen35GGUFResidentSession.scratch.norm",
+        populated_by_decode=True,
         llama_cpp_compatible=False,
     )
 

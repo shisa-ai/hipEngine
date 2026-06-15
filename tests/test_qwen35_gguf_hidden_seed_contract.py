@@ -29,12 +29,14 @@ def test_current_gguf_hidden_seed_contract_marks_bf16_tap_non_llama_compatible()
         "rows": 1,
         "hidden_size": 4096,
         "source_buffer": "Qwen35GGUFResidentSession.scratch.norm",
+        "populated_by_decode": True,
         "llama_cpp_compatible": False,
         "requires_fp32_tap": True,
+        "ready_for_mtp": False,
     }
 
 
-def test_fp32_hidden_seed_contract_marks_m25_target_buffer_compatible() -> None:
+def test_fp32_hidden_seed_contract_marks_m25_target_buffer_unpopulated() -> None:
     contract = qwen35_gguf_fp32_hidden_seed_contract(hidden_size=4096, rows=4)
 
     assert contract.provenance == "post_output_norm"
@@ -43,7 +45,9 @@ def test_fp32_hidden_seed_contract_marks_m25_target_buffer_compatible() -> None:
     assert contract.hidden_size == 4096
     assert contract.source_buffer == "Qwen35GGUFResidentSession.scratch.hidden_seed_fp32"
     assert not contract.requires_fp32_tap
-    assert contract.llama_cpp_compatible
+    assert not contract.populated_by_decode
+    assert not contract.llama_cpp_compatible
+    assert not contract.ready_for_mtp
 
 
 def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without_gpu_init() -> None:
@@ -65,7 +69,9 @@ def test_resident_session_reports_current_and_fp32_hidden_seed_contracts_without
     assert fp32.rows == 2
     assert fp32.hidden_size == 8192
     assert not fp32.requires_fp32_tap
-    assert fp32.llama_cpp_compatible
+    assert not fp32.populated_by_decode
+    assert not fp32.llama_cpp_compatible
+    assert not fp32.ready_for_mtp
 
 
 def test_resident_session_hidden_seed_contract_rejects_closed_session() -> None:
@@ -85,10 +91,12 @@ def test_fp32_hidden_seed_contract_is_llama_compatible() -> None:
         rows=3,
         hidden_size=4096,
         source_buffer="future_fp32_hidden_seed_tap",
+        populated_by_decode=True,
         llama_cpp_compatible=True,
     )
 
     assert not contract.requires_fp32_tap
+    assert contract.ready_for_mtp
     assert contract.as_dict()["dtype"] == "FP32"
 
 
@@ -100,6 +108,7 @@ def test_hidden_seed_contract_rejects_pre_norm_or_wrong_compatibility() -> None:
             rows=1,
             hidden_size=4096,
             source_buffer="bad",
+            populated_by_decode=True,
             llama_cpp_compatible=True,
         )
 
@@ -110,5 +119,17 @@ def test_hidden_seed_contract_rejects_pre_norm_or_wrong_compatibility() -> None:
             rows=1,
             hidden_size=4096,
             source_buffer="bad",
+            populated_by_decode=True,
+            llama_cpp_compatible=True,
+        )
+
+    with pytest.raises(ValueError, match="llama_cpp_compatible must reflect"):
+        Qwen35GGUFHiddenSeedContract(
+            provenance="post_output_norm",
+            dtype=DType.FP32,
+            rows=1,
+            hidden_size=4096,
+            source_buffer="bad",
+            populated_by_decode=False,
             llama_cpp_compatible=True,
         )

@@ -93104,3 +93104,32 @@ Validation:
 - Prompt verifier passed: fp32 scratch ABI/metadata only, no torch hot-path import,
   no backend/quant dispatch branches, no attention/KV/runtime behavior changes,
   no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF hidden seed populated/readiness semantics
+
+Implemented `mtp-gguf` multiloop iteration 10: tightened the hidden-seed contract
+so allocated fp32 scratch cannot be treated as valid until decode actually writes
+it.
+
+Changes:
+- Added `populated_by_decode` to `Qwen35GGUFHiddenSeedContract`.
+- Added `ready_for_mtp` as the MTP-consumption readiness bit.
+- Changed `llama_cpp_compatible` to require both FP32 dtype and
+  `populated_by_decode=True`.
+- Current BF16 seed contract now reports `populated_by_decode=True` but remains
+  not ready / not llama-compatible because it is BF16.
+- Allocated fp32 target contract now reports `populated_by_decode=False` and
+  remains not ready / not llama-compatible until a future output-norm fp32 tap
+  populates it.
+- Extended hidden-seed contract tests for allocated-but-unwritten fp32 buffers and
+  invalid compatibility combinations.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Hidden-seed contract tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `6` passed.
+- `py_compile` passed for `hipengine/runtime/qwen35_gguf_runner.py`.
+- Prompt verifier passed: metadata semantics only, no torch hot-path import, no
+  backend/quant dispatch branches, no attention/KV/runtime behavior changes, no
+  NextN math, and no performance claims.
