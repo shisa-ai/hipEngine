@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -145,6 +146,7 @@ class JsonObjectConstraintState:
     stack: Iterable[str] = ()
     in_string: bool = False
     escaping: bool = False
+    observed_text: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         self.started = bool(self.started)
@@ -156,14 +158,22 @@ class JsonObjectConstraintState:
             raise ValueError("JsonObjectConstraintState.stack may contain only '}' and ']'")
         self.in_string = bool(self.in_string)
         self.escaping = bool(self.escaping)
+        self.observed_text = str(self.observed_text)
 
     @property
     def forced_close_suffix(self) -> str:
         """Return the close suffix for an incomplete object when safe to force."""
 
-        if self.invalid or not self.started or self.complete or self.in_string or self.escaping:
+        if self.invalid or not self.started or self.complete or self.escaping:
             return ""
-        return "".join(reversed(self.stack))
+        close_suffix = "".join(reversed(self.stack))
+        if not close_suffix:
+            return ""
+        if self.in_string:
+            close_suffix = f'"{close_suffix}'
+        if _is_complete_json_root_object(f"{self.observed_text}{close_suffix}"):
+            return close_suffix
+        return ""
 
     @property
     def needs_close(self) -> bool:
@@ -181,6 +191,7 @@ class JsonObjectConstraintState:
             return self
         if len(char) != 1:
             raise ValueError("observe_char expects exactly one character")
+        self.observed_text += char
 
         if not self.started:
             if char.isspace():
@@ -428,6 +439,14 @@ def _nonnegative_int(value: Any, *, name: str) -> int:
     if parsed < 0:
         raise ValueError(f"{name} must be non-negative")
     return parsed
+
+
+def _is_complete_json_root_object(text: str) -> bool:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, dict)
 
 
 def _matched_sequence(

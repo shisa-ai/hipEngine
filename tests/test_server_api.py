@@ -778,7 +778,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "guided_diff_fence_labels": ["diff", "patch"],
         "strict_decoding": False,
         "strict_result_validation": True,
-        "decode_time_close_forcing": "host_json_object_suffix",
+        "decode_time_close_forcing": "host_json_object_parse_validated_suffix",
         "length_finish_structural_validation": "root_object_json_prefix",
         "result_validation_failure_reasons": ["schema_violation"],
         "schema_validation": "json_schema_subset",

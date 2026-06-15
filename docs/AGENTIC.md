@@ -1795,9 +1795,11 @@ Current code reality:
   choice list across partial length stops;
 - host decode-time structural close-suffix forcing is implemented for
   JSON-object mode and object-root JSON Schema / guided-JSON requests. It can
-  force braces/brackets when the remaining budget exactly fits the suffix, but
-  quote/string repair, token masks, and schema-constrained generation remain
-  future grammar work.
+  force a suffix only when the current prefix plus that suffix parses as a valid
+  JSON root object. This covers brace/bracket closes and value-string quote
+  repair at the exact remaining-budget boundary; unfinished keys, missing
+  values, escape-state strings, token masks, and schema-constrained generation
+  remain future grammar work.
 
 #### P2.4 Guidance / grammar plugin interface
 
@@ -1822,8 +1824,9 @@ Current code reality:
   `guided_decoding_backend`).
   JSON, regex, choice, and patch/diff guidance are reported separately under
   `features.grammars.result_validation_only` because they do not install
-  grammar masks; the narrow object-root close-suffix path is advertised
-  separately under `features.structured_outputs.decode_time_close_forcing`.
+  grammar masks; the narrow parse-validated object-root close-suffix path is
+  advertised separately under
+  `features.structured_outputs.decode_time_close_forcing`.
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
   set to the rejected field. JSON-object / JSON-schema / guided JSON support

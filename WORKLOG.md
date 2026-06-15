@@ -92777,3 +92777,23 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata'` -> `2 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+
+## 2026-06-15 - AGENTIC JSON close forcing quote repair
+
+JSON-object close forcing now proves forced suffixes with Python's JSON parser
+before queuing them. The host path still forces only tokenizer-lowered suffixes
+at the exact remaining-token boundary, but it can now repair open value strings
+when `prefix + suffix` parses as a valid JSON root object. Unsafe prefixes such
+as unfinished keys, missing values, trailing commas, and escape-state strings
+stay unforced instead of manufacturing invalid JSON. The capabilities manifest
+now reports `decode_time_close_forcing="host_json_object_parse_validated_suffix"`.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/constraints.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_sampling.py -q -k 'json_object'` -> `16 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or response_format or guided_json or json_object_close_forcing'` -> `76 passed`.
+- `uv run pytest tests/test_sampling.py -q` -> `57 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `11 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run ruff check hipengine/generation/constraints.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/constraints.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

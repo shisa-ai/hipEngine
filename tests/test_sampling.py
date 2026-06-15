@@ -467,6 +467,52 @@ def test_json_object_close_forcing_queues_suffix_at_budget_boundary() -> None:
     assert result.fast_path_blockers == ("json_object_close_forcing", "forced_tokens_pending")
 
 
+def test_json_object_close_forcing_queues_value_string_repair_at_budget_boundary() -> None:
+    state = RowSamplingState(json_object_close_forcing=True)
+    state.observe_text_for_json_object_close(
+        '{"path":"README',
+        remaining_tokens=2,
+        encode_text=lambda text: (3, 4) if text == '"}' else (),
+    )
+
+    first = select_token(
+        np.array([10.0, 9.0, 8.0, 0.0, -1.0], dtype=np.float32),
+        _params(json_object_close_forcing=True),
+        state,
+    )
+    second = select_token(
+        np.array([10.0, 9.0, 8.0, 0.0, -1.0], dtype=np.float32),
+        _params(json_object_close_forcing=True),
+        state,
+    )
+
+    assert [first.token_id, second.token_id] == [3, 4]
+    assert first.forced_reason == "json_object_close_forcing"
+    assert first.forced_tokens_remaining == 1
+    assert second.forced_reason == "json_object_close_forcing"
+    assert second.forced_tokens_remaining == 0
+
+
+def test_json_object_close_forcing_does_not_queue_unparseable_suffix() -> None:
+    state = RowSamplingState(json_object_close_forcing=True)
+    state.observe_text_for_json_object_close(
+        '{"path":',
+        remaining_tokens=1,
+        encode_text=lambda text: (3,) if text == "}" else (),
+    )
+
+    result = select_token(
+        np.array([10.0, 9.0, 8.0, 0.0], dtype=np.float32),
+        _params(json_object_close_forcing=True),
+        state,
+    )
+
+    assert result.token_id == 0
+    assert result.forced is False
+    assert result.active_processors == ("json_object_close_forcing",)
+    assert result.fast_path_blockers == ("json_object_close_forcing",)
+
+
 def test_json_object_close_forcing_suppresses_eos_until_complete() -> None:
     result = select_token(
         np.array([10.0, 9.0, 8.0], dtype=np.float32),
@@ -700,6 +746,52 @@ def test_json_object_constraint_ignores_delimiters_inside_strings() -> None:
     assert state.in_string is False
     assert state.escaping is False
     assert state.forced_close_suffix == "]}"
+
+
+def test_json_object_constraint_repairs_open_value_string_when_parseable() -> None:
+    state = JsonObjectConstraintState().observe_text('{"path":"README')
+
+    assert state.complete is False
+    assert state.invalid is False
+    assert state.in_string is True
+    assert state.forced_close_suffix == '"}'
+    assert state.to_json_dict()["forced_close_suffix"] == '"}'
+
+    state.observe_text(state.forced_close_suffix)
+
+    assert state.complete is True
+    assert state.invalid is False
+
+
+def test_json_object_constraint_repairs_nested_array_value_string_when_parseable() -> None:
+    state = JsonObjectConstraintState().observe_text('{"paths":["README')
+
+    assert state.complete is False
+    assert state.invalid is False
+    assert state.in_string is True
+    assert state.forced_close_suffix == '"]}'
+
+    state.observe_text(state.forced_close_suffix)
+
+    assert state.complete is True
+    assert state.invalid is False
+
+
+@pytest.mark.parametrize("text", ['{"path"', '{"path":', '{"path": [1,'])
+def test_json_object_constraint_refuses_unparseable_close_suffix(text: str) -> None:
+    state = JsonObjectConstraintState().observe_text(text)
+
+    assert state.complete is False
+    assert state.invalid is False
+    assert state.forced_close_suffix == ""
+
+
+def test_json_object_constraint_refuses_escape_state_string_repair() -> None:
+    state = JsonObjectConstraintState().observe_text('{"path":"README' + "\\")
+
+    assert state.in_string is True
+    assert state.escaping is True
+    assert state.forced_close_suffix == ""
 
 
 @pytest.mark.parametrize(

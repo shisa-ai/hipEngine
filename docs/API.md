@@ -534,9 +534,12 @@ Completion and chat requests accept `response_format: {"type": "json_object"}`,
 validate the completed visible output after generation. JSON-object mode, plus
 JSON Schema / guided-JSON schemas with an object root, also activates host
 decode-time close-suffix forcing on PARO/GGUF sampled rows: when the remaining
-decode budget exactly fits the tokenizer-lowered structural close suffix, the
-suffix is queued as forced tokens and still goes through normal model decode/KV
-updates. This is not full JSON grammar masking or schema-constrained decoding.
+decode budget exactly fits a tokenizer-lowered suffix that makes the current
+prefix parse as a valid JSON root object, the suffix is queued as forced tokens
+and still goes through normal model decode/KV updates. This covers
+parse-validated brace/bracket closes and value-string quote repair; unsafe
+prefixes such as an unfinished object key or a missing value are not repaired.
+This is not full JSON grammar masking or schema-constrained decoding.
 Valid JSON is returned normally; invalid stop-finished outputs return a normal
 response with empty successful content and
 `finish_details.reason: "schema_violation"`. Length finishes keep their visible
@@ -552,7 +555,7 @@ reason under
 `features.structured_outputs.length_finish_structural_validation` is
 `"root_object_json_prefix"` when this structural length-finish guard is active.
 `features.structured_outputs.decode_time_close_forcing` reports
-`"host_json_object_suffix"` for the host close-forcing path.
+`"host_json_object_parse_validated_suffix"` for the host close-forcing path.
 
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` /
