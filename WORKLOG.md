@@ -93420,3 +93420,18 @@ G-M2 profile pass:
   - Prefill kernel total `2104.962 ms`: selected dual Q4_K WMMA prefill `808.629 ms` (`38.42%`), GDN prefill recurrent `354.059 ms` (`16.82%`), dense Q8_0 WMMA prefill `329.123 ms` (`15.64%`), full-attn prefill `85.832 ms` (`4.08%`).
   - Decode kernel total `137.749 ms` / `8.609 ms/token`: dense Q8_0 T16 GEMV `50.620 ms` (`36.75%`), selected dual Q4_K T16 GEMV `16.822 ms` (`12.21%`), full-attn decode `13.913 ms` (`10.10%`), lm-head Q6 T16 `10.137 ms` (`7.36%`).
 - Multiloop iteration 2 logged the profile pass. First focused code lane from evidence: `G-D2` dense Q8_0 T16 GEMV launch-bound/tile-shape audit for decode. First prefill lane after that: `G-P1` selected dual Q4_K WMMA prefill.
+
+## 2026-06-15 - GGUF G-D2 scale-broadcast no-hold
+
+Tried a G-D2 Q8_0 T16 GEMV decode optimization: each wave loaded the 16 fp16
+T16 scale values once in lanes 0-15 and used `__shfl` to broadcast them to all
+32 K lanes, replacing the prior per-lane `d[16]` global loads in the single,
+dual, dual-split, and triple-split Q8_0 T16 GEMV kernels. Hypothesis was lower
+scale-load traffic in the dominant decode bucket.
+
+Validation and outcome:
+- Correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q` -> `24 passed`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Result: `512/128` median prefill/decode `1634.967605 / 116.625481 tok/s`; `4K/128` median prefill/decode `1855.574823 / 106.904545 tok/s`; tracked peak unchanged at `21.334858 GiB`; generated IDs remained stable (`220`, `570`).
+- Baseline was `512/128` decode `125.748702 tok/s`, `4K/128` decode `114.601613 tok/s`, primary metric `114.601613 tok/s`; the candidate primary metric was `106.904545 tok/s` (`-6.7%`).
+- Decision: no-hold/reverted. The original per-lane scale loads are faster than the `__shfl` broadcast path on this GPU/shape mix. Added a no-hold note to `docs/TUNING-gguf.md` so this exact change is not retried without new ISA/rocprof evidence.

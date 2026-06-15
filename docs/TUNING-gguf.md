@@ -128,6 +128,14 @@ Initial focused lanes from evidence:
    and lm-head Q6 T16 is stable at `~7.4-7.7%`; keep them as follow-ups after
    the Q8_0 T16 decode bucket is audited.
 
+No-hold notes:
+
+- **G-D2 scale broadcast rejected (2026-06-15).** Replacing per-lane Q8_0 T16
+  scale loads with `__shfl` broadcast preserved correctness but regressed the
+  gate metric from `114.602` to `106.905 tok/s` (`-6.7%`) and reduced both gate
+  decode medians. The original per-lane scale loads are faster on this GPU;
+  do not retry this exact change without new ISA/rocprof evidence.
+
 ## What we copy from the MTP/DFlash/megakernel successes
 
 The MTP sprint moved from `0.758x / 27.8 ms` to a retained `1.023x / 14.134 ms`
