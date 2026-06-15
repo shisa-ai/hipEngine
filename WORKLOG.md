@@ -40573,3 +40573,29 @@ git diff --check
 ```
 
 Results: status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `a4ae57bb232bbaba37aa828deb4ad2d957d446735e64d00d65bd875a7a032a34`; final-blocker file SHA `4ff7d00b2b3fc9c9930f3ac18e56206effa3f478930708f598d14fb174714305`; handoff file SHA `ed849e3b19557a221ba84dc40d08ea61162e177c906d2a64cbff8489db072978`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L KV blocker artifact generator added
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 478. Added `scripts/stepfun_kv_blocker_status.py`, a small reproducible generator for the compact KV-backed decode blocker artifact retained in the previous iteration. The script builds the current correctness status, final-blocker manifest, and validator report in-process, filters the `kv_backed_decode` readiness gate, and writes `benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json` with `--default-output --pretty`. Added `tests/test_stepfun_kv_blocker_status.py` coverage for the builder and CLI output. Updated `docs/STEPFUN.md` to cite the generator command next to the retained artifact.
+
+The regenerated KV blocker artifact still records `status=blocked`, `blocked_count=2`, `kv_decode_dispatch_ready=true`, `kv_backed_decode_ready=false`, missing paths `benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json`, and the no-KV/no-e2e/no-performance-claim policy. The file SHA remains `d351c44ae14e9af84cf570e332c63e10f1a19424e37b86a89d61292709900f1c`; the stable JSON payload SHA reported by `--sha-only` is `aa6ccc20a3c90609f8a050b5dc65581d1752c63e25047a284e0357bb65b9dd94`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_kv_blocker_status.py tests/test_stepfun_kv_blocker_status.py
+python3 -m pytest -q tests/test_stepfun_kv_blocker_status.py
+python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty
+python3 scripts/stepfun_kv_blocker_status.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted KV blocker generator tests passed (`2` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `0f4bc4ed817aa59f81fcb968ad11e5ac4e377211a5c5e2f86fe55f146e9e3c45`; final-blocker file SHA `500cbad76a46e52b6c5e30d5501439e4af030d26a5feb870767a4574c3466c1f`; handoff file SHA `8a18d711084d89b927b8ec0cd32c7dcfa7a5710655cb99d701d7455ad3d6a47f`; full StepFun guard passed; `git diff --check` passed. No KV/e2e/performance claim is made.
