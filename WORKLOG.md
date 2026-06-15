@@ -91963,3 +91963,21 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema composition
+
+Strict tool schemas and structured-output JSON Schema validation now support
+post-generation schema composition with `allOf`, `anyOf`, `oneOf`, and `not`.
+Request validation rejects malformed composition keywords before generation, the
+capability manifest advertises the composition subset, and unsupported reference
+schemas such as `$ref` still fail closed. This covers common nullable/union
+schemas while keeping decode-time grammar constraints out of scope.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_composition_keywords tests/test_server_api.py::test_completions_response_format_rejects_invalid_composition_schema tests/test_server_api.py::test_completions_response_format_rejects_unsupported_schema_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_composition_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_unsupported_keywords -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `145 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

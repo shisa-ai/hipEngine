@@ -1690,7 +1690,8 @@ Current code reality:
   blocks, required/extra arguments, scalar types, `enum`, `const`, nested
   objects, object property-count bounds, object-valued additional-property
   schemas, pattern-property schemas, arrays, array length bounds, string length
-  bounds/patterns, array uniqueness, and numeric bounds/multiples;
+  bounds/patterns, array uniqueness, numeric bounds/multiples, and schema
+  composition with `allOf` / `anyOf` / `oneOf` / `not`;
 - strict schemas reject unsupported validation keywords before generation rather
   than silently ignoring constraints;
 - decode-time schema constraints and retry/repair remain future grammar work.

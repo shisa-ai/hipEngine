@@ -167,6 +167,10 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "type",
         "enum",
         "const",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
         "properties",
         "patternProperties",
         "required",
@@ -862,6 +866,10 @@ def _tool_schema_subset() -> list[str]:
         "type",
         "enum",
         "const",
+        "composition.allOf",
+        "composition.anyOf",
+        "composition.oneOf",
+        "composition.not",
         "object.properties",
         "object.patternProperties",
         "object.required",
@@ -9643,6 +9651,28 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     if enum is not None and (not isinstance(enum, Sequence) or isinstance(enum, (str, bytes))):
         return (f"{path}.enum", f"{path}.enum must be an array")
 
+    for key in ("allOf", "anyOf", "oneOf"):
+        subschemas = schema.get(key)
+        if subschemas is None:
+            continue
+        if not isinstance(subschemas, Sequence) or isinstance(subschemas, (str, bytes)) or not subschemas:
+            return (f"{path}.{key}", f"{path}.{key} must be a non-empty array of schema objects")
+        for index, subschema in enumerate(subschemas):
+            subschema_path = f"{path}.{key}[{index}]"
+            if not isinstance(subschema, Mapping):
+                return (subschema_path, f"{subschema_path} must be an object")
+            error = _validate_json_schema_subset(subschema, path=subschema_path)
+            if error is not None:
+                return error
+
+    not_schema = schema.get("not")
+    if "not" in schema:
+        if not isinstance(not_schema, Mapping):
+            return (f"{path}.not", f"{path}.not must be an object")
+        error = _validate_json_schema_subset(not_schema, path=f"{path}.not")
+        if error is not None:
+            return error
+
     properties = schema.get("properties")
     if properties is not None:
         if not isinstance(properties, Mapping):
@@ -9735,6 +9765,35 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
     expected = schema.get("type")
     if expected is not None and not _json_schema_type_matches(value, expected):
         return f"{path} does not match schema type {expected!r}"
+    all_of = schema.get("allOf")
+    if isinstance(all_of, Sequence) and not isinstance(all_of, (str, bytes)):
+        for subschema in all_of:
+            if not isinstance(subschema, Mapping):
+                continue
+            error = _validate_json_schema_value(value, subschema, path=path)
+            if error is not None:
+                return error
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, Sequence) and not isinstance(any_of, (str, bytes)):
+        matches = 0
+        for subschema in any_of:
+            if isinstance(subschema, Mapping) and _validate_json_schema_value(value, subschema, path=path) is None:
+                matches += 1
+                break
+        if matches == 0:
+            return f"{path} does not match any allowed schema"
+    one_of = schema.get("oneOf")
+    if isinstance(one_of, Sequence) and not isinstance(one_of, (str, bytes)):
+        matches = sum(
+            1
+            for subschema in one_of
+            if isinstance(subschema, Mapping) and _validate_json_schema_value(value, subschema, path=path) is None
+        )
+        if matches != 1:
+            return f"{path} must match exactly one allowed schema"
+    not_schema = schema.get("not")
+    if isinstance(not_schema, Mapping) and _validate_json_schema_value(value, not_schema, path=path) is None:
+        return f"{path} matches a disallowed schema"
     schema_type = _primary_json_schema_type(expected, value)
     if schema_type == "object":
         if not isinstance(value, Mapping):
