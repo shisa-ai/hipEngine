@@ -1,6 +1,6 @@
 # GGUF Tuning Plan
 
-Date: 2026-06-15
+Date: 2026-06-16
 Branch/worktree: `gguf-tuning` / `/home/lhl/hipEngine-gguf-tuning`
 Scope: Qwen3.6-35B-A3B GGUF on GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`, 24 GiB-class) as the active eval/testbed, with W7900 rows kept as comparison references and the 0.8B GGUF fixtures kept as fast correctness sentinels.
 
@@ -108,16 +108,20 @@ changes.
 
 ## Active GPU1 profile findings
 
-G-M2 paired `rocprofv3` captures were taken on 2026-06-15 with `decode_tokens=16`
-and prefill-only traces used to strip the prefill prefix from decode traces. Raw
-CSV/summary files are under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`.
+G-M2 paired `rocprofv3` captures were taken initially on 2026-06-15 with
+`decode_tokens=16` and refreshed for the retained-default 4K path on 2026-06-16.
+Prefill-only traces are used to strip the prefill prefix from decode traces. Raw
+CSV/summary files live under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`
+and `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup`; the
+compact retained-refresh artifact is
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-retained-4k-rocprof-diagnostic.json`.
 
 | Shape | Phase | Total kernel time | Top buckets |
 | --- | --- | ---: | --- |
 | 512/16 | prefill | `289.487 ms` | selected dual Q4_K WMMA `111.306 ms` (`38.45%`); dense Q8_0 WMMA `54.196 ms` (`18.72%`); GDN prefill recurrent `41.706 ms` (`14.41%`) |
 | 512/16 | decode | `131.242 ms` (`8.203 ms/token`) | dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`); selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`); lm-head Q6 T16 `10.158 ms` (`7.74%`) |
-| 4K/16 | prefill | `2104.962 ms` | selected dual Q4_K WMMA `808.629 ms` (`38.42%`); GDN prefill recurrent `354.059 ms` (`16.82%`); dense Q8_0 WMMA `329.123 ms` (`15.64%`); full-attn prefill `85.832 ms` (`4.08%`) |
-| 4K/16 | decode | `137.749 ms` (`8.609 ms/token`) | dense Q8_0 T16 GEMV `50.620 ms` (`36.75%`); selected dual Q4_K T16 GEMV `16.822 ms` (`12.21%`); full-attn decode `13.913 ms` (`10.10%`); lm-head Q6 T16 `10.137 ms` (`7.36%`) |
+| 4K/16 | prefill | `2094.198 ms` | selected dual Q4_K WMMA `800.455 ms` (`38.22%`); GDN prefill recurrent `351.231 ms` (`16.77%`); dense Q8_0 WMMA `329.473 ms` (`15.73%`); full-attn prefill `87.719 ms` (`4.19%`) |
+| 4K/16 | decode | `138.513 ms` (`8.657 ms/token`) | dense Q8_0 T16 GEMV `49.758 ms` (`35.92%`); selected dual Q4_K T16 GEMV `17.154 ms` (`12.38%`); full-attn decode `13.912 ms` (`10.04%`); lm-head Q6 T16 `10.087 ms` (`7.28%`) |
 
 Retained notes:
 
