@@ -587,6 +587,40 @@
       }
     },
     {
+      "name": "guided_json_schema_local_ref_chat_reasoning_success",
+      "kind": "http",
+      "endpoint": "/v1/chat/completions",
+      "fake_outputs": ["<think>shape</think>{\"path\":\"README.md\",\"result\":\"ok\"}"],
+      "request": {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Return guided JSON with refs."}],
+        "guided_json": {
+          "schema": {
+            "type": "object",
+            "$defs": {
+              "file_ref": {"type": "string", "pattern": "^[A-Z]+[.]md$"},
+              "result_tag": {"enum": ["ok", "skip"]}
+            },
+            "properties": {
+              "path": {"$ref": "#/$defs/file_ref"},
+              "result": {"$ref": "#/$defs/result_tag"}
+            },
+            "required": ["path", "result"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "expected": {
+        "status_code": 200,
+        "finish_reason": "stop",
+        "finish_details": {"reason": "stop", "cache_action": "append_none"},
+        "message_content": "{\"path\":\"README.md\",\"result\":\"ok\"}",
+        "reasoning_content": "shape",
+        "prompt_contains": ["Return only JSON that satisfies this JSON schema"],
+        "response_excludes": ["<think>"]
+      }
+    },
+    {
       "name": "guided_choice_chat_reasoning_success",
       "kind": "http",
       "endpoint": "/v1/chat/completions",

@@ -92160,3 +92160,19 @@ Validation:
 - `python3 -m py_compile tests/test_server_api.py` -> passed.
 - `python3 -m ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC guided JSON local-ref golden trace
+
+Added a deterministic P5.3 golden trace for chat guided-JSON schema output with
+local `$defs` references, hidden Qwen reasoning extraction, prompt-hint
+coverage, and raw `<think>` exclusion. The structured-output coverage guard now
+requires the local-ref guided-JSON trace so harness regressions cannot drop this
+agent schema pattern silently.
+
+Validation:
+- `python3 -m pytest 'tests/test_agentic_harness_traces.py::test_agentic_golden_trace[guided_json_schema_local_ref_chat_reasoning_success]' tests/test_agentic_harness_traces.py::test_agentic_golden_traces_cover_required_server_patterns -q` -> `2 passed`.
+- `python3 -m json.tool tests/fixtures/agentic_traces/golden_traces.json >/dev/null` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `python3 -m py_compile tests/test_agentic_harness_traces.py` -> passed.
+- `python3 -m ruff check tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_agentic_harness_traces.py tests/fixtures/agentic_traces/golden_traces.json` -> clean.

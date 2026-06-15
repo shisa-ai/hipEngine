@@ -57,6 +57,7 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
         {
             "json_schema_violation_chat",
             "guided_json_schema_chat_reasoning_success",
+            "guided_json_schema_local_ref_chat_reasoning_success",
             "guided_choice_chat_reasoning_success",
             "guided_regex_completion_rejects_mismatch",
             "guided_patch_chat_reasoning_fenced_diff",
