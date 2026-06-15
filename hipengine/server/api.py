@@ -4211,6 +4211,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         ],
                         "fallback_diagnostics": [
                             "choices[].hipengine.withheld_scheduler_tool_chunks",
+                            "choices[].hipengine.withheld_scheduler_logprob_chunks",
                         ],
                     },
                     "routing": "stream_options.include_hipengine",
@@ -5163,6 +5164,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         raw_text=text,
                         scheduler_chunks=scheduler_chunks,
                     )
+                withheld_scheduler_logprob_chunks = None
+                if scheduler_chunks and use_scheduler_logprobs and not scheduler_logprob_safe_text:
+                    withheld_scheduler_logprob_chunks = _withheld_scheduler_logprob_chunks_payload(
+                        "unmappable_logprobs",
+                        raw_text=text,
+                        scheduler_chunks=scheduler_chunks,
+                    )
+                final_hipengine = {}
+                for payload in (withheld_scheduler_tool_chunks, withheld_scheduler_logprob_chunks):
+                    if payload is not None:
+                        final_hipengine.update(payload)
                 use_scheduler_chunks = (
                     not request.tools
                     and not parsed.tool_calls
@@ -5231,7 +5243,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_accounting=token_accounting,
                         stream_chunk=_stream_chunk_from_detail("", detail),
                         include_hipengine=include_hipengine,
-                        final_hipengine=withheld_scheduler_tool_chunks,
+                        final_hipengine=final_hipengine or None,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
@@ -12252,6 +12264,56 @@ def _withheld_scheduler_tool_chunks_payload(
             "public_delta": "withheld",
             "chunk_count": len(pieces),
             "malformed_chunk_count": malformed_chunk_count,
+            "raw_text_matches": malformed_chunk_count == 0 and text == str(raw_text),
+            "text_bytes": len(text.encode("utf-8")),
+            "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "chunk_text_bytes": chunk_text_bytes,
+            "execution_paths": sorted(execution_paths),
+        }
+    }
+
+
+def _withheld_scheduler_logprob_chunks_payload(
+    reason: str,
+    *,
+    raw_text: str,
+    scheduler_chunks: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    if not scheduler_chunks:
+        return None
+    pieces: list[str] = []
+    chunk_text_bytes: list[int] = []
+    execution_paths: set[str] = set()
+    malformed_chunk_count = 0
+    chunks_with_logprobs = 0
+    token_logprob_count = 0
+    for payload in scheduler_chunks:
+        stream_chunk = _scheduler_payload_stream_chunk(payload)
+        if stream_chunk is None:
+            malformed_chunk_count += 1
+            continue
+        chunk_text = str(stream_chunk.text)
+        pieces.append(chunk_text)
+        chunk_text_bytes.append(len(chunk_text.encode("utf-8")))
+        if stream_chunk.token_logprobs:
+            chunks_with_logprobs += 1
+            token_logprob_count += len(stream_chunk.token_logprobs)
+        telemetry = stream_chunk.telemetry
+        execution_path = None if telemetry is None else telemetry.decode_state.execution_path
+        if execution_path:
+            execution_paths.add(str(execution_path))
+    if not pieces and malformed_chunk_count == 0:
+        return None
+    text = "".join(pieces)
+    return {
+        "withheld_scheduler_logprob_chunks": {
+            "surface": "chat_logprob_delta",
+            "reason": str(reason),
+            "public_delta": "buffered_without_scheduler_logprobs",
+            "chunk_count": len(pieces),
+            "malformed_chunk_count": malformed_chunk_count,
+            "chunks_with_logprobs": chunks_with_logprobs,
+            "token_logprob_count": token_logprob_count,
             "raw_text_matches": malformed_chunk_count == 0 and text == str(raw_text),
             "text_bytes": len(text.encode("utf-8")),
             "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),

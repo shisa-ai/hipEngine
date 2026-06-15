@@ -311,11 +311,12 @@ deltas with private hipEngine logprobs, visible chat content-logprob deltas,
 validated structured content deltas, and validated tool-call argument deltas),
 plus the fallback conditions that force conservative buffering. When
 `stream_options.include_hipengine=true`, invalid or unmappable buffered
-tool-call scheduler chunks are not forwarded as public deltas, but final done
-choices can include sanitized
-`choices[].hipengine.withheld_scheduler_tool_chunks` metadata with the failure
-reason, chunk counts, byte lengths, a SHA-256 text hash, a raw-text-match
-boolean, and scheduler execution-path names. It also reports
+tool-call scheduler chunks and unmappable scheduler logprob chunks are not
+forwarded as public deltas, but final done choices can include sanitized
+`choices[].hipengine.withheld_scheduler_tool_chunks` or
+`choices[].hipengine.withheld_scheduler_logprob_chunks` metadata with the
+failure reason, chunk counts, byte lengths, a SHA-256 text hash, a
+raw-text-match boolean, and scheduler execution-path names. It also reports
 the optional
 backend-authored field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
@@ -516,6 +517,9 @@ also include private `choices[].hipengine.withheld_scheduler_tool_chunks`
 diagnostics when those chunks were withheld because the parsed tool call was
 invalid or the raw argument span could not be mapped safely; the payload never
 contains raw `<tool_call>` text or raw arguments.
+For logprob requests, unmappable scheduler logprob chunks similarly produce
+private `choices[].hipengine.withheld_scheduler_logprob_chunks` diagnostics with
+counts and hashes, without raw reasoning or answer text.
 `/v1/hipengine/capabilities` reports these normal-response failure reasons under
 `features.tools.result_validation_failure_reasons`. Compatibility parsing
 recovers a common duplicated-start form,

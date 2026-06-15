@@ -93327,3 +93327,21 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Scheduler logprob fallback diagnostics
+
+Added sanitized final-choice diagnostics when buffered chat streams request
+logprobs but scheduler token chunks cannot be safely mapped to public
+content/reasoning deltas. The new
+`choices[].hipengine.withheld_scheduler_logprob_chunks` payload records the
+`unmappable_logprobs` reason, chunk/logprob counts, byte sizes, text hash,
+raw-text-match status, and scheduler execution paths without exposing raw
+reasoning or answer text. The capabilities manifest and API/AGENTIC docs now
+advertise the diagnostic next to withheld scheduler tool chunks.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs or streaming_chat_completion_maps_live_final_reasoning_logprobs or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call or streaming_chat_completion_n_reports_unmappable_scheduler_tool_chunks'` -> `5 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md` -> clean.

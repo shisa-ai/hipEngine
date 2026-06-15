@@ -841,6 +841,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             ],
             "fallback_diagnostics": [
                 "choices[].hipengine.withheld_scheduler_tool_chunks",
+                "choices[].hipengine.withheld_scheduler_logprob_chunks",
             ],
         },
         "routing": "stream_options.include_hipengine",
@@ -8855,6 +8856,27 @@ def test_streaming_chat_completion_falls_back_for_unmappable_reasoning_logprobs(
     } == {"buffered_final_metadata"}
     content = next(choice for choice in deltas if choice["delta"].get("content"))
     assert content["logprobs"]["content"] == []
+    done = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "stop"
+    )
+    diagnostic = done["hipengine"]["withheld_scheduler_logprob_chunks"]
+    assert diagnostic == {
+        "surface": "chat_logprob_delta",
+        "reason": "unmappable_logprobs",
+        "public_delta": "buffered_without_scheduler_logprobs",
+        "chunk_count": 1,
+        "malformed_chunk_count": 0,
+        "chunks_with_logprobs": 1,
+        "token_logprob_count": 1,
+        "raw_text_matches": True,
+        "text_bytes": len("<think>r0</think>A".encode("utf-8")),
+        "text_sha256": hashlib.sha256("<think>r0</think>A".encode("utf-8")).hexdigest(),
+        "chunk_text_bytes": [len("<think>r0</think>A".encode("utf-8"))],
+        "execution_paths": ["scheduler_should_not_surface"],
+    }
+    assert "text" not in diagnostic
     assert fake.stream_calls == []
 
 

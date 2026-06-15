@@ -147,7 +147,9 @@ Known baseline limitations:
   ambiguous row ids. Invalid tool calls, tool outputs whose argument spans
   cannot be mapped safely, structured-output validation failures, and logprob
   chunks that cannot be mapped to emitted content/reasoning deltas keep the
-  conservative buffered parser paths.
+  conservative buffered parser paths. Unmappable scheduler tool/logprob chunks
+  add sanitized final-choice diagnostics with counts, hashes, and execution
+  paths, not generated text.
   Other buffered streaming paths preserve final backend
   telemetry on choice `done` chunks and, when tokenizer/counting hooks are
   available, emit server-derived per-delta token/decode-state snapshots for
@@ -1150,9 +1152,11 @@ Current code reality:
   buffered c>N surfaces may replay engine or wrapped-generator
   `last_batch_generation.scheduler_token_chunks` and which conditions force
   conservative buffering. Invalid or unmappable buffered tool-call scheduler
-  chunks remain withheld from public deltas, but final done choices include
-  sanitized `choices[].hipengine.withheld_scheduler_tool_chunks` diagnostics
-  when clients opt in with `stream_options.include_hipengine=true`.
+  chunks and unmappable scheduler logprob chunks remain withheld from public
+  deltas, but final done choices include sanitized
+  `choices[].hipengine.withheld_scheduler_tool_chunks` or
+  `choices[].hipengine.withheld_scheduler_logprob_chunks` diagnostics when
+  clients opt in with `stream_options.include_hipengine=true`.
 - Streaming error chunks also honor `include_hipengine`: they use top-level
   `hipengine.event="error"` and mirror structured finish details under
   `choices[].hipengine.finish_details` when those details are available.
@@ -2914,13 +2918,14 @@ golden harness traces are now implemented. Good next logical units, in order:
    `phase="structured"`.
    Validated tool-call argument spans can likewise replay scheduler chunks as
    OpenAI `delta.tool_calls` fragments with `phase="tool_call"`. Public
-   invalid/unmappable tool-call chunks are withheld fail-closed with private
-   final-choice diagnostics. Live c=1 reasoning deltas with backend token
-   logprobs now carry hipEngine-private reasoning logprob metadata.
+   invalid/unmappable tool-call chunks and unmappable scheduler logprob chunks
+   are withheld fail-closed with private final-choice diagnostics. Live c=1
+   reasoning deltas with backend token logprobs now carry hipEngine-private
+   reasoning logprob metadata.
    Parser-final splitter leftovers on the live path reuse retained source-chunk
    logprob metadata when the held delta is mappable.
    Broader runtime-native live c>N parity for tool/structured/logprob streams,
-   public invalid/unmappable tool-call chunk forwarding, unmappable
+   public invalid/unmappable tool-call chunk forwarding, live unmappable
    parser-final logprob spans, and full lower-loop continuation handle creation
    and scoping still need work instead of relying on server post-parse
    inference.
