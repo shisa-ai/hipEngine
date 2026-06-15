@@ -1914,6 +1914,10 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
         True,
         True,
     ]
+    assert [_decode_state(output)["native_sampler_rows"] for output in generator.last_generation_outputs] == [
+        False,
+        False,
+    ]
     assert [_decode_state(output)["full_vocab_logits_d2h"] for output in generator.last_generation_outputs] == [
         True,
         True,
@@ -1969,6 +1973,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     assert first_decode_state["sampler_fast_path_blockers"] == ["temperature", "logit_bias", "logprobs"]
     assert first_decode_state["full_vocab_logits_d2h"] is True
     assert first_decode_state["logits_d2h_bytes"] == 2048
+    assert first_decode_state["native_sampler_rows"] is False
 
 
 def test_qwen35_paro_sampled_batch_uses_native_sampler_rows_when_available(monkeypatch) -> None:
@@ -2090,6 +2095,10 @@ def test_qwen35_paro_sampled_batch_uses_native_sampler_rows_when_available(monke
         False,
     ]
     assert [_decode_state(output)["logits_d2h_bytes"] for output in generator.last_generation_outputs] == [0, 0]
+    assert [_decode_state(output)["native_sampler_rows"] for output in generator.last_generation_outputs] == [
+        True,
+        True,
+    ]
     assert [_decode_state(output)["execution_path"] for output in generator.last_generation_outputs] == [
         "scheduler_native_packed_prefill_serial_native_sampler_decode",
         "scheduler_native_packed_prefill_serial_native_sampler_decode",
@@ -2100,6 +2109,7 @@ def test_qwen35_paro_sampled_batch_uses_native_sampler_rows_when_available(monke
     assert first_decode_state["active_processors"] == ["logit_bias"]
     assert first_decode_state["full_vocab_logits_d2h"] is False
     assert first_decode_state["logits_d2h_bytes"] == 0
+    assert first_decode_state["native_sampler_rows"] is True
 
 
 def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:

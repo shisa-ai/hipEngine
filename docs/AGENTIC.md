@@ -306,6 +306,7 @@ class DecodeState:
     native_compact_prefill: bool | None = None
     native_caware_decode: bool | None = None
     serial_decode_fallback: bool | None = None
+    native_sampler_rows: bool | None = None
     continuation_eligible: bool = False
 ```
 
@@ -976,8 +977,9 @@ Current code reality:
   the decode-state snapshot when the native GPU sampler route actually runs.
   PARO c>N scheduler-owned final snapshots also carry `execution_path`,
   `native_compact_prefill`, `native_caware_decode`, and
-  `serial_decode_fallback` so harnesses can tell whether the row used native
-  packed prefill, c-aware native decode, or the serial decode bridge.
+  `serial_decode_fallback`, plus `native_sampler_rows` for sampled batches, so
+  harnesses can tell whether the row used native packed prefill, c-aware native
+  decode, the serial decode bridge, or serial per-slot native GPU sampling.
   PARO/GGUF host-sampled forced-token selections also expose the selected
   `forced_token_id`, `forced_token_reason`, and post-selection
   `forced_tokens_remaining` alongside pending generic forced-token queues,

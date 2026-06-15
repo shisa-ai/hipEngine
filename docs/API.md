@@ -209,15 +209,16 @@ prompt/generated token counts, continuation eligibility, and sampler/processor
 metadata when the backend provides it (`active_processors`,
 `sampler_fast_path_blockers`, `sampler_fallback_reason`, `sampler_mode`,
 `full_vocab_logits_d2h`, `logits_d2h_bytes`, `execution_path`,
-`native_compact_prefill`, `native_caware_decode`, and
-`serial_decode_fallback`).
+`native_compact_prefill`, `native_caware_decode`, `serial_decode_fallback`, and
+`native_sampler_rows`).
 `logits_d2h_bytes` is the per-token full-vocabulary logits vector readback size
 when known, not a cumulative transfer counter. Current PARO/GGUF host-logits
 sampled paths report `full_vocab_logits_d2h=true` with the known vector byte
 size; PARO c=1 and env-enabled c>N serial per-slot native GPU sampler routes
 report `false` and `0`.
 PARO scheduler-owned c>N paths report `execution_path` plus the native packed
-prefill / c-aware decode / serial fallback flags when that metadata is known.
+prefill / c-aware decode / serial fallback / native sampler-row flags when that
+metadata is known.
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
 the choice-level `decode_state` is the backend-authored snapshot; server-derived
 stream token counters remain available beside it under `choices[].hipengine.tokens`.

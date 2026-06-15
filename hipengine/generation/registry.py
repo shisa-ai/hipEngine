@@ -224,6 +224,7 @@ class DecodeState:
     native_compact_prefill: bool | None = None
     native_caware_decode: bool | None = None
     serial_decode_fallback: bool | None = None
+    native_sampler_rows: bool | None = None
     continuation_eligible: bool = False
 
     def __post_init__(self) -> None:
@@ -296,6 +297,11 @@ class DecodeState:
             "serial_decode_fallback",
             None if self.serial_decode_fallback is None else bool(self.serial_decode_fallback),
         )
+        object.__setattr__(
+            self,
+            "native_sampler_rows",
+            None if self.native_sampler_rows is None else bool(self.native_sampler_rows),
+        )
         object.__setattr__(self, "continuation_eligible", bool(self.continuation_eligible))
 
     @classmethod
@@ -334,6 +340,7 @@ class DecodeState:
                 native_compact_prefill=value.get("native_compact_prefill"),
                 native_caware_decode=value.get("native_caware_decode"),
                 serial_decode_fallback=value.get("serial_decode_fallback"),
+                native_sampler_rows=value.get("native_sampler_rows"),
                 continuation_eligible=bool(value.get("continuation_eligible", False)),
             )
         return cls(
@@ -367,6 +374,7 @@ class DecodeState:
             native_compact_prefill=getattr(value, "native_compact_prefill", None),
             native_caware_decode=getattr(value, "native_caware_decode", None),
             serial_decode_fallback=getattr(value, "serial_decode_fallback", None),
+            native_sampler_rows=getattr(value, "native_sampler_rows", None),
             continuation_eligible=bool(getattr(value, "continuation_eligible", False)),
         )
 
@@ -454,6 +462,8 @@ class DecodeState:
             payload["native_caware_decode"] = self.native_caware_decode
         if self.serial_decode_fallback is not None:
             payload["serial_decode_fallback"] = self.serial_decode_fallback
+        if self.native_sampler_rows is not None:
+            payload["native_sampler_rows"] = self.native_sampler_rows
         return payload
 
 
@@ -525,6 +535,7 @@ class GenerationTelemetry:
         native_compact_prefill: bool | None = None,
         native_caware_decode: bool | None = None,
         serial_decode_fallback: bool | None = None,
+        native_sampler_rows: bool | None = None,
         continuation_eligible: bool = False,
         event: str | None = None,
         timing: Mapping[str, float] | None = None,
@@ -562,6 +573,7 @@ class GenerationTelemetry:
                 native_compact_prefill=native_compact_prefill,
                 native_caware_decode=native_caware_decode,
                 serial_decode_fallback=serial_decode_fallback,
+                native_sampler_rows=native_sampler_rows,
                 continuation_eligible=continuation_eligible,
             ),
             event=event,

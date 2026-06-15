@@ -60,6 +60,7 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
                 "native_compact_prefill": True,
                 "native_caware_decode": False,
                 "serial_decode_fallback": True,
+                "native_sampler_rows": False,
             },
             "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
         },
@@ -89,6 +90,7 @@ def test_generation_output_accepts_telemetry_mapping() -> None:
             "native_compact_prefill": True,
             "native_caware_decode": False,
             "serial_decode_fallback": True,
+            "native_sampler_rows": False,
         },
         "event": "done",
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
@@ -116,6 +118,7 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         native_compact_prefill=True,
         native_caware_decode=True,
         serial_decode_fallback=False,
+        native_sampler_rows=True,
         timing={"prefill_ms": 12.5, "decode_ms": 3},
         usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
     )
@@ -144,6 +147,7 @@ def test_generation_telemetry_decode_counts_accept_phase_metadata() -> None:
         "native_compact_prefill": True,
         "native_caware_decode": True,
         "serial_decode_fallback": False,
+        "native_sampler_rows": True,
     }
     assert payload["timing"] == {"prefill_ms": 12.5, "decode_ms": 3.0}
     assert payload["usage"] == {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}

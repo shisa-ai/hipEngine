@@ -980,6 +980,7 @@ class Qwen35ParoOneTokenGenerator:
             native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
             native_caware_decode=self.last_batch_generation["native_caware_decode"],
             serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+            native_sampler_rows=self.last_batch_generation["native_sampler_rows"],
         )
         outputs: list[GenerationOutput] = []
         for request_id in request_ids:
@@ -1021,6 +1022,7 @@ class Qwen35ParoOneTokenGenerator:
                         native_compact_prefill=self.last_batch_generation["native_compact_prefill"],
                         native_caware_decode=self.last_batch_generation["native_caware_decode"],
                         serial_decode_fallback=self.last_batch_generation["serial_decode_fallback"],
+                        native_sampler_rows=self.last_batch_generation["native_sampler_rows"],
                     ),
                 )
             )
@@ -1498,6 +1500,7 @@ def _sampled_batch_scheduler_token_chunks(
     native_compact_prefill: bool | None,
     native_caware_decode: bool | None,
     serial_decode_fallback: bool | None,
+    native_sampler_rows: bool | None,
 ) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     for request_id in request_ids:
@@ -1551,6 +1554,7 @@ def _sampled_batch_scheduler_token_chunks(
                     native_compact_prefill=native_compact_prefill,
                     native_caware_decode=native_caware_decode,
                     serial_decode_fallback=serial_decode_fallback,
+                    native_sampler_rows=native_sampler_rows,
                 ),
             )
             chunks.append(_scheduler_token_chunk_payload(request_id, token_index, int(step.token_id), chunk))
@@ -1634,6 +1638,7 @@ def _telemetry_for_tokens(
     native_compact_prefill: bool | None = None,
     native_caware_decode: bool | None = None,
     serial_decode_fallback: bool | None = None,
+    native_sampler_rows: bool | None = None,
 ) -> GenerationTelemetry:
     state_payload = _decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _forced_token_metadata(forced_sample)
@@ -1667,6 +1672,7 @@ def _telemetry_for_tokens(
         native_compact_prefill=native_compact_prefill,
         native_caware_decode=native_caware_decode,
         serial_decode_fallback=serial_decode_fallback,
+        native_sampler_rows=native_sampler_rows,
     )
 
 

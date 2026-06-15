@@ -752,6 +752,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "native_compact_prefill",
             "native_caware_decode",
             "serial_decode_fallback",
+            "native_sampler_rows",
         ],
         "timing": "backend_generation_telemetry_when_available",
         "usage": "backend_generation_telemetry_when_available",
@@ -7455,6 +7456,7 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
                     native_compact_prefill=True,
                     native_caware_decode=True,
                     serial_decode_fallback=False,
+                    native_sampler_rows=True,
                     timing={"prefill_ms": 3.5, "decode_ms": 1.25},
                 ),
             )
@@ -7503,6 +7505,7 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
             "native_compact_prefill": True,
             "native_caware_decode": True,
             "serial_decode_fallback": False,
+            "native_sampler_rows": True,
         },
     }
     done = next(payload for payload in payloads if payload.get("choices") and payload["choices"][0]["finish_reason"])
@@ -7528,6 +7531,7 @@ def test_buffered_streaming_completion_preserves_backend_done_decode_state() -> 
             "native_compact_prefill": True,
             "native_caware_decode": True,
             "serial_decode_fallback": False,
+            "native_sampler_rows": True,
         },
         "timing": {"prefill_ms": 3.5, "decode_ms": 1.25},
         "finish_details": _stateless_finish_details("stop"),

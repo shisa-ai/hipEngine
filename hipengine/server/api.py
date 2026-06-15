@@ -1336,6 +1336,7 @@ def _choice_telemetry_capability() -> dict[str, Any]:
             "native_compact_prefill",
             "native_caware_decode",
             "serial_decode_fallback",
+            "native_sampler_rows",
         ],
         "timing": "backend_generation_telemetry_when_available",
         "usage": "backend_generation_telemetry_when_available",
@@ -7164,6 +7165,7 @@ def _buffered_delta_stream_chunk(
                 native_compact_prefill=backend_state.native_compact_prefill,
                 native_caware_decode=backend_state.native_caware_decode,
                 serial_decode_fallback=backend_state.serial_decode_fallback,
+                native_sampler_rows=backend_state.native_sampler_rows,
                 continuation_eligible=token_state.continuation_eligible,
             )
         ),
