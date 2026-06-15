@@ -657,9 +657,11 @@ Deliverables:
   token/sampling parity, enforces that the requested `--draft-max` B1-B4 budget
   and the llama.cpp draft sampler contract (`top_k=10`, greedy top-1 from top-k)
   match both engines' sampling fixtures, embeds the MTP draft tensor/call specs
-  (including KVLiveSpans dynamic inputs), records an exact four-axis
-  `runtime_kernel_precheck` for required CPU-reference oracles and missing native
-  runtime/optimization keys, runs the CPU-reference oracle exactness gate plus
+  (including KVLiveSpans dynamic inputs), records a `hidden_seed_contract_precheck`
+  that pins the required fp32 post-`output_norm` seed dtype/provenance and call-spec
+  shape, records an exact four-axis `runtime_kernel_precheck` for required
+  CPU-reference oracles and missing native runtime/optimization keys, runs the
+  CPU-reference oracle exactness gate plus
   the captured llama.cpp draft-trace oracle summary, and emits a blocked artifact
   until native GGUF MTP draft execution is implemented.
 - Run matched prompt/token suite against:
@@ -852,8 +854,9 @@ is now answered by the M1 required/optional table.)
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
-      specs, exact runtime-kernel registry precheck, CPU-reference oracle gate
-      output, and captured llama.cpp draft-trace oracle provenance; B1 runtime
+      specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
+      precheck, CPU-reference oracle gate output, and captured llama.cpp
+      draft-trace oracle provenance; B1 runtime
       execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
@@ -862,10 +865,11 @@ is now answered by the M1 required/optional table.)
       and the committed hipEngine/llama.cpp D32 token fixtures match on all 9
       prompts.
 - [ ] Run B1 exactness and accepted/output parity against llama.cpp B1. The
-      preflight child now records `draft_budget_precheck` and
-      `draft_sampling_contract_precheck` sections so a requested B1-B4 artifact
-      cannot silently reuse mismatched budget or stale draft `top_k=1` sampling
-      settings.
+      preflight child now records `draft_budget_precheck`,
+      `draft_sampling_contract_precheck`, and `hidden_seed_contract_precheck`
+      sections so a requested B1-B4 artifact cannot silently reuse mismatched
+      budget, stale draft `top_k=1` sampling, or a non-fp32/non-post-`output_norm`
+      seed contract.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts; actual B2-B4
       execution/parity still waits on native draft execution.

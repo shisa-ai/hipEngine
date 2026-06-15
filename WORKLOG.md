@@ -96013,3 +96013,52 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Registry precheck uses exact `KernelKey` lookups and reports missing
   native keys without dispatching through backend/quant conditionals.
+
+## 2026-06-15 - MTP-GGUF hidden-seed preflight contract
+
+Implemented `mtp-gguf` multiloop iteration 74: added a hidden-seed contract
+precheck to the GGUF MTP B1/B1-B4 preflight artifact.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This records the required M2.5 seed dtype/provenance in parity artifacts before
+  native execution is implemented, and guards against accidentally consuming the
+  default BF16 AR tap as an MTP seed.
+
+Changes:
+- Added `hidden_seed_contract_precheck` to `scripts/gguf_mtp_b1_prompt_suite.py`.
+  It records:
+  - required fp32 post-`output_norm` populated seed contract from
+    `qwen35_gguf_fp32_hidden_seed_contract(..., populated_by_decode=True)`,
+  - default GGUF AR BF16 tap contract from `qwen35_gguf_current_hidden_seed_contract`,
+  - the `hidden_seed` dynamic input from the MTP call spec,
+  - validation checks for fp32 provenance/readiness and `[tokens, hidden_size]`
+    call-spec shape.
+- Added a `hidden_seed_contract_mismatch` blocker when the required fp32 seed
+  contract or dynamic input shape is inconsistent.
+- Extended preflight tests for the passing hidden-seed precheck and a shape
+  mismatch blocker.
+- Updated `docs/MTP-gguf.md` to document the hidden seed dtype/provenance precheck
+  in blocked artifacts.
+
+Validation:
+- Focused B1 preflight + hidden seed contract tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_qwen35_gguf_hidden_seed_contract.py` -> `23` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `suite blocked hidden_seed True FP32 True default BF16 False blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Hidden-seed precheck records fp32 post-`output_norm` provenance and
+  call-spec shape while future MTP attention/KV-write execution remains
+  KVLiveSpans-gated.

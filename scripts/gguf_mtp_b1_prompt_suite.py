@@ -26,6 +26,10 @@ from hipengine.loading.qwen35_gguf import (  # noqa: E402
     build_qwen35_gguf_mtp_draft_tensor_plans,
     validate_qwen35_gguf_mtp_blocks,
 )
+from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
+    qwen35_gguf_current_hidden_seed_contract,
+    qwen35_gguf_fp32_hidden_seed_contract,
+)
 from scripts.gguf_mtp_oracle_gate import (  # noqa: E402
     DEFAULT_FIXTURE as DEFAULT_ORACLE_FIXTURE,
     run_oracle_gate,
@@ -57,6 +61,74 @@ class B1PromptSuitePreflightError(RuntimeError):
 
 def _kernel_key_payload(key: KernelKey) -> list[str]:
     return [key.backend, key.layer, key.quant, key.variant]
+
+
+def _hidden_seed_dynamic_input(call_spec: dict[str, Any]) -> dict[str, Any] | None:
+    dynamic_inputs = call_spec.get("dynamic_inputs")
+    if not isinstance(dynamic_inputs, list):
+        return None
+    for item in dynamic_inputs:
+        if isinstance(item, dict) and item.get("argument") == "hidden_seed":
+            return item
+    return None
+
+
+def _hidden_size_from_plan(plan: dict[str, Any], call_spec: dict[str, Any]) -> int:
+    hidden_size = plan.get("hidden_size")
+    if isinstance(hidden_size, int):
+        return int(hidden_size)
+    hidden_input = _hidden_seed_dynamic_input(call_spec) or {}
+    shape = hidden_input.get("shape")
+    if isinstance(shape, list | tuple) and len(shape) == 2 and isinstance(shape[1], int):
+        return int(shape[1])
+    raise B1PromptSuitePreflightError("MTP draft plan did not expose hidden_size or hidden_seed shape")
+
+
+def _build_hidden_seed_contract_precheck(
+    *,
+    hidden_size: int,
+    call_spec: dict[str, Any],
+) -> dict[str, Any]:
+    hidden_input = _hidden_seed_dynamic_input(call_spec)
+    required_contract = qwen35_gguf_fp32_hidden_seed_contract(
+        hidden_size,
+        rows=1,
+        populated_by_decode=True,
+    ).as_dict()
+    default_ar_contract = qwen35_gguf_current_hidden_seed_contract(hidden_size, rows=1).as_dict()
+    dynamic_shape = None if hidden_input is None else hidden_input.get("shape")
+    checks = [
+        {
+            "name": "required_fp32_post_output_norm",
+            "passed": bool(
+                required_contract["provenance"] == "post_output_norm"
+                and required_contract["dtype"] == "FP32"
+                and required_contract["ready_for_mtp"]
+            ),
+            "detail": "MTP seed must be a populated fp32 post-output_norm row",
+        },
+        {
+            "name": "default_ar_tap_not_used_for_mtp",
+            "passed": bool(
+                default_ar_contract["dtype"] == "BF16" and not default_ar_contract["ready_for_mtp"]
+            ),
+            "detail": "default GGUF AR generation tap is BF16 and must not be consumed as an MTP seed",
+        },
+        {
+            "name": "hidden_seed_dynamic_input_shape",
+            "passed": dynamic_shape == ["tokens", hidden_size],
+            "detail": "MTP call spec must expose hidden_seed with shape [tokens, hidden_size]",
+        },
+    ]
+    return {
+        "checked": True,
+        "passed": all(item["passed"] for item in checks),
+        "hidden_size": hidden_size,
+        "required_contract": required_contract,
+        "default_ar_contract": default_ar_contract,
+        "dynamic_input": hidden_input,
+        "checks": checks,
+    }
 
 
 def _build_runtime_kernel_precheck(*, backend: str, draft_topk: dict[str, Any]) -> dict[str, Any]:
@@ -337,6 +409,11 @@ def build_b1_prompt_suite_artifact(
     draft_topk_contract = mtp_draft_tensor_plan_dicts[0].get("draft_topk")
     if not isinstance(draft_topk_contract, dict):
         raise B1PromptSuitePreflightError(f"{model}: MTP draft plan did not expose draft_topk")
+    first_call_spec = mtp_draft_tensor_plans[0].cpu_reference_call_spec.as_dict()
+    hidden_seed_contract_precheck = _build_hidden_seed_contract_precheck(
+        hidden_size=_hidden_size_from_plan(mtp_draft_tensor_plan_dicts[0], first_call_spec),
+        call_spec=first_call_spec,
+    )
 
     hipengine_sampling_settings = load_sampling_settings(hipengine_sampling)
     llamacpp_sampling_settings = load_sampling_settings(llamacpp_sampling)
@@ -394,6 +471,16 @@ def build_b1_prompt_suite_artifact(
                 "mismatches": draft_sampling_contract_precheck["mismatches"],
             }
         )
+    if not hidden_seed_contract_precheck["passed"]:
+        blockers.append(
+            {
+                "code": "hidden_seed_contract_mismatch",
+                "detail": "GGUF MTP hidden seed must be fp32 post-output_norm and match the call-spec hidden_seed input",
+                "failed_checks": [
+                    item for item in hidden_seed_contract_precheck["checks"] if not item["passed"]
+                ],
+            }
+        )
     if not runtime_kernel_precheck["exactness_oracles_ready"]:
         blockers.append(
             {
@@ -425,6 +512,7 @@ def build_b1_prompt_suite_artifact(
         parity["all_pass"]
         and draft_budget_precheck["passed"]
         and draft_sampling_contract_precheck["passed"]
+        and hidden_seed_contract_precheck["passed"]
         and runtime_kernel_precheck["exactness_oracles_ready"]
         and oracle_gate["passed"]
         and llamacpp_trace_oracle["passed"]
@@ -474,6 +562,7 @@ def build_b1_prompt_suite_artifact(
         "parity_precheck": parity,
         "draft_budget_precheck": draft_budget_precheck,
         "draft_sampling_contract_precheck": draft_sampling_contract_precheck,
+        "hidden_seed_contract_precheck": hidden_seed_contract_precheck,
         "runtime_kernel_precheck": runtime_kernel_precheck,
         "oracle_gate": oracle_gate,
         "llamacpp_trace_oracle": llamacpp_trace_oracle,

@@ -253,6 +253,18 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         },
         "mismatches": [],
     }
+    assert artifact["hidden_seed_contract_precheck"]["passed"] is True
+    assert artifact["hidden_seed_contract_precheck"]["hidden_size"] == 2048
+    assert artifact["hidden_seed_contract_precheck"]["required_contract"]["dtype"] == "FP32"
+    assert artifact["hidden_seed_contract_precheck"]["required_contract"]["provenance"] == "post_output_norm"
+    assert artifact["hidden_seed_contract_precheck"]["required_contract"]["ready_for_mtp"] is True
+    assert artifact["hidden_seed_contract_precheck"]["default_ar_contract"]["dtype"] == "BF16"
+    assert artifact["hidden_seed_contract_precheck"]["default_ar_contract"]["ready_for_mtp"] is False
+    assert artifact["hidden_seed_contract_precheck"]["dynamic_input"] == {
+        "argument": "hidden_seed",
+        "required": True,
+        "shape": ["tokens", 2048],
+    }
     assert artifact["runtime_kernel_precheck"]["backend"] == "hip_gfx1100"
     assert artifact["runtime_kernel_precheck"]["exactness_oracles_ready"] is True
     assert artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"] is False
@@ -382,6 +394,65 @@ def test_b1_prompt_suite_preflight_rejects_out_of_range_budget(
 
     with pytest.raises(suite.B1PromptSuitePreflightError, match="draft_max"):
         suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path), draft_max=5)
+
+
+def test_b1_prompt_suite_preflight_blocks_hidden_seed_contract_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    draft_topk = {
+        "kernel": ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"],
+        "top_k": 10,
+        "selection": "greedy_top1_from_topk",
+        "selected_index": 0,
+    }
+    call_spec = {
+        "layer_id": 40,
+        "cpu_reference_kernel": [
+            "cpu_reference",
+            "mtp_nextn_layer",
+            "w4_gguf",
+            "qwen35_dense_logits",
+        ],
+        "draft_topk": draft_topk,
+        "dynamic_inputs": [
+            {"argument": "hidden_seed", "required": True, "shape": ["tokens", 1024]},
+        ],
+    }
+    monkeypatch.setattr(
+        suite,
+        "build_qwen35_gguf_mtp_draft_tensor_plans",
+        lambda info, *, strict=True: (
+            SimpleNamespace(
+                layer_id=40,
+                as_dict=lambda: {
+                    "layer_id": 40,
+                    "hidden_size": 2048,
+                    "draft_topk": draft_topk,
+                    "cpu_reference_call_spec": call_spec,
+                },
+                cpu_reference_call_spec=SimpleNamespace(as_dict=lambda: call_spec),
+            ),
+        ),
+    )
+
+    artifact = suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path))
+
+    assert artifact["hidden_seed_contract_precheck"]["passed"] is False
+    assert artifact["blockers"] == [
+        {
+            "code": "hidden_seed_contract_mismatch",
+            "detail": "GGUF MTP hidden seed must be fp32 post-output_norm and match the call-spec hidden_seed input",
+            "failed_checks": [
+                {
+                    "name": "hidden_seed_dynamic_input_shape",
+                    "passed": False,
+                    "detail": "MTP call spec must expose hidden_seed with shape [tokens, hidden_size]",
+                }
+            ],
+        }
+    ]
 
 
 def test_b1_prompt_suite_preflight_reports_llamacpp_trace_blocker_before_runtime_blocker(
