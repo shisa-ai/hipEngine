@@ -2570,9 +2570,10 @@ Current code reality:
   visible-only transcript retention, snapshot export/restore of a hidden-
   reasoning tool-call loop, streaming tool-call parity without raw
   `<tool_call>` leakage, exact OpenAI-compatible streamed
-  `delta.tool_calls` envelopes without stray content/reasoning fields, and
-  stateless streamed parallel tool-call continuation from replayed
-  `assistant.tool_calls` plus multiple `role="tool"` results. The
+  `delta.tool_calls` envelopes without stray content/reasoning fields,
+  deterministic continuation creation/resume/single-use behavior, and stateless
+  streamed parallel tool-call continuation from replayed `assistant.tool_calls`
+  plus multiple `role="tool"` results. The
   trace suite also includes representative
   completion/chat logprob success paths, explicit selected-score omission
   reasons when backend token metadata is partial, and the stable

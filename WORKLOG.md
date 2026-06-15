@@ -93278,3 +93278,16 @@ finishes with stable stop finish details.
 
 Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py -q -k 'streaming_reasoning_structured_json_shape or reasoning_structured_json_response_shape'` -> `2 passed`.
+
+## 2026-06-15 - Continuation conformance coverage
+
+Extended the compact agentic server conformance fake to return detailed
+`GenerationOutput` finish metadata, then added a `/v1/chat/completions`
+continuation regression. The test covers a length-finished answer creating a
+`gen_*` continuation handle with `continuation_eligible=true`, resume producing
+the combined assistant content with inherited prompt suffix state, EOS finish
+details on the resumed response, and single-use rejection without another model
+call.
+
+Validation:
+- `python3 -m pytest tests/test_agentic_server_conformance.py -q -k 'continuation_resume_answer_shape'` -> `1 passed`.

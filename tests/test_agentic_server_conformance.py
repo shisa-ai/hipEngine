@@ -6,7 +6,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import GenerationOutput
+from hipengine.generation import FinishDetails, GenerationOutput
 from hipengine.server import ServerConfig, create_app
 
 
@@ -16,15 +16,23 @@ class AgenticFakeLLM:
         *,
         outputs: list[str] | None = None,
         stream_chunks: list[str] | None = None,
+        detailed_outputs: list[GenerationOutput] | None = None,
     ) -> None:
         self.outputs = list(outputs or ())
         self.stream_chunks = list(stream_chunks or ())
+        self.detailed_outputs = list(detailed_outputs or ())
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
         self.stream_calls: list[tuple[str, SamplingParams]] = []
 
     def generate(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         prompts = tuple(str(prompt) for prompt in prompts)
         self.calls.append((prompts, sampling_params))
+        if self.detailed_outputs:
+            if len(self.detailed_outputs) < len(prompts):
+                raise AssertionError("not enough fake detailed generation output left")
+            outputs = self.detailed_outputs[: len(prompts)]
+            del self.detailed_outputs[: len(prompts)]
+            return outputs
         if self.outputs:
             if len(self.outputs) < len(prompts):
                 raise AssertionError("not enough fake generation output left")
@@ -272,6 +280,73 @@ def test_agentic_conformance_streaming_reasoning_structured_json_shape() -> None
     }
     assert llm.calls
     assert not llm.stream_calls
+
+
+def test_agentic_conformance_continuation_resume_answer_shape() -> None:
+    llm = AgenticFakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial answer",
+                finish_details=FinishDetails(reason="length", length_limit=5),
+            ),
+            GenerationOutput(
+                text=" complete.",
+                finish_details=FinishDetails(reason="eos", eos_token_id=151645),
+            ),
+        ]
+    )
+    client = _client(llm)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "answer briefly"}],
+            "max_tokens": 5,
+            "temperature": 0.0,
+        },
+    )
+
+    assert first.status_code == 200
+    first_choice = first.json()["choices"][0]
+    continuation_id = first_choice["continuation_id"]
+    assert continuation_id.startswith("gen_")
+    assert first_choice["finish_reason"] == "length"
+    assert first_choice["message"] == {"role": "assistant", "content": "partial answer"}
+    assert first_choice["finish_details"] == {
+        "reason": "length",
+        "length_limit": 5,
+        "cache_action": "append_none",
+        "phase": "answer",
+        "continuation_eligible": True,
+        "continuation_id": continuation_id,
+    }
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 4},
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["message"] == {"role": "assistant", "content": "partial answer complete."}
+    assert second_choice["finish_details"] == {
+        "reason": "eos",
+        "eos_token_id": 151645,
+        "cache_action": "append_none",
+    }
+    assert llm.calls[1][0][0].endswith("partial answer")
+
+    reused = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "continuation_id": continuation_id, "max_tokens": 1},
+    )
+
+    assert reused.status_code == 400
+    assert reused.json()["error"]["code"] == "invalid_continuation"
+    assert reused.json()["error"]["param"] == "continuation_id"
+    assert len(llm.calls) == 2
 
 
 def test_agentic_conformance_visible_session_replays_tool_loop_without_reasoning() -> None:
