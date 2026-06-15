@@ -220,6 +220,11 @@ def _runtime_wiring_map() -> dict[str, object]:
             "file": runner_file,
             "role": "Current all-layer prompt smoke path; it is host-composed and not KV-backed decode.",
         },
+        "session_contract_entrypoint": {
+            "symbol": "StepFunResidentSession.kv_streaming_decode_contract",
+            "file": runner_file,
+            "role": "Validate a StepFunKVDecodeRunPlan against the resident session and expose the future executable loop contract without launching kernels.",
+        },
         "missing_execution_entrypoint": {
             "owner": "StepFunResidentSession",
             "expected_role": (
@@ -294,6 +299,8 @@ def _symbol_validation_for_runtime_wiring_map(
             add_symbol(entry.get("symbol"), role="metadata_only_trace_entrypoint")
     prompt_smoke = _dict_or_empty(wiring_map.get("current_host_composed_prompt_smoke"))
     add_symbol(prompt_smoke.get("symbol"), role="current_host_composed_prompt_smoke")
+    session_contract = _dict_or_empty(wiring_map.get("session_contract_entrypoint"))
+    add_symbol(session_contract.get("symbol"), role="session_contract_entrypoint")
 
     missing_execution = _dict_or_empty(wiring_map.get("missing_execution_entrypoint"))
     owner = str(missing_execution.get("owner") or "")

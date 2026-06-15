@@ -141,6 +141,11 @@
     },
     "runner_file": "hipengine/runtime/stepfun_gguf_runner.py",
     "schema_version": 1,
+    "session_contract_entrypoint": {
+      "file": "hipengine/runtime/stepfun_gguf_runner.py",
+      "role": "Validate a StepFunKVDecodeRunPlan against the resident session and expose the future executable loop contract without launching kernels.",
+      "symbol": "StepFunResidentSession.kv_streaming_decode_contract"
+    },
     "source": "static_runtime_symbol_map"
   },
   "runtime_wiring_symbol_validation": {
@@ -154,7 +159,7 @@
     "missing_symbols": [],
     "schema_version": 1,
     "source": "ast_symbol_validation",
-    "symbol_count": 8,
+    "symbol_count": 9,
     "symbols": [
       {
         "class_name": "StepFunShortContextDecodePlanner",
@@ -227,12 +232,21 @@
         "present": true,
         "role": "current_host_composed_prompt_smoke",
         "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+      },
+      {
+        "class_name": "StepFunResidentSession",
+        "class_present": true,
+        "method_name": "kv_streaming_decode_contract",
+        "method_present": true,
+        "present": true,
+        "role": "session_contract_entrypoint",
+        "symbol": "StepFunResidentSession.kv_streaming_decode_contract"
       }
     ]
   },
   "schema_version": 1,
-  "source_correctness_status_sha256": "62d3f51c23d5c49074a58434e3f48d92adb2e1b4d5f339932cccedbd464bd8a8",
-  "source_validator_status_sha256": "7a9c80d9908aca31028ff7f77672f0ca32f359672f298f0b8f377b69e955167d",
+  "source_correctness_status_sha256": "1552d6be5190e5afda21e6f73886e9cdc84c911128efa29c6d807eeba96ce21a",
+  "source_validator_status_sha256": "4a8b91b210d59cb29841e1d1eef46121ae5425b99cf51f4244667febba45a6de",
   "status": "blocked",
   "streaming_runner_source_status": {
     "blocked_by": "streaming_decode_loop_not_wired",

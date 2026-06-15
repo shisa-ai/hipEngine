@@ -593,7 +593,8 @@ reporting.
   includes the runtime wiring map that points the next implementation step at
   `StepFunShortContextDecodePlanner.plan_kv_decode_chat`, `StepFunKVDecodeRunPlan.upload_decode_inputs`,
   the metadata-only launch trace methods, and the missing `StepFunResidentSession` executable loop, and
-  mechanically validates those mapped class/method symbols against `hipengine/runtime/stepfun_gguf_runner.py`, plus the planned per-layer KV launch
+  mechanically validates those mapped class/method symbols against `hipengine/runtime/stepfun_gguf_runner.py`, including
+  the new session-side metadata contract helper `StepFunResidentSession.kv_streaming_decode_contract`, plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations plus source-level `streaming_runner_blockers` naming the still-missing
   decode loop, kernel trace, and KV-backed next-token artifact), and includes a compact

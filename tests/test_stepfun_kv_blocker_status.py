@@ -99,6 +99,9 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
     assert wiring_map["current_host_composed_prompt_smoke"]["symbol"] == (
         "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
     )
+    assert wiring_map["session_contract_entrypoint"]["symbol"] == (
+        "StepFunResidentSession.kv_streaming_decode_contract"
+    )
     assert wiring_map["missing_execution_entrypoint"]["owner"] == "StepFunResidentSession"
     assert wiring_map["missing_execution_entrypoint"]["required_artifacts"] == [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
@@ -117,7 +120,7 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
     assert validation["file"] == "hipengine/runtime/stepfun_gguf_runner.py"
     assert validation["all_symbols_present"] is True
     assert validation["missing_symbols"] == []
-    assert validation["symbol_count"] == 8
+    assert validation["symbol_count"] == 9
     assert {record["symbol"] for record in validation["symbols"]} == {
         "StepFunShortContextDecodePlanner.plan_kv_decode_chat",
         "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule",
@@ -127,6 +130,7 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "StepFunKVDecodeRunPlan.streaming_decode_launch_trace",
         "StepFunKVDecodeRunPlan.streaming_decode_loop_status",
         "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16",
+        "StepFunResidentSession.kv_streaming_decode_contract",
     }
     assert all(record["present"] is True for record in validation["symbols"])
     assert validation["missing_execution_owner"] == {

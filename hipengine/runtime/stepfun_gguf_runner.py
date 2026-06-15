@@ -1539,6 +1539,87 @@ class StepFunResidentSession:
             layer_nbytes=layer_nbytes,
         )
 
+    def kv_streaming_decode_contract(
+        self,
+        run_plan: StepFunKVDecodeRunPlan,
+    ) -> dict[str, object]:
+        """Return the session-side contract for the future KV streaming loop.
+
+        This is the last metadata-only bridge before an executable StepFun
+        streaming decode runner: it validates that the run plan is for this
+        resident session and records the exact upload/launch contract that the
+        future loop must execute. It deliberately does not launch kernels or
+        produce a token.
+        """
+
+        if self._closed:
+            raise RuntimeError("StepFun resident session is closed")
+        session_layer_count = self.model_map.config.block_count
+        launch_trace = run_plan.streaming_decode_launch_trace
+        upload_plan = run_plan.decode_input_upload_plan
+        launch_schedule = run_plan.resource_plan.kv_decode_launch_schedule
+        plan_layer_count = int(launch_schedule["layer_count"])
+        if run_plan.resource_plan.backend != self.backend:
+            raise ValueError(
+                "KV decode run plan backend does not match resident session backend: "
+                f"plan={run_plan.resource_plan.backend!r} session={self.backend!r}"
+            )
+        if plan_layer_count != session_layer_count:
+            raise ValueError(
+                "KV decode run plan layer count does not match resident session: "
+                f"plan={plan_layer_count} session={session_layer_count}"
+            )
+        return {
+            "schema_version": 1,
+            "source": "StepFunResidentSession.kv_streaming_decode_contract",
+            "executable": False,
+            "ready": False,
+            "blocked_by": run_plan.streaming_decode_loop_status["blocked_by"],
+            "next_action": run_plan.streaming_decode_loop_status["next_action"],
+            "session_backend": self.backend,
+            "plan_backend": run_plan.resource_plan.backend,
+            "backend_matches": True,
+            "session_layer_count": session_layer_count,
+            "plan_layer_count": plan_layer_count,
+            "layer_count_matches": True,
+            "prompt_length": run_plan.prompt_length,
+            "decode_position": run_plan.decode_position,
+            "decode_live_count": run_plan.decode_live_count,
+            "pre_run_upload_order": list(upload_plan["upload_order"]),
+            "pre_run_cleanup_order": list(upload_plan["cleanup_order"]),
+            "pre_run_upload_checks_passed": upload_plan["all_consistency_checks_passed"],
+            "pre_run_upload_total_nbytes": upload_plan["total_nbytes"],
+            "pre_run_upload_entry_count": upload_plan["entry_count"],
+            "launch_operation_count": launch_trace["operation_count"],
+            "launch_per_layer_order": list(launch_trace["per_layer_order"]),
+            "launch_first_operation": launch_trace["first_operation"],
+            "launch_last_operation": launch_trace["last_operation"],
+            "launch_operation_sequence_sha256": launch_trace[
+                "operation_sequence_sha256"
+            ],
+            "launch_operation_records_sha256": launch_trace[
+                "operation_records_sha256"
+            ],
+            "all_launches_have_dispatch_keys": launch_trace[
+                "all_launches_have_dispatch_keys"
+            ],
+            "all_launches_ready": launch_trace["all_launches_ready"],
+            "no_kernel_launches": True,
+            "required_artifacts": [
+                "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+                "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+            ],
+            "no_claim_policy": {
+                "kv_backed_decode_claim_allowed": False,
+                "e2e_inference_claim_allowed": False,
+                "performance_claim_allowed": False,
+                "reason": (
+                    "This session contract validates metadata for the future streaming "
+                    "decode loop but does not launch kernels or generate a token."
+                ),
+            },
+        }
+
     def weight_for_slot(self, slot_path: str):
         """Return a resident weight by StepFun materialization slot path."""
 

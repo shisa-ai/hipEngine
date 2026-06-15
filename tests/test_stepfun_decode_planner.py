@@ -14,6 +14,7 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.runtime.stepfun_gguf_runner import (
     STEPFUN_GGUF_KERNEL_QUANT,
     STEPFUN_KV_ATTENTION_BLOCK_SIZE,
+    StepFunResidentSession,
     StepFunShortContextDecodePlanner,
     stepfun_kv_cache_nbytes,
     stepfun_kv_decode_kernel_plan,
@@ -644,6 +645,117 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
             ),
         },
     }
+
+
+def test_stepfun_resident_session_kv_streaming_decode_contract_binds_run_plan() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+    session = StepFunResidentSession(
+        info=planner.info,
+        model_map=planner.model_map,
+        tokenizer=planner.tokenizer,
+        weights=object(),
+        backend="hip_gfx1151",
+    )
+
+    contract = session.kv_streaming_decode_contract(run_plan)
+
+    assert contract["schema_version"] == 1
+    assert contract["source"] == "StepFunResidentSession.kv_streaming_decode_contract"
+    assert contract["executable"] is False
+    assert contract["ready"] is False
+    assert contract["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert contract["next_action"] == "wire_streaming_decode_loop"
+    assert contract["session_backend"] == "hip_gfx1151"
+    assert contract["plan_backend"] == "hip_gfx1151"
+    assert contract["backend_matches"] is True
+    assert contract["session_layer_count"] == planner.model_map.config.block_count == 45
+    assert contract["plan_layer_count"] == 45
+    assert contract["layer_count_matches"] is True
+    assert contract["prompt_length"] == run_plan.prompt_length
+    assert contract["decode_position"] == run_plan.decode_position
+    assert contract["decode_live_count"] == run_plan.decode_live_count
+    assert contract["pre_run_upload_order"] == [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts",
+    ]
+    assert contract["pre_run_cleanup_order"] == [
+        "decode_attention_live_counts",
+        "decode_kv_write_position",
+        "decode_base_offsets",
+        "prompt_live_counts",
+        "prompt_base_offsets",
+        "input_ids",
+    ]
+    assert contract["pre_run_upload_checks_passed"] is True
+    assert contract["pre_run_upload_entry_count"] == 6
+    assert contract["launch_operation_count"] == 135
+    assert contract["launch_per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert contract["launch_first_operation"]["operation"] == "layers.0.prompt_kv_write"
+    assert contract["launch_last_operation"]["operation"] == "layers.44.decode_attention"
+    assert contract["launch_operation_sequence_sha256"] == run_plan.streaming_decode_launch_trace[
+        "operation_sequence_sha256"
+    ]
+    assert contract["launch_operation_records_sha256"] == run_plan.streaming_decode_launch_trace[
+        "operation_records_sha256"
+    ]
+    assert contract["all_launches_have_dispatch_keys"] is True
+    assert contract["all_launches_ready"] is True
+    assert contract["no_kernel_launches"] is True
+    assert contract["required_artifacts"] == [
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
+    assert contract["no_claim_policy"] == {
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "This session contract validates metadata for the future streaming decode loop "
+            "but does not launch kernels or generate a token."
+        ),
+    }
+
+
+def test_stepfun_resident_session_kv_streaming_decode_contract_rejects_backend_mismatch() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+    session = StepFunResidentSession(
+        info=planner.info,
+        model_map=planner.model_map,
+        tokenizer=planner.tokenizer,
+        weights=object(),
+        backend="hip_gfx1100",
+    )
+
+    with pytest.raises(ValueError, match="backend does not match"):
+        session.kv_streaming_decode_contract(run_plan)
 
 
 def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -> None:
