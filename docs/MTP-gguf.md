@@ -595,9 +595,11 @@ Current status:
   scaffold for the GGUF path. It references the target resident session, records
   ready fp32 post-`output_norm` seed rows, applies the llama.cpp
   `verify_h[min(n_accepted, n_rows - 1)]` accept/reseed rule, builds B1 draft
-  rows carrying both token IDs and embedding-seed pointers, and can build B2-B4
-  draft batches when supplied one explicit seed row per proposed token. It does
-  not allocate MTP KV buffers or run draft kernels yet.
+  rows carrying both token IDs and embedding-seed pointers, can build B2-B4 draft
+  batches when supplied one explicit seed row per proposed token, and has a
+  torch-free proposal bridge that resolves the registered draft top-k kernel and
+  converts runtime logits into selected draft rows plus top-k evidence. It does
+  not allocate MTP KV buffers or run NextN draft kernels yet.
 
 Deliverables:
 
@@ -834,7 +836,7 @@ is now answered by the M1 required/optional table.)
       attention path and dense fallback; CPU-reference coverage and call specs
       now include dense and KVLiveSpans-shaped paged-cache paths through the full
       NextN logits oracle, and `Qwen35GGUFMTPContext` covers the B1-B4
-      seed/batch state scaffold, but HIP/runtime registration under
+      seed/batch/proposal state scaffold, but HIP/runtime registration under
       `KernelKey(backend, layer, quant='w4_gguf', variant)` remains open.
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements

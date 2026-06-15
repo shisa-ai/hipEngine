@@ -10,6 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
+from hipengine.kernels.registry import resolve
+
+
+DEFAULT_DRAFT_TOPK_KERNEL = ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
+DEFAULT_DRAFT_TOPK = 10
+DEFAULT_DRAFT_SELECTION = "greedy_top1_from_topk"
+
 
 class _HiddenSeedContractLike(Protocol):
     ready_for_mtp: bool
@@ -110,6 +117,54 @@ class Qwen35GGUFMTPDraftRow:
             "embedding_hidden_size": self.embedding_hidden_size,
             "parent_token_id": self.parent_token_id,
             "parent_position": self.parent_position,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPDraftProposal:
+    """Selected GGUF MTP draft tokens plus the top-k evidence that produced them."""
+
+    batch: "Qwen35GGUFMTPDraftBatch"
+    top_k_token_ids: tuple[tuple[int, ...], ...]
+    top_k_logits: tuple[tuple[float, ...], ...]
+    topk_kernel: tuple[str, str, str, str] = DEFAULT_DRAFT_TOPK_KERNEL
+    selection: str = DEFAULT_DRAFT_SELECTION
+    selected_index: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.top_k_token_ids:
+            raise ValueError("top_k_token_ids must contain at least one row")
+        if len(self.top_k_token_ids) != len(self.batch.rows):
+            raise ValueError("top-k rows must match draft batch rows")
+        if len(self.top_k_logits) != len(self.top_k_token_ids):
+            raise ValueError("top_k_logits rows must match top_k_token_ids rows")
+        if len(self.topk_kernel) != 4:
+            raise ValueError("topk_kernel must be a four-axis registry key")
+        if self.selection != DEFAULT_DRAFT_SELECTION:
+            raise ValueError("GGUF MTP currently supports greedy top-1-from-top-k selection only")
+        for token_row, logit_row, batch_row in zip(self.top_k_token_ids, self.top_k_logits, self.batch.rows, strict=True):
+            if not token_row:
+                raise ValueError("top-k token rows must be non-empty")
+            if len(logit_row) != len(token_row):
+                raise ValueError("top-k logit rows must match token rows")
+            if self.selected_index < 0 or self.selected_index >= len(token_row):
+                raise ValueError("selected_index must be within every top-k row")
+            if int(token_row[self.selected_index]) != int(batch_row.token_id):
+                raise ValueError("draft batch token IDs must match selected top-k tokens")
+
+    @property
+    def proposed_token_ids(self) -> tuple[int, ...]:
+        return self.batch.token_ids
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "batch": self.batch.as_dict(),
+            "topk_kernel": list(self.topk_kernel),
+            "selection": self.selection,
+            "selected_index": self.selected_index,
+            "top_k_token_ids": [list(row) for row in self.top_k_token_ids],
+            "top_k_logits": [list(row) for row in self.top_k_logits],
+            "proposed_token_ids": list(self.proposed_token_ids),
         }
 
 
@@ -229,6 +284,55 @@ class Qwen35GGUFMTPContext:
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
         return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))
 
+    def build_draft_proposal_from_logits(
+        self,
+        *,
+        request_id: int,
+        logits: Any,
+        seed_rows: Sequence[Qwen35GGUFMTPSeedRow | _DraftSeedLike] | None = None,
+        top_k: int = DEFAULT_DRAFT_TOPK,
+        selected_index: int = 0,
+        topk_kernel: tuple[str, str, str, str] = DEFAULT_DRAFT_TOPK_KERNEL,
+    ) -> Qwen35GGUFMTPDraftProposal:
+        """Select draft tokens from top-k logits and build GGUF MTP draft rows.
+
+        The method does not run the NextN block.  It bridges the future runtime
+        output logits to the existing target-attached batch state by resolving
+        the four-axis top-k fallback/device kernel and selecting index 0 from the
+        returned top-k rows (llama.cpp's greedy top-1-from-top-k contract).
+        """
+
+        selected_index = int(selected_index)
+        top_k = int(top_k)
+        if top_k <= 0:
+            raise ValueError("top_k must be positive")
+        if selected_index < 0 or selected_index >= top_k:
+            raise ValueError("selected_index must be within top_k")
+        if len(topk_kernel) != 4:
+            raise ValueError("topk_kernel must be a four-axis registry key")
+        kernel = resolve(
+            backend=topk_kernel[0],
+            layer=topk_kernel[1],
+            quant=topk_kernel[2],
+            variant=topk_kernel[3],
+        )
+        token_ids, values = kernel(logits, k=top_k)
+        top_k_token_ids = _nested_int_rows(token_ids)
+        top_k_logits = _nested_float_rows(values)
+        selected_token_ids = tuple(row[selected_index] for row in top_k_token_ids)
+        batch = self.build_draft_batch(
+            request_id=request_id,
+            token_ids=selected_token_ids,
+            seed_rows=seed_rows,
+        )
+        return Qwen35GGUFMTPDraftProposal(
+            batch=batch,
+            top_k_token_ids=top_k_token_ids,
+            top_k_logits=top_k_logits,
+            topk_kernel=topk_kernel,
+            selected_index=selected_index,
+        )
+
     def build_draft_batch(
         self,
         *,
@@ -291,3 +395,13 @@ class Qwen35GGUFMTPContext:
             "pending_seed": None if self.pending_seed is None else self.pending_seed.as_dict(),
             "verify_seeds": [seed.as_dict() for seed in self.verify_seeds],
         }
+
+
+def _nested_int_rows(values: Any) -> tuple[tuple[int, ...], ...]:
+    rows = values.tolist() if hasattr(values, "tolist") else values
+    return tuple(tuple(int(value) for value in row) for row in rows)
+
+
+def _nested_float_rows(values: Any) -> tuple[tuple[float, ...], ...]:
+    rows = values.tolist() if hasattr(values, "tolist") else values
+    return tuple(tuple(float(value) for value in row) for row in rows)

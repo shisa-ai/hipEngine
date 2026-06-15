@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pytest
 
+from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
 from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPDraftBatch,
+    Qwen35GGUFMTPDraftProposal,
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPSeedRow,
 )
@@ -76,6 +79,74 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
             "parent_position": 17,
         }
     ]
+
+
+def test_gguf_mtp_context_builds_b1_proposal_from_registered_topk_logits() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))
+    logits = np.asarray([[0.5, 3.0, 3.0, -1.0]], dtype=np.float32)
+
+    proposal = context.build_draft_proposal_from_logits(request_id=4, logits=logits, top_k=2)
+
+    assert isinstance(proposal, Qwen35GGUFMTPDraftProposal)
+    assert proposal.proposed_token_ids == (1,)
+    assert proposal.top_k_token_ids == ((1, 2),)
+    assert proposal.top_k_logits == ((3.0, 3.0),)
+    assert proposal.batch.token_ids == (1,)
+    assert proposal.as_dict()["topk_kernel"] == ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"]
+    assert proposal.as_dict()["proposed_token_ids"] == [1]
+
+
+def test_gguf_mtp_context_builds_multi_depth_proposal_from_registered_topk_logits() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8, source="target"),
+        Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8, source="draft[0]"),
+    )
+    logits = np.asarray(
+        [
+            [0.0, 4.0, 1.0],
+            [3.0, 2.0, 5.0],
+        ],
+        dtype=np.float32,
+    )
+
+    proposal = context.build_draft_proposal_from_logits(
+        request_id=7,
+        logits=logits,
+        seed_rows=seeds,
+        top_k=1,
+    )
+
+    assert proposal.proposed_token_ids == (1, 2)
+    assert [row.draft_depth for row in proposal.batch.rows] == [1, 2]
+    assert [row.position for row in proposal.batch.rows] == [6, 7]
+    assert proposal.as_dict()["top_k_token_ids"] == [[1], [2]]
+
+
+def test_gguf_mtp_context_rejects_invalid_topk_proposal_contract() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))
+    logits = np.asarray([[0.0, 1.0]], dtype=np.float32)
+
+    with pytest.raises(ValueError, match="selected_index"):
+        context.build_draft_proposal_from_logits(request_id=0, logits=logits, top_k=1, selected_index=1)
+    with pytest.raises(ValueError, match="four-axis"):
+        context.build_draft_proposal_from_logits(
+            request_id=0,
+            logits=logits,
+            topk_kernel=("cpu_reference", "mtp_draft_topk", "w4_gguf"),  # type: ignore[arg-type]
+        )
+    row = context.build_b1_draft_batch(request_id=0, token_id=1)
+    with pytest.raises(ValueError, match="match selected top-k"):
+        Qwen35GGUFMTPDraftProposal(
+            batch=row,
+            top_k_token_ids=((0,),),
+            top_k_logits=((1.0,),),
+        )
 
 
 def test_gguf_mtp_context_builds_multi_depth_draft_batch_from_seed_rows() -> None:

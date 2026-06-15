@@ -95768,3 +95768,53 @@ Validation:
   backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF draft proposal bridge
+
+Implemented `mtp-gguf` multiloop iteration 69: added a torch-free GGUF MTP draft
+proposal bridge that converts registered top-k logits into target-attached B1-B4
+draft batches.
+
+Scope note:
+- Context/proposal bridge, docs, and tests only. No GGUF tensor payload loading,
+  hipEngine generation integration, native NextN kernel execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance path
+  changed.
+- This consumes logits produced elsewhere (future NextN runtime) and resolves the
+  registered four-axis draft top-k key before selecting draft rows. Native MTP KV
+  allocation and NextN execution remain open.
+
+Changes:
+- Added `DEFAULT_DRAFT_TOPK_KERNEL`, `DEFAULT_DRAFT_TOPK`, and
+  `DEFAULT_DRAFT_SELECTION` to `hipengine/speculative/gguf_mtp.py`.
+- Added `Qwen35GGUFMTPDraftProposal`, carrying the draft batch, selected/proposed
+  token ids, top-k token ids/logits, selection mode, selected index, and top-k
+  registry key.
+- Added `Qwen35GGUFMTPContext.build_draft_proposal_from_logits(...)`, which
+  resolves the top-k kernel through `hipengine.kernels.registry.resolve`, applies
+  the greedy-top1-from-top-k contract, and reuses the existing B1-B4 draft batch
+  builder.
+- Added tests for B1 proposal selection, multi-depth proposal selection, and
+  invalid proposal/top-k contract validation.
+- Updated `docs/MTP-gguf.md` to document that the context now covers
+  seed/batch/proposal state while HIP/runtime registration remains open.
+
+Validation:
+- Focused context/CPU-reference/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` -> `34` passed.
+- Proposal smoke passed:
+  constructed a context seed and selected from logits `[[0.2, 4.0, 4.0]]` with
+  `top_k=2` -> `proposal (1,) ((1, 2),) 6`, confirming stable lower-token tie
+  behavior through the registered CPU top-k fallback and position advance.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: context/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; top-k selection resolves the four-axis registry
+  key; no generation integration, native MTP execution, GPU kernel, attention/KV
+  runtime path, or performance claim; future MTP attention/KV-write execution
+  remains KVLiveSpans-gated.
