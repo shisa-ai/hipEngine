@@ -93016,3 +93016,33 @@ Validation:
 - Prompt verifier passed: metadata validation only, no torch hot-path import, no
   backend/quant dispatch branches, no attention/KV/runtime generation changes,
   no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF hidden seed contract scaffold
+
+Implemented `mtp-gguf` multiloop iteration 7: a typed contract descriptor for the
+GGUF target hidden seed needed by M2.5/M3.
+
+Changes:
+- Added `Qwen35GGUFHiddenSeedContract` in `hipengine/runtime/qwen35_gguf_runner.py`.
+  - Requires `post_output_norm` provenance.
+  - Treats only FP32 seed rows as llama.cpp-compatible.
+  - Records rows, hidden size, source buffer, and whether an fp32 tap is still
+    required.
+- Added `qwen35_gguf_current_hidden_seed_contract(hidden_size, rows=1)`.
+  - Documents the current resident decode path as post-output_norm but BF16:
+    `Qwen35GGUFResidentSession.scratch.norm`.
+  - Marks the current state as not llama.cpp-compatible, giving M2.5 a concrete
+    RED target for adding the fp32 per-token tap.
+- Added `tests/test_qwen35_gguf_hidden_seed_contract.py` covering the current
+  BF16/non-compatible descriptor, a future FP32-compatible descriptor, and invalid
+  provenance/compatibility combinations.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Hidden-seed contract tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `3` passed.
+- `py_compile` passed for `hipengine/runtime/qwen35_gguf_runner.py`.
+- Prompt verifier passed: contract descriptor only, no torch hot-path import, no
+  backend/quant dispatch branches, no attention/KV/runtime behavior changes, no
+  NextN math, and no performance claims.

@@ -180,6 +180,72 @@ class Qwen35GGUFNextTokenProbeResult:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFHiddenSeedContract:
+    """Contract for GGUF MTP target hidden seeds.
+
+    llama.cpp's Qwen35MoE MTP seed is the post-output_norm hidden row exposed as
+    fp32.  The current GGUF resident decode path computes the right provenance
+    but stores it in a BF16 scratch row; M2.5 must upgrade that tap before M3 can
+    consume it.
+    """
+
+    provenance: str
+    dtype: DType
+    rows: int
+    hidden_size: int
+    source_buffer: str
+    llama_cpp_compatible: bool
+
+    def __post_init__(self) -> None:
+        if self.provenance != "post_output_norm":
+            raise ValueError("GGUF MTP hidden seed provenance must be post_output_norm")
+        if self.rows <= 0:
+            raise ValueError("GGUF MTP hidden seed rows must be positive")
+        if self.hidden_size <= 0:
+            raise ValueError("GGUF MTP hidden seed hidden_size must be positive")
+        expected = self.dtype is DType.FP32
+        if self.llama_cpp_compatible != expected:
+            raise ValueError("llama_cpp_compatible must reflect whether dtype is FP32")
+
+    @property
+    def requires_fp32_tap(self) -> bool:
+        return self.dtype is not DType.FP32
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "provenance": self.provenance,
+            "dtype": self.dtype.name,
+            "rows": self.rows,
+            "hidden_size": self.hidden_size,
+            "source_buffer": self.source_buffer,
+            "llama_cpp_compatible": self.llama_cpp_compatible,
+            "requires_fp32_tap": self.requires_fp32_tap,
+        }
+
+
+def qwen35_gguf_current_hidden_seed_contract(
+    hidden_size: int,
+    *,
+    rows: int = 1,
+) -> Qwen35GGUFHiddenSeedContract:
+    """Describe the current GGUF AR decode hidden seed tap.
+
+    This is a contract descriptor, not a data read.  It intentionally reports the
+    current BF16 scratch pointer as non-llama-compatible so later M2.5 runtime
+    work has a precise RED target.
+    """
+
+    return Qwen35GGUFHiddenSeedContract(
+        provenance="post_output_norm",
+        dtype=DType.BF16,
+        rows=int(rows),
+        hidden_size=int(hidden_size),
+        source_buffer="Qwen35GGUFResidentSession.scratch.norm",
+        llama_cpp_compatible=False,
+    )
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFFullAttentionPrefillResult:
     """Host-visible result for a GGUF full-attention layer prefill probe."""
 
@@ -5813,11 +5879,13 @@ __all__ = [
     "Qwen35GGUFDecodeGraphWeightRole",
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFFullStackRunner",
+    "Qwen35GGUFHiddenSeedContract",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFFastPathSafety",
     "Qwen35GGUFResidentSession",
     "build_qwen35_gguf_decode_graph_bucket_key",
+    "qwen35_gguf_current_hidden_seed_contract",
     "qwen35_gguf_decode_graph_active_symbol_groups",
     "qwen35_gguf_decode_graph_weight_roles",
     "resolve_qwen35moe_fastpath_safety",
