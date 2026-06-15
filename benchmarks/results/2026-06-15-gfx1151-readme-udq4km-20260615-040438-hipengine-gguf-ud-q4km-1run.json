@@ -1,0 +1,902 @@
+{
+  "schema": 1,
+  "mode": "qwen35_readme_persistent_resident_sweep",
+  "engine": "gguf",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workloads": [
+    "512/128",
+    "1K/128",
+    "4K/128",
+    "32K/128",
+    "64K/128",
+    "128K/128"
+  ],
+  "prompt_source": "repeated_token_id",
+  "warmup_decode_tokens": 1,
+  "warmup_runs": 0,
+  "measured_runs": 1,
+  "max_sequence_length": 131202,
+  "persistent_session_load_seconds": 47.0527600989999,
+  "persistent_session_memory": {
+    "tracked_peak_allocated_bytes": 28200751104,
+    "tracked_peak_allocated_gib": 26.263996124267578,
+    "tracked_current_allocated_bytes_before_close": 28200751104,
+    "tracked_current_allocated_gib_before_close": 26.263996124267578,
+    "tracked_current_allocated_bytes_after_close": 0,
+    "tracked_current_allocated_gib_after_close": 0.0,
+    "owned_session_peak_bytes": 28200751104,
+    "owned_session_peak_gib": 26.263996124267578,
+    "hip_used_peak_sampled_bytes": 28785688576,
+    "hip_used_peak_sampled_gib": 26.808761596679688,
+    "notes": [
+      "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+      "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+      "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+    ]
+  },
+  "compiler_version_file": "/tmp/hipengine-readme-gfx1151-runs/20260615-040438/hipcc-version-gfx1151.txt",
+  "compiler_version_first_line": "HIP version: 7.13.60980-c76140fa27",
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 833.3657049250711,
+        "min": 833.3657049250711,
+        "max": 833.3657049250711,
+        "mean": 833.3657049250711,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 56.580899788683176,
+        "min": 56.580899788683176,
+        "max": 56.580899788683176,
+        "mean": 56.580899788683176,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 26.263996124267578,
+        "min": 26.263996124267578,
+        "max": 26.263996124267578,
+        "mean": 26.263996124267578,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        2814
+      ],
+      "final_token_ids_stable": true
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 854.3079320937537,
+        "min": 854.3079320937537,
+        "max": 854.3079320937537,
+        "mean": 854.3079320937537,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 52.832124216513456,
+        "min": 52.832124216513456,
+        "max": 52.832124216513456,
+        "mean": 52.832124216513456,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 26.263996124267578,
+        "min": 26.263996124267578,
+        "max": 26.263996124267578,
+        "mean": 26.263996124267578,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 729.1170691611503,
+        "min": 729.1170691611503,
+        "max": 729.1170691611503,
+        "mean": 729.1170691611503,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 53.637761735863165,
+        "min": 53.637761735863165,
+        "max": 53.637761735863165,
+        "mean": 53.637761735863165,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 26.263996124267578,
+        "min": 26.263996124267578,
+        "max": 26.263996124267578,
+        "mean": 26.263996124267578,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "32K/128": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 619.5702951971649,
+        "min": 619.5702951971649,
+        "max": 619.5702951971649,
+        "mean": 619.5702951971649,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 44.383185184939805,
+        "min": 44.383185184939805,
+        "max": 44.383185184939805,
+        "mean": 44.383185184939805,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 26.263996124267578,
+        "min": 26.263996124267578,
+        "max": 26.263996124267578,
+        "mean": 26.263996124267578,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "64K/128": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 522.8715612030201,
+        "min": 522.8715612030201,
+        "max": 522.8715612030201,
+        "mean": 522.8715612030201,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 37.740541334101806,
+        "min": 37.740541334101806,
+        "max": 37.740541334101806,
+        "mean": 37.740541334101806,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 26.263996124267578,
+        "min": 26.263996124267578,
+        "max": 26.263996124267578,
+        "mean": 26.263996124267578,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        1510
+      ],
+      "final_token_ids_stable": true
+    },
+    "128K/128": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 384.0105446100463,
+        "min": 384.0105446100463,
+        "max": 384.0105446100463,
+        "mean": 384.0105446100463,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 28.04324288032927,
+        "min": 28.04324288032927,
+        "max": 28.04324288032927,
+        "mean": 28.04324288032927,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 26.263996124267578,
+        "min": 26.263996124267578,
+        "max": 26.263996124267578,
+        "mean": 26.263996124267578,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        98732
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "runs_by_workload": {
+    "512/128": [
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 1,
+        "use_bulk_prefill": true,
+        "bulk_prefill_attention_mode": "bulk",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "requested_use_wmma_prefill": true,
+        "requested_use_gemv_decode": true,
+        "requested_prefill_chunk_size": 0,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131328,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 66.0,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "effective_use_wmma_prefill": true,
+        "effective_use_gemv_decode": true,
+        "fastpath_safety": {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        "decode_graph_reused": false,
+        "decode_graph_recorded_tokens": false,
+        "timings": {
+          "load_seconds": 47.0527600989999,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.6143761339999401,
+          "warmup_decode_seconds": 0.04793349700003091,
+          "graph_capture_seconds": 0.04332078100014769,
+          "decode_seconds_excluding_graph_capture": 2.262247516000116,
+          "wall_seconds_excluding_load": 2.9678779280002345
+        },
+        "throughput": {
+          "prefill_tok_s": 833.3657049250711,
+          "decode_tok_s": 56.580899788683176,
+          "decode_ms_per_token": 17.673808718750905
+        },
+        "correctness_sanity": {
+          "finite_final_logits": true,
+          "final_token_id": 2814,
+          "final_logit": 9.503353118896484,
+          "generated_preview_token_ids": [
+            318,
+            220,
+            2814
+          ],
+          "generated_tail_token_ids": [
+            318,
+            220,
+            2814
+          ],
+          "generated_count_including_prefill_sample_and_warmup": 3
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 28200751104,
+          "tracked_peak_allocated_gib": 26.263996124267578,
+          "tracked_current_allocated_bytes_before_close": 28200751104,
+          "tracked_current_allocated_gib_before_close": 26.263996124267578,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 28200751104,
+          "owned_session_peak_gib": 26.263996124267578,
+          "hip_used_peak_sampled_bytes": 28721586176,
+          "hip_used_peak_sampled_gib": 26.749061584472656,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ],
+    "1K/128": [
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 1,
+        "use_bulk_prefill": true,
+        "bulk_prefill_attention_mode": "bulk",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "requested_use_wmma_prefill": true,
+        "requested_use_gemv_decode": true,
+        "requested_prefill_chunk_size": 0,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131328,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 66.0,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "effective_use_wmma_prefill": true,
+        "effective_use_gemv_decode": true,
+        "fastpath_safety": {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        "decode_graph_reused": false,
+        "decode_graph_recorded_tokens": false,
+        "timings": {
+          "load_seconds": 47.0527600989999,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.1986310340000728,
+          "warmup_decode_seconds": 0.045191339999973934,
+          "graph_capture_seconds": 0.044134631000133595,
+          "decode_seconds_excluding_graph_capture": 2.4227683799999795,
+          "wall_seconds_excluding_load": 3.71072538500016
+        },
+        "throughput": {
+          "prefill_tok_s": 854.3079320937537,
+          "decode_tok_s": 52.832124216513456,
+          "decode_ms_per_token": 18.92787796874984
+        },
+        "correctness_sanity": {
+          "finite_final_logits": true,
+          "final_token_id": 220,
+          "final_logit": 19.966459274291992,
+          "generated_preview_token_ids": [
+            19224,
+            318,
+            220
+          ],
+          "generated_tail_token_ids": [
+            19224,
+            318,
+            220
+          ],
+          "generated_count_including_prefill_sample_and_warmup": 3
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 28200751104,
+          "tracked_peak_allocated_gib": 26.263996124267578,
+          "tracked_current_allocated_bytes_before_close": 28200751104,
+          "tracked_current_allocated_gib_before_close": 26.263996124267578,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 28200751104,
+          "owned_session_peak_gib": 26.263996124267578,
+          "hip_used_peak_sampled_bytes": 28721598464,
+          "hip_used_peak_sampled_gib": 26.749073028564453,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ],
+    "4K/128": [
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 1,
+        "use_bulk_prefill": true,
+        "bulk_prefill_attention_mode": "bulk",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "requested_use_wmma_prefill": true,
+        "requested_use_gemv_decode": true,
+        "requested_prefill_chunk_size": 0,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131328,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 66.0,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "effective_use_wmma_prefill": true,
+        "effective_use_gemv_decode": true,
+        "fastpath_safety": {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        "decode_graph_reused": false,
+        "decode_graph_recorded_tokens": false,
+        "timings": {
+          "load_seconds": 47.0527600989999,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 5.617753544999914,
+          "warmup_decode_seconds": 0.047603232000028584,
+          "graph_capture_seconds": 0.04378339999993841,
+          "decode_seconds_excluding_graph_capture": 2.386378473999912,
+          "wall_seconds_excluding_load": 8.095518650999793
+        },
+        "throughput": {
+          "prefill_tok_s": 729.1170691611503,
+          "decode_tok_s": 53.637761735863165,
+          "decode_ms_per_token": 18.64358182812431
+        },
+        "correctness_sanity": {
+          "finite_final_logits": true,
+          "final_token_id": 220,
+          "final_logit": 14.842838287353516,
+          "generated_preview_token_ids": [
+            318,
+            27,
+            220
+          ],
+          "generated_tail_token_ids": [
+            318,
+            27,
+            220
+          ],
+          "generated_count_including_prefill_sample_and_warmup": 3
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 28200751104,
+          "tracked_peak_allocated_gib": 26.263996124267578,
+          "tracked_current_allocated_bytes_before_close": 28200751104,
+          "tracked_current_allocated_gib_before_close": 26.263996124267578,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 28200751104,
+          "owned_session_peak_gib": 26.263996124267578,
+          "hip_used_peak_sampled_bytes": 28785913856,
+          "hip_used_peak_sampled_gib": 26.808971405029297,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ],
+    "32K/128": [
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 1,
+        "use_bulk_prefill": true,
+        "bulk_prefill_attention_mode": "bulk",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "requested_use_wmma_prefill": true,
+        "requested_use_gemv_decode": true,
+        "requested_prefill_chunk_size": 0,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131328,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 66.0,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "effective_use_wmma_prefill": true,
+        "effective_use_gemv_decode": true,
+        "fastpath_safety": {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        "decode_graph_reused": false,
+        "decode_graph_recorded_tokens": false,
+        "timings": {
+          "load_seconds": 47.0527600989999,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 52.88826829499999,
+          "warmup_decode_seconds": 0.084260132000054,
+          "graph_capture_seconds": 0.045472524999922825,
+          "decode_seconds_excluding_graph_capture": 2.8839750789998106,
+          "wall_seconds_excluding_load": 55.901976030999776
+        },
+        "throughput": {
+          "prefill_tok_s": 619.5702951971649,
+          "decode_tok_s": 44.383185184939805,
+          "decode_ms_per_token": 22.53105530468602
+        },
+        "correctness_sanity": {
+          "finite_final_logits": true,
+          "final_token_id": 220,
+          "final_logit": 15.195531845092773,
+          "generated_preview_token_ids": [
+            13,
+            201,
+            220
+          ],
+          "generated_tail_token_ids": [
+            13,
+            201,
+            220
+          ],
+          "generated_count_including_prefill_sample_and_warmup": 3
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 28200751104,
+          "tracked_peak_allocated_gib": 26.263996124267578,
+          "tracked_current_allocated_bytes_before_close": 28200751104,
+          "tracked_current_allocated_gib_before_close": 26.263996124267578,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 28200751104,
+          "owned_session_peak_gib": 26.263996124267578,
+          "hip_used_peak_sampled_bytes": 28785991680,
+          "hip_used_peak_sampled_gib": 26.809043884277344,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ],
+    "64K/128": [
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 1,
+        "use_bulk_prefill": true,
+        "bulk_prefill_attention_mode": "bulk",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "requested_use_wmma_prefill": true,
+        "requested_use_gemv_decode": true,
+        "requested_prefill_chunk_size": 0,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131328,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 66.0,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "effective_use_wmma_prefill": true,
+        "effective_use_gemv_decode": true,
+        "fastpath_safety": {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        "decode_graph_reused": false,
+        "decode_graph_recorded_tokens": false,
+        "timings": {
+          "load_seconds": 47.0527600989999,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 125.33862015599993,
+          "warmup_decode_seconds": 0.07218457100020714,
+          "graph_capture_seconds": 0.042211565999878076,
+          "decode_seconds_excluding_graph_capture": 3.39157827300005,
+          "wall_seconds_excluding_load": 128.84459456600007
+        },
+        "throughput": {
+          "prefill_tok_s": 522.8715612030201,
+          "decode_tok_s": 37.740541334101806,
+          "decode_ms_per_token": 26.49670525781289
+        },
+        "correctness_sanity": {
+          "finite_final_logits": true,
+          "final_token_id": 1510,
+          "final_logit": 12.363912582397461,
+          "generated_preview_token_ids": [
+            3642,
+            107,
+            1510
+          ],
+          "generated_tail_token_ids": [
+            3642,
+            107,
+            1510
+          ],
+          "generated_count_including_prefill_sample_and_warmup": 3
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 28200751104,
+          "tracked_peak_allocated_gib": 26.263996124267578,
+          "tracked_current_allocated_bytes_before_close": 28200751104,
+          "tracked_current_allocated_gib_before_close": 26.263996124267578,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 28200751104,
+          "owned_session_peak_gib": 26.263996124267578,
+          "hip_used_peak_sampled_bytes": 28785991680,
+          "hip_used_peak_sampled_gib": 26.809043884277344,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ],
+    "128K/128": [
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 1,
+        "use_bulk_prefill": true,
+        "bulk_prefill_attention_mode": "bulk",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "requested_use_wmma_prefill": true,
+        "requested_use_gemv_decode": true,
+        "requested_prefill_chunk_size": 0,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131328,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 66.0,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "effective_use_wmma_prefill": true,
+        "effective_use_gemv_decode": true,
+        "fastpath_safety": {
+          "is_qwen35moe": true,
+          "allow_unsafe_qwen35moe_fastpaths": false,
+          "requested_wmma_prefill": true,
+          "requested_gemv_decode": true,
+          "effective_wmma_prefill": true,
+          "effective_gemv_decode": true,
+          "disabled_wmma_prefill": false,
+          "disabled_gemv_decode": false,
+          "reason": null
+        },
+        "decode_graph_reused": false,
+        "decode_graph_recorded_tokens": false,
+        "timings": {
+          "load_seconds": 47.0527600989999,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 341.3239606039999,
+          "warmup_decode_seconds": 0.045722732000058386,
+          "graph_capture_seconds": 0.04213857399986409,
+          "decode_seconds_excluding_graph_capture": 4.564379396000049,
+          "wall_seconds_excluding_load": 345.9762013059999
+        },
+        "throughput": {
+          "prefill_tok_s": 384.0105446100463,
+          "decode_tok_s": 28.04324288032927,
+          "decode_ms_per_token": 35.659214031250386
+        },
+        "correctness_sanity": {
+          "finite_final_logits": true,
+          "final_token_id": 98732,
+          "final_logit": 10.321598052978516,
+          "generated_preview_token_ids": [
+            3642,
+            118,
+            98732
+          ],
+          "generated_tail_token_ids": [
+            3642,
+            118,
+            98732
+          ],
+          "generated_count_including_prefill_sample_and_warmup": 3
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 28200751104,
+          "tracked_peak_allocated_gib": 26.263996124267578,
+          "tracked_current_allocated_bytes_before_close": 28200751104,
+          "tracked_current_allocated_gib_before_close": 26.263996124267578,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 28200751104,
+          "owned_session_peak_gib": 26.263996124267578,
+          "hip_used_peak_sampled_bytes": 28785991680,
+          "hip_used_peak_sampled_gib": 26.809043884277344,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ]
+  },
+  "extra": {
+    "backend": "hip_gfx1100",
+    "use_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "effective_use_gemv_decode": true,
+    "fastpath_safety": {
+      "is_qwen35moe": true,
+      "allow_unsafe_qwen35moe_fastpaths": false,
+      "requested_wmma_prefill": true,
+      "requested_gemv_decode": true,
+      "effective_wmma_prefill": true,
+      "effective_gemv_decode": true,
+      "disabled_wmma_prefill": false,
+      "disabled_gemv_decode": false,
+      "reason": null
+    },
+    "prefill_chunk_sizes_session": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024,
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 1025
+    }
+  },
+  "notes": [
+    "The model/session is loaded once for the largest requested shape and reset between repetitions.",
+    "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
+    "Measured decode excludes HIP graph capture time when graph replay is enabled; graph capture is reported per first run of each shape.",
+    "Artifact compacted by /tmp/run_gfx1151_readme_udq4km.sh: verbose memory snapshots and retained-KV buffer inventories omitted."
+  ]
+}

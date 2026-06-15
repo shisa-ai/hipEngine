@@ -92496,3 +92496,46 @@ Result:
 - decode `66.957 tok/s` (`1.911681 s`), graph replay enabled, median step `14.935 ms`;
 - tracked allocator peak `18.039 GiB`, sampled HIP peak `18.121 GiB`;
 - KV memory audit passed; generated preview repeats token `9707` (`.Q`) with finite logits.
+
+## 2026-06-15 - gfx1151 README UD-Q4_K_M rationalized sweep
+
+Ran the local Strix Halo / gfx1151 README-rationalization diagnostic sweep from
+a detached clean worktree at `64b86b9a` using one measured repetition and no
+warmup repetitions over workloads `512/128`, `1K/128`, `4K/128`, `32K/128`,
+`64K/128`, and `128K/128`. The matrix uses hipEngine PARO-packed,
+hipEngine GGUF `UD-Q4_K_M`, llama.cpp HIP `UD-Q4_K_M`, and llama.cpp Vulkan
+`UD-Q4_K_M`. The top-level command was
+`RUN_TAG=20260615-040438 MEASURED_RUNS=1 WARMUP_RUNS=0 /tmp/run_gfx1151_readme_udq4km.sh`.
+The temporary runner had to run `git lfs install --local && git lfs pull` inside
+the detached worktree so vendored AOTriton images were materialized instead of
+LFS pointer files.
+
+Environment: AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`), TheRock HIP
+`7.13.60980-c76140fa27`, Python `3.13.13`, TheRock SDK root
+`/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel`,
+PARO model snapshot `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, GGUF model
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (`MOSTLY_Q4_K_M`, tensor mix
+F32/Q4_K/Q5_K/Q6_K/Q8_0, no unsupported dequant types), llama.cpp build
+`6e9007ae6` / build `9641`. The APU sysfs VRAM aperture counters are raw-only
+for llama.cpp memory; use hipEngine tracked allocator peaks for hipEngine memory.
+
+Artifacts:
+- `benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json`
+- `benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json`
+- `benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-gguf-ud-q4km-1run.json`
+- `benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json`
+- `benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json`
+
+Headline tok/s (`prefill / decode`):
+- 512/128: PARO `956.67 / 66.97`, GGUF `833.37 / 56.58`, llama HIP `1016.70 / 51.64`, llama Vulkan `1043.21 / 62.43`.
+- 1K/128: PARO `1067.18 / 61.77`, GGUF `854.31 / 52.83`, llama HIP `1069.68 / 51.45`, llama Vulkan `1055.05 / 61.57`.
+- 4K/128: PARO `1062.25 / 62.91`, GGUF `729.12 / 53.64`, llama HIP `1021.19 / 49.58`, llama Vulkan `1027.07 / 60.01`.
+- 32K/128: PARO `822.25 / 50.37`, GGUF `619.57 / 44.38`, llama HIP `742.87 / 43.63`, llama Vulkan `809.62 / 50.91`.
+- 64K/128: PARO `622.75 / 41.97`, GGUF `522.87 / 37.74`, llama HIP `569.61 / 38.60`, llama Vulkan `658.40 / 44.01`.
+- 128K/128: PARO `425.73 / 30.29`, GGUF `384.01 / 28.04`, llama HIP `384.96 / 31.60`, llama Vulkan `473.65 / 34.71`.
+
+Validation:
+- `python3 -m json.tool` succeeded for all five emitted artifacts.
+- hipEngine final token IDs were stable across the single measured repetition;
+  PARO KV audit passed and tracked allocator peak was `21.248 GiB`; GGUF tracked
+  peak was `26.264 GiB`.
