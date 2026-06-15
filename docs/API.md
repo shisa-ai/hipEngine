@@ -728,9 +728,14 @@ as an explicit no-retain marker. Buffered non-streaming chat requests may set
 `append_none`, `append_prompt_only`, and explicit debug `append_all` are also
 accepted. The server stores an app-local visible transcript, strips parsed
 `reasoning_content` from visible-only assistant commits, and reports the
-effective `finish_details.cache_action`. Deterministic buffered chat session
-requests that stop by generation length may mint continuation handles; the
-resume request must send the same existing `session.id` and omit `messages`.
+effective `finish_details.cache_action`. This is transcript replay, not
+resident-KV visible re-prefill: `/v1/hipengine/capabilities` reports
+`sessions.commit_policy.resident_kv_commit=false`,
+`sessions.commit_policy.visible_only_reprefill=false`, and
+`sessions.commit_policy.visible_only_replay="rerender_app_local_transcript"`.
+Deterministic buffered chat session requests that stop by generation length may
+mint continuation handles; the resume request must send the same existing
+`session.id` and omit `messages`.
 This is not resident KV reuse. `session.id` on completions, streaming chat,
 `n>1`, unsupported `session.commit` modes, and other `session` payloads return
 HTTP 400 with `error.code: "unsupported_parameter"` and `error.param` set to the

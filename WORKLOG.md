@@ -92517,3 +92517,22 @@ known nano-vllm-amd drift set (`qwen35_expert.hip`, `smoke.hip`,
 `paroquant_kernels.py`, `paroquant_fusedw4.py`) plus clean R1 entries, with no
 new lineage action required for this hipEngine-original INT8 prefill kernel.
 `git diff --check -- docs/KERNELS.md` -> clean.
+
+## 2026-06-15 - AGENTIC visible-only replay capability
+
+Advertised the current visible-only session retention model under
+`sessions.commit_policy`: the server keeps app-local transcripts, does not
+commit resident KV state, does not implement visible-only resident re-prefill
+yet, and replays stateful sessions by re-rendering the stored transcript through
+the normal prompt path. Updated docs/API and docs/AGENTIC so clients can
+discover this P3.2 limitation from the capability manifest instead of guessing
+from session behavior.
+
+Validation:
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or custom_chat_default or chat_session_visible_only or chat_session_message_copy or chat_session_fork_branches or chat_session_rollback_trims or chat_session_snapshot_export_restore'` -> passed.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> passed.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities or chat_session or continuation'` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

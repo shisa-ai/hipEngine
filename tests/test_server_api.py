@@ -428,6 +428,9 @@ def _session_commit_policy_capability() -> dict[str, Any]:
         ],
         "supported_endpoints": ["chat_completions"],
         "supported_streaming": False,
+        "resident_kv_commit": False,
+        "visible_only_reprefill": False,
+        "visible_only_replay": "rerender_app_local_transcript",
         "downgrade_visible_only_on": [
             "cancelled",
             "deadline_exceeded",

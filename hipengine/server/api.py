@@ -1172,6 +1172,9 @@ def _session_commit_policy_capability() -> dict[str, Any]:
         "modes": list(_SESSION_COMMIT_MODES),
         "supported_endpoints": ["chat_completions"],
         "supported_streaming": False,
+        "resident_kv_commit": False,
+        "visible_only_reprefill": False,
+        "visible_only_replay": "rerender_app_local_transcript",
         "downgrade_visible_only_on": sorted(_SESSION_UNSAFE_VISIBLE_REASONS),
     }
 

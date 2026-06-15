@@ -1915,7 +1915,11 @@ Current code reality:
   `DELETE /v1/hipengine/sessions/{session_id}` removes one app-local transcript
   session.
 - There is no resident KV commit or visible-only KV re-prefill yet; transcript
-  sessions re-render/re-prefill through the normal prompt path.
+  sessions re-render/re-prefill through the normal prompt path. The capabilities
+  manifest reports this under
+  `sessions.commit_policy.resident_kv_commit=false`,
+  `sessions.commit_policy.visible_only_reprefill=false`, and
+  `sessions.commit_policy.visible_only_replay="rerender_app_local_transcript"`.
 
 #### P3.2 Visible-only re-prefill path
 
@@ -2286,8 +2290,9 @@ Current code reality:
   sampling scope, length-only finishes, and no streaming support. Session commit
   policy is advertised as stateful app-local transcript
   storage with `resident_state_reuse=false`, buffered chat-only scope,
-  `append_visible_only` as the stateful default, and downgrade reasons for
-  unsafe visible-only finishes. Session metadata advertises
+  `append_visible_only` as the stateful default, no resident-KV commit, no
+  visible-only resident re-prefill, transcript replay through normal rendering,
+  and downgrade reasons for unsafe visible-only finishes. Session metadata advertises
   `transcript_message_copy="json_deep_copy"` plus deep-copy guarantees for
   forks, rollbacks, and snapshot export. Multi-model routing and strict tool
   decoding remain advertised as unsupported until their runtime paths exist. Tensor
