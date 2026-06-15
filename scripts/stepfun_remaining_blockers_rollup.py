@@ -163,6 +163,9 @@ def _generator_commands() -> dict[str, str]:
         "kv_session_contract": (
             "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
         ),
+        "kv_evidence_preflight": (
+            "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty"
+        ),
         "status_refresh": (
             "python3 scripts/stepfun_correctness_status.py --pretty "
             "--output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
@@ -251,6 +254,8 @@ def build_remaining_blockers_rollup(
                 "missing_artifact_paths": kv_blocker.get("missing_artifact_paths"),
                 "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
                 "session_contract_generator_command": commands["kv_session_contract"],
+                "evidence_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json",
+                "evidence_preflight_generator_command": commands["kv_evidence_preflight"],
                 "streaming_runner_source_status": kv_blocker.get(
                     "streaming_runner_source_status"
                 ),

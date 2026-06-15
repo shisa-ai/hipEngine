@@ -40845,3 +40845,32 @@ git diff --check
 ```
 
 Results: targeted session-contract/rollup tests passed (`6` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; remaining-blockers rollup file SHA `bd88c32fc7c56da7057d432b2a3a52f508615ed713ba909b03b3ef184b273510`; rollup stable payload SHA `b3a90da6f8eca2247ae4b91d5ecab1ad574ca46e060e5d747a1694562da257fd`; correctness-status file SHA `8b5108d7a3c25b5d48d14d3b1546fc12965ee51cd32ac6d7d75490ddc18e89c4`; final-blocker file SHA `2f6373ac8326f3ea88a93a999894a68635db32e25f5ff25f0087ddc6d04ec3d1`; handoff file SHA `9f75a0bd1c0b7564d6a6de13b1663e3136bd6901314421941480181eaca7a67c`.
+
+## 2026-06-15 - StepFun Q3_K_L KV evidence preflight added
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 488. Added `scripts/stepfun_kv_evidence_preflight.py`, a compact handoff/preflight generator that reads the retained KV session-contract artifact and KV blocker-status artifact, then reports whether the two required KV evidence files are present. Added `tests/test_stepfun_kv_evidence_preflight.py` coverage for the builder, CLI output, and compact modes. Updated `scripts/stepfun_remaining_blockers_rollup.py` and its tests so the rollup includes the `kv_evidence_preflight` generator command and retained preflight artifact path. Updated `docs/STEPFUN.md` to cite the preflight artifact.
+
+The retained preflight artifact `benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json` reports `status=blocked`, `metadata_contract_ready=true`, `required_artifacts_present=false`, `next_action=wire_streaming_decode_loop`, and missing required paths `benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json` plus `benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json`. It records the exact checker commands for those future artifacts and explicitly makes no KV/e2e/performance claim. Preflight file SHA is `d450b1b55db2dc26b87420d43cb6175ed2cc37c5d0b2938536176360891c4697`; stable payload SHA from `scripts/stepfun_kv_evidence_preflight.py --sha-only` is `08877ae371ef9d8de57050e5f1858b2e2e5190cf6cf91c636eabe5f48c23faca`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_kv_evidence_preflight.py tests/test_stepfun_kv_evidence_preflight.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_kv_evidence_preflight.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty
+python3 scripts/stepfun_kv_evidence_preflight.py --sha-only
+python3 scripts/stepfun_kv_evidence_preflight.py --missing-paths-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted KV preflight/rollup tests passed (`6` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; remaining-blockers rollup file SHA `5769b5a9990df2ba0208077f312e09207b13e50252365f3a5620ca5c1625ac51`; rollup stable payload SHA `a3b8c4ac238e21b5967ad0b029160a3c83eb4c6021401f5bdf7351de66336e46`; correctness-status file SHA `a67c0114eea6316bff51484044f33433d7dba2d44f9e451cb25a514a2daf8301`; final-blocker file SHA `b52cc13926e2d10478ca459282bd0b55061b20b054a13a9546d6a11593667caa`; handoff file SHA `6ef82fa888fe769ffa249dd6541875916bfe491d62f5d53897203708edf264c5`; full StepFun guard passed; `git diff --check` passed.

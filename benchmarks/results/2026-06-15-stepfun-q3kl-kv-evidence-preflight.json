@@ -1,0 +1,75 @@
+{
+  "artifact_kind": "stepfun_kv_evidence_preflight",
+  "date": "2026-06-15",
+  "generator_commands": {
+    "kv_blocker_status": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
+    "session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
+  },
+  "kv_backed_decode_ready": false,
+  "kv_blocker_status": {
+    "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json",
+    "artifact_sha256": "7f494effe529930c69fb6419a9d05d531416829010de1281ba0df77a6d11b2cd",
+    "blocked_count": 2,
+    "missing_artifact_paths": [
+      "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+      "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    ],
+    "missing_evidence": [],
+    "present": true,
+    "ready": true,
+    "runtime_symbols_validated": true,
+    "status": "blocked",
+    "streaming_blocked_by": "streaming_decode_loop_not_wired"
+  },
+  "metadata_contract_ready": true,
+  "missing_required_artifact_paths": [
+    "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+    "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+  ],
+  "next_action": "wire_streaming_decode_loop",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This preflight proves only that metadata-only contract evidence exists; the required KV trace and KV-backed next-token artifacts are still absent."
+  },
+  "required_artifact_checks": [
+    {
+      "checker_command": "python3 scripts/stepfun_kv_trace_check.py --trace benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json --summary-only --pretty",
+      "missing_evidence": [
+        "artifact_file_present"
+      ],
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+      "present": false,
+      "ready": false
+    },
+    {
+      "checker_command": "python3 scripts/stepfun_kv_next_token_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json --summary-only --pretty",
+      "missing_evidence": [
+        "artifact_file_present"
+      ],
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+      "present": false,
+      "ready": false
+    }
+  ],
+  "required_artifacts_present": false,
+  "schema_version": 1,
+  "session_contract": {
+    "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
+    "artifact_sha256": "38a8835e3ff0abdb677aca2cee6c19cfdb80c611e4d6b0252e41042caea9e76c",
+    "blocked_by": "streaming_decode_loop_not_wired",
+    "launch_operation_count": 135,
+    "missing_evidence": [],
+    "next_action": "wire_streaming_decode_loop",
+    "no_kernel_launches": true,
+    "present": true,
+    "ready": true,
+    "required_artifacts": [
+      "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+      "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    ],
+    "status": "blocked"
+  },
+  "status": "blocked"
+}
