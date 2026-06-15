@@ -295,6 +295,14 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "down_qtype": GGMLQuantizationType.F32,
         "shared_qtype": GGMLQuantizationType.F32,
     }
+    call_spec = plan.cpu_reference_call_spec
+    assert call_spec.layer_id == 2
+    assert call_spec.cpu_reference_kernel == plan.cpu_reference_kernel
+    assert dict(call_spec.tensor_arguments)["wq_weight"] == "blk.2.attn_q.weight"
+    assert dict(call_spec.qtype_arguments)["gate_qtype"] is GGMLQuantizationType.F32
+    assert dict(call_spec.keyword_arguments) == dict(plan.kernel_kwargs)
+    assert call_spec.tensor_bindings == plan.tensor_bindings
+    assert dict(call_spec.fallback_slots) == dict(plan.fallback_slots)
     assert plan.tensor_bindings[0].fallback_slot == "token_embedding"
     assert plan.tensor_bindings[13].qtype_argument == "gate_qtype"
     plan_dict = plan.as_dict()
@@ -306,6 +314,14 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "scale": 0.5,
         "expert_weights_scale": 0.0,
         "eps": 1.0e-6,
+    }
+    assert plan_dict["cpu_reference_call_spec"] == call_spec.as_dict()
+    assert plan_dict["cpu_reference_call_spec"]["tensor_arguments"]["wq_weight"] == "blk.2.attn_q.weight"
+    assert plan_dict["cpu_reference_call_spec"]["qtype_arguments"] == {
+        "gate_qtype": "F32",
+        "up_qtype": "F32",
+        "down_qtype": "F32",
+        "shared_qtype": "F32",
     }
     assert plan_dict["tensor_argument_map"]["wq_weight"] == "blk.2.attn_q.weight"
     assert plan_dict["qtype_argument_map"] == {

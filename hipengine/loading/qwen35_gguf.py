@@ -253,6 +253,32 @@ class Qwen35GGUFMTPDraftTensorBinding:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftCPUCallSpec:
+    """Metadata-only call spec for a Qwen35 GGUF MTP CPU-reference oracle."""
+
+    layer_id: int
+    cpu_reference_kernel: tuple[str, str, str, str]
+    tensor_arguments: Mapping[str, str]
+    qtype_arguments: Mapping[str, GGMLQuantizationType]
+    keyword_arguments: Mapping[str, object]
+    tensor_bindings: tuple[Qwen35GGUFMTPDraftTensorBinding, ...]
+    fallback_slots: Mapping[str, str]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "layer_id": self.layer_id,
+            "cpu_reference_kernel": list(self.cpu_reference_kernel),
+            "tensor_arguments": dict(self.tensor_arguments),
+            "qtype_arguments": {
+                argument: qtype.name for argument, qtype in self.qtype_arguments.items()
+            },
+            "keyword_arguments": dict(self.keyword_arguments),
+            "tensor_bindings": [binding.as_dict() for binding in self.tensor_bindings],
+            "fallback_slots": dict(self.fallback_slots),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftTensorPlan:
     """Ordered tensor plan for feeding one GGUF MTP draft layer CPU oracle."""
 
@@ -356,6 +382,20 @@ class Qwen35GGUFMTPDraftTensorPlan:
             }
         )
 
+    @property
+    def cpu_reference_call_spec(self) -> Qwen35GGUFMTPDraftCPUCallSpec:
+        """Return the metadata needed to invoke the CPU-reference NextN oracle."""
+
+        return Qwen35GGUFMTPDraftCPUCallSpec(
+            layer_id=self.layer_id,
+            cpu_reference_kernel=self.cpu_reference_kernel,
+            tensor_arguments=self.tensor_argument_map,
+            qtype_arguments=self.qtype_enum_argument_map,
+            keyword_arguments=self.kernel_kwargs,
+            tensor_bindings=self.tensor_bindings,
+            fallback_slots=self.fallback_slots,
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "layer_id": self.layer_id,
@@ -374,6 +414,7 @@ class Qwen35GGUFMTPDraftTensorPlan:
             "rope_dimension_sections": list(self.rope_dimension_sections),
             "attention_scale": self.attention_scale,
             "kernel_kwargs": dict(self.kernel_kwargs),
+            "cpu_reference_call_spec": self.cpu_reference_call_spec.as_dict(),
             "tensor_argument_map": dict(self.tensor_argument_map),
             "qtype_argument_map": dict(self.qtype_argument_map),
             "qtype_enum_argument_map": {
@@ -1144,6 +1185,7 @@ __all__ = [
     "Qwen35GGUFLayerMap",
     "Qwen35GGUFMTPBlockInventory",
     "Qwen35GGUFMTPBlockMap",
+    "Qwen35GGUFMTPDraftCPUCallSpec",
     "Qwen35GGUFMTPDraftTensorBinding",
     "Qwen35GGUFMTPDraftTensorPlan",
     "Qwen35GGUFMTPDraftTensorSlot",

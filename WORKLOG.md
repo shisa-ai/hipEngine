@@ -94027,3 +94027,63 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU oracle call spec bridge
+
+Implemented `mtp-gguf` multiloop iteration 31: added a metadata-only CPU call
+spec view for the GGUF MTP draft tensor plan.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this bridge packages already-validated tensor bindings, qtype enum
+  bindings, and scalar kwargs for future CPU parity harnesses.
+
+Evidence:
+- Real GGUF smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... plan.cpu_reference_call_spec ... PY`
+  passed and reported:
+  - kernel key `('cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits')`
+  - `22` tensor arguments
+  - sample tensor args: `token_embedding -> token_embd.weight`,
+    `wq_weight -> blk.40.attn_q.weight`,
+    `gate_qweight -> blk.40.ffn_gate_exps.weight`,
+    `shared_head_weight -> output.weight`
+  - qtype args: `gate_qtype=Q4_K`, `up_qtype=Q4_K`, `down_qtype=Q5_K`,
+    `shared_qtype=Q8_0`
+  - kwargs: `num_heads=16`, `num_kv_heads=2`, `experts_used=8`,
+    `rotary_dim=64`, `scale=0.0625`, `expert_weights_scale=0.0`, `eps≈1e-6`.
+- Signature drift check:
+  `inspect.signature(qwen35_gguf_mtp_nextn_layer_logits)` confirmed call-spec
+  tensor args and qtype args match the CPU-reference signature order, and all
+  scalar kwargs are accepted by the signature.
+- llama.cpp source check:
+  `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '604,735p'`
+  confirms the same MTP order packaged by the call spec: `[e_norm,h_norm]` +
+  `eh_proj`, attention, routed/shared FFN, then shared-head norm/head fallback.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftCPUCallSpec`.
+  - Carries layer id, CPU-reference kernel key, tensor argument map,
+    `GGMLQuantizationType` qtype argument map, scalar keyword arguments,
+    tensor bindings, and fallback provenance.
+  - Provides JSON-friendly `as_dict()` serialization with qtype names.
+- Added `Qwen35GGUFMTPDraftTensorPlan.cpu_reference_call_spec`.
+- Added the call spec to `Qwen35GGUFMTPDraftTensorPlan.as_dict()`.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to assert call-spec contents
+  and serialization.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `24` selected tests (`18` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `15` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
