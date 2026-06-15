@@ -20,6 +20,14 @@ The short version:
 - First objective is acceptance parity, not kernel heroics: run the same GGUF,
   same prompts, same budgets, and same acceptance denominators as llama.cpp.
 
+The two things this plan's premise rests on — and that earlier drafts
+under-specified — are made explicit here: **(1)** the exact NextN seed/forward
+contract M3/M4 must reproduce (post-norm fp32 hidden seed, full attn+MoE NextN
+sublayer, KVLiveSpans attention), and **(2)** the cross-engine parity-oracle
+machinery (a `cpu_reference` NextN forward, a captured llama.cpp draft trace,
+token-id parity, sampling parity). Fix the oracle and pin the seed contract
+before any M3 implementation.
+
 ## Goal
 
 Build a native hipEngine GGUF MTP path for:
@@ -31,6 +39,10 @@ source: https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF
 
 and compare against llama.cpp HIP/Vulkan `--spec-type draft-mtp` using the shared
 D32 prompt suite.
+
+Throughout this doc, "B-N" (B1-B4) is shorthand for the llama.cpp
+`--spec-draft-n-max` **cap** (default 3), not a fixed draft length: the drafter
+can undershoot the cap via `p_min`/`n_min` (see "llama.cpp MTP Contract").
 
 Primary success criteria:
 
@@ -48,7 +60,8 @@ Non-goals for this branch:
 - Do not add `import torch` to `LLM.generate()` or any GGUF/MTP hot path.
 - Do not fork dispatcher/model logic with `if backend == ...` / `if quant == ...`;
   new kernels and layouts must register through the existing plugin/registry
-  model.
+  model. M3/M4 name the concrete `(backend, layer, quant, variant)` keys instead
+  of any branch (CLAUDE.md:28).
 - Do not edit local llama.cpp checkouts. They are read-only references and
   benchmark baselines.
 
@@ -65,7 +78,9 @@ Hardware/runtime:
 - TheRock HIP `7.13.60980-c76140fa27`.
 - llama.cpp reference commit:
   `6e9007ae61f4e994c27484759caac6ef2aa32b30`.
-- GGUF tensor check: `753` tensors with trailing `blk.40.nextn.*` / MTP tensors.
+- GGUF tensor check: `753` tensors with trailing `blk.40.nextn.*` / MTP tensors
+  (the `753`/`20` pair was reported by the gfx1151 diagnostic harness, not by
+  `scripts/inspect_gguf.py`; see M0).
 
 Measured D32 rows:
 
@@ -103,7 +118,9 @@ Relevant current state:
   GGUF prefill/decode.
 - `hipengine/loading/qwen35_gguf.py` already handles MTP-bearing files by
   reducing the AR executable block count when trailing `blk.N.nextn.*` tensors
-  are present. Those tensors are intentionally ignored for AR today.
+  are present. Those tensors are intentionally ignored for AR today, and are
+  dropped before the resident layer map is built (so they are never
+  materialized).
 - Qwen3.6 35B-A3B GGUF baseline rows exist for gfx1151, including the MTP-bearing
   `UD-Q4_K_M` file. GGUF decode is currently slower than PARO on hipEngine but is
   directly comparable to llama.cpp.
@@ -111,6 +128,13 @@ Relevant current state:
   prefer replacement resident layouts over duplicate raw+packed sidecars. A
   duplicate expert sidecar for Qwen3.6-class models can exceed the 24 GiB-class
   deployment envelope.
+- **Spec-decode infrastructure is PARO/safetensors-only today.** `DraftBatch`,
+  `TargetVerifyBatch`, accept/commit, and the target-attached MTP loader
+  (`hipengine/loading/mtp.py`, validating safetensors `mtp.*` via `WeightIndex`)
+  are wired into the PARO runner (`qwen35_paro_runner.py`), not the GGUF runner.
+  The GGUF runner has **no** spec-decode wiring. M4 therefore builds net-new
+  GGUF-side proposal/verify/accept/commit plumbing; it does not just "attach" to
+  an existing GGUF hook.
 
 ### Prior MTP / DFlash / Megakernel Lessons
 
@@ -130,12 +154,17 @@ From [`MTP.md`](MTP.md):
 - Many plausible optimizations no-held: full-vocab draft LM-head, B5/global large
   budgets, current graph capture, LM-head thread retunes, and oversized fused
   kernels.
+- The prior W7900 device-chain candidate-buffering experiment was exact but
+  same-suite **negative** (`0.6876x -> 0.6795x`, MTP.md ~L749). Treat "move draft
+  sampling onto the device" as something that must net-remove D2H/launch work,
+  not relocate it.
 
 From [`DFLASH.md`](DFLASH.md):
 
 - Reuse provider-neutral `DraftBatch`, target verify, accept, commit, and KV
   transaction infrastructure. MTP-GGUF should not create a separate verifier
-  stack.
+  stack — but note (above) that this infra is currently PARO-only, so M4 ports it
+  to the GGUF path rather than reusing it as-is.
 - Native accept/commit must summarize on device and avoid full-logit host copies
   in the fast path where possible.
 - Bulk/tree verifier correctness is tractable, but row cost dominates. Do not
@@ -155,32 +184,98 @@ From [`TUNING-gfx1151.md`](TUNING-gfx1151.md):
 - The first gfx1151 win was row-shape/chunking, not attention work.
 - llama.cpp Vulkan beating llama.cpp HIP on this APU is a driver/roofline clue,
   not a direct implementation target.
+- **Do not inherit W7900 B=1 as the gfx1151 operating point.** Retest B1/B2/B3 on
+  gfx1151; the APU may amortize scarce memory traffic differently
+  (TUNING-gfx1151.md:81-83). This is the operating-point question OQ4 / M6 must
+  answer per-device.
 
 ## llama.cpp MTP Contract To Match
 
 Reference source basis from the gfx1151 audit: local read-only
 `/home/lhl/llama.cpp/llama.cpp-hip` at
-`6e9007ae61f4e994c27484759caac6ef2aa32b30`.
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`. All file:line citations below are
+against that checkout.
 
-The behavior to match conceptually:
+The behavior to match:
 
 1. **Integrated NextN tensors.** Qwen35MoE loads explicit `nextn` tensors such as
    `eh_proj`, `enorm`, `hnorm`, optional `embed_tokens`, and optional shared
-   head tensors. They are not copied from a separate sidecar.
+   head/norm tensors. They are not copied from a separate sidecar.
 2. **Separate MTP graph/context on the target model.** llama.cpp creates an
-   `LLAMA_CONTEXT_TYPE_MTP` context against the target model. It reserves only
-   context/compute memory, not another full model copy.
-3. **Target hidden-row seed.** The target decode path can expose `h_nextn` rows;
-   the MTP drafter consumes the target hidden row plus the next token embedding.
-4. **Filtered MTP layer set.** For Qwen35/Qwen35MoE hybrid models, the MTP
-   context is limited to the NextN layer and uses plain dense-attention KV.
-5. **Backend draft sampling.** Draft sampling can happen through backend sampler
-   chains instead of always moving full logits to the host.
-6. **Central accept accounting.** Server metrics expose `draft_n` and
-   `draft_n_accepted`; cross-engine comparison must derive accepted/output.
+   `LLAMA_CONTEXT_TYPE_MTP` context against the target model
+   (`llama-context.cpp:28` maps it to `LLM_GRAPH_TYPE_DECODER_MTP`). It reserves
+   only context/compute memory, not another full model copy — but that is **not
+   free**: it allocates its own single-NextN-layer dense KV cache, its own
+   compute/sched buffers, and a reused `embd_nextn` host buffer. Budget these
+   against the 24 GiB envelope (see M4 allocator-peak gate).
+3. **Target hidden-row seed = POST output-norm hidden, at fp32.** The trunk's
+   `h_nextn` seed is the hidden state captured **after** the trunk `output_norm`
+   (`qwen35moe.cpp:230-234`: `build_norm(cur, model.output_norm, …)` then
+   `res->t_h_nextn = cur`; the same post-norm tensor feeds both the LM head and
+   the MTP seed). It is exposed to the host via
+   `ggml_backend_tensor_get_async` into a single reused `embd_nextn` buffer
+   (`llama-context.cpp:1516-1522,1969-1977`) at **fp32** (`inp->h` is
+   `GGML_TYPE_F32`). The NextN block re-normalizes the seed with `nextn.hnorm`
+   before `eh_proj` (`qwen35moe.cpp:604`). The drafter pairs this hidden row with
+   the **next-token ID** (written into `batch.token`); the NextN block embeds
+   that token internally — the host does not assemble a separate "next token
+   embedding" vector (`speculative.cpp:1071-1074`). The MTP batch carries **both**
+   `batch.token` and `batch.embd` (the usual mutually-exclusive assert is
+   relaxed, `speculative.cpp:870-874`).
+4. **Filtered MTP layer set, dense KV, KVLiveSpans on the hipEngine side.** For
+   Qwen35/Qwen35MoE the MTP context is limited to the NextN layer
+   (`llama-model.cpp:2050,2149`) and that layer runs a **full dense-attention
+   sublayer** over its own `wq/wk/wv/wo` + q/k norms with IMRoPE
+   (`qwen35moe.cpp:599-661`), **plus a full MoE FFN** (routed experts + gated
+   shared expert). The MTP context maintains its **own** single-NextN-layer KV by
+   a catch-up decode mirroring the accepted token stream; it does **not** read the
+   target's 40-layer KV. On the hipEngine side this is an attention-decode +
+   paged-KV-write path and therefore **MUST** use the `KVLiveSpans` ABI
+   (CLAUDE.md:31; `hipengine/kvcache/spans.py`), dense-filled
+   (`spans_mode='uniform'`, `base_offsets`/`live_counts` set,
+   `token_positions=None`, `evict_mask=None`); B>1 rows set
+   `span_role='verify_chain'` (or `'verify_tree'`). Do not shortcut to
+   `(block_table, context_len)`.
+5. **Per-cycle pass count: N draft tokens = N+1 NextN forward passes.** The
+   drafter runs one seed decode of `(id_last, pending_h)` (`speculative.cpp:1077`)
+   then one `ctx_dft` decode per drafted token (`speculative.cpp:1148`, in the
+   draft while-loop). The loop stops early when the drafted token's top-1
+   probability `< p_min` (default 0.0, `speculative.cpp:1113-1118`) and drafts
+   shorter than `n_min` (default 0, `speculative.cpp:1163-1164`) are discarded.
+   So effective draft length = `min(n_max, first-token-where-p<p_min)`, and
+   "B-N" is the cap. M3's "runs the block once" is true only for B1.
+6. **Backend draft sampling is the DEFAULT.** `backend_sampling=true`
+   (`common.h:309`; CLI advertises "default: enabled", `arg.cpp:3616-3624`).
+   A per-seq backend `llama_sampler_chain` with `top_k=10` is attached to
+   `ctx_dft` (`speculative.cpp:887-899`); only on backend-offload failure does it
+   fall back to a CPU `common_sampler` (also `top_k=10`). Draft selection is
+   **greedy top-1 from the top-k set** (`speculative.cpp:1110`). M3 draft-logit
+   parity must compare greedy-top-1-from-`top_k=10`, **not** full-vocab argmax.
+7. **Seed lifecycle / state machine.** After the target verify decode, capture all
+   needed `h`-rows from `ctx_tgt` into a private `verify_h` snapshot **in the same
+   step** (the `embd_nextn` buffer is reused and overwritten on the next decode);
+   carry the last row across cycles via `pending_h`; `accept(n_accepted)`
+   re-seeds `pending_h` from `verify_h[min(n_accepted, n_rows-1)]` (the last
+   accepted row). Positions are explicit: seed at `pos=n_past`, chained draft
+   token `i` at `pos=n_past+i+1` (a single fixed position is Gemma4-shared-mem
+   only). `embeddings_nextn` is enabled on both contexts (target `masked=false`,
+   MTP `masked=true`).
+8. **Central accept accounting.** The server exposes `draft_n` and
+   `draft_n_accepted` (`server-task.h:280-281`, set from
+   `n_draft_total`/`n_draft_accepted` at `server-context.cpp:435-436`;
+   `draft_n_accepted += ids.size()-1` at `:3595`). `draft_n` is **generated**
+   draft tokens (`n_draft_total += draft.size()`, `server-context.cpp:2656`),
+   which can be `< B`. Derive accepted/output from these **server timings**
+   fields, not the common-layer `n_gen_tokens`/`n_acc_tokens` stats
+   (`speculative.cpp:2030-2031,2062-2064`), which count whole-draft events
+   differently.
 
-Useful source links are recorded in [`TUNING-gfx1151.md`](TUNING-gfx1151.md) so
-this document can focus on hipEngine implementation.
+The CLI knob that drives B-N is `--spec-draft-n-max` (default 3, `common.h:303`,
+`arg.cpp:3587-3593`); `--spec-draft-p-min` / `--spec-draft-n-min` control the
+early-stop and floor. The legacy `--draft` / `--draft-n` / `--draft-max` flags
+are **removed** in this checkout and now error (`arg.cpp:3798-3804`).
+
+Useful source links are also recorded in [`TUNING-gfx1151.md`](TUNING-gfx1151.md).
 
 ## Acceptance Accounting
 
@@ -188,14 +283,41 @@ Use these metric names in every artifact:
 
 | Metric | Definition | Why |
 | --- | --- | --- |
-| `accept_per_draft` | accepted draft tokens / generated draft tokens or active candidate budget | Native engine/accounting diagnostic only |
+| `accept_per_draft` | accepted draft tokens / **generated** draft tokens | Matches llama.cpp `draft_n` denominator (`draft.size()`, can be < B via p_min/n_min); native diagnostic |
 | `accepted_per_output` | accepted draft tokens / predicted output tokens | Cross-engine density comparison |
 | `visible_tokens_per_cycle` | target token + accepted draft tokens per verify cycle | hipEngine economics |
 | `cycle_cost_ar_tokens` | MTP cycle wall / AR token wall | Break-even cost |
 | `speedup_total_time` | AR total decode time / MTP total decode time | Noise-resistant speedup cross-check |
 
+`accept_per_draft` uses **generated** draft tokens as the denominator to match
+llama.cpp's `draft_n`. If a hipEngine-only "active candidate budget" denominator
+is reported, label it explicitly as a hipEngine budget metric distinct from
+`draft_n` — do not silently swap denominators.
+
 Never compare llama.cpp `accept_rate` directly to hipEngine
-`acceptance_rate_mean`; they use different denominators.
+`acceptance_rate_mean`; they use different denominators. Derive the cross-engine
+numbers from llama.cpp's server timings `draft_n` / `draft_n_accepted`, not the
+common-layer `gen/acc tokens` stats.
+
+### Parity Preconditions
+
+These gate **before** any cross-engine accepted/output comparison (referenced
+from M5). A divergence in any of them gets misattributed to draft logits and
+defeats the parity goal:
+
+- **(a) Token-id parity.** Capture llama.cpp prompt token-id arrays for the D32
+  suite and assert hipEngine produces **identical ids** on the matched prompt
+  (exact equality, not just a prompt hash). hipEngine's GGUF tokenizer is an
+  explicit byte-BPE approximation and the bench fixture stores raw text, so equal
+  text + a hash does not guarantee equal ids. Pin BOS/chat-template/special
+  tokens.
+- **(b) Sampling parity.** Greedy/argmax draft+target on both engines. Launch
+  llama.cpp with `--temp 0` (or `top-k 1`) and a fixed seed; document the argmax
+  tie-break (lowest token id); assert `hipEngine-AR-greedy == llama.cpp-AR-greedy`
+  on the same tokens. hipEngine's verifier already requires greedy-fast sampling
+  and its spec oracle is same-session greedy AR equality.
+- **(c) Numeric gate.** `KL <= 0.05` AND top-1 agreement `>= 90%` vs
+  `kernels/cpu_reference/` on fixture inputs (the standard CLAUDE.md kernel gate).
 
 ## Implementation Milestones
 
@@ -208,38 +330,72 @@ Deliverables:
   - AR executable block count;
   - ignored MTP block ids;
   - all `blk.N.nextn.*` tensor names, shapes, quant types, and byte sizes;
+  - the full trailing MTP block tensors (attn/ffn/norm), not just `nextn.*`;
   - presence/fallback status for NextN embed/head tensors.
+  - **Note:** `scripts/inspect_gguf.py` today reports only `tensor_count` and
+    `first_tensors[:12]` with no block/nextn/shape awareness
+    (`inspect_gguf.py:53-62`), so a dedicated new script (or a real extension) is
+    required; do not assume the existing script suffices.
 - Create a compact fixture for the local MTP GGUF inventory.
-- Capture llama.cpp prompt tokenization/rendered prompt hashes for the D32 suite.
+- **Capture a llama.cpp draft logits/top-k trace for at least one short D32
+  prompt (required, promoted from backlog).** This is one of the two M3 parity
+  oracles; M3 blocks on having it or the `cpu_reference` NextN forward.
+- Capture llama.cpp prompt tokenization / token-id arrays + rendered prompt
+  hashes for the D32 suite (feeds Parity Precondition (a)).
 
 Acceptance:
 
-- `python3 scripts/inspect_gguf.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
-  or a new dedicated script reports the `753` tensor / `20` MTP-like tensor
-  inventory.
+- The new/extended script reports the full inventory. The MTP block is the full
+  **20-tensor** trailing block (`4` `nextn.*` — `eh_proj`, `enorm`, `hnorm`,
+  `shared_head_norm` — plus `16` attn/ffn/norm); only `4` are `nextn.*`. The
+  `753`/`20` pair quoted in Starting Evidence came from the gfx1151 diagnostic
+  harness, not `inspect_gguf.py`.
+- Quant inventory observed in the local `UD-Q4_K_M` file (confirm via the M0
+  script run, treat as expected not authoritative): `eh_proj`=Q8_0,
+  `enorm`/`hnorm`/`shared_head_norm`=F32, block-40 attention=Q8_0, routed experts
+  Q4_K (gate/up) + Q5_K (down), `ffn_gate_inp`=BF16. `embed_tokens` and
+  `shared_head_head` are **absent** in this file.
 - Existing GGUF AR correctness fixtures still pass.
 
 ### M1 — Expose NextN/MTP Metadata in hipEngine
 
 Deliverables:
 
-- Extend the qwen35moe GGUF mapper with a first-class MTP block descriptor rather
-  than only `ignored_block_ids`.
+- Extend the qwen35moe GGUF mapper (`hipengine/loading/qwen35_gguf.py`,
+  `Qwen35GGUFModelMap` — confirm the exact symbol name in-tree) with a
+  first-class MTP block descriptor rather than only the ignored-block-count
+  reduction.
 - Keep AR layer validation strict for blocks `0..39`; validate MTP block `40`
   separately.
-- Add shape checks for expected NextN tensors:
-  - `nextn.eh_proj.weight`
-  - `nextn.enorm.weight`
-  - `nextn.hnorm.weight`
-  - `nextn.embed_tokens.weight` if present
-  - shared head norm/head tensors if present
-  - the MTP block's attention/FFN tensors.
+- Required vs optional NextN tensor table (answers former Open Question #5,
+  verified in `qwen35moe.cpp`; tensor names use the `blk.<id>.` prefix and the
+  hipEngine `attn_output`/`post_attention_norm` naming may diverge from
+  llama.cpp's enum strings — map both):
+
+  | Tensor | Status | Fallback when absent |
+  | --- | --- | --- |
+  | `nextn.eh_proj` `[2*n_embd, n_embd]` | required | — |
+  | `nextn.enorm` `[n_embd]` | required | — |
+  | `nextn.hnorm` `[n_embd]` | required | — |
+  | block-40 attn (`attn_norm`, `attn_post_norm`, `wq/wk/wv/wo`, `attn_q_norm`, `attn_k_norm`) | required | — |
+  | block-40 MoE (`ffn_gate_inp`, `ffn_{gate,up,down}_exps`, `ffn_gate_inp_shexp`, `ffn_{gate,up,down}_shexp`) | required | — |
+  | `nextn.embed_tokens` | optional (`TENSOR_NOT_REQUIRED`) | `model.tok_embd` (target) |
+  | `nextn.shared_head_head` | optional | `model.output` (target) |
+  | `nextn.shared_head_norm` | optional | `model.output_norm` (target) |
+
+  In the local `UD-Q4_K_M` file `embed_tokens` and `shared_head_head` are absent
+  (only `shared_head_norm` present), so the draft head/embedding reuse target
+  weights and their shape checks **must be optional**.
 
 Acceptance:
 
-- Unit tests prove AR tensor validation still ignores MTP-only tensors for AR.
-- New tests prove MTP tensor validation fails on missing/mis-shaped `nextn`
-  tensors.
+- Existing AR-block-exclusion coverage is **extended**, not added:
+  `tests/test_qwen35_gguf_mtp_mapping.py` already proves AR tensor validation
+  ignores MTP-only tensors. Scope new work to the missing/mis-shaped `nextn`
+  validation path.
+- New tests prove MTP tensor validation fails on missing/mis-shaped **required**
+  `nextn` tensors and tolerates absent **optional** tensors via the fallback
+  table above.
 
 ### M2 — GGUF AR Baseline Lock
 
@@ -254,23 +410,80 @@ Acceptance:
 - Same prompt suite, same `max_tokens=32`, same tokenizer path.
 - No MTP execution yet; this is the control row.
 
+### M2.5 — Expose Target Hidden Seed from GGUF Decode
+
+This is the single load-bearing plumbing prerequisite between M2 and M3: nothing
+in M0-M3 otherwise **produces** the seed M3 consumes.
+
+Deliverables:
+
+- Add a GGUF AR decode-path hidden-seed tap that exposes the per-accepted-token
+  **POST-`output_norm`** hidden row (`h_nextn`) at **fp32** (llama.cpp `inp->h`
+  is `GGML_TYPE_F32`), analogous to
+  `qwen35_paro_runner.step_with_hidden_taps`. `run_prompt_hidden` today returns
+  the post-norm hidden as **BF16** with no per-token tap — correct provenance,
+  wrong dtype, no per-token hook.
+- Numeric contract (referenced by M3): capture the seed and next-token embedding
+  at fp32; apply `enorm`/`hnorm` RMSNorm in fp32; `eh_proj` input =
+  `concat([enorm(tok_embd), hnorm(target_hidden)], dim=feature)` with the
+  **embedding segment FIRST**; `eh_proj` is `2*n_embd -> n_embd`. Record the
+  chosen seed dtype in the parity artifact and treat BF16-vs-fp32 seed as a
+  parity variable to ablate if top-k disagrees.
+
+Acceptance:
+
+- A fixture asserts the captured seed is finite and matches the `cpu_reference`
+  trunk output within tolerance. M3 depends on this milestone.
+
 ### M3 — Draft-Only NextN Execution
 
 Deliverables:
 
-- Implement a correctness-first MTP draft head over GGUF resident weights:
-  - consumes target hidden seed and accepted token id;
-  - runs the NextN block once;
-  - emits draft logits/top-k for one depth;
+- Implement a correctness-first MTP draft head over GGUF resident weights. The
+  NextN block is **not** a self-contained projection+norm head — spell out the
+  full forward:
+  `enorm(embed(token))` and `hnorm(target_hidden)` RMS-normed separately ->
+  `concat` (embedding segment first) -> `eh_proj` (`2*n_embd -> n_embd`) ->
+  full dense self-attention over its own `wq/wk/wv/wo` (+ gated sigmoid output,
+  IMRoPE) -> MoE FFN (routed experts + gated shared expert) -> `shared_head_norm`
+  (-> `model.output_norm` if absent) -> `shared_head_head` LM-head
+  (-> `model.output` if absent). Verified `qwen35moe.cpp:583,599-661,719-733`.
+- Specific deliverables this implies:
+  - consumes the M2.5 target hidden seed (post-norm, fp32) and accepted token id;
+  - wire the draft LM-head + embedding to **target** weights when the optional
+    `nextn.embed_tokens` / `shared_head_head` tensors are absent (they are, in
+    the local file);
+  - provide a **KVLiveSpans** attention path for the NextN block (dense-filled
+    `spans_mode='uniform'`, `token_positions=None`, `evict_mask=None`); append
+    K/V via a registered `paged_kv_write` span variant and decode via a
+    registered `paged_attn_decode` span variant (CLAUDE.md:31);
+  - materialize/route the NextN **MoE experts** (Q4_K gate/up, Q5_K down) in the
+    dense-BF16 fallback — not just norms+projection; `eh_proj` is Q8_0, norms are
+    F32;
+  - emits draft logits/top-k for one depth (B1); depth>1 runs the block once per
+    depth (N+1 passes — see contract item 5);
   - records logits/top-k for parity debugging.
-- Use dense-BF16 fallback materialization first if needed. Speed is not the gate
-  for this milestone.
+- **Registry keys (no branches).** The NextN draft attention/FFN/sampler kernels
+  register under `KernelKey(backend, layer, quant='w4_gguf', variant)`, resolved
+  via `registry.resolve` / the fusion planner (`hipengine/kernels/registry.py`),
+  never an `if backend==`/`if quant==` branch (CLAUDE.md:28). GGUF K-quant
+  (Q4_K_M) dequant is the `w4_gguf` quant-axis plugin; the dense-BF16 fallback is
+  reached through the registry's generic quant->fp16/bf16 fallback, not a
+  hand-written branch.
+- **RED-first:** commit a failing fixed `(token, hidden)` fixture + expected
+  top-k before implementation (math change — guilty until proven correct,
+  CLAUDE.md). Add a numpy `cpu_reference` NextN forward in
+  `kernels/cpu_reference/ops.py` (none exists today — `grep nextn` returns 0)
+  registered under `(cpu_reference, nextn, …)`, implementing the forward above;
+  ship a fixture as the offline oracle.
 
 Acceptance:
 
 - Fixed hidden/token fixture produces deterministic finite logits.
-- Draft top-k agrees with a llama.cpp trace or a CPU reference within the defined
-  KL/top-1 gate.
+- Draft top-k agrees with the captured llama.cpp trace (M0) **or** the
+  `cpu_reference` NextN forward within the gate: `KL <= 0.05` AND top-1 agreement
+  `>= 90%` vs `kernels/cpu_reference/`. M3 blocks on at least one of these
+  oracles actually existing.
 - No full target trunk re-execution inside the MTP draft-only path.
 
 ### M4 — Target-Attached MTP Context
@@ -278,24 +491,49 @@ Acceptance:
 Deliverables:
 
 - Add a `Qwen35GGUFMTPContext` or equivalent target-attached object that:
-  - owns MTP scratch/KV/state buffers;
+  - owns MTP scratch/KV/state buffers — its **own** single-NextN-layer dense KV
+    cache, populated by a catch-up decode mirroring the accepted token stream (it
+    does **not** read the target's 40-layer KV);
   - references target resident weights without duplicating large tensors;
-  - captures/updates pending hidden seeds;
+  - captures/updates pending hidden seeds via the contract item 7 state machine:
+    snapshot `verify_h` in-step before the reused `embd_nextn` buffer is
+    overwritten; carry `pending_h` across cycles; `accept(n_accepted)` re-seeds
+    from `verify_h[min(n_accepted, n_rows-1)]`; set explicit positions
+    (seed `pos=n_past`, chained draft token `i` at `pos=n_past+i+1`); the batch
+    carries both token id and embd; enable `embeddings_nextn` on both contexts;
   - can run B1-B4 draft proposals.
-- Integrate with existing `DraftBatch`/verifier/accept/commit infrastructure.
+- Build net-new GGUF-side `DraftBatch`/verify/accept/commit wiring. The existing
+  `DraftBatch`/`TargetVerifyBatch`/accept/commit live in the PARO/safetensors
+  runner stack (`qwen35_paro_runner.py`, `batch_scheduler.py`,
+  `hipengine/speculative/`, `loading/mtp.py`); the GGUF runner has none of it.
+  The `DraftBatch` ABI must permit a row carrying **both** a token id and an
+  embedding seed.
 
 Acceptance:
 
 - B1 exact D32 prompt suite passes against same-session GGUF AR.
 - Artifact records accepted/output, accept/draft, visible tokens/cycle, cycle
   cost, and total-time speedup.
+- **Allocator-peak gate:** record the **measured** tracked allocator peak
+  (`core/memory.py` `peak_allocated_bytes` + amdgpu VRAM peak) with the MTP
+  context resident alongside the AR model; it must stay within the 24 GiB-class
+  envelope. The runner must emit a measured peak, not a placeholder constant (the
+  existing spec artifact hard-codes ~22 GB). Budget the MTP-context overhead: a
+  separate single-NextN-layer dense KV cache (sized by `n_ctx_seq` and the draft
+  `cache_type_k/v`), its own compute/sched buffers, and the `embd_nextn` host
+  buffer — weights are shared with the target, but this is not free.
 
 ### M5 — B1-B4 Parity Sweep Against llama.cpp
 
 Deliverables:
 
-- Add a hipEngine GGUF MTP prompt-suite runner or extend the existing MTP
-  economics runner to support `model=.gguf` and `candidate_budgets=1,2,3,4`.
+- Add a hipEngine GGUF MTP prompt-suite runner. Note scope: `candidate_budgets`
+  is **already** supported by `scripts/mtp_prompt_suite_economics.py`
+  (`--candidate-budgets`), but `model=.gguf` is a **large** extension gated on
+  M3/M4 — the MTP execution lives in the PARO-only
+  `mtp_verifier_economics.py -> mtp_chain_e2e_smoke.py` child stack with no GGUF
+  path (`grep gguf` in all three returns nothing). Plan for a new GGUF MTP child
+  runner, not a flag flip on the wrapper.
 - Run matched prompt/token suite against:
   - hipEngine GGUF AR;
   - hipEngine GGUF MTP B1-B4;
@@ -304,6 +542,8 @@ Deliverables:
 
 Acceptance:
 
+- **Parity Preconditions (a)/(b)/(c) pass per-prompt before any accepted/output
+  number is compared.**
 - hipEngine B1-B4 exactness and accepted/output are reported per prompt.
 - If hipEngine accepted/output lags llama.cpp by more than ~10% relative on the
   same budget, stop performance tuning and debug draft logits/model identity.
@@ -318,9 +558,21 @@ Only after M5 acceptance parity:
   - LM-head/logit/sampling/readback;
   - accept/commit/KV update;
   - host gaps.
-- Reuse GGUF decode-repack/T16 layouts where they reduce measured buckets.
-- Add backend-side top-k/sampling for draft logits to avoid full-vocab D2H.
-- Retest chunk/row shapes on gfx1151; do not assume W7900 B=1 is optimal.
+- Reuse GGUF decode-repack/T16 layouts where they reduce measured buckets — note
+  this is **conditional**: today `_spec_for_tensor` has no `nextn` slot-path cases
+  and T16/pack8 selection is gated to `.ffn_*_exps` + `root.lm_head`, so NextN
+  tensors need new slot-path predicates or default to RAW_GGUF/dense-BF16 (see
+  Open Question 3).
+- Add backend-side top-k/sampling for draft logits to avoid full-vocab D2H. This
+  matches llama.cpp's existing greedy-top-1-from-`top_k=10` behavior (not a novel
+  win). It **must** register as a variant (e.g. `topk_device`) and keep the
+  numerically-equivalent `full_vocab_d2h` path registered as the unfused fallback
+  and correctness oracle (CLAUDE.md:29). Caveat: the prior W7900 device-chain
+  candidate-buffering attempt was exact but suite-negative
+  (`0.6876x -> 0.6795x`, MTP.md ~L749); a device-side top-k path must
+  net-remove D2H/launch work, not relocate it.
+- Retest chunk/row shapes on gfx1151; do not assume W7900 B=1 is optimal
+  (TUNING-gfx1151.md:81-83).
 
 Acceptance:
 
@@ -342,7 +594,15 @@ hipcc --version > /tmp/hipengine-gfx1151-hipcc-version.txt
 
 ### llama.cpp Comparator
 
-Use the committed sweep helper so acceptance denominators are stable:
+The live draft-length knob is `--spec-draft-n-max` (default 3); the legacy
+`--draft` / `--draft-n` / `--draft-max` flags are removed and will error if you
+invoke `llama-server` directly. `--spec-draft-p-min` / `--spec-draft-n-min`
+control early-stop/floor — record them so B-N is like-for-like (B-N is the
+`n_max` cap, not a fixed draft length).
+
+Use the committed sweep helper so acceptance denominators are stable (it maps
+`--draft-max-values` to `--spec-draft-n-max` internally,
+`scripts/llamacpp_vulkan_mtp_sweep.py:146`):
 
 ```bash
 python3 scripts/llamacpp_vulkan_mtp_sweep.py \
@@ -374,6 +634,11 @@ GGUF-MTP prompt runner lands. Required fields in artifacts:
 - backend/quant/layout flags;
 - exact command.
 
+Note: `qwen35_gguf_bench.py` today emits neither a GGUF tensor inventory hash nor
+an exact-command/argv capture, and hardcodes `backend='hip_gfx1100'` even for
+gfx1151 runs. Treat the inventory-hash + argv-capture as a required small
+extension to the script (or relax the Required-fields list until added).
+
 ### hipEngine GGUF MTP Rows
 
 The future runner must write:
@@ -384,6 +649,7 @@ The future runner must write:
 - active budgets by cycle;
 - `accept_per_draft`, `accepted_per_output`, visible density, cycle cost;
 - draft/logit movement mode (`full_vocab_d2h`, `topk_device`, etc.);
+- the captured seed dtype (fp32 vs bf16) for the parity artifact;
 - kernel/profile summaries when performance is claimed.
 
 ## Artifact Policy
@@ -406,26 +672,47 @@ Performance claims require:
 ## Open Questions
 
 1. Does hipEngine GGUF B1 accepted/output match llama.cpp B1 once the same NextN
-   tensors and prompt tokens are used?
+   tensors and prompt tokens are used (and the fp32 post-norm seed contract is
+   honored)?
 2. Does llama.cpp's B4 advantage come mostly from model/draft density, backend
    sampling/logit movement, or verifier row economics?
 3. Can hipEngine reuse current GGUF T16 decode-repack layouts for the NextN block
-   without duplicating raw GGUF residency?
+   without duplicating raw GGUF residency? (Conditional, not automatic: NextN
+   tensors have no slot-path predicate today and T16/pack8 selection is gated to
+   `.ffn_*_exps` + `root.lm_head`, so they need new predicates or default to
+   RAW_GGUF/dense-BF16.)
 4. Is gfx1151's best MTP budget B1, B3, or B4 after the model path is matched?
-5. Which exact tensors are optional in Qwen3.6 MTP GGUF exports, and what are the
-   correct fallbacks when they are absent?
+   Do not inherit W7900 B=1 (TUNING-gfx1151.md:81-83).
+
+(Former Open Question 5 — which exact tensors are optional and their fallbacks —
+is now answered by the M1 required/optional table.)
 
 ## Initial Backlog
 
-- [ ] Add a GGUF MTP inventory fixture for the Unsloth `UD-Q4_K_M` MTP file.
-- [ ] Extend `Qwen35GGUFModelMap` with an MTP block descriptor.
-- [ ] Add unit tests for AR block-count exclusion plus MTP block validation.
-- [ ] Implement draft-only NextN forward with dense fallback.
-- [ ] Capture llama.cpp draft logits/top-k trace for one short prompt if possible.
-- [ ] Add hipEngine GGUF MTP B1 prompt-suite runner.
+- [ ] Add a GGUF MTP inventory fixture for the Unsloth `UD-Q4_K_M` MTP file
+      (full 20-tensor trailing block, 4 `nextn.*`).
+- [ ] **Capture a llama.cpp draft logits/top-k trace for one short prompt
+      (required M0 oracle, not "if possible").**
+- [ ] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a)).
+- [ ] Extend `Qwen35GGUFModelMap` with an MTP block descriptor + required/optional
+      fallback table.
+- [ ] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation
+      (missing/mis-shaped required, tolerated optional).
+- [ ] **M2.5:** expose the fp32 post-`output_norm` per-token hidden seed from the
+      GGUF decode path (per-token tap; `run_prompt_hidden` returns BF16 today).
+- [ ] **Add a `cpu_reference` NextN forward** in `kernels/cpu_reference/ops.py`
+      (none exists) registered under `(cpu_reference, nextn, …)` as the offline
+      KL/top-1 oracle, with a RED fixture.
+- [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
+      attention path and dense fallback; register under
+      `KernelKey(backend, layer, quant='w4_gguf', variant)`.
+- [ ] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
+      flag).
+- [ ] Gate Parity Preconditions (token-id + sampling parity) before comparison.
 - [ ] Run B1 exactness and accepted/output parity against llama.cpp B1.
 - [ ] Extend to B2-B4 after B1 is exact.
-- [ ] Add backend-side top-k draft sampling to avoid full-vocab D2H.
+- [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
+      `full_vocab_d2h` registered as the unfused fallback/oracle.
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 
@@ -435,3 +722,17 @@ Performance claims require:
   showed llama.cpp B4 around `0.743/0.747` accepted/output and `1.7-1.8x` speedup
   while hipEngine PARO+sidecar MTP stayed below AR. The branch goal is to match
   llama.cpp's integrated GGUF NextN model path before further PARO-sidecar tuning.
+- 2026-06-15: Sharpened the plan against the real llama.cpp source
+  (`@6e9007ae6`), the hipEngine GGUF loader/registry, and CLAUDE.md invariants.
+  Key corrections: seed is **post-`output_norm` at fp32** (not pre-norm);
+  draft-length knob is `--spec-draft-n-max` (legacy `--draft*` removed); backend
+  `top_k=10` sampling is the **default**; N draft tokens = N+1 NextN passes; the
+  NextN block is a full attn+MoE sublayer needing the **KVLiveSpans** ABI;
+  `accept_per_draft` denominator = generated draft tokens. Added M2.5 (fp32
+  post-norm hidden seed tap), a `cpu_reference` NextN forward + captured
+  llama.cpp trace as required M0/M3 oracles, a Parity Preconditions subsection
+  (token-id + sampling parity), explicit four-axis registry keys, an unfused
+  fallback requirement for device top-k, and an M4 measured allocator-peak gate.
+  Clarified that DraftBatch/verifier infra is PARO/safetensors-only (M4 is
+  net-new GGUF wiring) and that M5 `model=.gguf` is a large extension, not a flag
+  flip.

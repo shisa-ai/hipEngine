@@ -92802,3 +92802,50 @@ Plan milestones in `docs/MTP-gguf.md`:
 
 Validation for this doc-only unit:
 - Re-read `docs/MTP-gguf.md` end-to-end after writing.
+
+## 2026-06-15 - mtp-gguf plan sharpened vs real llama.cpp source
+
+Reviewed `docs/MTP-gguf.md` against the read-only llama.cpp checkout
+`/home/lhl/llama.cpp/llama.cpp-hip @ 6e9007ae6`, the hipEngine GGUF
+loader/registry, and CLAUDE.md invariants (fan-out review workflow + synthesis).
+Applied the full edit plan and verified every load-bearing claim against source
+before committing:
+
+- Seed is the **post-`output_norm`** hidden at **fp32**, not pre-norm
+  (`src/models/qwen35moe.cpp:230-234`: comment "post-norm hidden state feeds both
+  the LM head and the MTP seed", `build_norm(cur, model.output_norm)` then
+  `res->t_h_nextn = cur`).
+- Draft-length knob is `--spec-draft-n-max` (default 3); legacy
+  `--draft/--draft-n/--draft-max` are **removed** and error
+  (`common/arg.cpp:3799-3802`).
+- Backend `top_k=10` draft sampling is the **default** (`common/common.h:309`
+  `backend_sampling = true`); selection is greedy top-1 from the top-k set.
+- N draft tokens = **N+1** NextN forward passes (seed decode + per-token decode),
+  with `p_min` early-stop / `n_min` floor; "B-N" is the cap, not a fixed length.
+- The NextN block is a full dense attn (+gated output) + MoE sublayer
+  (`qwen35moe.cpp:599-661`), so on the hipEngine side it MUST use the
+  **KVLiveSpans** ABI (CLAUDE.md:31), dense-filled.
+- `accept_per_draft` denominator = **generated** draft tokens (`draft.size()`,
+  `tools/server/server-context.cpp:2656`).
+
+Doc changes (all 17 edit-plan items): corrected the contract section (renumbered
+to 8 items incl. per-cycle pass count + seed lifecycle), added **M2.5** (expose
+fp32 post-norm per-token hidden seed from GGUF decode; `run_prompt_hidden`
+returns BF16 today), made the parity oracle real and required (new
+`cpu_reference` NextN forward — none exists today, `grep nextn ops.py` = 0 — plus
+a required M0 llama.cpp draft-trace capture), added a **Parity Preconditions**
+subsection (token-id + sampling parity), named the four-axis registry keys
+(`KernelKey(backend, layer, quant='w4_gguf', variant)`), required an unfused
+`full_vocab_d2h` fallback for device top-k, added an M4 measured allocator-peak
+gate, converted Open Question 5 into an M1 required/optional tensor table, and
+corrected the scope framing of M4 (DraftBatch infra is PARO/safetensors-only) and
+M5 (`model=.gguf` is a large extension, not a flag flip).
+
+Verified referenced symbols/files exist: `tests/test_qwen35_gguf_mtp_mapping.py`,
+`hipengine/kernels/cpu_reference/ops.py` (no nextn), `Qwen35GGUFModelMap`
+(`qwen35_gguf.py:164`), `run_prompt_hidden` (gguf runner) /
+`step_with_hidden_taps` (paro runner), `inspect_gguf.py:53` `first_tensors[:12]`.
+
+Validation for this doc-only unit:
+- Re-read `docs/MTP-gguf.md` end-to-end after writing; cross-checked each
+  authoritative claim against the cited source file:line.
