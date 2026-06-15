@@ -15,6 +15,15 @@ from scripts.gguf_mtp_parity_precheck import (
 )
 
 
+HIPENGINE_D32_TOKEN_FIXTURE = Path(
+    "benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
+)
+LLAMACPP_HIP_D32_TOKEN_FIXTURE = Path(
+    "benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
+)
+B1_SAMPLING_FIXTURE = Path("benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json")
+
+
 def _inventory(*, token_ids: list[int] | None = None, name: str = "p0") -> dict[str, object]:
     tokens = [1, 2, 3] if token_ids is None else token_ids
     return {
@@ -117,6 +126,50 @@ def test_load_sampling_settings_accepts_wrapped_or_plain_sampling(tmp_path: Path
     assert load_sampling_settings(plain) == {"target": {"temperature": 0.0}}
 
 
+def test_committed_b1_sampling_fixture_is_self_consistent() -> None:
+    payload = json.loads(B1_SAMPLING_FIXTURE.read_text())
+    sampling = load_sampling_settings(B1_SAMPLING_FIXTURE)
+
+    assert payload["schema"] == 1
+    assert payload["kind"] == "gguf_mtp_sampling_settings"
+    assert payload["name"] == "gguf_mtp_b1_greedy_seed12345"
+    assert sampling["target"] == {
+        "temperature": 0.0,
+        "top_k": 1,
+        "top_p": 1.0,
+        "min_p": 0.0,
+        "seed": 12345,
+    }
+    assert sampling["draft"] == {
+        "budget": "B1",
+        "draft_max": 1,
+        "selection": "greedy_top1",
+        "temperature": 0.0,
+        "top_k": 1,
+        "top_p": 1.0,
+        "min_p": 0.0,
+        "seed": 12345,
+    }
+    assert sampling["request"]["max_tokens"] == 128
+    assert sampling["request"]["prompt_render"] == "raw"
+    assert sampling["request"]["stream"] is False
+    assert sampling["request"]["cache_prompt"] is False
+    assert sampling["comparability"] == {
+        "accepted_per_output_denominator": "accepted_target_tokens / emitted_output_tokens",
+        "accept_per_draft_denominator": "accepted_draft_tokens / proposed_draft_tokens",
+        "requires_token_id_parity": True,
+        "requires_numeric_gate": True,
+    }
+    assert payload["llamacpp_request_mapping"]["server"] == {
+        "spec_type": "draft-mtp",
+        "spec_draft_n_max": 1,
+    }
+    assert payload["hipengine_request_mapping"]["draft"] == {
+        "budget": 1,
+        "selection": "greedy_top1",
+    }
+
+
 def test_parity_precheck_cli_fails_on_mismatch_when_requested(tmp_path: Path) -> None:
     hip = tmp_path / "hip.json"
     llama = tmp_path / "llama.json"
@@ -157,12 +210,9 @@ def test_parity_precheck_cli_fails_on_mismatch_when_requested(tmp_path: Path) ->
 
 
 def test_parity_precheck_fails_committed_hipengine_vs_llamacpp_token_fixtures() -> None:
-    hip_fixture = Path("benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
-    llama_fixture = Path("benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
-
     precheck = build_parity_precheck(
-        hipengine_token_inventory=json.loads(hip_fixture.read_text()),
-        llamacpp_token_inventory=json.loads(llama_fixture.read_text()),
+        hipengine_token_inventory=json.loads(HIPENGINE_D32_TOKEN_FIXTURE.read_text()),
+        llamacpp_token_inventory=json.loads(LLAMACPP_HIP_D32_TOKEN_FIXTURE.read_text()),
     )
 
     assert precheck["all_pass"] is False
@@ -172,31 +222,40 @@ def test_parity_precheck_fails_committed_hipengine_vs_llamacpp_token_fixtures() 
     assert precheck["sampling"]["passed"] is True
 
 
-def test_parity_precheck_cli_passes_matching_committed_hipengine_fixture(tmp_path: Path) -> None:
-    hip_fixture = Path("benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
-    sampling = tmp_path / "sampling.json"
-    out = tmp_path / "precheck.json"
-    sampling.write_text(
-        json.dumps(
-            {
-                "target": {"temperature": 0.0, "seed": 1234},
-                "draft": {"top_k": 10, "selection": "greedy_top1_from_topk"},
-            }
-        )
+def test_parity_precheck_with_committed_b1_sampling_still_fails_real_token_mismatch() -> None:
+    sampling = load_sampling_settings(B1_SAMPLING_FIXTURE)
+
+    precheck = build_parity_precheck(
+        hipengine_token_inventory=json.loads(HIPENGINE_D32_TOKEN_FIXTURE.read_text()),
+        llamacpp_token_inventory=json.loads(LLAMACPP_HIP_D32_TOKEN_FIXTURE.read_text()),
+        hipengine_sampling=sampling,
+        llamacpp_sampling=dict(sampling),
+        require_sampling=True,
     )
+
+    assert precheck["all_pass"] is False
+    assert precheck["token_ids"]["all_match"] is False
+    assert len(precheck["token_ids"]["mismatches"]) == 5
+    assert precheck["sampling"]["checked"] is True
+    assert precheck["sampling"]["passed"] is True
+    assert precheck["sampling"]["mismatches"] == []
+
+
+def test_parity_precheck_cli_passes_matching_committed_hipengine_fixture(tmp_path: Path) -> None:
+    out = tmp_path / "precheck.json"
 
     result = subprocess.run(
         [
             sys.executable,
             "scripts/gguf_mtp_parity_precheck.py",
             "--hipengine-token-inventory",
-            str(hip_fixture),
+            str(HIPENGINE_D32_TOKEN_FIXTURE),
             "--llamacpp-token-inventory",
-            str(hip_fixture),
+            str(HIPENGINE_D32_TOKEN_FIXTURE),
             "--hipengine-sampling",
-            str(sampling),
+            str(B1_SAMPLING_FIXTURE),
             "--llamacpp-sampling",
-            str(sampling),
+            str(B1_SAMPLING_FIXTURE),
             "--require-sampling",
             "--fail-on-mismatch",
             "--out",

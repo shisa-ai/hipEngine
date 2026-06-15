@@ -94933,3 +94933,46 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, or attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF B1 sampling parity fixture
+
+Implemented `mtp-gguf` multiloop iteration 51: added a committed B1 deterministic
+sampling/request artifact for the MTP-GGUF parity precheck.
+
+Scope note:
+- Fixture/test/docs only. No runtime generation, GGUF loading semantics, MTP
+  draft execution, sampling implementation, GPU kernel, attention/KV path, or
+  performance path changed.
+- The real hipEngine-vs-llama.cpp D32 token fixtures still fail token-id parity
+  on 5/9 prompts, so the B1 accepted/output sweep remains blocked despite
+  sampling parity being represented by this artifact.
+
+Changes:
+- Added `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` with
+  deterministic target/draft sampling settings (`temperature=0`, `top_k=1`,
+  `top_p=1`, `min_p=0`, `seed=12345`, `draft_max=1`) plus request and
+  engine-mapping notes for llama.cpp and hipEngine.
+- Extended `tests/test_gguf_mtp_parity_precheck.py` to validate the committed
+  sampling fixture, use it for the matching-fixture CLI pass, and prove the real
+  hipEngine-vs-llama.cpp token fixtures still fail `all_pass` with sampling
+  parity passing.
+- Updated `docs/MTP-gguf.md` parity status/backlog to cite the B1 sampling
+  fixture and clarify that token-id parity remains the active M5 blocker.
+
+Validation:
+- Parity precheck tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_parity_precheck.py` -> `10` passed.
+- Real fixture precheck with committed B1 sampling passed the sampling sub-gate
+  and failed only on the known token mismatch:
+  `scripts/gguf_mtp_parity_precheck.py --hipengine-token-inventory benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --llamacpp-token-inventory benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --hipengine-sampling benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json --llamacpp-sampling benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json --require-sampling --fail-on-mismatch --out <tmp>` -> exit `1`, `all_pass False`, `token_match False`, `sampling_pass True`, `mismatches 5`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile tests/test_gguf_mtp_parity_precheck.py` and
+  `git diff --check -- tests/test_gguf_mtp_parity_precheck.py docs/MTP-gguf.md benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: parity fixture/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, or attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.
