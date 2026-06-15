@@ -57,26 +57,60 @@ def _write_helper_readiness_artifact(tmp_path: Path) -> Path:
     return artifact
 
 
+def _write_kv_session_contract_artifact(tmp_path: Path) -> Path:
+    artifact = tmp_path / "kv-session.json"
+    payload = {
+        "schema_version": 1,
+        "artifact_kind": "stepfun_kv_session_streaming_decode_contract",
+        "status": "blocked",
+        "contract": {
+            "ready": False,
+            "executable": False,
+            "blocked_by": "streaming_decode_loop_not_wired",
+        },
+        "decode_entrypoint_blocker": {
+            "ready": False,
+            "executable": False,
+            "no_kernel_launches": True,
+            "kv_dispatch_key_names": [
+                "decode_attention",
+                "decode_kv_write",
+                "prompt_kv_write",
+            ],
+            "kv_dispatch_keys_sha256": "dispatch-sha",
+            "input_ids_sha256": "input-sha",
+            "span_input_payloads_sha256": "span-sha",
+            "pre_run_payload_fingerprints_sha256": "payload-sha",
+            "pre_run_upload_plan_sha256": "upload-sha",
+            "launch_operation_sequence_sha256": "sequence-sha",
+            "launch_operation_records_sha256": "records-sha",
+        },
+    }
+    artifact.write_text(json.dumps(payload, sort_keys=True))
+    return artifact
+
+
 def _write_rollup_inputs(
     tmp_path: Path,
-) -> tuple[Path, Path, Path, Path, Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path, Path, Path, Path, Path]:
     prompt, vulkan, hip, model, fake_tokenize = _write_backend_inputs(tmp_path)
     docs = tmp_path / "STEPFUN.md"
     resource = tmp_path / "resource.json"
     helper_readiness = _write_helper_readiness_artifact(tmp_path)
+    kv_session = _write_kv_session_contract_artifact(tmp_path)
     # The backend helper writes a Vulkan oracle pair suitable for oracle matrix tests.
     # The correctness-status/KV rollup fixtures expect the fuller canonical prompt
     # fixture shape, so overwrite only the prompt with the shared StepFun test fixture.
     _write_prompt_artifact(prompt)
     _write_docs(docs)
     _write_resource_artifact(resource)
-    return prompt, vulkan, hip, docs, resource, fake_tokenize, helper_readiness
+    return prompt, vulkan, hip, docs, resource, fake_tokenize, helper_readiness, kv_session
 
 
 def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     tmp_path: Path,
 ) -> None:
-    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness = (
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness, kv_session = (
         _write_rollup_inputs(tmp_path)
     )
 
@@ -86,6 +120,7 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         hip_artifact=hip,
         resource_artifact=resource,
         helper_readiness_artifact=helper_readiness,
+        kv_session_contract_artifact=kv_session,
         docs=docs,
         llama_tokenize=fake_tokenize,
         tokenizer_model=tmp_path / "model.gguf",
@@ -257,6 +292,36 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     assert kv_blocker["session_contract_generator_command"] == (
         "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
     )
+    assert kv_blocker["session_contract_status"] == "blocked"
+    assert kv_blocker["session_contract_blocked_by"] == (
+        "streaming_decode_loop_not_wired"
+    )
+    assert kv_blocker["session_contract_ready"] is False
+    assert kv_blocker["session_contract_executable"] is False
+    assert kv_blocker["decode_entrypoint_ready"] is False
+    assert kv_blocker["decode_entrypoint_executable"] is False
+    assert kv_blocker["decode_entrypoint_no_kernel_launches"] is True
+    assert kv_blocker["decode_entrypoint_kv_dispatch_key_names"] == [
+        "decode_attention",
+        "decode_kv_write",
+        "prompt_kv_write",
+    ]
+    assert kv_blocker["decode_entrypoint_kv_dispatch_keys_sha256"] == "dispatch-sha"
+    assert kv_blocker["decode_entrypoint_input_ids_sha256"] == "input-sha"
+    assert kv_blocker["decode_entrypoint_span_input_payloads_sha256"] == "span-sha"
+    assert kv_blocker["decode_entrypoint_pre_run_payload_fingerprints_sha256"] == (
+        "payload-sha"
+    )
+    assert kv_blocker["decode_entrypoint_pre_run_upload_plan_sha256"] == "upload-sha"
+    assert kv_blocker["decode_entrypoint_launch_operation_sequence_sha256"] == (
+        "sequence-sha"
+    )
+    assert kv_blocker["decode_entrypoint_launch_operation_records_sha256"] == (
+        "records-sha"
+    )
+    assert rollup["source_artifact_sha256"]["kv_session_contract"] == (
+        _stable_json_sha256(json.loads(kv_session.read_text()))
+    )
     assert kv_blocker["evidence_preflight_artifact"] == (
         "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json"
     )
@@ -357,7 +422,7 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
 
 
 def test_stepfun_remaining_blockers_rollup_cli_writes_artifact(tmp_path: Path) -> None:
-    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness = (
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness, kv_session = (
         _write_rollup_inputs(tmp_path)
     )
     output = tmp_path / "rollup.json"
@@ -376,6 +441,8 @@ def test_stepfun_remaining_blockers_rollup_cli_writes_artifact(tmp_path: Path) -
             str(resource),
             "--helper-readiness-artifact",
             str(helper_readiness),
+            "--kv-session-contract-artifact",
+            str(kv_session),
             "--llama-tokenize",
             str(fake_tokenize),
             "--tokenizer-model",
@@ -400,7 +467,7 @@ def test_stepfun_remaining_blockers_rollup_cli_writes_artifact(tmp_path: Path) -
 
 
 def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> None:
-    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness = (
+    prompt, oracle, hip, docs, resource, fake_tokenize, helper_readiness, kv_session = (
         _write_rollup_inputs(tmp_path)
     )
     output = tmp_path / "compact.json"
@@ -417,6 +484,8 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
         str(resource),
         "--helper-readiness-artifact",
         str(helper_readiness),
+        "--kv-session-contract-artifact",
+        str(kv_session),
         "--llama-tokenize",
         str(fake_tokenize),
         "--tokenizer-model",

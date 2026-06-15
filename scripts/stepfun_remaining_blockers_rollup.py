@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts import stepfun_correctness_status as status_mod
 from scripts import stepfun_kv_blocker_status as kv_status
+from scripts import stepfun_kv_session_contract as kv_session_contract
 from scripts import stepfun_llamacpp_logits_helper_readiness as helper_readiness
 from scripts import stepfun_oracle_backend_matrix as backend_matrix
 
@@ -61,6 +62,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=helper_readiness.DEFAULT_OUTPUT,
         help="Retained llama.cpp retained-token helper readiness artifact.",
+    )
+    parser.add_argument(
+        "--kv-session-contract-artifact",
+        type=Path,
+        default=kv_session_contract.DEFAULT_OUTPUT,
+        help="Guarded StepFun KV session-contract artifact.",
     )
     parser.add_argument(
         "--docs",
@@ -254,6 +261,7 @@ def build_remaining_blockers_rollup(
     hip_artifact: Path = backend_matrix.DEFAULT_HIP_ARTIFACT,
     resource_artifact: Path = status_mod.DEFAULT_RESOURCE_ARTIFACT,
     helper_readiness_artifact: Path = helper_readiness.DEFAULT_OUTPUT,
+    kv_session_contract_artifact: Path = kv_session_contract.DEFAULT_OUTPUT,
     docs: Path = status_mod.DEFAULT_DOCS_PATH,
     llama_tokenize: Path = backend_matrix.token_mismatch.DEFAULT_LLAMA_TOKENIZE,
     tokenizer_model: Path = backend_matrix.token_mismatch.DEFAULT_TOKENIZER_MODEL,
@@ -285,6 +293,17 @@ def build_remaining_blockers_rollup(
         artifact_date=artifact_date,
     )
     helper_readiness_payload = _load_json_object(helper_readiness_artifact)
+    kv_session_payload = _load_json_object(kv_session_contract_artifact)
+    kv_session_contract_record = kv_session_payload.get("contract")
+    kv_session_contract_record = (
+        kv_session_contract_record
+        if isinstance(kv_session_contract_record, dict)
+        else {}
+    )
+    kv_decode_entrypoint = kv_session_payload.get("decode_entrypoint_blocker")
+    kv_decode_entrypoint = (
+        kv_decode_entrypoint if isinstance(kv_decode_entrypoint, dict) else {}
+    )
     docs_summary = _docs_open_partial_summary(status)
     readiness = _readiness_summary(status)
     commands = _generator_commands()
@@ -363,6 +382,21 @@ def build_remaining_blockers_rollup(
                 "missing_artifact_paths": kv_blocker.get("missing_artifact_paths"),
                 "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
                 "session_contract_generator_command": commands["kv_session_contract"],
+                "session_contract_status": kv_session_payload.get("status"),
+                "session_contract_blocked_by": kv_session_contract_record.get("blocked_by"),
+                "session_contract_ready": kv_session_contract_record.get("ready"),
+                "session_contract_executable": kv_session_contract_record.get("executable"),
+                "decode_entrypoint_ready": kv_decode_entrypoint.get("ready"),
+                "decode_entrypoint_executable": kv_decode_entrypoint.get("executable"),
+                "decode_entrypoint_no_kernel_launches": kv_decode_entrypoint.get("no_kernel_launches"),
+                "decode_entrypoint_kv_dispatch_key_names": kv_decode_entrypoint.get("kv_dispatch_key_names"),
+                "decode_entrypoint_kv_dispatch_keys_sha256": kv_decode_entrypoint.get("kv_dispatch_keys_sha256"),
+                "decode_entrypoint_input_ids_sha256": kv_decode_entrypoint.get("input_ids_sha256"),
+                "decode_entrypoint_span_input_payloads_sha256": kv_decode_entrypoint.get("span_input_payloads_sha256"),
+                "decode_entrypoint_pre_run_payload_fingerprints_sha256": kv_decode_entrypoint.get("pre_run_payload_fingerprints_sha256"),
+                "decode_entrypoint_pre_run_upload_plan_sha256": kv_decode_entrypoint.get("pre_run_upload_plan_sha256"),
+                "decode_entrypoint_launch_operation_sequence_sha256": kv_decode_entrypoint.get("launch_operation_sequence_sha256"),
+                "decode_entrypoint_launch_operation_records_sha256": kv_decode_entrypoint.get("launch_operation_records_sha256"),
                 "evidence_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json",
                 "evidence_preflight_generator_command": commands["kv_evidence_preflight"],
                 "streaming_runner_source_status": kv_blocker.get(
@@ -378,6 +412,9 @@ def build_remaining_blockers_rollup(
             "status": status_mod._stable_json_sha256(status),
             "oracle_backend_matrix": status_mod._stable_json_sha256(oracle_matrix),
             "kv_blocker_status": status_mod._stable_json_sha256(kv_blocker),
+            "kv_session_contract": status_mod._stable_json_sha256(
+                kv_session_payload
+            ),
             "llamacpp_logits_helper_readiness": status_mod._stable_json_sha256(
                 helper_readiness_payload
             ),
@@ -405,6 +442,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         hip_artifact=args.hip_artifact,
         resource_artifact=args.resource_artifact,
         helper_readiness_artifact=args.helper_readiness_artifact,
+        kv_session_contract_artifact=args.kv_session_contract_artifact,
         docs=args.docs,
         llama_tokenize=args.llama_tokenize,
         tokenizer_model=args.tokenizer_model,

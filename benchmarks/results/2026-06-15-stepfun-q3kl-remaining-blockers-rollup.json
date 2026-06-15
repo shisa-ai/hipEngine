@@ -48,13 +48,13 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 869,
+        "line": 870,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ],
     "last_item": {
-      "line": 869,
+      "line": 870,
       "state": "partial",
       "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
     },
@@ -179,6 +179,21 @@
     {
       "blocked_count": 2,
       "blocker_kind": "kv_backed_decode_not_wired",
+      "decode_entrypoint_executable": false,
+      "decode_entrypoint_input_ids_sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
+      "decode_entrypoint_kv_dispatch_key_names": [
+        "decode_attention",
+        "decode_kv_write",
+        "prompt_kv_write"
+      ],
+      "decode_entrypoint_kv_dispatch_keys_sha256": "9457815868810189bc25a1897c24380f85dcdd76ef1a4cf4edd75491e794cff5",
+      "decode_entrypoint_launch_operation_records_sha256": "92a34ac5ef9cdd00df33da1e6ab72adb2e269be03346a2259316209a00bafafe",
+      "decode_entrypoint_launch_operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+      "decode_entrypoint_no_kernel_launches": true,
+      "decode_entrypoint_pre_run_payload_fingerprints_sha256": "e6371af9e76f2a399dff5cb6a006dc24e66b6bf26f4cce45642517a9e66e793a",
+      "decode_entrypoint_pre_run_upload_plan_sha256": "b3f9e94d49b59caf8b4239ae04437d42045f8ec73d21d1eed6cd55d64e91a1d6",
+      "decode_entrypoint_ready": false,
+      "decode_entrypoint_span_input_payloads_sha256": "a2dcb099b05a765efe42e053b716101632dc244cd30ccccc184840a8af01ee88",
       "evidence_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json",
       "evidence_preflight_generator_command": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
       "generator_command": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
@@ -311,7 +326,11 @@
         ]
       },
       "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
+      "session_contract_blocked_by": "streaming_decode_loop_not_wired",
+      "session_contract_executable": false,
       "session_contract_generator_command": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
+      "session_contract_ready": false,
+      "session_contract_status": "blocked",
       "status": "blocked",
       "streaming_runner_source_status": {
         "blocked_by": "streaming_decode_loop_not_wired",
@@ -344,10 +363,11 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "f5930236d5c780ebe687090ac0a7d0510fb7c2073d1efae2c92b9ffdd0b5da30",
+    "kv_blocker_status": "2d5380dd121c4a18775b8b70e60524f56223b7acdfec926774f41fae380e4fd6",
+    "kv_session_contract": "501fb1f2fdc27ac12e8c1166be9738a503bdb015ee8d4d3b7c0f9f81a07ec23c",
     "llamacpp_logits_helper_readiness": "8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "066808de5b5cbc371c5c090868c8b07438c5fd0b3cd350bcfe2f699c6d7e4541"
+    "status": "692d3729e2353e64bd6f79d6f286e289d02e58ce894a0a2534a00f2caa4d6bbb"
   },
   "status": "blocked"
 }

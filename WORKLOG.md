@@ -42013,3 +42013,47 @@ python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-j
 ```
 
 Results: targeted remaining-blockers rollup tests passed (`3` tests); status/final-blocker/handoff verification returned `"match"`; rollup compact status remains `"blocked"`, compact open count remains `2`, compact blocker kinds remain `["oracle_parity_blocked", "kv_backed_decode_not_wired"]`, and stable rollup payload SHA is `9742a681c7e5071f0cb9ac177af840c5f1182cfd84a64381674b5dd3dd058a4a`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are remaining-blockers rollup `dcbae7ed21d60de86a74aa6cd116a5d4f4eeb6a888fdb5441617251e654de6f1`, helper readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, correctness-status `b1324dc02d30afba2eae907929a2681420d3e39e8dfaabc72167a0fc647612e1`, final-blocker `6c236c501b4a77278f476844e5d91f52bf91a1fdfe2bb5747ac3e905bc66efd1`, handoff `69342068d674672465a09403f7b7042cd49f80ea55e20b18af75c7d3570da067`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun remaining-blockers rollup KV session binding
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 525. Propagated the guarded KV session-contract blocker digests into the top-level remaining-blockers rollup. `scripts/stepfun_remaining_blockers_rollup.py` now reads `benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json` and mirrors the KV session status/blocked-by fields plus the guarded `decode_one_token_kv_bf16` dispatch-key, input-token/KVLiveSpans payload, upload-plan, and launch-trace digests into the KV blocker entry. This keeps the consolidated handoff artifact aligned with the exact metadata-only streaming-decode evidence while KV remains blocked on `streaming_decode_loop_not_wired`; no KV-backed next token, oracle parity, e2e, or performance claim is made.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json` remains `status=blocked`, `remaining_blocker_count=2`, and blocker kinds `oracle_parity_blocked` plus `kv_backed_decode_not_wired`. The KV blocker now records `session_contract_status=blocked`, `session_contract_blocked_by=streaming_decode_loop_not_wired`, `decode_entrypoint_kv_dispatch_keys_sha256=9457815868810189bc25a1897c24380f85dcdd76ef1a4cf4edd75491e794cff5`, `decode_entrypoint_input_ids_sha256=a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca`, `decode_entrypoint_span_input_payloads_sha256=a2dcb099b05a765efe42e053b716101632dc244cd30ccccc184840a8af01ee88`, `decode_entrypoint_pre_run_payload_fingerprints_sha256=e6371af9e76f2a399dff5cb6a006dc24e66b6bf26f4cce45642517a9e66e793a`, `decode_entrypoint_pre_run_upload_plan_sha256=b3f9e94d49b59caf8b4239ae04437d42045f8ec73d21d1eed6cd55d64e91a1d6`, `decode_entrypoint_launch_operation_sequence_sha256=5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7`, and `decode_entrypoint_launch_operation_records_sha256=92a34ac5ef9cdd00df33da1e6ab72adb2e269be03346a2259316209a00bafafe`, with `source_artifact_sha256.kv_session_contract=501fb1f2fdc27ac12e8c1166be9738a503bdb015ee8d4d3b7c0f9f81a07ec23c`. Refreshed KV blocker, KV evidence preflight, remaining-blockers rollup, correctness-status, final-blocker-manifest, and handoff artifacts after the docs/rollup change.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --open-count-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --blocker-kinds-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty
+python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_kv_blocker_status.py --sha-only
+python3 scripts/stepfun_kv_evidence_preflight.py --sha-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_correctness_status.py --readiness-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_kv_blocker_status.py --sha-only
+python3 scripts/stepfun_kv_evidence_preflight.py --sha-only
+```
+
+Results: targeted remaining-blockers rollup tests passed (`3` tests); status/final-blocker/handoff verification returned `"match"`; rollup compact status remains `"blocked"`, compact open count remains `2`, compact blocker kinds remain `["oracle_parity_blocked", "kv_backed_decode_not_wired"]`, and stable rollup payload SHA is `5516fe11c7f3876fd2a3f4111b96fceada042df104f85bc34e3760d23157866b`; KV blocker stable payload SHA is `2d5380dd121c4a18775b8b70e60524f56223b7acdfec926774f41fae380e4fd6`, KV evidence preflight SHA is `673f650a9303bc5c2b59051f33aa8da567d58ccd54e847b6157a4f73d8c9c886`, final manifest entries SHA `c9f34d306875101b4efa75357761be61bc44bb6615d793081fed0d361ed71554`, final manifest SHA `b8d23494f84c1a884bdc57b50509ef5cfeb991596e3c360078c96ec6e0fd6757`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are remaining-blockers rollup `23a1ec777c388868b7404455eeb6592d67bdd314f0a0cd2bcf68c257e55f4c76`, KV blocker `636d3caa2d3b61b188a0da62a8e8fd5870520ebd8d6e00dc39aef78a7766dfc3`, KV preflight `6651c57f1d26a570cd817ea2c8825fd32d76b89748be6c8153fdece22ab8cdd0`, KV session `8b3f137e6ead32ae150d2dd84a67146c0d983da19249be117e40397941a653da`, correctness-status `997ea03306595a683d52b80362b0c9631e46f3489785e459c935a10421ee7176`, final-blocker `7d12cbcecd1427efcb244af533d8f42f2e8d974fb6d38f93739581c105205e87`, handoff `d1854ff2ca96f8a3c2ae5c0d9f891ea652b017e7aacf67485aad70c157c9cb2f`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
