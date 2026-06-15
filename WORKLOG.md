@@ -95226,3 +95226,43 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV path, or performance claim. Future
   MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF full NextN KVLiveSpans oracle
+
+Implemented `mtp-gguf` multiloop iteration 57: threaded the CPU-reference
+KVLiveSpans-shaped paged-cache path through the full Qwen35 GGUF MTP NextN logits
+oracle.
+
+Scope note:
+- CPU oracle/test/docs only. No hipEngine runtime generation, GGUF tensor loading,
+  MTP draft execution, sampling implementation, GPU kernel, or performance path
+  changed.
+- This extends the already-existing CPU-reference attention KVLiveSpans path into
+  the full `eh_proj -> attention -> MoE/shared expert -> shared head` oracle; HIP
+  runtime registration remains open.
+
+Changes:
+- `qwen35_gguf_mtp_nextn_layer_logits()` now accepts `kv_base_offsets`,
+  `kv_live_counts`, `kv_token_positions`, optional `kv_evict_mask`, and
+  `block_size`, forwarding them into the MTP attention sublayer.
+- Added a fixture-backed test that compares full NextN logits from an explicit
+  dense CPU cache against an equivalent KVLiveSpans-shaped paged cache.
+- Updated `docs/MTP-gguf.md` M3/backlog text to state that full NextN CPU oracle
+  coverage now includes dense and KVLiveSpans-shaped paged-cache paths, while
+  HIP/runtime `w4_gguf` registration remains open.
+
+Validation:
+- CPU-reference MTP tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `19` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/kernels/cpu_reference/ops.py tests/test_gguf_mtp_cpu_reference.py` and
+  `git diff --check -- hipengine/kernels/cpu_reference/ops.py tests/test_gguf_mtp_cpu_reference.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: CPU-reference oracle/test/docs only; no torch import;
+  no runtime backend/quant dispatch branch; no hipEngine generation, MTP
+  execution, sampling implementation, GPU kernel, or performance claim; the full
+  NextN oracle now explicitly carries the KVLiveSpans-shaped `(base_offsets,
+  live_counts, token_positions, evict_mask)` ABI for future M4/HIP work.

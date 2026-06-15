@@ -550,8 +550,8 @@ Current status:
   Fixture `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`
   pins a deterministic hidden/token row, finite logits, and top-k IDs for the
   full `eh_proj -> attention -> MoE/shared expert -> shared head` oracle.
-  The attention sublayer now has both the older dense CPU-cache path and a
-  NumPy-only KVLiveSpans-shaped paged-cache path using
+  The attention sublayer and full NextN logits path now have both the older
+  dense CPU-cache path and a NumPy-only KVLiveSpans-shaped paged-cache path using
   `(kv_base_offsets, kv_live_counts, kv_token_positions, kv_evict_mask)`, so the
   M4 ABI can be exercised before HIP kernels exist.
 - llama.cpp verbose `draft-mtp` candidate fixture
@@ -809,10 +809,10 @@ is now answered by the M1 required/optional table.)
       `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
 - [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
       attention path and dense fallback; CPU-reference coverage now includes
-      both dense and KVLiveSpans-shaped paged-cache attention, and
-      `Qwen35GGUFMTPContext` now covers the B1 seed/batch state scaffold, but
-      HIP/runtime registration under `KernelKey(backend, layer, quant='w4_gguf',
-      variant)` remains open.
+      dense and KVLiveSpans-shaped paged-cache paths through the full NextN
+      logits oracle, and `Qwen35GGUFMTPContext` covers the B1 seed/batch state
+      scaffold, but HIP/runtime registration under
+      `KernelKey(backend, layer, quant='w4_gguf', variant)` remains open.
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission; B1 exactness/execution remains in

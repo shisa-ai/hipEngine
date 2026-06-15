@@ -638,6 +638,11 @@ def qwen35_gguf_mtp_nextn_layer_logits(
     context_counts: ArrayLike | None = None,
     key_cache: ArrayLike | None = None,
     value_cache: ArrayLike | None = None,
+    kv_base_offsets: ArrayLike | None = None,
+    kv_live_counts: ArrayLike | None = None,
+    kv_token_positions: ArrayLike | None = None,
+    kv_evict_mask: ArrayLike | None = None,
+    block_size: int | None = None,
     rope_cos: ArrayLike | None = None,
     rope_sin: ArrayLike | None = None,
     rotary_dim: int | None = None,
@@ -648,10 +653,10 @@ def qwen35_gguf_mtp_nextn_layer_logits(
     """CPU reference for one dense Qwen35 GGUF MTP NextN draft layer.
 
     The composition follows the llama.cpp draft-only layer order: ``hnorm`` and
-    ``enorm`` into ``eh_proj``, MTP self-attention with the dense CPU cache,
-    post-attention MoE/shared-expert FFN, then shared-head norm plus LM head
-    logits.  This is still a CPU oracle; runtime attention/KV writes must use
-    the KVLiveSpans paged-KV ABI rather than the dense cache arguments here.
+    ``enorm`` into ``eh_proj``, MTP self-attention with either a dense CPU cache
+    or KVLiveSpans-shaped paged CPU cache, post-attention MoE/shared-expert FFN,
+    then shared-head norm plus LM head logits.  This is still a CPU oracle;
+    runtime attention/KV writes must use the KVLiveSpans paged-KV ABI.
     """
 
     projected = qwen35_gguf_mtp_eh_proj(
@@ -677,6 +682,11 @@ def qwen35_gguf_mtp_nextn_layer_logits(
         context_counts=context_counts,
         key_cache=key_cache,
         value_cache=value_cache,
+        kv_base_offsets=kv_base_offsets,
+        kv_live_counts=kv_live_counts,
+        kv_token_positions=kv_token_positions,
+        kv_evict_mask=kv_evict_mask,
+        block_size=block_size,
         rope_cos=rope_cos,
         rope_sin=rope_sin,
         rotary_dim=rotary_dim,

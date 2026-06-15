@@ -31,6 +31,39 @@ def _f32(value: object) -> np.ndarray:
     return np.asarray(value, dtype=np.float32)
 
 
+def _nextn_logits_from_fixture(inputs: dict[str, object], **kwargs: object) -> np.ndarray:
+    return qwen35_gguf_mtp_nextn_layer_logits(
+        _f32(inputs["hidden_seed"]),
+        _f32(inputs["token_embedding"]),
+        _f32(inputs["eh_proj_weight"]),
+        _f32(inputs["hnorm_weight"]),
+        _f32(inputs["enorm_weight"]),
+        _f32(inputs["attn_norm_weight"]),
+        _f32(inputs["wq_weight"]),
+        _f32(inputs["wk_weight"]),
+        _f32(inputs["wv_weight"]),
+        _f32(inputs["wo_weight"]),
+        _f32(inputs["q_norm_weight"]),
+        _f32(inputs["k_norm_weight"]),
+        _f32(inputs["attn_post_norm_weight"]),
+        _f32(inputs["router_weight"]),
+        _f32(inputs["gate_qweight"]),
+        _f32(inputs["up_qweight"]),
+        _f32(inputs["down_qweight"]),
+        GGMLQuantizationType[str(inputs["gate_qtype"])],
+        GGMLQuantizationType[str(inputs["up_qtype"])],
+        GGMLQuantizationType[str(inputs["down_qtype"])],
+        _f32(inputs["shared_gate_logit_weight"]),
+        _f32(inputs["shared_gate_qweight"]),
+        _f32(inputs["shared_up_qweight"]),
+        _f32(inputs["shared_down_qweight"]),
+        GGMLQuantizationType[str(inputs["shared_qtype"])],
+        _f32(inputs["shared_head_norm_weight"]),
+        _f32(inputs["shared_head_weight"]),
+        **kwargs,
+    )
+
+
 def test_qwen35_gguf_mtp_eh_proj_normalizes_and_concatenates_embedding_then_hidden() -> None:
     hidden = np.asarray([[3.0, 4.0]], dtype=np.float32)
     embedding = np.asarray([[1.0, 2.0]], dtype=np.float32)
@@ -693,6 +726,38 @@ def test_qwen35_gguf_mtp_nextn_layer_logits_composes_pinned_sublayers() -> None:
     )
     expected = qwen35_gguf_mtp_shared_head_logits(ffn_out, shared_norm, shared_head)
     np.testing.assert_allclose(logits, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_nextn_layer_logits_accepts_kvlivespans_paged_cache() -> None:
+    fixture = json.loads(NEXTN_FIXTURE.read_text())
+    inputs = fixture["inputs"]
+    kwargs = dict(fixture["kwargs"])
+    dense_key = np.asarray([[[1.0, 0.0]], [[0.0, 1.0]]], dtype=np.float32)
+    dense_value = np.asarray([[[2.0, 0.0]], [[0.0, 4.0]]], dtype=np.float32)
+
+    dense = _nextn_logits_from_fixture(
+        inputs,
+        **kwargs,
+        key_cache=dense_key,
+        value_cache=dense_value,
+        positions=np.asarray([1], dtype=np.int64),
+        context_counts=np.asarray([2], dtype=np.int64),
+    )
+    paged = _nextn_logits_from_fixture(
+        inputs,
+        **kwargs,
+        key_cache=dense_key.reshape(1, 2, 1, 2),
+        value_cache=dense_value.reshape(1, 2, 1, 2),
+        kv_base_offsets=np.asarray([[0]], dtype=np.int32),
+        kv_live_counts=np.asarray([2], dtype=np.int64),
+        kv_token_positions=np.asarray([1], dtype=np.int64),
+        block_size=2,
+    )
+
+    assert dense.dtype == np.float32
+    assert paged.dtype == np.float32
+    assert np.isfinite(paged).all()
+    np.testing.assert_allclose(paged, dense, rtol=1.0e-6, atol=1.0e-6)
 
 
 def test_qwen35_gguf_mtp_nextn_fixture_produces_finite_logits_and_topk() -> None:
