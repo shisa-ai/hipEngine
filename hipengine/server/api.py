@@ -175,6 +175,7 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "items",
         "minItems",
         "maxItems",
+        "uniqueItems",
         "minLength",
         "maxLength",
         "pattern",
@@ -868,6 +869,7 @@ def _tool_schema_subset() -> list[str]:
         "array.items",
         "array.minItems",
         "array.maxItems",
+        "array.uniqueItems",
         "string.minLength",
         "string.maxLength",
         "string.pattern",
@@ -9674,6 +9676,8 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     for key in ("minProperties", "maxProperties", "minItems", "maxItems", "minLength", "maxLength"):
         if key in schema and _schema_nonnegative_int(schema.get(key)) is None:
             return (f"{path}.{key}", f"{path}.{key} must be a non-negative integer")
+    if "uniqueItems" in schema and not isinstance(schema.get("uniqueItems"), bool):
+        return (f"{path}.uniqueItems", f"{path}.uniqueItems must be a boolean")
     if "pattern" in schema:
         pattern = schema.get("pattern")
         if not isinstance(pattern, str):
@@ -9735,6 +9739,8 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
         max_items = _schema_nonnegative_int(schema.get("maxItems"))
         if max_items is not None and len(value) > max_items:
             return f"{path} must have at most {max_items} items"
+        if schema.get("uniqueItems") is True and not _schema_array_items_unique(value):
+            return f"{path} must contain unique items"
         items = schema.get("items")
         if isinstance(items, Mapping):
             for index, item in enumerate(value):
@@ -9812,6 +9818,14 @@ def _schema_number_is_multiple_of(value: Any, multiple_of: Any) -> bool:
     if numeric is None:
         return True
     return numeric % divisor == 0
+
+
+def _schema_array_items_unique(values: Sequence[Any]) -> bool:
+    for index, item in enumerate(values):
+        for other in values[index + 1 :]:
+            if item == other:
+                return False
+    return True
 
 
 def _json_schema_type_matches(value: Any, expected: Any) -> bool:

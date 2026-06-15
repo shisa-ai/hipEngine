@@ -91913,3 +91913,19 @@ python3 scripts/validate_pi_agent_models.py \
 Validation attempts:
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json --base-url http://127.0.0.1:8000/v1 --chat-smoke --reasoning-smoke --timeout 60` -> failed before generation: connection refused on `/v1/hipengine/capabilities`.
 - `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json --base-url http://epyc:8000/v1 --chat-smoke --reasoning-smoke --timeout 60` -> failed before generation: connection refused on `/v1/hipengine/capabilities`.
+
+## 2026-06-15 - AGENTIC JSON schema array uniqueness
+
+Strict tool schemas and structured-output JSON Schema validation now support
+array `uniqueItems`. The capability manifest advertises `array.uniqueItems`,
+request validation rejects non-boolean `uniqueItems` before generation, and
+result validation rejects duplicate JSON values for both structured outputs and
+strict tool-call arguments.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_unique_items tests/test_server_api.py::test_completions_response_format_rejects_invalid_unique_items_bound tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_unique_items tests/test_server_api.py::test_completions_response_format_json_schema_validates_result -q` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `145 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
