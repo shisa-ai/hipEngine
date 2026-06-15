@@ -92642,3 +92642,41 @@ Artifacts:
 Validation:
 - `python3 -m json.tool` passed for the new summary and hipEngine prompt-suite artifacts.
 - `git diff --check` passed for the touched docs/artifacts before commit.
+
+## 2026-06-15 - gfx1151 tuning plan evidence pass
+
+Created `docs/TUNING-gfx1151.md` as the dedicated Strix Halo / `gfx1151` tuning
+and validation playbook, then revised the opening to start from evidence instead
+of a generic checklist.
+
+Evidence folded into the plan:
+- Original gfx1151 performance win was row-shape/chunking, not attention tuning:
+  the 2026-05-17 4K/1 profile showed full attention at only `0.157 s` / `2.4%`
+  of kernel time while linear GDN, linear conv, rotate, selected MoE, and AWQ
+  dominated. all256 chunks moved 4K/1 prefill `635.884 -> 1029.808 tok/s`; later
+  probes showed all128/all64 worse and `linear512` only a small unpromoted
+  candidate.
+- W7900 MTP lessons were separated into retained levers worth retesting on
+  gfx1151 (B=1, `decode_batched`, graph-off/canonicalize skip, proposer router
+  and route-batched experts, safe W4/reduced-DAG slices, cap65536) and no-hold
+  traps to treat skeptically (full vocab, B=5/global larger budgets, active
+  budget caps, confidence gates, current graph-capture shapes, LM-head thread
+  retunes, and several oversized fused kernels).
+- llama.cpp MTP audit was added from local read-only `llama.cpp-hip` commit
+  `6e9007ae61f4e994c27484759caac6ef2aa32b30`: Qwen35MoE NextN tensors and
+  `LLM_GRAPH_TYPE_DECODER_MTP`, MTP context against the target model, target
+  `h_nextn` extraction, backend-side top-k draft sampling, centralized
+  `draft_n`/`draft_n_accepted` metrics, and accept-until-first-mismatch sampling.
+
+Plan impact:
+- The first gfx1151 MTP pass should build a llama.cpp acceptance/profiling ledger
+  (HIP/Vulkan B1-B4 with `draft_n` and `draft_n_accepted`) and a hipEngine
+  budget/fallback ledger (B=1/B=2/B=3 exact rows, fallback ablations, vocab caps)
+  before kernel tuning.
+- Key hypothesis to test: on Strix Halo, with comparatively more compute than
+  memory bandwidth, B=2/B=3 may amortize verifier/logit/host costs better than
+  the W7900-retained B=1 operating point, but exactness and same-session AR gates
+  remain mandatory.
+
+Validation for this doc-only unit:
+- Re-read `docs/TUNING-gfx1151.md` end-to-end after editing.
