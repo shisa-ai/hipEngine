@@ -153,6 +153,7 @@ _TOOL_RESULT_VALIDATION_FAILURE_REASONS = (
     "tool_required_not_satisfied",
     "schema_violation",
 )
+_INVALID_TOOL_CALL_ERROR_MODES = ("finish_details", "hard_error")
 _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS = ("schema_violation",)
 _JSON_SCHEMA_ANNOTATION_KEYWORDS = (
     "title",
@@ -346,7 +347,7 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "emitted": True,
         "description": (
             "Emitted as finish_details.reason for strict tool result-validation failures; "
-            "reserved as an HTTP error for future strict decode-time failures."
+            "also available as an opt-in HTTP/SSE hard error via invalid_tool_call_error_mode."
         ),
     },
     "schema_violation": {
@@ -922,6 +923,10 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "strict_decoding": False,
         "strict_result_validation": True,
         "result_validation_failure_reasons": list(_TOOL_RESULT_VALIDATION_FAILURE_REASONS),
+        "invalid_tool_call_error_mode_field": "invalid_tool_call_error_mode",
+        "invalid_tool_call_error_modes": list(_INVALID_TOOL_CALL_ERROR_MODES),
+        "default_invalid_tool_call_error_mode": "finish_details",
+        "hard_error_surfaces": ["http", "sse"],
         "schema_validation": "function_strict",
         "schema_subset": _tool_schema_subset(),
         "unsupported_schema_keywords_rejected": True,
@@ -1445,6 +1450,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
     parallel_tool_calls: bool | None = None
+    invalid_tool_call_error_mode: str | None = None
     reasoning_effort: str | None = None
     enable_thinking: bool | None = None
     max_think_tokens: int | None = Field(default=None, ge=0)
@@ -4906,6 +4912,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 }
                 _mark_structured_length_failure(request, structured_length_failure, choice["finish_details"])
                 _mark_structured_length_phase(request, choice["finish_details"])
+                _raise_invalid_tool_call_hard_error_if_requested(
+                    request,
+                    tool_validation,
+                    finish_details=choice["finish_details"],
+                )
                 effective_cache_action = _effective_session_cache_action(
                     requested_cache_action,
                     choice["finish_details"],
@@ -5248,6 +5259,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 )
                 _mark_structured_length_failure(request, structured_length_failure, finish_details)
                 _mark_structured_length_phase(request, finish_details)
+                _raise_invalid_tool_call_hard_error_if_requested(
+                    request,
+                    tool_validation,
+                    finish_details=finish_details,
+                )
                 await _maybe_write_agentic_result_replay_artifact(
                     config,
                     raw_request,
@@ -5952,6 +5968,46 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 token_counter=getattr(engine, "count_tokens", None),
             )
             _mark_structured_length_phase(request, finish_details)
+            hard_error = _invalid_tool_call_hard_error(
+                request,
+                tool_validation,
+                finish_details=finish_details,
+            )
+            if hard_error is not None:
+                _record_openai_error(app.state.hipengine_server_metrics, hard_error)
+                _log_stream_failure(
+                    "POST /v1/chat/completions stream",
+                    status_code=hard_error.status_code,
+                    code=hard_error.code,
+                    param=hard_error.param,
+                    message=hard_error.message,
+                )
+                await write_error_artifact(
+                    hard_error.message,
+                    status_code=hard_error.status_code,
+                    code=hard_error.code,
+                    param=hard_error.param,
+                    error_type=hard_error.error_type,
+                    finish_details=hard_error.finish_details,
+                    extra=hard_error.extra,
+                )
+                yield _chat_stream_error(
+                    response_id,
+                    created,
+                    config.model_id,
+                    hard_error.message,
+                    status_code=hard_error.status_code,
+                    code=hard_error.code,
+                    param=hard_error.param,
+                    error_type=hard_error.error_type,
+                    finish_details=hard_error.finish_details,
+                    extra=hard_error.extra,
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                    routing=routing_metadata,
+                )
+                yield "data: [DONE]\n\n"
+                return
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -7964,6 +8020,8 @@ def _validate_generation_request(
     _validate_guided_choice_request(request)
     _validate_guided_patch_request(request)
     _validate_tool_schema_requests(request)
+    if isinstance(request, ChatCompletionRequest):
+        _invalid_tool_call_error_mode(request)
     if isinstance(request, ChatCompletionRequest) and request.top_logprobs is not None and not request.logprobs:
         raise OpenAIHTTPError(
             400,
@@ -10918,6 +10976,70 @@ def _validate_chat_tool_result(
 
 def _tool_validation_failure(reason: str) -> _ToolValidationResult:
     return _ToolValidationResult(_ParsedChatOutput(text="", tool_calls=()), str(reason))
+
+
+def _invalid_tool_call_error_mode(request: ChatCompletionRequest) -> str:
+    raw_mode = request.invalid_tool_call_error_mode
+    if raw_mode is None:
+        return "finish_details"
+    if not isinstance(raw_mode, str) or not raw_mode.strip():
+        raise OpenAIHTTPError(
+            400,
+            "invalid_tool_call_error_mode must be a non-empty string",
+            code="invalid_request",
+            param="invalid_tool_call_error_mode",
+        )
+    mode = raw_mode.strip().lower()
+    aliases = {
+        "normal": "finish_details",
+        "response": "finish_details",
+        "http_error": "hard_error",
+        "sse_error": "hard_error",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in _INVALID_TOOL_CALL_ERROR_MODES:
+        raise OpenAIHTTPError(
+            400,
+            "invalid_tool_call_error_mode must be one of: "
+            + ", ".join(_INVALID_TOOL_CALL_ERROR_MODES),
+            code="invalid_request",
+            param="invalid_tool_call_error_mode",
+        )
+    return mode
+
+
+def _invalid_tool_call_hard_error(
+    request: ChatCompletionRequest,
+    tool_validation: _ToolValidationResult,
+    *,
+    finish_details: Mapping[str, Any],
+) -> OpenAIHTTPError | None:
+    if not tool_validation.failed or tool_validation.failure_reason != "invalid_tool_call":
+        return None
+    if _invalid_tool_call_error_mode(request) != "hard_error":
+        return None
+    return OpenAIHTTPError(
+        400,
+        "generated tool call failed validation",
+        code="invalid_tool_call",
+        param="tool_calls",
+        finish_details=finish_details,
+    )
+
+
+def _raise_invalid_tool_call_hard_error_if_requested(
+    request: ChatCompletionRequest,
+    tool_validation: _ToolValidationResult,
+    *,
+    finish_details: Mapping[str, Any],
+) -> None:
+    error = _invalid_tool_call_hard_error(
+        request,
+        tool_validation,
+        finish_details=finish_details,
+    )
+    if error is not None:
+        raise error
 
 
 def _strict_tool_validation_enabled(request: ChatCompletionRequest) -> bool:

@@ -93629,3 +93629,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-16 - Invalid tool-call hard-error mode
+
+Added opt-in `invalid_tool_call_error_mode="hard_error"` for chat tool
+result-validation failures. The default remains the normal chat response with
+`finish_details.reason="invalid_tool_call"`, while hard-error mode returns an
+HTTP `invalid_tool_call` error for non-streaming chat or an SSE `error` chunk
+for streaming chat after generation-time validation fails. Capabilities,
+`docs/AGENTIC.md`, and `docs/API.md` now advertise the mode and default.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'invalid_tool_call_can_return_hard_error or invalid_tool_call_can_return_sse_error or rejects_invalid_tool_call_error_mode_before_generation or capabilities_endpoint_reports_manifest_and_auth'` -> `4 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'api_error_taxonomy or invalid_tool_call_can_return_hard_error or invalid_tool_call_can_return_sse_error or rejects_invalid_tool_call_error_mode_before_generation or auto_tool_rejects_undeclared_function or auto_tool_rejects_unparseable_tool_markup or streaming_chat_completion_rejects_undeclared_auto_tool_name or streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup or streaming_chat_completion_n_reports_withheld_scheduler_tool_chunks_for_invalid_tool_call or streaming_chat_completion_reports_strict_tool_schema_failure or capabilities_endpoint_reports_manifest_and_auth'` -> `11 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.

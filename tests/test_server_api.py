@@ -1031,6 +1031,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "tool_required_not_satisfied",
             "schema_violation",
         ],
+        "invalid_tool_call_error_mode_field": "invalid_tool_call_error_mode",
+        "invalid_tool_call_error_modes": ["finish_details", "hard_error"],
+        "default_invalid_tool_call_error_mode": "finish_details",
+        "hard_error_surfaces": ["http", "sse"],
         "schema_validation": "function_strict",
         "schema_subset": [
             "type",
@@ -11834,6 +11838,67 @@ def test_chat_completion_auto_tool_rejects_undeclared_function() -> None:
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
+def test_chat_completion_invalid_tool_call_can_return_hard_error() -> None:
+    fake = FakeLLM(
+        outputs=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>']
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "invalid_tool_call_error_mode": "hard_error",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "<tool_call>" not in response.text
+    assert "write" not in response.text
+    error = response.json()["error"]
+    assert error["code"] == "invalid_tool_call"
+    assert error["param"] == "tool_calls"
+    assert error["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert error["hipengine"] == {
+        "code": "invalid_tool_call",
+        "status_code": 400,
+        "retryable": False,
+    }
+    assert len(fake.calls) == 1
+
+
+def test_chat_completion_rejects_invalid_tool_call_error_mode_before_generation() -> None:
+    fake = FakeLLM(outputs=["unused"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "invalid_tool_call_error_mode": "sometimes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert response.json()["error"]["param"] == "invalid_tool_call_error_mode"
+    assert fake.calls == []
+
+
 def test_chat_completion_strict_validation_recovers_doubled_tool_call_tag() -> None:
     fake = FakeLLM(
         outputs=['<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
@@ -13767,6 +13832,54 @@ def test_streaming_chat_completion_rejects_undeclared_auto_tool_name() -> None:
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
     assert done["choices"][0]["finish_reason"] == "stop"
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+
+
+def test_streaming_chat_completion_invalid_tool_call_can_return_sse_error() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=['<tool_call>{"name":"write","arguments":{"path":"README.md"}}</tool_call>'],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "invalid_tool_call_error_mode": "hard_error",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<tool_call>" not in response.text
+    assert "write" not in response.text
+    payloads = _sse_payloads(response.text)
+    error_payload = next(payload for payload in payloads if payload.get("error"))
+    assert error_payload["choices"][0]["finish_reason"] == "error"
+    assert error_payload["choices"][0]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert error_payload["error"]["code"] == "invalid_tool_call"
+    assert error_payload["error"]["param"] == "tool_calls"
+    assert error_payload["error"]["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert error_payload["error"]["hipengine"] == {
+        "code": "invalid_tool_call",
+        "status_code": 400,
+        "retryable": False,
+    }
+    assert error_payload["hipengine"]["event"] == "error"
+    assert "data: [DONE]" in response.text
 
 
 def test_streaming_chat_completion_auto_tool_rejects_unparseable_tool_markup() -> None:

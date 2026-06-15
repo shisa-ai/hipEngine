@@ -1675,7 +1675,11 @@ Current state:
   `"length"` and `finish_details` keeps the length limit, classified phase, and
   `continuation_eligible=false`. These normal-response failure reasons are
   advertised under
-  `features.tools.result_validation_failure_reasons`.
+  `features.tools.result_validation_failure_reasons`. The default
+  `invalid_tool_call` surface remains this normal response, but chat requests
+  may opt into `invalid_tool_call_error_mode="hard_error"` to receive an HTTP
+  error in non-streaming responses or an SSE `error` event in streaming
+  responses after generation-time validation fails.
 - Inconsistent `tool_choice` requests are rejected before generation:
   `required` or specific-function choices require a non-empty `tools` list, and
   specific-function choices must use a valid object shape and name a declared
@@ -2698,19 +2702,23 @@ Current code reality:
 - `docs/API.md` lists the same client-handled taxonomy table, and a server test
   compares that public table's code/status/retry columns against the live
   `/v1/hipengine/capabilities` manifest.
-- `invalid_tool_call` is currently emitted as a normal chat
+- `invalid_tool_call` is emitted by default as a normal chat
   `finish_details.reason` for parsed tool-policy failures and strict tool
-  result-validation failures, not as an HTTP error payload. `schema_violation`
-  can likewise be a request-body error or a normal `finish_details.reason` for
-  invalid `response_format` / strict tool schema results.
+  result-validation failures. With
+  `invalid_tool_call_error_mode="hard_error"`, the same validation failure is
+  emitted as an HTTP error for non-streaming chat or an SSE `error` event for
+  streaming chat. `schema_violation` can likewise be a request-body error or a
+  normal `finish_details.reason` for invalid `response_format` / strict tool
+  schema results.
 - `engine_busy` currently means the opt-in OpenAI server queue cap or app-local
   chat-session cap rejected a request before generation with HTTP 429 and
   `Retry-After: 1`. The active backend request cap limits coalesced backend
   batch width but does not itself reject unless queued overflow also hits the
   configured queue cap.
 - `routing_failed` is reserved in the manifest and marked `emitted=false` until
-  multi-model routing exists. HTTP/SSE `invalid_tool_call` errors remain future
-  strict decode-time work.
+  multi-model routing exists. Decode-time invalid-tool-call hard errors remain
+  future grammar work; the current hard-error mode is still post-generation
+  result validation.
 
 Exit gates:
 
@@ -3043,9 +3051,11 @@ withholds ambiguous backend chunks with diagnostics.
    preservation and summary compaction are P2 only when they can report
    deterministic kept/dropped/reset segments and never drop current request
    content.
-6. **HTTP/SSE hard-error variants for invalid tool calls.** Normal chat
-   responses with `finish_details.reason="invalid_tool_call"` remain acceptable
-   until a target harness requires HTTP/SSE `invalid_tool_call` errors.
+6. **HTTP/SSE hard-error variants for invalid tool calls.** The default normal
+   chat response with `finish_details.reason="invalid_tool_call"` remains
+   supported, and `invalid_tool_call_error_mode="hard_error"` now provides
+   opt-in HTTP/SSE hard-error variants for generation-time invalid tool-call
+   validation. Decode-time grammar failures remain future work.
 
 ### P3 — Later scale, performance, and convenience
 

@@ -516,7 +516,11 @@ validation failures return a normal chat response with no successful
 `tool_required_not_satisfied`, or `schema_violation`. The coarse
 `finish_reason` is usually `"stop"`, but remains `"length"` when the backend
 ended because the generation budget was exhausted; in that case
-`finish_details` also includes length-limit phase metadata.
+`finish_details` also includes length-limit phase metadata. For
+`invalid_tool_call` failures, chat requests may set
+`invalid_tool_call_error_mode="hard_error"` to receive an HTTP error in
+non-streaming responses or an SSE `error` chunk in streaming responses. The
+default remains the normal chat response described above.
 For buffered c>N streams that have backend scheduler chunks, final done choices
 also include private `choices[].hipengine.withheld_scheduler_tool_chunks`
 diagnostics when those chunks were withheld because the parsed tool call was
@@ -935,14 +939,14 @@ reported by FastAPI/Pydantic when available, for example `prompt` or
 Clients should handle these canonical codes from `error.hipengine.code` on
 error payloads. The same manifest also advertises `invalid_tool_call` because
 parsed tool-policy checks and strict tool result validation emit it as a normal
-chat `finish_details.reason`; it is not currently returned as an HTTP error
-payload.
+chat `finish_details.reason` by default and as an opt-in hard-error payload
+when `invalid_tool_call_error_mode="hard_error"`.
 
 | Code | Status | Retry | Current emission |
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
