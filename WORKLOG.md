@@ -93958,3 +93958,21 @@ PY` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-c76fa26803ac1f4d/ggu
 - Result: `512/128` median prefill/decode `1656.157989 / 127.017897 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.016593 / 115.579481 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
 - Decision: no-hold/reverted. It preserved IDs and memory and improved `512/128` prefill (`1647.389814 -> 1656.157989 tok/s`), but regressed `4K/128` prefill (`1855.806476 -> 1855.016593 tok/s`) and the retained `4K/128` decode gate (`115.804576 -> 115.579481 tok/s`); keep the original in-loop Q6 `d` loads unless an ISA/occupancy profile proves the preload no longer costs the 4K path.
+
+## 2026-06-15 - GGUF G-D2 Q8 half-pointer d-load no-hold
+
+Tried loading all four Q8_0 T16 GEMV decode variants' fp16 `d[16]` scales via
+`reinterpret_cast<const half_t*>(tile)[col]` instead of the existing
+`fp16_bytes_to_float(tile + col * 2)`. The code change was reverted after
+measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+artifact = build_gguf_q8_0_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-dddef4d13fbba941/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-half-dload.json`.
+- Result: `512/128` median prefill/decode `1626.168141 / 126.941481 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1853.322643 / 115.559754 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed both prefill medians (`1647.389814 -> 1626.168141 tok/s`, `1855.806476 -> 1853.322643 tok/s`) and both retained decode gates (`127.011979 -> 126.941481 tok/s`, `115.804576 -> 115.559754 tok/s`); keep the byte/union `fp16_bytes_to_float` loads for Q8_0 T16 GEMV.

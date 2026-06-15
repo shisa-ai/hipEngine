@@ -267,6 +267,13 @@ No-hold notes:
   both retained decode medians (`127.012 -> 126.870 tok/s`, `115.805 ->
   115.565 tok/s`) and did not improve prefill. Keep Q8_0 T16 GEMV decode at
   `128,4`.
+- **G-D2 Q8 half-pointer d-load rejected (2026-06-15).** Loading all four Q8_0
+  T16 GEMV decode variants' fp16 `d[16]` scales through
+  `reinterpret_cast<const half_t*>(tile)[col]` instead of `fp16_bytes_to_float`
+  preserved generated IDs and memory, but regressed both prefill medians
+  (`1647.390 -> 1626.168 tok/s`, `1855.806 -> 1853.323 tok/s`) and both decode
+  medians (`127.012 -> 126.941 tok/s`, `115.805 -> 115.560 tok/s`). Keep the
+  byte/union `fp16_bytes_to_float` loads for Q8_0 T16 GEMV.
 - **G-D2 scale broadcast rejected (2026-06-15).** Replacing per-lane Q8_0 T16
   scale loads with `__shfl` broadcast preserved correctness but regressed the
   gate metric from `114.602` to `106.905 tok/s` (`-6.7%`) and reduced both gate
