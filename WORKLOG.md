@@ -92756,3 +92756,49 @@ Validation:
 - `python3 -m json.tool` passed for all committed JSON artifacts and llama.cpp
   source summaries used to build the compact artifact.
 - `git diff --check` passed before staging/commit.
+
+## 2026-06-15 - mtp-gguf branch plan
+
+Created and switched to a new `mtp-gguf` branch from `25bc2a51` to isolate the
+GGUF-native MTP effort.
+
+Added `docs/MTP-gguf.md`, a focused plan for adopting the llama.cpp-style
+integrated GGUF NextN/MTP path in hipEngine. The plan starts from the retained
+gfx1151 diagnostic matrix rather than the PARO sidecar path:
+
+- llama.cpp HIP/Vulkan B4 on the MTP-bearing `UD-Q4_K_M` GGUF reaches
+  `92.57/108.45 tok/s`, `1.801x/1.726x`, accepted/output `0.743/0.747`.
+- hipEngine PARO+MTP sidecar rows remain below AR: B1 `decode_batched`
+  `59.72 tok/s` / `0.916x` / accepted-output `0.344`; B3 exact but slower
+  `47.64 tok/s` / `0.730x` / accepted-output `0.455`; B2 has an
+  `exact_ar_mismatch` blocker on `explain_concept`.
+
+Prior-branch/doc review before drafting:
+- `gguf-bulk-prefill`, `gfx1151`, `mpt-dflash`, and `origin/mpt-dflash` are all
+  ancestors of the current branch, so their useful lessons are already in the
+  current docs/history.
+- `docs/MTP.md` contributed acceptance-denominator rules, W7900 retained/no-hold
+  MTP levers, and the warning that higher density is not useful if cycle cost
+  rises too much.
+- `docs/DFLASH.md` contributed the provider-neutral `DraftBatch` / target verify
+  / accept / commit / KV-transaction contract that MTP-GGUF should reuse.
+- `docs/MEGAKERNEL.md` contributed the small-row fusion lesson: profile actual
+  B+1 buckets first; single-launch fusion can lose to wide staged kernels.
+- `docs/GGUF.md` and `docs/GGUF_DECODE_REPACK.md` contributed GGUF intake,
+  qwen35moe support, and the memory rule to prefer replacement resident layouts
+  over duplicate raw+packed sidecars.
+- `hipengine/loading/qwen35_gguf.py` already detects trailing `blk.N.nextn.*`
+  blocks and ignores them for AR; the plan's first implementation milestone is
+  to expose that ignored block as a first-class MTP descriptor.
+
+Plan milestones in `docs/MTP-gguf.md`:
+1. GGUF MTP inventory/oracles.
+2. First-class NextN/MTP metadata in the qwen35moe GGUF mapper.
+3. GGUF AR baseline lock on the MTP-bearing file.
+4. Draft-only NextN execution.
+5. Target-attached MTP context reusing existing verifier/accept/commit plumbing.
+6. B1-B4 parity sweep vs llama.cpp HIP/Vulkan.
+7. Runtime/kernel optimization only after acceptance parity.
+
+Validation for this doc-only unit:
+- Re-read `docs/MTP-gguf.md` end-to-end after writing.
