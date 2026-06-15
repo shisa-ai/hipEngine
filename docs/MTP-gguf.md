@@ -674,9 +674,9 @@ Deliverables:
   match both engines' sampling fixtures, embeds the MTP draft tensor/call specs
   (including KVLiveSpans dynamic inputs), records a `hidden_seed_contract_precheck`
   that pins the required fp32 post-`output_norm` seed dtype/provenance and call-spec
-  shape, records an exact four-axis `runtime_kernel_precheck` for required
-  CPU-reference oracles and missing native runtime/optimization keys, runs the
-  CPU-reference oracle exactness gate plus
+  shape, records an exact four-axis `runtime_kernel_precheck` backed by the shared
+  `Qwen35GGUFMTPRuntimeKernelPlan` for required CPU-reference oracles and missing
+  native runtime/optimization keys, runs the CPU-reference oracle exactness gate plus
   the captured llama.cpp draft-trace oracle summary, and emits a blocked artifact
   until native GGUF MTP draft execution is implemented.
 - Run matched prompt/token suite against:
@@ -873,8 +873,9 @@ is now answered by the M1 required/optional table.)
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
       specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
-      precheck, CPU-reference oracle gate output, a hipEngine metrics contract
-      with explicit accepted-per-draft/output denominator labels, and captured
+      precheck backed by `Qwen35GGUFMTPRuntimeKernelPlan`, CPU-reference oracle
+      gate output, a hipEngine metrics contract with explicit
+      accepted-per-draft/output denominator labels, and captured
       llama.cpp draft-trace oracle provenance/denominator checks; B1 runtime
       execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
@@ -907,7 +908,8 @@ is now answered by the M1 required/optional table.)
       `full_vocab_d2h` fallback/oracle is registered and advertised in MTP
       draft tensor plans/call specs with the llama.cpp parity contract
       (`top_k=10`, greedy top-1); backend `topk_device` remains open and is now
-      reported by the preflight `runtime_kernel_precheck`.
+      reported by the shared `Qwen35GGUFMTPRuntimeKernelPlan` through the
+      preflight `runtime_kernel_precheck`.
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 

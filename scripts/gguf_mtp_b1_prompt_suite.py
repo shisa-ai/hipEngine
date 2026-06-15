@@ -20,7 +20,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.kernels.registry import KernelKey, is_registered  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.loading.qwen35_gguf import (  # noqa: E402
     build_qwen35_gguf_mtp_draft_tensor_plans,
@@ -30,7 +29,10 @@ from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     qwen35_gguf_current_hidden_seed_contract,
     qwen35_gguf_fp32_hidden_seed_contract,
 )
-from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPVerificationMetrics  # noqa: E402
+from hipengine.speculative.gguf_mtp import (  # noqa: E402
+    Qwen35GGUFMTPRuntimeKernelPlan,
+    Qwen35GGUFMTPVerificationMetrics,
+)
 from scripts.gguf_mtp_oracle_gate import (  # noqa: E402
     DEFAULT_FIXTURE as DEFAULT_ORACLE_FIXTURE,
     run_oracle_gate,
@@ -71,10 +73,6 @@ def default_sampling_fixture(draft_max: int) -> Path:
         return DEFAULT_SAMPLING_BY_DRAFT_MAX[int(draft_max)]
     except KeyError as exc:
         raise B1PromptSuitePreflightError("draft_max must be in 1..4 for B1-B4 preflight") from exc
-
-
-def _kernel_key_payload(key: KernelKey) -> list[str]:
-    return [key.backend, key.layer, key.quant, key.variant]
 
 
 def _hidden_seed_dynamic_input(call_spec: dict[str, Any]) -> dict[str, Any] | None:
@@ -149,64 +147,10 @@ def _build_runtime_kernel_precheck(*, backend: str, draft_topk: dict[str, Any]) 
     draft_topk_kernel = draft_topk.get("kernel")
     if not isinstance(draft_topk_kernel, list | tuple) or len(draft_topk_kernel) != 4:
         raise B1PromptSuitePreflightError("draft_topk.kernel must be a four-axis registry key")
-    checks: list[dict[str, Any]] = []
-
-    def add_check(
-        name: str,
-        key: KernelKey,
-        *,
-        required_for: str,
-        missing_is_blocker: bool,
-    ) -> None:
-        registered = is_registered(key)
-        checks.append(
-            {
-                "name": name,
-                "key": _kernel_key_payload(key),
-                "registered": registered,
-                "required_for": required_for,
-                "missing_is_blocker": missing_is_blocker,
-            }
-        )
-
-    add_check(
-        "cpu_nextn_oracle",
-        KernelKey("cpu_reference", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"),
-        required_for="exactness",
-        missing_is_blocker=True,
-    )
-    add_check(
-        "draft_topk_fallback_oracle",
-        KernelKey(*(str(part) for part in draft_topk_kernel)),
-        required_for="exactness",
-        missing_is_blocker=True,
-    )
-    add_check(
-        "native_nextn_runtime",
-        KernelKey(backend, "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"),
-        required_for="native_runtime",
-        missing_is_blocker=False,
-    )
-    add_check(
-        "native_draft_topk_device",
-        KernelKey(backend, "mtp_draft_topk", "w4_gguf", "topk_device"),
-        required_for="optimization",
-        missing_is_blocker=False,
-    )
-
-    missing_exactness = [item for item in checks if item["missing_is_blocker"] and not item["registered"]]
-    missing_native = [item for item in checks if item["required_for"] == "native_runtime" and not item["registered"]]
-    missing_optimization = [item for item in checks if item["required_for"] == "optimization" and not item["registered"]]
-    return {
-        "backend": backend,
-        "exactness_oracles_ready": not missing_exactness,
-        "native_runtime_kernels_ready": not missing_native,
-        "optimization_kernels_ready": not missing_optimization,
-        "missing_exactness_oracle_keys": [item["key"] for item in missing_exactness],
-        "missing_native_runtime_keys": [item["key"] for item in missing_native],
-        "missing_optimization_keys": [item["key"] for item in missing_optimization],
-        "checks": checks,
-    }
+    return Qwen35GGUFMTPRuntimeKernelPlan.from_registry(
+        backend=backend,
+        draft_topk_kernel=tuple(str(part) for part in draft_topk_kernel),  # type: ignore[arg-type]
+    ).as_dict()
 
 
 def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:

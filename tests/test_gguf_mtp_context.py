@@ -13,6 +13,7 @@ from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPDraftProposal,
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPKVLiveSpansPlan,
+    Qwen35GGUFMTPRuntimeKernelPlan,
     Qwen35GGUFMTPSeedRow,
     Qwen35GGUFMTPVerificationMetrics,
     Qwen35GGUFMTPVerificationResult,
@@ -302,6 +303,40 @@ def test_gguf_mtp_context_verifies_full_proposal_acceptance_from_execution_plan(
     assert result.target_token_id_at_mismatch is None
     assert result.reseed == seeds[2]
     assert result.as_dict()["accepted_per_draft"] == 1.0
+
+
+def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() -> None:
+    register_cpu_reference_kernels(replace=True)
+
+    plan = Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend="hip_gfx1100")
+    payload = plan.as_dict()
+
+    assert plan.exactness_oracles_ready is True
+    assert plan.native_runtime_kernels_ready is False
+    assert plan.optimization_kernels_ready is False
+    assert payload["missing_exactness_oracle_keys"] == []
+    assert payload["missing_native_runtime_keys"] == [
+        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+    ]
+    assert payload["missing_optimization_keys"] == [
+        ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+    ]
+    assert [item["name"] for item in payload["checks"]] == [
+        "cpu_nextn_oracle",
+        "draft_topk_fallback_oracle",
+        "native_nextn_runtime",
+        "native_draft_topk_device",
+    ]
+
+
+def test_gguf_mtp_runtime_kernel_plan_validates_inputs() -> None:
+    with pytest.raises(ValueError, match="backend"):
+        Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend="")
+    with pytest.raises(ValueError, match="four-axis"):
+        Qwen35GGUFMTPRuntimeKernelPlan.from_registry(
+            backend="hip_gfx1100",
+            draft_topk_kernel=("cpu_reference", "mtp_draft_topk", "w4_gguf"),  # type: ignore[arg-type]
+        )
 
 
 def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:

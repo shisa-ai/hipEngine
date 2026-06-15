@@ -96475,3 +96475,57 @@ Validation:
   claim. Compact matrix mode only omits full child artifacts while retaining
   readiness/blocker summaries; future MTP attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF shared runtime kernel plan
+
+Implemented `mtp-gguf` multiloop iteration 84: moved the GGUF MTP runtime-kernel
+registry readiness contract from the B1 preflight script into
+`hipengine.speculative`.
+
+Scope note:
+- Speculative contract/preflight/docs/tests only. No GGUF tensor payload loading,
+  hipEngine generation integration, native NextN execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance path changed.
+- Future runtime code and the preflight child now share one tested four-axis
+  `KernelKey` plan for CPU oracles, native NextN readiness, and the future
+  `topk_device` optimization key.
+
+Changes:
+- Added `Qwen35GGUFMTPRuntimeKernelCheck` and
+  `Qwen35GGUFMTPRuntimeKernelPlan` in `hipengine/speculative/gguf_mtp.py`.
+- The plan checks exact registry keys for:
+  - `cpu_reference/mtp_nextn_layer/w4_gguf/qwen35_dense_logits`,
+  - `cpu_reference/mtp_draft_topk/w4_gguf/full_vocab_d2h`,
+  - `<backend>/mtp_nextn_layer/w4_gguf/qwen35_dense_logits`,
+  - `<backend>/mtp_draft_topk/w4_gguf/topk_device`.
+- `scripts/gguf_mtp_b1_prompt_suite.py` now delegates `runtime_kernel_precheck`
+  construction to the shared plan instead of duplicating local `KernelKey` logic.
+- Added context tests for shared plan readiness/missing-key reporting and invalid
+  plan inputs.
+- Updated `docs/MTP-gguf.md` to document that runtime-kernel preflight is backed
+  by `Qwen35GGUFMTPRuntimeKernelPlan`.
+
+Validation:
+- Focused shared-plan/preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_b1_prompt_suite.py` -> `36` passed.
+- Runtime plan smoke passed:
+  `Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend="hip_gfx1100")` ->
+  `exactness_oracles_ready=True`, `native_runtime_kernels_ready=False`, missing
+  native key `[['hip_gfx1100', 'mtp_nextn_layer', 'w4_gguf', 'qwen35_dense_logits']]`.
+- Real local compact matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `preflight blocked [['hip_gfx1100', 'mtp_nextn_layer', 'w4_gguf', 'qwen35_dense_logits']]`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches. The shared plan uses exact
+  registry-key lookup and reports readiness; it does not dispatch through
+  backend/quant conditionals.
+- Prompt verifier passed: speculative contract/preflight/docs/tests only; no
+  torch import; no runtime backend/quant dispatch branch; no generation
+  integration, native MTP execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance claim. Future MTP attention/KV-write
+  execution remains KVLiveSpans-gated.

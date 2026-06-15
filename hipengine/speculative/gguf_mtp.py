@@ -10,12 +10,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
 
 DEFAULT_DRAFT_TOPK_KERNEL = ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
 DEFAULT_DRAFT_TOPK = 10
 DEFAULT_DRAFT_SELECTION = "greedy_top1_from_topk"
+DEFAULT_NEXTN_CPU_REFERENCE_KERNEL = ("cpu_reference", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits")
+DEFAULT_NEXTN_LAYER = "mtp_nextn_layer"
+DEFAULT_NEXTN_QUANT = "w4_gguf"
+DEFAULT_NEXTN_VARIANT = "qwen35_dense_logits"
+DEFAULT_DRAFT_TOPK_DEVICE_VARIANT = "topk_device"
 
 
 class _HiddenSeedContractLike(Protocol):
@@ -423,6 +428,152 @@ class Qwen35GGUFMTPVerificationResult:
             "target_token_id_at_mismatch": self.target_token_id_at_mismatch,
             "verify_seed_count": self.verify_seed_count,
             "reseed": self.reseed.as_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPRuntimeKernelCheck:
+    """One exact four-axis registry check for GGUF MTP runtime readiness."""
+
+    name: str
+    key: tuple[str, str, str, str]
+    registered: bool
+    required_for: str
+    missing_is_blocker: bool
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("kernel check name must be non-empty")
+        if len(self.key) != 4:
+            raise ValueError("kernel check key must be a four-axis registry key")
+        if not self.required_for:
+            raise ValueError("required_for must be non-empty")
+
+    @classmethod
+    def from_key(
+        cls,
+        *,
+        name: str,
+        key: tuple[str, str, str, str],
+        required_for: str,
+        missing_is_blocker: bool,
+    ) -> "Qwen35GGUFMTPRuntimeKernelCheck":
+        normalized_key = tuple(str(part) for part in key)
+        if len(normalized_key) != 4:
+            raise ValueError("kernel check key must be a four-axis registry key")
+        return cls(
+            name=name,
+            key=normalized_key,  # type: ignore[arg-type]
+            registered=is_registered(KernelKey(*normalized_key)),
+            required_for=required_for,
+            missing_is_blocker=bool(missing_is_blocker),
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "key": list(self.key),
+            "registered": self.registered,
+            "required_for": self.required_for,
+            "missing_is_blocker": self.missing_is_blocker,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPRuntimeKernelPlan:
+    """Shared GGUF MTP runtime/oracle registry readiness contract."""
+
+    backend: str
+    checks: tuple[Qwen35GGUFMTPRuntimeKernelCheck, ...]
+
+    def __post_init__(self) -> None:
+        target = self.backend
+        if not target:
+            raise ValueError("backend must be non-empty")
+        if not self.checks:
+            raise ValueError("runtime kernel plan requires at least one check")
+
+    @classmethod
+    def from_registry(
+        cls,
+        *,
+        backend: str,
+        draft_topk_kernel: tuple[str, str, str, str] = DEFAULT_DRAFT_TOPK_KERNEL,
+    ) -> "Qwen35GGUFMTPRuntimeKernelPlan":
+        target = str(backend)
+        if not target:
+            raise ValueError("backend must be non-empty")
+        topk_key = tuple(str(part) for part in draft_topk_kernel)
+        if len(topk_key) != 4:
+            raise ValueError("draft_topk_kernel must be a four-axis registry key")
+        checks = (
+            Qwen35GGUFMTPRuntimeKernelCheck.from_key(
+                name="cpu_nextn_oracle",
+                key=DEFAULT_NEXTN_CPU_REFERENCE_KERNEL,
+                required_for="exactness",
+                missing_is_blocker=True,
+            ),
+            Qwen35GGUFMTPRuntimeKernelCheck.from_key(
+                name="draft_topk_fallback_oracle",
+                key=topk_key,  # type: ignore[arg-type]
+                required_for="exactness",
+                missing_is_blocker=True,
+            ),
+            Qwen35GGUFMTPRuntimeKernelCheck.from_key(
+                name="native_nextn_runtime",
+                key=(target, DEFAULT_NEXTN_LAYER, DEFAULT_NEXTN_QUANT, DEFAULT_NEXTN_VARIANT),
+                required_for="native_runtime",
+                missing_is_blocker=False,
+            ),
+            Qwen35GGUFMTPRuntimeKernelCheck.from_key(
+                name="native_draft_topk_device",
+                key=(target, "mtp_draft_topk", DEFAULT_NEXTN_QUANT, DEFAULT_DRAFT_TOPK_DEVICE_VARIANT),
+                required_for="optimization",
+                missing_is_blocker=False,
+            ),
+        )
+        return cls(backend=target, checks=checks)
+
+    @property
+    def missing_exactness_oracle_keys(self) -> tuple[tuple[str, str, str, str], ...]:
+        return tuple(
+            check.key for check in self.checks if check.missing_is_blocker and not check.registered
+        )
+
+    @property
+    def missing_native_runtime_keys(self) -> tuple[tuple[str, str, str, str], ...]:
+        return tuple(
+            check.key for check in self.checks if check.required_for == "native_runtime" and not check.registered
+        )
+
+    @property
+    def missing_optimization_keys(self) -> tuple[tuple[str, str, str, str], ...]:
+        return tuple(
+            check.key for check in self.checks if check.required_for == "optimization" and not check.registered
+        )
+
+    @property
+    def exactness_oracles_ready(self) -> bool:
+        return not self.missing_exactness_oracle_keys
+
+    @property
+    def native_runtime_kernels_ready(self) -> bool:
+        return not self.missing_native_runtime_keys
+
+    @property
+    def optimization_kernels_ready(self) -> bool:
+        return not self.missing_optimization_keys
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "backend": self.backend,
+            "exactness_oracles_ready": self.exactness_oracles_ready,
+            "native_runtime_kernels_ready": self.native_runtime_kernels_ready,
+            "optimization_kernels_ready": self.optimization_kernels_ready,
+            "missing_exactness_oracle_keys": [list(key) for key in self.missing_exactness_oracle_keys],
+            "missing_native_runtime_keys": [list(key) for key in self.missing_native_runtime_keys],
+            "missing_optimization_keys": [list(key) for key in self.missing_optimization_keys],
+            "checks": [check.as_dict() for check in self.checks],
         }
 
 
