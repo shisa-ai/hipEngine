@@ -95445,3 +95445,47 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF CPU oracle exactness gate CLI
+
+Implemented `mtp-gguf` multiloop iteration 62: added a reusable exactness gate
+for GGUF MTP CPU-reference oracle fixtures.
+
+Scope note:
+- Fixture-gate script/test/docs only. No hipEngine runtime generation, GGUF tensor
+  loading, MTP draft execution, sampling implementation, GPU kernel, attention/KV
+  runtime path, or performance path changed.
+- This gate runs the committed deterministic CPU-reference fixture through the
+  four-axis registry and reports KL/top-1 metrics. It is not the real B1
+  hipEngine-vs-llama.cpp runtime parity run.
+
+Changes:
+- Added executable `scripts/gguf_mtp_oracle_gate.py`, which:
+  - loads `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`
+    by default;
+  - resolves the advertised `(cpu_reference, mtp_nextn_layer, w4_gguf,
+    qwen35_dense_logits)` kernel through the registry;
+  - recomputes logits, KL, top-1 agreement, and top-k match;
+  - emits a compact JSON artifact and supports `--fail-on-fail`.
+- Added `tests/test_gguf_mtp_oracle_gate.py` coverage for the committed passing
+  fixture, a tampered failing fixture, and CLI artifact/exit-code behavior.
+- Updated `docs/MTP-gguf.md` M3 status/acceptance text to reference the oracle
+  gate command.
+
+Validation:
+- Oracle gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_oracle_gate.py` -> `3` passed.
+- CLI smoke passed:
+  `scripts/gguf_mtp_oracle_gate.py --out <tmp> --fail-on-fail` ->
+  `oracle_gate True max_kl 0.0 top1 1.0 top_k_match True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_oracle_gate.py` and
+  `git diff --check -- scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_oracle_gate.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: fixture-gate script/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV runtime path, or performance claim;
+  future MTP attention/KV-write execution remains KVLiveSpans-gated.

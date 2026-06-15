@@ -557,7 +557,9 @@ Current status:
   M4 ABI can be exercised before HIP kernels exist. The metadata-only draft call
   spec emitted by `scripts/gguf_mtp_call_spec.py` now advertises those
   KVLiveSpans dynamic inputs plus `block_size` in addition to the dense-cache
-  placeholders.
+  placeholders. `scripts/gguf_mtp_oracle_gate.py` turns that fixture into a
+  reusable mechanical artifact with KL/top-1 metrics before any performance
+  comparison is allowed.
 - llama.cpp verbose `draft-mtp` candidate fixture
   `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` captures a
   short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
@@ -571,7 +573,8 @@ Acceptance:
 - Draft top-k agrees with the captured llama.cpp trace (M0) **or** the
   `cpu_reference` NextN forward within the gate: `KL <= 0.05` AND top-1 agreement
   `>= 90%` vs `kernels/cpu_reference/`. M3 blocks on at least one of these
-  oracles actually existing.
+  oracles actually existing. Use `scripts/gguf_mtp_oracle_gate.py --fail-on-fail`
+  for the committed CPU-reference fixture gate.
 - No full target trunk re-execution inside the MTP draft-only path.
 
 ### M4 — Target-Attached MTP Context
