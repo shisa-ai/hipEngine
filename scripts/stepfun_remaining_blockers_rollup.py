@@ -178,6 +178,9 @@ def _generator_commands() -> dict[str, str]:
         "oracle_next_action_manifest": (
             "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty"
         ),
+        "oracle_source_map": (
+            "python3 scripts/stepfun_oracle_source_map.py --default-output --pretty"
+        ),
         "kv_blocker_status": (
             "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
         ),
@@ -274,6 +277,8 @@ def build_remaining_blockers_rollup(
                 "evidence_consistency_generator_command": commands["oracle_evidence_consistency_check"],
                 "next_action_manifest_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json",
                 "next_action_manifest_generator_command": commands["oracle_next_action_manifest"],
+                "source_map_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json",
+                "source_map_generator_command": commands["oracle_source_map"],
                 "blocked_reason": oracle_matrix.get("blocked_reason"),
             },
             {

@@ -924,7 +924,10 @@ reporting.
   logits/backend parity investigation. `scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`,
   pinning the follow-up target to canonical Vulkan logits/backend parity until
-  `generated_text_matches_target` passes. The remaining mismatch is therefore not explained by prompt-token drift or
+  `generated_text_matches_target` passes. `scripts/stepfun_oracle_source_map.py --default-output --pretty`
+  retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json`, mapping the
+  in-tree owners for host prompt logits, llama.cpp oracle execution, and blocker handoff before
+  that investigation. The remaining mismatch is therefore not explained by prompt-token drift or
   host top-token text-label drift.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in

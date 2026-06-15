@@ -41086,3 +41086,34 @@ git diff --check
 ```
 
 Results: targeted next-action/rollup tests passed (`7` tests); compact outputs were `"blocked"`, `true`, and the logits/backend parity next-action string; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `49ee72bada756d48985b66fb325ac153387e0284a8dd33b0f2e53118dd772d12`; remaining-blockers file SHA `89b184286a4a6d6becbe7f484b84c5ab2293d884b79895cba62ee13c50a14d0a`; correctness-status file SHA `7119bcbe771f00512d634c4c0c23eac4acd474ad8464fc82c55172c8f0cae500`; final-blocker file SHA `11e1b83f43f766abedae9ebe7d90b206a76b532676ad0e9ce1b1d7c23f24e7e2`; handoff file SHA `2f2ecb4aa2619d9a6d95101eec69fa6c935e9351eb764c4e7e4ebb9549d3975d`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle source map
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 497. Added `scripts/stepfun_oracle_source_map.py`, a retained source-map artifact that turns the oracle next-action handoff into concrete in-tree owners for host prompt/logit smoke generation, runtime logits probes, llama.cpp oracle execution, and blocker diagnosis/handoff checks. Added `tests/test_stepfun_oracle_source_map.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the source-map artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json` reports `status=mapped`, `ready=true`, `entry_count=3`, and `missing_symbols=[]`. Entries are `host_prompt_logit_smoke`, `llamacpp_oracle_runner`, and `oracle_blocker_handoff`; they map `scripts/stepfun_layer_prefix_smoke.py`, `hipengine/runtime/stepfun_gguf_runner.py` (`StepFunResidentSession.embed_chat_prompt_bf16`, `layer_prefix_prompt_logits_probe_bf16`, `layer_prefill_probe_bf16`, `final_logits_probe_bf16`), `scripts/stepfun_llamacpp_oracle.py`, token/rank diagnostics, and the diagnosis/consistency/next-action handoff scripts. This is navigation evidence for the next logits/backend parity investigation only; canonical missing evidence remains `generated_text_matches_target`. Source-map file SHA is `8f9ae82bfc56f67db32f3be2f099e27e8a497d9ace60cb70df5a8992c4fd045a`; stable payload SHA from `scripts/stepfun_oracle_source_map.py --sha-only` is `9cf5f0695b08023679c849dff379d066c4a9a11d6f38d92d967c6de49de253d3`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_source_map.py tests/test_stepfun_oracle_source_map.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_oracle_source_map.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_oracle_source_map.py --default-output --pretty
+python3 scripts/stepfun_oracle_source_map.py --sha-only
+python3 scripts/stepfun_oracle_source_map.py --status-only
+python3 scripts/stepfun_oracle_source_map.py --entry-keys-only
+python3 scripts/stepfun_oracle_source_map.py --missing-symbols-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted source-map/rollup tests passed (`8` tests); compact outputs were `"mapped"`, `["host_prompt_logit_smoke", "llamacpp_oracle_runner", "oracle_blocker_handoff"]`, and `[]`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `16e25b57021c0f6b7a5b59057645a8f86fe8d402792ab6b0e95b43f8bc00af7e`; remaining-blockers file SHA `08986ce456bbcd649b8c382c19053cad05fe8171ce215517e54e0b35a44d5fab`; correctness-status file SHA `e395dcea718433937fcbe74a2b119a6b4054f575de7ae2e12f1a4095ced5e339`; final-blocker file SHA `3f6e31271a8e020928e33171877ff3d5c78b44766c9fd192a6645e4033eb4823`; handoff file SHA `a362cc51bbba5463056867a01ed2c28f895c8b41df244dba6927282418b2f105`; full StepFun guard passed; `git diff --check` passed.
