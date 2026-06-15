@@ -903,8 +903,11 @@ reporting.
   A default-device Vulkan oracle attempt is recorded separately in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-vulkan-harness-timeout.json`;
   it exceeded the pi tool supervision window before helper JSON was produced, so
-  the CPU/no-GPU timeout artifact remains the canonical machine-readable oracle
-  blocker for now. The consolidated correctness-status artifact surfaces the oracle version,
+  it remains historical harness-timeout evidence only. The canonical
+  machine-readable oracle blocker is now the executed llama.cpp completion
+  mismatch in
+  `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`, not
+  a timeout blocker. The consolidated correctness-status artifact surfaces the oracle version,
   elapsed time, stdout/stderr lengths, `oracle_progress` fields, and an `oracle_progress_sha256`
   digest; compact `--oracle-progress-only` / `--oracle-progress-sha-only`,
   `--oracle-status-only`, and `--oracle-blocker-kind-only` /

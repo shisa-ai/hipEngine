@@ -40531,3 +40531,23 @@ git diff --check
 ```
 
 Results: two consecutive token-mismatch artifact refreshes produced the same SHA `d12555c25716c97e7b1d63562f4b1e0d3d898b6b0389db9e949bf584e84598b3`; targeted oracle checker tests passed (`4` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; full StepFun guard passed (`377` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed. No oracle/e2e/performance claim is made.
+
+## 2026-06-15 - StepFun Q3_K_L oracle docs: stale timeout wording removed
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 476. Reviewed the remaining oracle-parity checklist text after the executed llama.cpp completion oracle and token-level mismatch artifacts landed. Updated `docs/STEPFUN.md` to remove stale wording that described the CPU/no-GPU timeout artifact as the canonical machine-readable oracle blocker. The default-device Vulkan harness-timeout artifact is now explicitly historical evidence only; the canonical oracle blocker is the executed llama.cpp completion mismatch in `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json` (`The\n\n` / token `671` vs expected ` |` / token `369`). No parity, e2e, or performance claim is made.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status SHA `a639a48f584aa464d1a8c0982157d036a4db0140bcf3e845ba3ae6de5f647ccc`; final-blocker SHA `1a180c45929441b6f1e4cddb60d171e2cc2eda79aed816b5bfc75e1b0ccd223e`; handoff SHA `343a380650ef5fa23dae4640e1fc32b6870d774e67c4c00e4ba1291db6ec5943`; full StepFun guard passed (`377` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed.
