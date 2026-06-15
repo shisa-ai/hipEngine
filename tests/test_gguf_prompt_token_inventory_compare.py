@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from scripts.compare_prompt_token_inventories import compare_prompt_token_inventories
@@ -8,6 +11,13 @@ from scripts.llamacpp_gguf_prompt_token_inventory import (
     build_llamacpp_prompt_token_inventory,
     extract_token_ids_and_pieces,
 )
+from scripts.gguf_prompt_token_inventory import load_prompt_suite, sha256_token_ids
+
+
+HIPENGINE_D32_TOKEN_FIXTURE = Path(
+    "benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
+)
+D32_PROMPTS = Path("benchmarks/fixtures/llamacpp_mtp_bench_prompts.json")
 
 
 def test_compare_prompt_token_inventories_reports_match_and_mismatch() -> None:
@@ -109,3 +119,39 @@ def test_compare_prompt_token_inventories_passes_identical_ids() -> None:
     assert comparison["all_match"]
     assert comparison["matched_prompts"] == ["a"]
     assert comparison["mismatches"] == []
+
+
+def test_committed_hipengine_d32_prompt_token_fixture_is_self_consistent() -> None:
+    fixture = json.loads(HIPENGINE_D32_TOKEN_FIXTURE.read_text())
+    suite = load_prompt_suite(D32_PROMPTS)
+    expected_names = [str(prompt["name"]) for prompt in suite["prompts"]]
+    expected_counts = {
+        "code_python": 21,
+        "code_cpp": 31,
+        "explain_concept": 17,
+        "summarize": 52,
+        "qa_factual": 14,
+        "translation": 15,
+        "creative_short": 12,
+        "stepwise_math": 52,
+        "long_code_review": 766,
+    }
+
+    assert fixture["schema"] == 1
+    assert fixture["kind"] == "hipengine_gguf_prompt_token_inventory"
+    assert fixture["model"].endswith("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    assert fixture["prompts_file"] == str(D32_PROMPTS)
+    assert fixture["prompt_render"] == "raw"
+    assert fixture["tokenization"] == "hipengine.gguf.qwen35.byte_bpe_approx"
+    assert fixture["tokenizer_model"] == "gpt2"
+    assert fixture["tokenizer_pre"] == "qwen35"
+    rows = fixture["prompts"]
+    assert [row["name"] for row in rows] == expected_names
+    assert len(rows) == 9
+    assert all(row["roundtrip_ok"] for row in rows)
+    for row in rows:
+        token_ids = row["token_ids"]
+        assert row["token_count"] == expected_counts[row["name"]]
+        assert len(token_ids) == row["token_count"]
+        assert all(isinstance(token_id, int) for token_id in token_ids)
+        assert row["token_ids_sha256"] == sha256_token_ids(token_ids)

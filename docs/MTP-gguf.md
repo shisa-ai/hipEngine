@@ -341,7 +341,9 @@ Deliverables:
   prompt (required, promoted from backlog).** This is one of the two M3 parity
   oracles; M3 blocks on having it or the `cpu_reference` NextN forward.
 - Capture llama.cpp prompt tokenization / token-id arrays + rendered prompt
-  hashes for the D32 suite (feeds Parity Precondition (a)).
+  hashes for the D32 suite (feeds Parity Precondition (a)). Current hipEngine
+  comparison fixture:
+  `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
 
 Acceptance:
 
@@ -751,7 +753,9 @@ is now answered by the M1 required/optional table.)
       `benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`.
 - [ ] **Capture a llama.cpp draft logits/top-k trace for one short prompt
       (required M0 oracle, not "if possible").**
-- [ ] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a)).
+- [ ] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a));
+      hipEngine-side D32 token fixture is committed at
+      `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
 - [x] Extend `Qwen35GGUFModelMap` with an MTP block descriptor + required/optional
       fallback table.
 - [x] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation

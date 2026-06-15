@@ -94782,3 +94782,48 @@ Validation:
 - Prompt verifier passed: fixture/kernel-test/docs only; no torch import; no
   backend/quant dispatch branch; no runtime attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF hipEngine D32 token fixture
+
+Implemented `mtp-gguf` multiloop iteration 48: added the hipEngine side of the
+D32 prompt token parity gate as a committed fixture for future llama.cpp
+`/tokenize` comparison.
+
+Scope note:
+- Fixture/test/docs only. No runtime generation, GGUF loading semantics, MTP
+  draft execution, sampling, attention/KV path, GPU kernel, or performance path
+  changed.
+- This is not the llama.cpp token capture; the plan/backlog still leaves the
+  llama.cpp D32 token-id artifact open. The new fixture gives that future capture
+  a stable local hipEngine artifact to compare with.
+
+Changes:
+- Generated `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`
+  with `scripts/gguf_prompt_token_inventory.py` against
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` and
+  `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`.
+- The fixture records 9 D32 prompts, raw rendering hashes, token ids,
+  token-id hashes, and roundtrip status using the hipEngine GGUF tokenizer
+  (`tokenizer_model=gpt2`, `tokenizer_pre=qwen35`). Counts: code_python 21,
+  code_cpp 31, explain_concept 17, summarize 52, qa_factual 14, translation 15,
+  creative_short 12, stepwise_math 52, long_code_review 766.
+- Added a fixture self-consistency test that checks prompt order, expected token
+  counts, integer token IDs, token-id hashes, and roundtrip flags.
+- Updated `docs/MTP-gguf.md` M0/backlog text to cite the committed hipEngine
+  token fixture while keeping the llama.cpp capture row open.
+
+Validation:
+- Prompt-token inventory tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_prompt_token_inventory_compare.py` -> `6` passed.
+- Fixture regeneration was byte-identical:
+  `scripts/gguf_prompt_token_inventory.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json --out <tmp>` then `cmp` -> `fixture_reproducible`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile tests/test_gguf_prompt_token_inventory_compare.py` and
+  `git diff --check -- tests/test_gguf_prompt_token_inventory_compare.py docs/MTP-gguf.md benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: fixture/test/docs only; no torch import; no
+  backend/quant dispatch branch; no runtime attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.
