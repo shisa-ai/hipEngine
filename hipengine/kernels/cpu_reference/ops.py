@@ -47,17 +47,23 @@ def qwen35_gguf_mtp_eh_proj(
     hidden_seed: ArrayLike,
     token_embedding: ArrayLike,
     eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    eps: float = 1e-6,
 ) -> np.ndarray:
-    """CPU reference for the first Qwen35 GGUF NextN draft operation.
+    """CPU reference for Qwen35 GGUF NextN h/e normalization + projection.
 
-    llama.cpp's Qwen35MoE MTP block feeds the target hidden row and token
-    embedding through ``nextn.eh_proj``.  This helper pins the tensor orientation
-    before the full draft-only NextN attention/MoE oracle lands.
+    llama.cpp normalizes the target hidden row with ``nextn.hnorm``, normalizes
+    the token embedding with ``nextn.enorm``, concatenates ``[e_norm, h_norm]``,
+    then applies ``nextn.eh_proj``.  This helper pins that order before the full
+    draft-only NextN attention/MoE oracle lands.
     """
 
     hidden = np.asarray(hidden_seed, dtype=np.float32)
     embedding = np.asarray(token_embedding, dtype=np.float32)
     weight = np.asarray(eh_proj_weight, dtype=np.float32)
+    hnorm = np.asarray(hnorm_weight, dtype=np.float32)
+    enorm = np.asarray(enorm_weight, dtype=np.float32)
     if hidden.ndim != 2:
         raise ValueError("hidden_seed must have shape [rows, hidden]")
     if embedding.shape != hidden.shape:
@@ -70,8 +76,14 @@ def qwen35_gguf_mtp_eh_proj(
             "eh_proj_weight must have shape [hidden, 2 * hidden] "
             f"for hidden={hidden_size}; got {weight.shape}"
         )
+    if hnorm.shape != (hidden_size,):
+        raise ValueError("hnorm_weight must have shape [hidden]")
+    if enorm.shape != (hidden_size,):
+        raise ValueError("enorm_weight must have shape [hidden]")
     del rows
-    fused = np.concatenate([hidden, embedding], axis=-1)
+    h_norm = rmsnorm(hidden, hnorm, eps=eps)
+    e_norm = rmsnorm(embedding, enorm, eps=eps)
+    fused = np.concatenate([e_norm, h_norm], axis=-1)
     return np.matmul(fused, weight.T).astype(np.float32)
 
 

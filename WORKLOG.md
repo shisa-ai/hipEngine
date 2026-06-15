@@ -93373,3 +93373,37 @@ Validation:
 - Prompt verifier passed: torch-free CPU reference helper only, no backend/quant
   dispatch branches, no attention/KV path changes, no full NextN math, and no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference eh_proj order correction
+
+Implemented `mtp-gguf` multiloop iteration 18: corrected the CPU-reference
+`eh_proj` oracle against actual llama.cpp Qwen35MoE MTP source.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '586,616p'`
+- Relevant source order:
+  - `h_norm = build_norm(h_embd, layer.nextn.hnorm, ...)`
+  - `e_norm = build_norm(tok_embd, layer.nextn.enorm, ...)`
+  - `concat = ggml_concat(ctx0, e_norm, h_norm, dim=0)`
+  - `cur = build_lora_mm(layer.nextn.eh_proj, concat, ...)`
+
+Changes:
+- Updated `qwen35_gguf_mtp_eh_proj(...)` in
+  `hipengine/kernels/cpu_reference/ops.py`.
+  - Now accepts `hnorm_weight` and `enorm_weight`.
+  - Applies RMSNorm to hidden and token embedding before projection.
+  - Concatenates `[e_norm, h_norm]` exactly matching llama.cpp, rather than the
+    earlier simplified `[hidden_seed, token_embedding]` helper.
+- Rewrote `tests/test_gguf_mtp_cpu_reference.py` to pin the corrected order,
+  multi-row behavior, shape validation, and registry resolution.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `4` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py` and
+  `hipengine/kernels/cpu_reference/__init__.py`.
+- Prompt verifier passed: torch-free CPU reference correction only, no backend /
+  quant dispatch branches, no attention/KV/runtime behavior changes, no GPU
+  NextN execution, and no performance claims.
