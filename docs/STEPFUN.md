@@ -955,9 +955,15 @@ reporting.
   current `/home/lhl/llama.cpp/llama.cpp-vulkan` anchors and emits the exact reviewed patch recipe without editing the
   external tree: add a debug-local `--token-ids`/`--parse-special` pre-parser, select retained IDs before decode, thread
   those decoded tokens into `output_data`, rebuild with `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j`,
-  then rerun the retained-token probe. The patch plan reports `anchors_ready=true` and remains `status=blocked` on
+  then rerun the retained-token probe. `scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty`
+  retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json`, which generates the
+  debug.cpp unified diff in memory and runs `git apply --check -` against the external checkout without applying it;
+  it reports `patch_ready=true`, `git_apply_check.status=passed`, and patch SHA
+  `2ba6415bc82d5d91d424ab66bf953467549db4194ee93cbcafd24d7423a92373`. The patch plan reports `anchors_ready=true`
+  and remains `status=blocked` on
   `llama_cpp_token_ids_helper_patch_applied`, `same_prompt_logits_helper_built`, and
-  `llama_cpp_same_prompt_logits_artifact_present`. The contract reports `implementation_ready=true`
+  `llama_cpp_same_prompt_logits_artifact_present`. The dry-run has the same missing applied/build/capture evidence.
+  The contract reports `implementation_ready=true`
   and `source_hooks_ready=true`, but remains `status=blocked` until `same_prompt_logits_helper_built` and
   `llama_cpp_same_prompt_logits_artifact_present` are captured. The remaining mismatch is therefore not explained by
   prompt-token drift or host top-token text-label drift; the next llama.cpp evidence blocker is building that

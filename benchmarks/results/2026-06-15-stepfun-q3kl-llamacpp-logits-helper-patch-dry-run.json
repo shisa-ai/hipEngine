@@ -1,0 +1,94 @@
+{
+  "artifact_kind": "stepfun_llamacpp_logits_helper_patch_dry_run",
+  "blocked_reason": "retained-token helper patch dry-run is ready but the external patch/build/capture has not been performed",
+  "build_command": "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",
+  "date": "2026-06-15",
+  "git_apply_check": {
+    "returncode": 0,
+    "status": "passed",
+    "stderr": "",
+    "stdout": ""
+  },
+  "helper_binary_after_build": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
+  "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+  "missing_evidence": [
+    "llama_cpp_token_ids_helper_patch_applied",
+    "same_prompt_logits_helper_built",
+    "llama_cpp_same_prompt_logits_artifact_present"
+  ],
+  "missing_transforms": [],
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "Dry-run patch applicability is not same-prompt logits evidence."
+  },
+  "patch_application_policy": {
+    "dry_run_only": true,
+    "edits_external_tree": false,
+    "reason": "This artifact proves the patch applies but does not modify /home/lhl/llama.cpp."
+  },
+  "patch_line_count": 170,
+  "patch_ready": true,
+  "patch_sha256": "2ba6415bc82d5d91d424ab66bf953467549db4194ee93cbcafd24d7423a92373",
+  "patch_summary": {
+    "adds_debug_local_parse_special_flag": true,
+    "adds_debug_local_token_ids_flag": true,
+    "decodes_retained_token_ids_without_retokenizing": true,
+    "threads_exact_tokens_to_saved_prompt_metadata": true
+  },
+  "probe_command_after_build": "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
+  "ready": false,
+  "schema_version": 1,
+  "source_exists": true,
+  "status": "blocked",
+  "target_file": "examples/debug/debug.cpp",
+  "transform_results": [
+    {
+      "applied": true,
+      "key": "include_sstream",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "usage_helper_flags",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "helper_local_arg_parser",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "output_data_exact_tokens",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "run_signature_extra",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "run_retained_token_decode",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "save_output_exact_tokens",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "main_filter_helper_args",
+      "match_count": 1
+    },
+    {
+      "applied": true,
+      "key": "main_run_extra",
+      "match_count": 1
+    }
+  ]
+}

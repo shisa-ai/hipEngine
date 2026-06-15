@@ -10,6 +10,7 @@
     "kv_session_contract": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
     "llamacpp_logits_entrypoint_inventory": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
     "llamacpp_logits_helper_contract": "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty",
+    "llamacpp_logits_helper_patch_dry_run": "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty",
     "llamacpp_logits_helper_patch_plan": "python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty",
     "llamacpp_logits_plan": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
     "llamacpp_logits_preflight": "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
@@ -105,6 +106,8 @@
       "llamacpp_logits_entrypoint_inventory_generator_command": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
       "llamacpp_logits_helper_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json",
       "llamacpp_logits_helper_contract_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty",
+      "llamacpp_logits_helper_patch_dry_run_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json",
+      "llamacpp_logits_helper_patch_dry_run_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty",
       "llamacpp_logits_helper_patch_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-plan.json",
       "llamacpp_logits_helper_patch_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty",
       "llamacpp_logits_plan_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
@@ -273,9 +276,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "c28e51ffe695716308d3e757f4bbaf54810b1e5b1f78bb7bc6c91d111fffb54f",
+    "kv_blocker_status": "099a212b5d67cb6ff745df728b1e63f471ecd03d49bb69233c33daa71a2c645f",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "379fd7bb420b4863efb277b3ed8d87e85a583bbbdb926f88a007e790c117d98c"
+    "status": "8c140ebbe1fe70b0df5485b3e2d45e071c662e7bb495334177de75335788a6e6"
   },
   "status": "blocked"
 }

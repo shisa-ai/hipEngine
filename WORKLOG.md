@@ -41417,3 +41417,39 @@ git diff --check
 ```
 
 Results: targeted patch-plan/rollup/contract tests passed (`9` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count remains `2`; full StepFun guard passed; patch-plan status remains `"blocked"`, anchors-ready scalar is `true`, missing evidence is `["llama_cpp_token_ids_helper_patch_applied", "same_prompt_logits_helper_built", "llama_cpp_same_prompt_logits_artifact_present"]`; patch-plan stable payload SHA `86ade8cea392c3721640d5f6d94400c3db320893874d02492730e90182c544ef`, file SHA `ee6fc06ccd33e9b3990749c72f2ea0e4c994d0b2ebe57679a793e1753500f45c`; remaining-blockers stable payload SHA `53d2b92efdcf4283e0184a8bbd49222b6399a66de8f70670dfb8a1fedb4ea59d`, file SHA `4eeb534eca8ac2718ca6c1a0dbd513aaa8cad0ae07995c36f3a310387e884352`; correctness-status/final-blocker/handoff file SHAs `830c22d1c0134d8a99b51dcf70e0392a0d4a3bd84b30c9d23495c4a40f90f712`, `7d5adc36b91fa260446ab5446e02b9840e1ca9c87e818914245ca29b0e7c3bb1`, and `f61b5b3d26abadde0a2be8c3ca0bd7154b4fbae3b38711f49d70b13479c0941e`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+
+## 2026-06-15 - StepFun retained-token patch dry-run
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 508. Added `scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py` plus `tests/test_stepfun_llamacpp_logits_helper_patch_dry_run.py` to generate the reviewed retained-token `llama-debug` patch in memory and run `git apply --check -` against `/home/lhl/llama.cpp/llama.cpp-vulkan` without editing the external checkout. This narrows the oracle helper blocker from a source-anchor recipe to a patch-applicability dry-run: the patch adds debug-local `--token-ids` and `--parse-special` handling, decodes retained token IDs without retokenizing, threads the exact decoded tokens into saved prompt metadata, and leaves external patch application/build/capture as the only remaining helper evidence. No oracle parity, KV-backed decode, e2e, or performance claim is made.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json` reports `status=blocked`, `patch_ready=true`, `git_apply_check.status=passed`, patch SHA `2ba6415bc82d5d91d424ab66bf953467549db4194ee93cbcafd24d7423a92373`, `patch_line_count=170`, and missing evidence `["llama_cpp_token_ids_helper_patch_applied", "same_prompt_logits_helper_built", "llama_cpp_same_prompt_logits_artifact_present"]`. Updated `docs/STEPFUN.md` P11 and `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the dry-run artifact and generator command. Refreshed the remaining-blockers, correctness-status, final-blocker-manifest, and handoff artifacts.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py tests/test_stepfun_llamacpp_logits_helper_patch_dry_run.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_helper_patch_dry_run.py tests/test_stepfun_remaining_blockers_rollup.py tests/test_stepfun_llamacpp_logits_helper_patch_plan.py
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --patch-ready-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --apply-check-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --missing-evidence-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --patch-sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_llamacpp_logits_helper_patch_dry_run.py tests/test_stepfun_remaining_blockers_rollup.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-dry-run.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+git diff --check
+```
+
+Results: targeted dry-run/rollup/patch-plan tests passed (`9` tests); status/manifest/handoff verification returned `"match"`; patch dry-run status is `"blocked"`, patch-ready scalar is `true`, git-apply-check status is `"passed"`, patch SHA is `2ba6415bc82d5d91d424ab66bf953467549db4194ee93cbcafd24d7423a92373`, stable payload SHA is `2011afa1d00293e2421ed64096814e9a0202bce91d8ab161e8ef35a90d4ab0bc`, and file SHA is `db94806fa61ea1334662fb8b44ae1a30e98a909c2828db01347a11e42c67d0d1`; remaining-blockers stable payload SHA is `0f5c51527e38c00c0753fc2530fb4aaa418c3f56f64611abc2f786c80dbac8bf`, file SHA `459f4e013a2720c9b455965f94f4d63fd6a988ad24b16fff5272ba0b0b4aecaf`; correctness-status/final-blocker/handoff file SHAs are `913fb2cfa413eb3d1c3a85d5c4d29f4f38abe306f86ec76164a91c459250e4db`, `d940fd68607ed739c4759c37d650b672bab4b00138e1daa46fa3c69993b1f59c`, and `09933f56349de94481040d0b9a31af0979fe31d0b9cf6248ff0bd6962a620628`; P0-P12 open/partial count remains `2`; full StepFun guard passed; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
