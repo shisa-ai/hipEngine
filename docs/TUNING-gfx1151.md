@@ -159,13 +159,18 @@ implementation references, not as code to edit in-place:
   [`sampling.cpp#L621-L648`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/common/sampling.cpp#L621-L648),
   [`server-task.cpp#L643-L646`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/tools/server/server-task.cpp#L643-L646).
 
-Observed result delta on the MTP-bearing `UD-Q4_K_M` file:
+Observed result delta on the MTP-bearing `UD-Q4_K_M` file after the
+`20260615-081020` diagnostic matrix. `Accepted/output` below is the aggregate
+`accepted draft tokens / predicted output tokens` denominator, not llama.cpp's
+native `draft_n_accepted / draft_n` accept rate and not hipEngine's per-cycle
+visible-token density.
 
 | Engine / mode | Decode tok/s | Speedup | Accepted/output |
 | --- | ---: | ---: | ---: |
-| hipEngine PARO+MTP B1 exact fallback | 59.56 | 0.912x vs AR | 0.360 |
-| llama.cpp HIP B4 | 91.11 | 1.790x vs llama HIP base | 0.743 |
-| llama.cpp Vulkan B4 | 108.96 | 1.733x vs llama Vulkan base | 0.747 |
+| hipEngine PARO+MTP B1 exact fallback (`decode_batched`) | 59.72 | 0.916x vs AR | 0.344 |
+| hipEngine PARO+MTP B3 exact fallback (`decode_batched`) | 47.64 | 0.730x vs AR | 0.455 |
+| llama.cpp HIP B4 | 92.57 | 1.801x vs llama HIP base | 0.743 |
+| llama.cpp Vulkan B4 | 108.45 | 1.726x vs llama Vulkan base | 0.747 |
 
 Do **not** conclude from this table alone that llama.cpp has better HIP kernels.
 It is a mixed algorithm/model/runtime delta: llama.cpp uses the MTP-bearing GGUF
@@ -258,8 +263,13 @@ hipEngine tracked peaks: PARO `21.248 GiB`; GGUF `26.264 GiB`.
 
 ### MTP D32 Suite
 
-Artifact:
-[`2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`](../benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json)
+Artifacts:
+
+- Initial MTP-bearing Q4_K_M comparison:
+  [`2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`](../benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json)
+- Follow-up diagnostic matrix with comparable acceptance denominators and B2
+  blocker:
+  [`2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json`](../benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json)
 
 The llama.cpp comparison uses the MTP-bearing Unsloth GGUF:
 [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf).
@@ -267,18 +277,29 @@ This file has `753` tensors and `20` `blk.40` / `nextn` MTP tensors. The older
 non-MTP Q4_K_M GGUF had the same basename but only `733` tensors and cannot run
 llama.cpp draft-MTP.
 
-| Engine / mode | Mean decode tok/s | Speedup | Accepted/output | Notes |
-| --- | ---: | ---: | ---: | --- |
-| hipEngine PARO AR | 65.37 | 1.000x | — | same-session AR baseline |
-| hipEngine PARO+MTP B1 exact fallback | 59.56 | 0.912x | 0.360 | exact 9/9; fallback flags required |
-| llama.cpp HIP base | 50.90 | 1.000x | 0.000 | UD-Q4_K_M MTP GGUF, f16 KV |
-| llama.cpp HIP B4 | 91.11 | 1.790x | 0.743 | best HIP row in B1-B4 sweep |
-| llama.cpp Vulkan base | 62.87 | 1.000x | 0.000 | UD-Q4_K_M MTP GGUF, f16 KV |
-| llama.cpp Vulkan B4 | 108.96 | 1.733x | 0.747 | best Vulkan row in B1-B4 sweep |
+| Engine / mode | Mean decode tok/s | Speedup | Accept/draft | Accepted/output | Visible density | Notes |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| hipEngine PARO AR | 65.21–65.29 | 1.000x | — | — | — | same-session AR baselines from follow-up rows |
+| hipEngine B1 `decode_batched` exact fallback | 59.72 | 0.916x | 0.544 | 0.344 | 0.352 | exact 9/9; all three fallback flags required |
+| hipEngine B3 `decode_batched` exact fallback | 47.64 | 0.730x | 0.298 | 0.455 | 0.465 | exact 9/9; higher density but much higher cycle cost |
+| hipEngine B1 `c1_loop` exact fallback | 57.59 | 0.883x | 0.544 | 0.344 | 0.352 | exact 9/9; slower than `decode_batched` |
+| llama.cpp HIP base | 51.41 | 1.000x | — | 0.000 | — | UD-Q4_K_M MTP GGUF, f16 KV |
+| llama.cpp HIP B4 | 92.57 | 1.801x | 0.915 | 0.743 | — | best HIP row in B1-B4 sweep |
+| llama.cpp Vulkan base | 62.81 | 1.000x | — | 0.000 | — | UD-Q4_K_M MTP GGUF, f16 KV |
+| llama.cpp Vulkan B4 | 108.45 | 1.726x | 0.923 | 0.747 | — | best Vulkan row in B1-B4 sweep |
 
-Important: W7900/gfx1100 retained MTP is above AR on D32, but this gfx1151 row is
-below AR even after exact fallbacks. That makes MTP the first gfx1151-specific
-tuning lane.
+Acceptance accounting: llama.cpp native accept rate is `draft_n_accepted /
+draft_n`; hipEngine `acceptance_rate` is accepted draft tokens divided by active
+candidate budget. For 1:1 density comparisons use aggregate `accepted/output`.
+For hipEngine, `visible density` above is accepted draft tokens divided by
+visible verifier-cycle tokens, included only to compare against older per-cycle
+notes.
+
+Important: W7900/gfx1100 retained MTP is above AR on D32, but these gfx1151 rows
+remain below AR even after exact fallbacks. B3 improves density but loses far more
+to cycle cost (`~2.69` AR-token equivalents/cycle), and the combined B1/B2/B3
+probe found a B2 `exact_ar_mismatch` on `explain_concept`. That makes MTP the
+first gfx1151-specific tuning lane.
 
 ### DFlash / DDTree Status
 

@@ -92680,3 +92680,79 @@ Plan impact:
 
 Validation for this doc-only unit:
 - Re-read `docs/TUNING-gfx1151.md` end-to-end after editing.
+
+## 2026-06-15 - gfx1151 MTP diagnostic matrix summary
+
+Summarized and retained the gfx1151 MTP diagnostic matrix from run tag
+`20260615-081020`.
+
+Commands:
+- Primary matrix:
+  `RUN_TAG=20260615-081020 HIPENGINE_RUNS=1 MAX_TOKENS=32 HIPENGINE_BUDGETS=1,2,3 DRAFT_MAX_VALUES=1,2,3,4 /tmp/run_gfx1151_mtp_diagnostics.sh`
+- Targeted follow-ups after the combined B1/B2/B3 probe stopped at B2:
+  `RUN_TAG=20260615-081020 HIPENGINE_RUNS=1 MAX_TOKENS=32 /tmp/run_gfx1151_mtp_followups.sh`
+
+Context:
+- Hardware: AMD Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`.
+- ROCm/TheRock: HIP `7.13.60980-c76140fa27`.
+- hipEngine git at run start: `4c975ec5`.
+- hipEngine model: `/home/lhl/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`.
+- llama.cpp model: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` from
+  `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`; GGUF tensor check found `753` tensors.
+- llama.cpp commit: `6e9007ae61f4e994c27484759caac6ef2aa32b30`; reused local
+  HIP/Vulkan `llama-server` builds.
+
+Comparable acceptance metrics use these denominators:
+- llama.cpp accept/draft: `draft_n_accepted / draft_n`.
+- hipEngine accept/draft: accepted draft tokens / active candidate budget.
+- aggregate accepted/output: accepted draft tokens / predicted output tokens;
+  use this for 1:1 density comparisons.
+- visible density: hipEngine accepted draft tokens / visible verifier-cycle tokens;
+  included only to compare with older per-cycle notes.
+
+Results:
+- hipEngine B1 `decode_batched` exact fallback: exact `9/9`; MTP `59.72 tok/s`
+  vs AR `65.21 tok/s`, `0.916x` prompt mean; accept/draft `0.544`, aggregate
+  accepted/output `0.344`, visible density `0.352`, cycle cost `1.688` AR-token
+  equivalents, `1.563` visible tokens/cycle.
+- hipEngine B3 `decode_batched` exact fallback: exact `9/9`; MTP `47.64 tok/s`
+  vs AR `65.29 tok/s`, `0.730x`; aggregate accept/draft `0.298`, aggregate
+  accepted/output `0.455`, visible density `0.465`, cycle cost `2.693`, `1.975`
+  visible tokens/cycle. B3 increases density but loses much more to cycle cost.
+- hipEngine B1 `c1_loop` exact fallback: exact `9/9`; MTP `57.59 tok/s` vs AR
+  `65.25 tok/s`, `0.883x`; same accepted/output as B1 `decode_batched`, slower.
+- Combined B1/B2/B3 exact probe stopped at B2 on `explain_concept` with
+  `exact_ar_mismatch`; standalone B3 passed, so B2 needs a targeted
+  verifier/commit/state audit before performance tuning.
+- B1 fallback ablations all failed on `explain_concept`: fast/no-exact,
+  no-GDN-exact, no-linear-exact, and no-full-attn-exact. For this public
+  packed+sidecar artifact, all three exact fallback flags are required for B1.
+- llama.cpp HIP B4: `92.57 tok/s`, `1.801x` vs HIP base, accept/draft `0.915`,
+  aggregate accepted/output `0.743`.
+- llama.cpp Vulkan B4: `108.45 tok/s`, `1.726x` vs Vulkan base, accept/draft
+  `0.923`, aggregate accepted/output `0.747`.
+
+Artifacts:
+- `benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json`
+- `benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-hipengine-exact-b1-full.json`
+- `benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-hipengine-exact-b3-full.json`
+- `benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-hipengine-c1loop-exact-b1-full.json`
+- Logs: `/tmp/hipengine-mtp-gfx1151-runs/20260615-081020/`
+
+Interpretation / next performance work:
+- The current loss is not only lower acceptance density. B1 density is low
+  (`0.344` accepted/output), but the larger issue is exact-fallback verifier
+  economics on gfx1151: B3 improves density to `0.455` yet slows to `0.730x`
+  because cycle cost rises to `2.693` AR tokens.
+- llama.cpp wins both density and economics: B4 has `0.743/0.747` accepted/output
+  and stays fast. Causes to separate next: integrated MTP GGUF model identity,
+  backend draft sampling/logit movement, filtered MTP context, and verifier row
+  cost vs our PARO sidecar + exact fallback stack.
+- Next concrete steps: profile hipEngine B1 `decode_batched` with
+  `scripts/mtp_verifier_rocprof.py`; add a B2 exactness audit at
+  `explain_concept`; then compare llama.cpp HIP B4 timing/acceptance buckets.
+
+Validation:
+- `python3 -m json.tool` passed for all committed JSON artifacts and llama.cpp
+  source summaries used to build the compact artifact.
+- `git diff --check` passed before staging/commit.
