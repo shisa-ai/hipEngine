@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_oracle_blocker_diagnosis import build_oracle_blocker_diagnosis
 from scripts.stepfun_oracle_evidence_consistency_check import (
     build_oracle_evidence_consistency_check,
     main,
+    verify_oracle_evidence_consistency_check,
 )
 from test_stepfun_oracle_blocker_diagnosis import _write_inputs, _write_json  # type: ignore[import-not-found]
 
@@ -222,3 +227,100 @@ def test_stepfun_oracle_evidence_consistency_check_cli_compact_modes(
     assert json.loads(output.read_text()) == []
     assert main([*base_args, "--checks-only", "--output", str(output)]) == 0
     assert len(json.loads(output.read_text())) == 16
+
+
+def test_stepfun_oracle_evidence_consistency_check_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    diagnosis, backend_matrix, token_mismatch, rank_check, top_roundtrip, prompt_roundtrip = (
+        _write_consistent_inputs(tmp_path)
+    )
+    artifact = tmp_path / "consistency.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--diagnosis-artifact",
+        str(diagnosis),
+        "--backend-matrix-artifact",
+        str(backend_matrix),
+        "--token-mismatch-artifact",
+        str(token_mismatch),
+        "--rank-check-artifact",
+        str(rank_check),
+        "--top-token-roundtrip-artifact",
+        str(top_roundtrip),
+        "--prompt-token-roundtrip-artifact",
+        str(prompt_roundtrip),
+        "--artifact-date",
+        "2030-01-22",
+    ]
+    current = build_oracle_evidence_consistency_check(
+        diagnosis_artifact=diagnosis,
+        backend_matrix_artifact=backend_matrix,
+        token_mismatch_artifact=token_mismatch,
+        rank_check_artifact=rank_check,
+        top_token_roundtrip_artifact=top_roundtrip,
+        prompt_token_roundtrip_artifact=prompt_roundtrip,
+        artifact_date="2030-01-22",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_oracle_evidence_consistency_check(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "match"
+    assert verification["current_status"] == "match"
+    assert verification["persisted_ready"] is True
+    assert verification["current_ready"] is True
+    assert verification["persisted_inconsistency_count"] == 0
+    assert verification["current_inconsistency_count"] == 0
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-consistency",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["ready"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_oracle_evidence_consistency_check(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "oracle_evidence_consistency_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-consistency",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "oracle_evidence_consistency_drift"
+    )

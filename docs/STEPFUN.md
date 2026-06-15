@@ -938,7 +938,8 @@ reporting.
   that prompt/top-token/expected-token text drift is ruled out while `generated_text_matches_target`
   remains unresolved. `scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json`,
-  currently `status=match`, to catch stale or contradictory oracle evidence before the next
+  currently `status=match`; `python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only`
+  is the drift check to catch stale or contradictory oracle evidence before the next
   logits/backend parity investigation. `scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`,
   pinning the follow-up target to canonical Vulkan logits/backend parity until

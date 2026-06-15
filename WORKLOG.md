@@ -42384,3 +42384,55 @@ python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
 ```
 
 Results: targeted oracle next-action manifest tests passed (`5` tests); next-action manifest verifier status returns `"match"`, verifier failures `[]`, verifier digest `9addd5a7c9802b8468f9bec5834d644865e30c3a319bcc19f8d018062eaefa5c`; status/final-blocker/handoff verification returned `"match"`; next-action manifest status remains `"blocked"`; compact investigation-ready output remains `true`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `bf22c9c5adf052ebceb8fa96dae4ca38c624940cef7bf8075570f59655b7da27`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are oracle next-action manifest `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `e26a37b9148c4266bf3e79882a30412136ff0a0817dc13e0249b31bdbcab28d7`, correctness-status `dca5964577cb2e0f33e3d601b047eedadb44c7b5a07cfbafb4870267fbdeb22e`, final-blocker `b2f135ddf1de7f387bffa63d0b5291ef5df4d87efc766292272bffc7b6977a61`, handoff `45597712b324cbea9c5cc02455d478f756e5235030e77dc9cf3337c0748b6f1b`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle evidence-consistency drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 533. Added an explicit verifier for the retained oracle evidence-consistency artifact. `scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency` now rebuilds the cross-artifact diagnosis/backend/token/rank/roundtrip consistency report and compares it with the persisted `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json`, with compact status/failure/digest modes for handoff polling. This verifies the stale-or-contradictory-oracle-evidence guard before it feeds the oracle next-action, remaining-blockers rollup, or final handoff artifacts; it does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json` remains `status=match`, `ready=true`, with no inconsistencies; its file SHA is `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c` and stable payload SHA is `3a6e53f03e723ffbe9d87e5df60ead423e32a3d114ebe88f3816915bed3ca02a`. `--verify-consistency --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `541d17756a69b0a3f392cf41529246d3d67a95328279927adcd29bb040733033`. Refreshed `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json`, `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json`, and `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` after documenting the new verifier. The next-action manifest remains blocked with stable payload SHA `4102fe519bb8a0a7269a821c9c3b678a8e83fddb9151d4120f4ce36d49674028`; remaining-blockers rollup remains blocked with stable payload SHA `d0fc4170517f8fc0b27e9ddcce56b7a690b6e3817cc7f9354946756fca70f269`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_evidence_consistency_check.py tests/test_stepfun_oracle_evidence_consistency_check.py
+python3 -m pytest -q tests/test_stepfun_oracle_evidence_consistency_check.py
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-failures-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-sha-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty
+python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --inconsistencies-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-failures-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-sha-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --verify-manifest --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_oracle_evidence_consistency_check.py tests/test_stepfun_oracle_evidence_consistency_check.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-failures-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_oracle_next_action_manifest.py --sha-only
+```
+
+Results: targeted oracle evidence-consistency tests passed (`6` tests); evidence-consistency verifier status returns `"match"`, verifier failures `[]`, verifier digest `541d17756a69b0a3f392cf41529246d3d67a95328279927adcd29bb040733033`; status/final-blocker/handoff verification returned `"match"`; evidence consistency status remains `"match"`; compact inconsistencies remain `[]`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `715d7a88b8258b8116aaf86f49e01c51a19c2c7c7000e6cd1ceccfcc20859c1f`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are evidence consistency `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c`, oracle next-action `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `86d1af84513b587539fdb3cc749f04bb32bf3c101f9ccea735eb513dbfd26ddf`, correctness-status `2a21abcc4c9ad92b505f9b9ae0c2b603751615f5f57f01fb74e66ea4ea5f65cb`, final-blocker `151acce79c6e9d383d76b402dc28dcdbb307f3a1b5825c1ed4372d86b01d948c`, handoff `5c2dda5c40057ff5d69b4e0cc7d34ab790e0ae4bf234e6279abef33c215f73e9`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

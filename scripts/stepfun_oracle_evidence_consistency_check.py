@@ -107,6 +107,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the consistency payload.",
     )
+    parser.add_argument(
+        "--verify-consistency",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted oracle evidence-consistency artifact with current "
+            f"diagnosis/backend/token/rank/roundtrip metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-consistency, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-consistency, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-consistency, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -415,6 +441,49 @@ def build_oracle_evidence_consistency_check(
     }
 
 
+def verify_oracle_evidence_consistency_check(
+    consistency_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted oracle consistency artifact with current metadata."""
+
+    persisted = _load_json_object(consistency_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "oracle_evidence_consistency_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted oracle evidence-consistency artifact differs from "
+                    "current diagnosis/backend/token/rank/roundtrip metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(consistency_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_ready": persisted.get("ready"),
+        "current_ready": current_report.get("ready"),
+        "persisted_inconsistency_count": persisted.get("inconsistency_count"),
+        "current_inconsistency_count": current_report.get("inconsistency_count"),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -428,6 +497,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         prompt_token_roundtrip_artifact=args.prompt_token_roundtrip_artifact,
         artifact_date=args.artifact_date,
     )
+    if args.verify_consistency is not None:
+        verification = verify_oracle_evidence_consistency_check(
+            args.verify_consistency,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.inconsistencies_only:
