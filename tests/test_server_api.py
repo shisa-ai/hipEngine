@@ -5620,6 +5620,56 @@ def test_chat_session_visible_only_commits_tool_calls_without_reasoning() -> Non
     assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_visible_only"
 
 
+@pytest.mark.parametrize(
+    "response_format_mode",
+    ["json_object", "json_schema"],
+)
+def test_chat_session_visible_only_downgrades_structured_output_failures_to_prompt_only(
+    response_format_mode: str,
+) -> None:
+    response_format = (
+        {"type": "json_object"}
+        if response_format_mode == "json_object"
+        else {"type": "json_schema", "json_schema": _response_json_schema()}
+    )
+    fake = SequentialFakeLLM(["not json", "done"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": response_format,
+            "max_tokens": 4,
+            "session": {"id": "sess_structured_failure", "commit": "append_visible_only"},
+        },
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "continue"}],
+            "max_tokens": 4,
+            "session": {"id": "sess_structured_failure", "commit": "append_none"},
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_choice = first.json()["choices"][0]
+    assert first_choice["message"] == {"role": "assistant", "content": ""}
+    assert first_choice["finish_details"]["reason"] == "schema_violation"
+    assert first_choice["finish_details"]["cache_action"] == "append_prompt_only"
+    prompt = fake.calls[1][0][0]
+    assert "return json" in prompt
+    assert "continue" in prompt
+    assert "not json" not in prompt
+    record = app.state.hipengine_chat_sessions["sess_structured_failure"]
+    assert record.messages == ({"role": "user", "content": "return json"},)
+
+
 def test_completions_response_format_json_object_validates_result() -> None:
     valid_client = TestClient(
         create_app(

@@ -93482,3 +93482,21 @@ implementation slice.
 Validation:
 - Re-read the changed `docs/AGENTIC.md` priority section.
 - `git diff --check -- docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - Structured-output session downgrade regression
+
+Added endpoint-level coverage for app-local chat sessions with
+`commit="append_visible_only"` when structured-output result validation fails.
+Both `response_format={"type":"json_object"}` and JSON-schema chat requests now
+assert that `schema_violation` downgrades the effective session action to
+`append_prompt_only`, suppresses the invalid assistant content, keeps only the
+incoming user prompt in session state, and does not render the invalid generated
+text into the next request.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'structured_output_failures_to_prompt_only'` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'structured_output_failures_to_prompt_only or chat_session_visible_only_downgrades_strict_tool_failures_to_prompt_only or chat_session_visible_only_downgrades_unparseable_tool_markup_to_prompt_only or chat_session_visible_only_strips_hidden_reasoning_from_next_prompt or chat_completion_response_format_json_object_validates_visible_content or chat_completion_response_format_json_schema_validates_visible_content'` -> `9 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- tests/test_server_api.py WORKLOG.md` -> clean.
