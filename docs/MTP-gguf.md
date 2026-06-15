@@ -617,7 +617,10 @@ Deliverables:
   M3/M4 — the MTP execution lives in the PARO-only
   `mtp_verifier_economics.py -> mtp_chain_e2e_smoke.py` child stack with no GGUF
   path (`grep gguf` in all three returns nothing). Plan for a new GGUF MTP child
-  runner, not a flag flip on the wrapper.
+  runner, not a flag flip on the wrapper. Current preflight child:
+  `scripts/gguf_mtp_b1_prompt_suite.py`, which validates MTP metadata plus
+  token/sampling parity and emits a blocked artifact until native GGUF MTP draft
+  execution is implemented.
 - Run matched prompt/token suite against:
   - hipEngine GGUF AR;
   - hipEngine GGUF MTP B1-B4;
@@ -800,8 +803,10 @@ is now answered by the M1 required/optional table.)
       both dense and KVLiveSpans-shaped paged-cache attention, but HIP/runtime
       registration under `KernelKey(backend, layer, quant='w4_gguf', variant)`
       remains open.
-- [ ] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
-      flag).
+- [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
+      flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
+      preflight + blocked-artifact emission; B1 exactness/execution remains in
+      the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the

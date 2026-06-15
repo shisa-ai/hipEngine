@@ -1,0 +1,227 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from scripts import gguf_mtp_b1_prompt_suite as suite
+
+
+def _write_json(path: Path, payload: object) -> Path:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _prompt_suite(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "schema": 1,
+            "prompts": [
+                {"name": "p0", "prompt": "hello"},
+                {"name": "p1", "prompt": "world"},
+            ],
+        },
+    )
+
+
+def _token_inventory(path: Path, *, token_ids: list[int] | None = None) -> Path:
+    tokens = [1, 2, 3] if token_ids is None else token_ids
+    return _write_json(
+        path,
+        {
+            "schema": 1,
+            "kind": "hipengine_gguf_prompt_token_inventory",
+            "prompts": [
+                {
+                    "name": "p0",
+                    "token_ids": tokens,
+                    "token_ids_sha256": "synthetic",
+                    "rendered_sha256": "p0-hash",
+                }
+            ],
+        },
+    )
+
+
+def _sampling(path: Path) -> Path:
+    return _write_json(
+        path,
+        {
+            "schema": 1,
+            "sampling": {
+                "target": {"temperature": 0.0, "seed": 12345},
+                "draft": {"budget": "B1", "draft_max": 1, "temperature": 0.0},
+            },
+        },
+    )
+
+
+def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        suite,
+        "scan_gguf",
+        lambda model: SimpleNamespace(
+            architecture="qwen35moe",
+            file_type_name="MOSTLY_Q4_K_M",
+            tensor_count=753,
+        ),
+    )
+    monkeypatch.setattr(
+        suite,
+        "validate_qwen35_gguf_mtp_blocks",
+        lambda info: (
+            SimpleNamespace(
+                layer_id=40,
+                tensor_names=tuple(f"tensor_{i}" for i in range(20)),
+                nextn_tensor_names=(
+                    "blk.40.nextn.eh_proj.weight",
+                    "blk.40.nextn.enorm.weight",
+                    "blk.40.nextn.hnorm.weight",
+                    "blk.40.nextn.shared_head_norm.weight",
+                ),
+                optional_fallback_tensor_names={
+                    "nextn.embed_tokens": "token_embd.weight",
+                    "nextn.shared_head_head": "output.weight",
+                },
+            ),
+        ),
+    )
+
+
+def _artifact_inputs(tmp_path: Path, *, mismatch: bool = False) -> dict[str, Path]:
+    return {
+        "model": tmp_path / "model.gguf",
+        "prompts_file": _prompt_suite(tmp_path / "prompts.json"),
+        "hipengine_token_inventory": _token_inventory(tmp_path / "hip.json"),
+        "llamacpp_token_inventory": _token_inventory(
+            tmp_path / "llama.json",
+            token_ids=[1, 7, 3] if mismatch else [1, 2, 3],
+        ),
+        "hipengine_sampling": _sampling(tmp_path / "hip-sampling.json"),
+        "llamacpp_sampling": _sampling(tmp_path / "llama-sampling.json"),
+    }
+
+
+def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_preconditions_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    artifact = suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path))
+
+    assert artifact["kind"] == "hipengine_gguf_mtp_b1_prompt_suite"
+    assert artifact["mode"] == "preflight"
+    assert artifact["status"] == "blocked"
+    assert artifact["prompt_names"] == ["p0", "p1"]
+    assert artifact["validated_mtp_blocks"] == [
+        {
+            "layer_id": 40,
+            "tensor_count": 20,
+            "nextn_tensor_count": 4,
+            "optional_fallback_tensor_names": {
+                "nextn.embed_tokens": "token_embd.weight",
+                "nextn.shared_head_head": "output.weight",
+            },
+        }
+    ]
+    assert artifact["parity_precheck"]["all_pass"] is True
+    assert artifact["execution"] == {
+        "implemented": False,
+        "exactness_gate": "not_run",
+        "accepted_output_metrics": "not_run",
+        "next_action": "implement native GGUF MTP draft execution and re-run this harness",
+    }
+    assert artifact["blockers"] == [
+        {
+            "code": "native_gguf_mtp_runtime_missing",
+            "detail": (
+                "Native GGUF MTP draft execution is not implemented yet; this harness "
+                "stops after metadata/token/sampling preflight instead of reporting metrics."
+            ),
+        }
+    ]
+
+
+def test_b1_prompt_suite_preflight_reports_parity_blocker_before_runtime_blocker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    artifact = suite.build_b1_prompt_suite_artifact(**_artifact_inputs(tmp_path, mismatch=True))
+
+    assert artifact["status"] == "blocked"
+    assert artifact["parity_precheck"]["all_pass"] is False
+    assert artifact["blockers"] == [
+        {
+            "code": "parity_precheck_failed",
+            "detail": "token-id and sampling parity must pass before B1 accepted/output metrics are comparable",
+            "token_match": False,
+            "sampling_match": True,
+        }
+    ]
+
+
+def test_b1_prompt_suite_cli_emits_blocked_artifact_for_real_fixtures(tmp_path: Path) -> None:
+    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    out = tmp_path / "artifact.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/gguf_mtp_b1_prompt_suite.py",
+            "--model",
+            str(model),
+            "--prompt-limit",
+            "1",
+            "--out",
+            str(out),
+        ],
+        cwd=Path.cwd(),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 0, result.stderr
+    artifact = json.loads(out.read_text())
+    assert artifact["status"] == "blocked"
+    assert artifact["prompt_count"] == 1
+    assert artifact["parity_precheck"]["all_pass"] is True
+    assert artifact["blockers"][0]["code"] == "native_gguf_mtp_runtime_missing"
+
+
+def test_b1_prompt_suite_cli_fail_on_blocked_returns_two(tmp_path: Path) -> None:
+    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    out = tmp_path / "artifact.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/gguf_mtp_b1_prompt_suite.py",
+            "--model",
+            str(model),
+            "--prompt-limit",
+            "1",
+            "--out",
+            str(out),
+            "--fail-on-blocked",
+        ],
+        cwd=Path.cwd(),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 2
+    assert json.loads(out.read_text())["blockers"][0]["code"] == "native_gguf_mtp_runtime_missing"

@@ -95131,3 +95131,51 @@ Validation:
   execution, sampling implementation, GPU kernel, or performance claim; the new
   attention path explicitly uses the KVLiveSpans-shaped `(base_offsets,
   live_counts, token_positions, evict_mask)` ABI for future M4/HIP work.
+
+## 2026-06-15 - MTP-GGUF B1 prompt-suite preflight child
+
+Implemented `mtp-gguf` multiloop iteration 55: added the first hipEngine GGUF MTP
+B1 prompt-suite child harness as a correctness-first preflight/blocked-artifact
+runner.
+
+Scope note:
+- Script/test/docs only. No hipEngine runtime generation, GGUF tensor loading,
+  MTP draft execution, sampling implementation, GPU kernel, attention/KV path, or
+  performance path changed.
+- The harness intentionally does **not** report accepted/output metrics yet. If
+  parity passes, it emits a `native_gguf_mtp_runtime_missing` blocker until native
+  GGUF MTP draft execution exists.
+
+Changes:
+- Added executable `scripts/gguf_mtp_b1_prompt_suite.py`, a new GGUF child
+  harness (not a wrapper flag on the PARO MTP stack). It:
+  - scans the GGUF header and validates MTP blocks;
+  - loads the D32 prompt suite;
+  - runs the token-id + B1 sampling parity precheck;
+  - emits a compact JSON artifact with `status`, validated MTP block summary,
+    parity precheck, execution status, and blockers;
+  - supports `--fail-on-blocked` for CI/harness gates.
+- Added `tests/test_gguf_mtp_b1_prompt_suite.py` coverage for:
+  - preconditions passing but runtime missing -> blocked runtime artifact;
+  - parity mismatch -> parity blocker before runtime blocker;
+  - real local MTP GGUF CLI artifact generation;
+  - `--fail-on-blocked` returning exit code `2`.
+- Updated `docs/MTP-gguf.md` M5/backlog to cite the B1 preflight child and clarify
+  that B1 exactness/execution remains the next open row.
+
+Validation:
+- B1 prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `4` passed.
+- Real local MTP GGUF CLI smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` -> `suite blocked prompts 1 parity True blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight harness/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, attention/KV path, or performance claim; future
+  MTP attention/KV-write execution remains KVLiveSpans-gated.
