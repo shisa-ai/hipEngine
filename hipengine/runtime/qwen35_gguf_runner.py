@@ -2948,6 +2948,21 @@ class Qwen35GGUFResidentSession:
 
         return int(self._position)
 
+    def hidden_seed_contract(self, *, rows: int = 1) -> Qwen35GGUFHiddenSeedContract:
+        """Return the current GGUF MTP hidden-seed contract for this session.
+
+        The method is metadata-only: it does not read device memory or change
+        generation state.  It exposes the current BF16 post-output_norm scratch
+        row contract so M2.5 can replace it with an fp32-compatible tap.
+        """
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        return qwen35_gguf_current_hidden_seed_contract(
+            self.runner.hidden_size,
+            rows=rows,
+        )
+
     def reset(self) -> None:
         """Reset sequence state without freeing resident weights or scratch."""
 

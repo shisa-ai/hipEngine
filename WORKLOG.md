@@ -93046,3 +93046,32 @@ Validation:
 - Prompt verifier passed: contract descriptor only, no torch hot-path import, no
   backend/quant dispatch branches, no attention/KV/runtime behavior changes, no
   NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF session hidden seed contract query
+
+Implemented `mtp-gguf` multiloop iteration 8: surfaced the current GGUF hidden
+seed contract from `Qwen35GGUFResidentSession` itself.
+
+Changes:
+- Added `Qwen35GGUFResidentSession.hidden_seed_contract(rows=...)`.
+  - Metadata-only method; it does not read device memory or change generation
+    state.
+  - Uses the resident runner hidden size and reports the current BF16
+    post-output_norm contract from `Qwen35GGUFResidentSession.scratch.norm`.
+  - Keeps M2.5 explicit: current session state still requires an FP32 tap before
+    it can be llama.cpp-compatible.
+- Extended `tests/test_qwen35_gguf_hidden_seed_contract.py` using
+  `object.__new__` + a tiny fake runner so no GPU/session initialization is
+  needed.
+  - Covers row/hidden-size propagation.
+  - Covers closed-session error handling.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `15` selected tests (`9` pass, `6` skip).
+- Hidden-seed contract tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_hidden_seed_contract.py` -> `5` passed.
+- `py_compile` passed for `hipengine/runtime/qwen35_gguf_runner.py`.
+- Prompt verifier passed: metadata query only, no torch hot-path import, no
+  backend/quant dispatch branches, no attention/KV/runtime behavior changes, no
+  NextN math, and no performance claims.

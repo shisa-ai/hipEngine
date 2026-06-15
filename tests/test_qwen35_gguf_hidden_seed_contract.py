@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from hipengine.core.dtype import DType
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFHiddenSeedContract,
+    Qwen35GGUFResidentSession,
     qwen35_gguf_current_hidden_seed_contract,
 )
 
@@ -28,6 +31,28 @@ def test_current_gguf_hidden_seed_contract_marks_bf16_tap_non_llama_compatible()
         "llama_cpp_compatible": False,
         "requires_fp32_tap": True,
     }
+
+
+def test_resident_session_reports_current_hidden_seed_contract_without_gpu_init() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=8192)
+
+    contract = session.hidden_seed_contract(rows=2)
+
+    assert contract.provenance == "post_output_norm"
+    assert contract.dtype is DType.BF16
+    assert contract.rows == 2
+    assert contract.hidden_size == 8192
+    assert contract.requires_fp32_tap
+    assert not contract.llama_cpp_compatible
+
+
+def test_resident_session_hidden_seed_contract_rejects_closed_session() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = None
+
+    with pytest.raises(RuntimeError, match="GGUF resident session is closed"):
+        session.hidden_seed_contract()
 
 
 def test_fp32_hidden_seed_contract_is_llama_compatible() -> None:
