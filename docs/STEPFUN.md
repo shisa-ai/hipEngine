@@ -894,7 +894,11 @@ reporting.
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout-check.json`;
   it reached the 900 s helper timeout without generated text, so it is backend-specific
   timeout evidence only and does not replace the canonical Vulkan executed-mismatch
-  oracle artifact. Historical
+  oracle artifact. The two backend outcomes are consolidated by
+  `scripts/stepfun_oracle_backend_matrix.py --default-output --pretty` in
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json`
+  (`vulkan=executed_token_mismatch`, `hip=timeout`) with no parity/e2e/performance
+  claim. Historical
   CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
   outer-supervisor timeout remain documented by git history and the separate
   wrapper-timeout source artifact. The oracle helper now also traps `SIGTERM`/`SIGINT` from

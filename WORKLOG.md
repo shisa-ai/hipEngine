@@ -40732,3 +40732,30 @@ git diff --check
 ```
 
 Results: status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; HIP oracle artifact SHA `fa268e97051cc1f5134cc3f97677dc455b8811606afabacc83cc0ab84e921503`; HIP checker summary SHA `4ea98a89141c011702f0c7e7f27aaa72ba08acbc4bfa3a3dde743b157f1d0319`; correctness-status file SHA `6703d2e7c8e8291939906cfab37411d72dda881341b853b3d932f98f851feea1`; final-blocker file SHA `ab60d3e2e5522d51b0765812db18c2a4be113bf2ad53dc77c86f1e0baa75f003`; handoff file SHA `c2e407a128c5180d9c06e5e150055c1e9226f9350c7aaf2da384b3bffc324aa4`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L llama.cpp oracle backend matrix added
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 484. Added `scripts/stepfun_oracle_backend_matrix.py`, a compact generator that consolidates the retained llama.cpp backend-specific oracle evidence without changing canonical parity status. The matrix reads the canonical Vulkan executed-mismatch artifact via `scripts/stepfun_oracle_token_mismatch.py` and the retained HIP timeout artifact via `scripts/stepfun_oracle_artifact_check.py`, then writes `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json` with `--default-output --pretty`. Added `tests/test_stepfun_oracle_backend_matrix.py` coverage for the builder, CLI output, and backend-outcomes-only mode. Updated `docs/STEPFUN.md` to cite the generator and matrix artifact.
+
+The retained matrix reports `status=blocked`, `canonical_backend=vulkan`, `oracle_parity_ready=false`, backend outcomes `vulkan=executed_token_mismatch` and `hip=timeout`. Vulkan still pins expected `[369]` vs generated `[671, 271]` / stripped `[671]`; HIP still records `llama_cpp_oracle_timeout` before generation. This is oracle blocker evidence only; it does not resolve the generated-token mismatch, run KV-backed decode, or make oracle/e2e/performance claims. Matrix file SHA is `1867ce7a15e8ffc3e3432685fcf4ca9cf7aac5c8936683deaa1da7389c1ae9e3`; stable matrix payload SHA from `scripts/stepfun_oracle_backend_matrix.py --sha-only` is `8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_backend_matrix.py tests/test_stepfun_oracle_backend_matrix.py
+python3 -m pytest -q tests/test_stepfun_oracle_backend_matrix.py
+python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty
+python3 scripts/stepfun_oracle_backend_matrix.py --sha-only
+python3 scripts/stepfun_oracle_backend_matrix.py --backend-outcomes-only --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted oracle backend matrix tests passed (`3` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `c8606259554935cf876e573565a7b37c8eff11f48a1df7e82a59615ae8ec6204`; final-blocker file SHA `8e9407809cdfbe8ca527e7c1bd51127cf6ddfb56142278f43943793d22617abb`; handoff file SHA `cf1332bbb5f634407410498343c2e3481d34547552ede26aa85db9b6adb2bad8`; full StepFun guard passed; `git diff --check` passed.

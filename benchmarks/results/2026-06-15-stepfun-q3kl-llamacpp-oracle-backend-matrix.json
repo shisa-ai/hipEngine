@@ -1,0 +1,80 @@
+{
+  "artifact_kind": "stepfun_llamacpp_oracle_backend_matrix",
+  "backend_count": 2,
+  "backend_outcomes": [
+    {
+      "backend": "vulkan",
+      "outcome": "executed_token_mismatch"
+    },
+    {
+      "backend": "hip",
+      "outcome": "timeout"
+    }
+  ],
+  "backends": [
+    {
+      "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "artifact_sha256": "69c4e284610aca73a270b0532ddca8dd3fd2efc723d9244eb29aa44a792ee1bc",
+      "backend": "vulkan",
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "expected_next_token_text_token_ids": [
+        369
+      ],
+      "generated_first_token_id": 671,
+      "generated_first_token_matches_expected_id": false,
+      "generated_text": "The\n\n",
+      "generated_text_stripped_token_ids": [
+        671
+      ],
+      "generated_text_token_ids": [
+        671,
+        271
+      ],
+      "missing_evidence": [
+        "generated_text_matches_target"
+      ],
+      "oracle_blocker_kind": null,
+      "oracle_returncode": 0,
+      "oracle_status": "executed",
+      "outcome": "executed_token_mismatch",
+      "role": "canonical_executed_oracle",
+      "status": "failed"
+    },
+    {
+      "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json",
+      "artifact_sha256": "1c23a63c663448512d5a3a84dee715923035531d5696d558cfa21d55422422a2",
+      "backend": "hip",
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "generated_text": "",
+      "generated_text_len": 0,
+      "missing_evidence": [
+        "oracle_success_status",
+        "oracle_returncode_zero",
+        "no_timeout_or_oracle_blocker",
+        "generated_text_nonempty",
+        "generated_text_matches_target"
+      ],
+      "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+      "oracle_returncode": null,
+      "oracle_status": "timeout",
+      "outcome": "timeout",
+      "role": "comparison_timeout_oracle",
+      "status": "failed"
+    }
+  ],
+  "blocked_reason": "canonical Vulkan oracle executes but generated token does not match the host-composed target; HIP comparison oracle times out before generation",
+  "canonical_backend": "vulkan",
+  "date": "2026-06-15",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This matrix consolidates oracle blocker evidence only; it does not resolve the generated token mismatch or run KV-backed decode."
+  },
+  "oracle_parity_ready": false,
+  "schema_version": 1,
+  "status": "blocked"
+}
