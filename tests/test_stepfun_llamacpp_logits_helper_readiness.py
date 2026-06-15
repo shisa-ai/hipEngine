@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import stat
+import subprocess
 from pathlib import Path
 
 from scripts.stepfun_llamacpp_logits_helper_readiness import (
@@ -14,6 +15,10 @@ from scripts.stepfun_llamacpp_logits_helper_readiness import (
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, sort_keys=True))
+
+
+def _init_git(root: Path) -> None:
+    subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def _write_source(root: Path, *, patched: bool) -> None:
@@ -48,6 +53,7 @@ def test_stepfun_llamacpp_logits_helper_readiness_reports_current_blockers(
     helper = tmp_path / "build/bin/llama-debug"
     logits = tmp_path / "logits.json"
     _write_source(root, patched=False)
+    _init_git(root)
     patch.write_text("diff --git a/examples/debug/debug.cpp b/examples/debug/debug.cpp\n")
     _write_fake_llama_debug(helper, help_text="--save-logits --logits-output-dir --special")
     _write_json(
@@ -73,6 +79,8 @@ def test_stepfun_llamacpp_logits_helper_readiness_reports_current_blockers(
     assert report["date"] == "2030-04-11"
     assert report["status"] == "blocked"
     assert report["ready"] is False
+    assert report["git_worktree"]["is_git_worktree"] is True
+    assert report["git_worktree"]["clean_for_patch_apply"] is True
     assert report["patch_artifact"]["exists"] is True
     assert report["source_patch"]["patch_applied"] is False
     assert report["source_patch"]["missing_markers"] == [
@@ -112,6 +120,7 @@ def test_stepfun_llamacpp_logits_helper_readiness_ready_when_all_evidence_presen
     helper = tmp_path / "build/bin/llama-debug"
     logits = tmp_path / "logits.json"
     _write_source(root, patched=True)
+    _init_git(root)
     patch.write_text("diff --git a/examples/debug/debug.cpp b/examples/debug/debug.cpp\n")
     _write_fake_llama_debug(
         helper,
@@ -152,6 +161,7 @@ def test_stepfun_llamacpp_logits_helper_readiness_cli_modes(tmp_path: Path) -> N
     logits = tmp_path / "logits.json"
     output = tmp_path / "readiness.json"
     _write_source(root, patched=False)
+    _init_git(root)
     patch.write_text("patch")
     _write_fake_llama_debug(helper, help_text="--save-logits --logits-output-dir --special")
     _write_json(logits, {"status": "blocked", "ready": False})

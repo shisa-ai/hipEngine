@@ -2,6 +2,17 @@
   "artifact_kind": "stepfun_llamacpp_logits_helper_readiness",
   "blocked_reason": "retained-token helper patch/build/capture evidence is incomplete",
   "date": "2026-06-15",
+  "git_worktree": {
+    "branch": "master",
+    "clean_for_patch_apply": true,
+    "error": null,
+    "head_sha": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "is_git_worktree": true,
+    "path": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "tracked_dirty": false,
+    "tracked_dirty_entries": [],
+    "tracked_dirty_entry_count": 0
+  },
   "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
   "llama_debug": {
     "capability": {

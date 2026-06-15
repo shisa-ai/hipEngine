@@ -41523,3 +41523,38 @@ git diff --check
 ```
 
 Results: targeted readiness/rollup/dry-run tests passed (`9` tests); status/manifest/handoff verification returned `"match"`; readiness status is `"blocked"`, patch-applied scalar is `false`, helper-capable scalar is `false`, readiness stable payload SHA is `33c906399b3679dccfb21e48893dbf80b20a6600b179e1868a5e3aacf498e3c5`, and remaining-blockers stable payload SHA is `8aec2dcefce75569230cc1bf24ac5de2d334bc34a38f1f57ecf7ad762beffa7f`. File SHAs: readiness `eae50a8ddb9a5df7df3dc0fa62280c831f0db6070bd2236c286bb11420febba7`, remaining-blockers `869b4a31b90832ace7b66c0d277a5b51f6807f8392f71478c3ca568391f37d21`, correctness-status `2bbc7a819fcfb4b0101edd0bfb72e8d14b7977694e09567f95dba89df0b8c4cd`, final-blocker `95e3a60017ecadde249d674afd85f835bac9119137522583bf670a37049944ed`, handoff `709717e57a6fbc931d7d2d20208366eec1df134bff3e64964797d870f5b559dd`. P0-P12 open/partial count remains `2`; full StepFun guard passed; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp worktree readiness precheck
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 511. Extended `scripts/stepfun_llamacpp_logits_helper_readiness.py` and `tests/test_stepfun_llamacpp_logits_helper_readiness.py` with a read-only git worktree precondition check for the external `/home/lhl/llama.cpp/llama.cpp-vulkan` checkout. The readiness artifact now records whether the checkout is a git worktree, its branch/HEAD, tracked dirty state, and whether it is clean for applying the retained-token patch. This still does not edit external llama.cpp and makes no oracle parity, KV-backed decode, e2e, or performance claim.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json` now records `git_worktree.clean_for_patch_apply=true`, `git_worktree.branch=master`, `git_worktree.head_sha=6e9007ae61f4...`, while preserving `status=blocked`, `source_patch.patch_applied=false`, `llama_debug.retained_token_ids_capable=false`, and missing evidence `["llama_cpp_token_ids_helper_patch_applied", "llama_debug_retained_token_ids_input_present", "llama_cpp_same_prompt_logits_artifact_present"]`. Updated `docs/STEPFUN.md` P11 to cite the clean external worktree revision before the patch/build step, and refreshed remaining-blockers/status/manifest/handoff artifacts.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_llamacpp_logits_helper_readiness.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_remaining_blockers_rollup.py tests/test_stepfun_llamacpp_logits_helper_patch_dry_run.py
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --patch-applied-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --helper-capable-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --missing-evidence-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_llamacpp_logits_helper_readiness.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_remaining_blockers_rollup.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+git diff --check
+```
+
+Results: targeted readiness/rollup/dry-run tests passed (`9` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count remains `2`; full StepFun guard passed. Readiness status is `"blocked"`, patch-applied scalar is `false`, helper-capable scalar is `false`, missing evidence remains `["llama_cpp_token_ids_helper_patch_applied", "llama_debug_retained_token_ids_input_present", "llama_cpp_same_prompt_logits_artifact_present"]`, readiness stable payload SHA is `fb0d12d18e58280a988d5a001b49cedc5d7adaa51dfde314b8c402a3050023b0`, and remaining-blockers stable payload SHA is `3d5b9250d1ef80e01f6ff000813427a57ab09cdbd1ce75335d7e845abe63c3dd`. File SHAs: readiness `67959cd20fc01c917433b3b258c4639afe9564e05cf25b7470145c617f3c279d`, remaining-blockers `746cd825963d8225ccbc7520d18d5564f82f04cc722c6e6140de873f09554e2f`, correctness-status `4e7c242faf989e4d8c9fd256ec2cae3928ed64e9a5f565f681d67cf582c653f7`, final-blocker `56542c5ce1980f4a7566784e25605ac2ee13348083354223ef200df55f062696`, handoff `fe63cee3b53d2c60ddb6f9a6affccf79d5787146f8731f6a466fbe33a50d8884`. Next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

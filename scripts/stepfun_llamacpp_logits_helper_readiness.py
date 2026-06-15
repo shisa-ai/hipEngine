@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -122,6 +123,50 @@ def _patch_artifact_record(path: Path) -> dict[str, object]:
     }
 
 
+def _git_command(llama_cpp_root: Path, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=llama_cpp_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
+def _git_worktree_record(llama_cpp_root: Path) -> dict[str, object]:
+    inside = _git_command(llama_cpp_root, ["rev-parse", "--is-inside-work-tree"])
+    is_repo = inside.returncode == 0 and inside.stdout.strip() == "true"
+    if not is_repo:
+        return {
+            "path": str(llama_cpp_root),
+            "is_git_worktree": False,
+            "head_sha": None,
+            "branch": None,
+            "tracked_dirty": None,
+            "tracked_dirty_entries": [],
+            "tracked_dirty_entry_count": None,
+            "clean_for_patch_apply": False,
+            "error": inside.stderr.strip() or inside.stdout.strip(),
+        }
+    head = _git_command(llama_cpp_root, ["rev-parse", "HEAD"])
+    branch = _git_command(llama_cpp_root, ["branch", "--show-current"])
+    status = _git_command(llama_cpp_root, ["status", "--porcelain", "--untracked-files=no"])
+    dirty_entries = [line for line in status.stdout.splitlines() if line.strip()]
+    clean = status.returncode == 0 and not dirty_entries
+    return {
+        "path": str(llama_cpp_root),
+        "is_git_worktree": True,
+        "head_sha": head.stdout.strip() if head.returncode == 0 else None,
+        "branch": branch.stdout.strip() if branch.returncode == 0 else None,
+        "tracked_dirty": not clean,
+        "tracked_dirty_entries": dirty_entries,
+        "tracked_dirty_entry_count": len(dirty_entries),
+        "clean_for_patch_apply": clean,
+        "error": None if clean else status.stderr.strip(),
+    }
+
+
 def _source_patch_markers(llama_cpp_root: Path) -> dict[str, object]:
     source_path = llama_cpp_root / dry_run_mod.DEBUG_RELATIVE_PATH
     source_text = source_path.read_text(errors="replace") if source_path.exists() else ""
@@ -185,6 +230,7 @@ def build_llamacpp_logits_helper_readiness(
 ) -> dict[str, object]:
     """Return a read-only post-apply readiness report."""
 
+    git_record = _git_worktree_record(llama_cpp_root)
     source_record = _source_patch_markers(llama_cpp_root)
     helper_record = _llama_debug_record(llama_debug)
     logits_record = _llama_logits_record(llama_logits_artifact)
@@ -193,6 +239,8 @@ def build_llamacpp_logits_helper_readiness(
     missing_evidence: list[str] = []
     if not patch_artifact_record["exists"]:
         missing_evidence.append("llama_cpp_token_ids_helper_patch_artifact_present")
+    if not git_record["clean_for_patch_apply"]:
+        missing_evidence.append("llama_cpp_worktree_clean_for_patch_apply")
     if not source_record["patch_applied"]:
         missing_evidence.append("llama_cpp_token_ids_helper_patch_applied")
     if not (helper_record["exists"] and helper_record["executable"]):
@@ -215,6 +263,7 @@ def build_llamacpp_logits_helper_readiness(
         "status": "ready" if ready else "blocked",
         "ready": ready,
         "llama_cpp_root": str(llama_cpp_root),
+        "git_worktree": git_record,
         "patch_artifact": patch_artifact_record,
         "source_patch": source_record,
         "llama_debug": helper_record,
