@@ -2181,8 +2181,10 @@ Current state:
   sequence-completion repairs, and JSON object close forcing. It also separates
   native GPU pre-selection
   `processors` from `post_selection_controls` for stop token ids and
-  multi-token stop sequences, which PARO c=1 native sampling checks after each
-  selected token;
+  multi-token stop sequences, which PARO c=1 and serial per-slot c>N native
+  sampling check after each selected token. The manifest scope is
+  `paro_c1_and_serial_per_slot_c_gt_1`, while true batched c>N remains
+  explicitly unsupported;
 - true batched c>N/GGUF integration, `top_logprobs`, retained performance
   evidence, and default-path promotion remain unimplemented.
 

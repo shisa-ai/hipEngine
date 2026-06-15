@@ -225,7 +225,7 @@ _GUIDED_JSON_FIELD = "guided_json"
 _GUIDED_REGEX_FIELD = "guided_regex"
 _GUIDED_CHOICE_FIELD = "guided_choice"
 _NATIVE_GPU_SAMPLER_UNSUPPORTED = (
-    "c_gt_1",
+    "true_batched_c_gt_1",
     "gguf",
     "top_logprobs",
     "suppress_token_ids",
@@ -4206,7 +4206,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "native_gpu": {
                     "enabled": _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER"),
                     "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
-                    "scope": "paro_c1_only",
+                    "scope": "paro_c1_and_serial_per_slot_c_gt_1",
+                    "c_gt_1": "serial_per_slot_when_all_rows_supported",
+                    "true_batched_c_gt_1": False,
                     "default_path": False,
                     "top_k_max": 64,
                     "top_p_min_p": "exact_full_vocab_top_k_0",

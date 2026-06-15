@@ -92909,3 +92909,18 @@ Validation:
 - `uv run pytest tests/test_gpu_sampler_kernel.py -q -k 'not gpu1 and not c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state'` -> `9 passed`.
 - `uv run pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
 - `git diff --check -- hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py docs/AGENTIC.md docs/API.md docs/SAMPLING.md` -> clean.
+
+## 2026-06-15 - Native sampler capability scope alignment
+
+Aligned `/v1/hipengine/capabilities` with the PARO c>N serial native sampler row
+route. The native GPU sampler manifest now reports
+`scope="paro_c1_and_serial_per_slot_c_gt_1"`, `c_gt_1` support as
+`serial_per_slot_when_all_rows_supported`, and keeps true batched c>N sampling
+explicitly unsupported as `true_batched_c_gt_1=false`.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or replay_artifact_captures_streaming_agentic_result_validation_failure or replay_artifact_redacts_failed_request'` -> `3 passed`.
+- `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md` -> clean.
