@@ -930,7 +930,10 @@ reporting.
   that investigation. `scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json`, currently
   `status=blocked`, because same-prompt llama.cpp logits and an identified logits-dump entrypoint are
-  still missing. The remaining mismatch is therefore not explained by prompt-token drift or
+  still missing. `scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty` retains
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json`, with ordered pending
+  steps to identify/add the logits dump entrypoint, capture the same-prompt logits artifact, compare
+  host vs llama.cpp logits, and refresh the oracle handoff. The remaining mismatch is therefore not explained by prompt-token drift or
   host top-token text-label drift.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in

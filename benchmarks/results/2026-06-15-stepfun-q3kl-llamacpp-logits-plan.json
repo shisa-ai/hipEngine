@@ -1,0 +1,614 @@
+{
+  "artifact_kind": "stepfun_llamacpp_logits_plan",
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "blocked_reason": "same-prompt llama.cpp logits capture is not implemented or retained yet",
+  "date": "2026-06-15",
+  "expected_llamacpp_logits_artifact": {
+    "exists": false,
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
+    "sha256": null
+  },
+  "implementation_ready": true,
+  "implementation_steps": [
+    {
+      "acceptance": [
+        "a llama.cpp command or helper can emit same-prompt logits/top-k for the retained StepFun prompt",
+        "scripts/stepfun_llamacpp_logits_preflight.py no longer reports llama_cpp_logits_dump_entrypoint_identified"
+      ],
+      "key": "identify_or_add_logits_dump_entrypoint",
+      "notes": [
+        "current preflight found llama-cli executable but no obvious logits dump flag",
+        "do not use --logit-bias as a substitute for logits capture"
+      ],
+      "owner_sources": [
+        {
+          "all_symbols_present": true,
+          "exists": true,
+          "missing_symbols": [],
+          "path": "scripts/stepfun_llamacpp_oracle.py",
+          "present_symbols": [
+            {
+              "line": 287,
+              "symbol": "main"
+            },
+            {
+              "line": 203,
+              "symbol": "_run_with_timeout"
+            },
+            {
+              "line": 104,
+              "symbol": "_comparison_fields"
+            },
+            {
+              "line": 132,
+              "symbol": "_partial_execution_result"
+            }
+          ],
+          "required_symbols": [
+            "main",
+            "_run_with_timeout",
+            "_comparison_fields",
+            "_partial_execution_result"
+          ],
+          "role": "Builds/runs the llama.cpp one-token oracle and records timeout/executed artifacts."
+        },
+        {
+          "all_symbols_present": true,
+          "exists": true,
+          "missing_symbols": [],
+          "path": "scripts/stepfun_oracle_token_mismatch.py",
+          "present_symbols": [
+            {
+              "line": 167,
+              "symbol": "main"
+            },
+            {
+              "line": 115,
+              "symbol": "build_oracle_token_mismatch_summary"
+            }
+          ],
+          "required_symbols": [
+            "main",
+            "build_oracle_token_mismatch_summary"
+          ],
+          "role": "Summarizes canonical oracle generated text and tokenizer diagnostics."
+        },
+        {
+          "all_symbols_present": true,
+          "exists": true,
+          "missing_symbols": [],
+          "path": "scripts/stepfun_oracle_rank_check.py",
+          "present_symbols": [
+            {
+              "line": 236,
+              "symbol": "main"
+            },
+            {
+              "line": 132,
+              "symbol": "build_oracle_rank_check"
+            }
+          ],
+          "required_symbols": [
+            "main",
+            "build_oracle_rank_check"
+          ],
+          "role": "Compares llama.cpp generated token with retained host top-token IDs."
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "acceptance": [
+        "retained llama.cpp logits artifact exists for the exact prompt/input IDs used by the host prompt-smoke artifact",
+        "artifact records logits or ranks for expected token 369 and generated token 671",
+        "artifact records command, backend, model path, and prompt artifact SHA"
+      ],
+      "expected_output_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
+      "key": "capture_same_prompt_llamacpp_logits",
+      "owner_sources": [
+        {
+          "all_symbols_present": true,
+          "artifacts": [
+            "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json"
+          ],
+          "commands": [
+            "python3 scripts/stepfun_llamacpp_oracle.py --execute --timeout-s 900 --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --pretty",
+            "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
+            "python3 scripts/stepfun_oracle_rank_check.py --default-output --pretty"
+          ],
+          "key": "llamacpp_oracle_runner",
+          "missing_symbols": [],
+          "next_focus": "Re-run or instrument llama.cpp only after confirming the prompt/logit source artifacts are current.",
+          "role": "Owns canonical llama.cpp one-token oracle command construction and output comparison.",
+          "sources": [
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_llamacpp_oracle.py",
+              "present_symbols": [
+                {
+                  "line": 287,
+                  "symbol": "main"
+                },
+                {
+                  "line": 203,
+                  "symbol": "_run_with_timeout"
+                },
+                {
+                  "line": 104,
+                  "symbol": "_comparison_fields"
+                },
+                {
+                  "line": 132,
+                  "symbol": "_partial_execution_result"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "_run_with_timeout",
+                "_comparison_fields",
+                "_partial_execution_result"
+              ],
+              "role": "Builds/runs the llama.cpp one-token oracle and records timeout/executed artifacts."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_token_mismatch.py",
+              "present_symbols": [
+                {
+                  "line": 167,
+                  "symbol": "main"
+                },
+                {
+                  "line": 115,
+                  "symbol": "build_oracle_token_mismatch_summary"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_token_mismatch_summary"
+              ],
+              "role": "Summarizes canonical oracle generated text and tokenizer diagnostics."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_rank_check.py",
+              "present_symbols": [
+                {
+                  "line": 236,
+                  "symbol": "main"
+                },
+                {
+                  "line": 132,
+                  "symbol": "build_oracle_rank_check"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_rank_check"
+              ],
+              "role": "Compares llama.cpp generated token with retained host top-token IDs."
+            }
+          ]
+        },
+        {
+          "all_symbols_present": true,
+          "artifacts": [
+            "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json"
+          ],
+          "commands": [
+            "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message hello --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --pretty",
+            "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty"
+          ],
+          "key": "host_prompt_logit_smoke",
+          "missing_symbols": [],
+          "next_focus": "Compare the retained host prompt/logit path with llama.cpp logits for the same prompt before touching KV or e2e decode.",
+          "role": "Owns retained host prompt, input IDs, top-token logits, and top-k visible margin.",
+          "sources": [
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_layer_prefix_smoke.py",
+              "present_symbols": [
+                {
+                  "line": 281,
+                  "symbol": "main"
+                },
+                {
+                  "line": 201,
+                  "symbol": "_run_chunked_prefix"
+                },
+                {
+                  "line": 151,
+                  "symbol": "_emit_json"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "_run_chunked_prefix",
+                "_emit_json"
+              ],
+              "role": "CLI that produced the retained all-45 prompt smoke artifact."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "hipengine/runtime/stepfun_gguf_runner.py",
+              "present_symbols": [
+                {
+                  "line": 163,
+                  "symbol": "StepFunLayerPrefixLogitsProbe"
+                },
+                {
+                  "line": 1683,
+                  "symbol": "StepFunResidentSession.embed_chat_prompt_bf16"
+                },
+                {
+                  "line": 1761,
+                  "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+                },
+                {
+                  "line": 2159,
+                  "symbol": "StepFunResidentSession.layer_prefill_probe_bf16"
+                },
+                {
+                  "line": 2250,
+                  "symbol": "StepFunResidentSession.final_logits_probe_bf16"
+                }
+              ],
+              "required_symbols": [
+                "StepFunLayerPrefixLogitsProbe",
+                "StepFunResidentSession.embed_chat_prompt_bf16",
+                "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16",
+                "StepFunResidentSession.layer_prefill_probe_bf16",
+                "StepFunResidentSession.final_logits_probe_bf16"
+              ],
+              "role": "Torch-free resident runtime methods that produce host prompt logits."
+            }
+          ]
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "acceptance": [
+        "comparison explains whether token 671 outranks token 369 in llama.cpp logits for the same prompt",
+        "comparison preserves existing host evidence that token 369 is host top-1 with margin 0.8150444030761719",
+        "no oracle parity claim is made unless generated_text_matches_target passes"
+      ],
+      "key": "compare_host_vs_llamacpp_logits",
+      "owner_sources": [
+        {
+          "all_symbols_present": true,
+          "artifacts": [
+            "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json"
+          ],
+          "commands": [
+            "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message hello --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --pretty",
+            "python3 scripts/stepfun_host_logit_margin.py --default-output --pretty"
+          ],
+          "key": "host_prompt_logit_smoke",
+          "missing_symbols": [],
+          "next_focus": "Compare the retained host prompt/logit path with llama.cpp logits for the same prompt before touching KV or e2e decode.",
+          "role": "Owns retained host prompt, input IDs, top-token logits, and top-k visible margin.",
+          "sources": [
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_layer_prefix_smoke.py",
+              "present_symbols": [
+                {
+                  "line": 281,
+                  "symbol": "main"
+                },
+                {
+                  "line": 201,
+                  "symbol": "_run_chunked_prefix"
+                },
+                {
+                  "line": 151,
+                  "symbol": "_emit_json"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "_run_chunked_prefix",
+                "_emit_json"
+              ],
+              "role": "CLI that produced the retained all-45 prompt smoke artifact."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "hipengine/runtime/stepfun_gguf_runner.py",
+              "present_symbols": [
+                {
+                  "line": 163,
+                  "symbol": "StepFunLayerPrefixLogitsProbe"
+                },
+                {
+                  "line": 1683,
+                  "symbol": "StepFunResidentSession.embed_chat_prompt_bf16"
+                },
+                {
+                  "line": 1761,
+                  "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+                },
+                {
+                  "line": 2159,
+                  "symbol": "StepFunResidentSession.layer_prefill_probe_bf16"
+                },
+                {
+                  "line": 2250,
+                  "symbol": "StepFunResidentSession.final_logits_probe_bf16"
+                }
+              ],
+              "required_symbols": [
+                "StepFunLayerPrefixLogitsProbe",
+                "StepFunResidentSession.embed_chat_prompt_bf16",
+                "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16",
+                "StepFunResidentSession.layer_prefill_probe_bf16",
+                "StepFunResidentSession.final_logits_probe_bf16"
+              ],
+              "role": "Torch-free resident runtime methods that produce host prompt logits."
+            }
+          ]
+        },
+        {
+          "all_symbols_present": true,
+          "artifacts": [
+            "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json"
+          ],
+          "commands": [
+            "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty",
+            "python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty",
+            "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty"
+          ],
+          "key": "oracle_blocker_handoff",
+          "missing_symbols": [],
+          "next_focus": "Keep these handoff artifacts matching while investigating generated_text_matches_target.",
+          "role": "Owns consolidated blocker diagnosis, consistency gate, and next-action handoff.",
+          "sources": [
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_blocker_diagnosis.py",
+              "present_symbols": [
+                {
+                  "line": 281,
+                  "symbol": "main"
+                },
+                {
+                  "line": 138,
+                  "symbol": "build_oracle_blocker_diagnosis"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_blocker_diagnosis"
+              ],
+              "role": "Consolidates ruled-out causes and active oracle findings."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_evidence_consistency_check.py",
+              "present_symbols": [
+                {
+                  "line": 418,
+                  "symbol": "main"
+                },
+                {
+                  "line": 200,
+                  "symbol": "build_oracle_evidence_consistency_check"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_evidence_consistency_check"
+              ],
+              "role": "Checks retained oracle evidence for stale or contradictory artifacts."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_next_action_manifest.py",
+              "present_symbols": [
+                {
+                  "line": 338,
+                  "symbol": "main"
+                },
+                {
+                  "line": 174,
+                  "symbol": "build_oracle_next_action_manifest"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_next_action_manifest"
+              ],
+              "role": "Pins the next investigation to canonical Vulkan logits/backend parity."
+            }
+          ]
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "acceptance": [
+        "oracle diagnosis, consistency check, next-action manifest, logits preflight, remaining-blockers rollup, status, final-blocker manifest, and handoff check are regenerated",
+        "full StepFun guard passes",
+        "WORKLOG and docs/STEPFUN.md record the evidence and no-claim policy"
+      ],
+      "key": "refresh_oracle_handoff_artifacts",
+      "owner_sources": [
+        {
+          "all_symbols_present": true,
+          "artifacts": [
+            "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json",
+            "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json"
+          ],
+          "commands": [
+            "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty",
+            "python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty",
+            "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty"
+          ],
+          "key": "oracle_blocker_handoff",
+          "missing_symbols": [],
+          "next_focus": "Keep these handoff artifacts matching while investigating generated_text_matches_target.",
+          "role": "Owns consolidated blocker diagnosis, consistency gate, and next-action handoff.",
+          "sources": [
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_blocker_diagnosis.py",
+              "present_symbols": [
+                {
+                  "line": 281,
+                  "symbol": "main"
+                },
+                {
+                  "line": 138,
+                  "symbol": "build_oracle_blocker_diagnosis"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_blocker_diagnosis"
+              ],
+              "role": "Consolidates ruled-out causes and active oracle findings."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_evidence_consistency_check.py",
+              "present_symbols": [
+                {
+                  "line": 418,
+                  "symbol": "main"
+                },
+                {
+                  "line": 200,
+                  "symbol": "build_oracle_evidence_consistency_check"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_evidence_consistency_check"
+              ],
+              "role": "Checks retained oracle evidence for stale or contradictory artifacts."
+            },
+            {
+              "all_symbols_present": true,
+              "exists": true,
+              "missing_symbols": [],
+              "path": "scripts/stepfun_oracle_next_action_manifest.py",
+              "present_symbols": [
+                {
+                  "line": 338,
+                  "symbol": "main"
+                },
+                {
+                  "line": 174,
+                  "symbol": "build_oracle_next_action_manifest"
+                }
+              ],
+              "required_symbols": [
+                "main",
+                "build_oracle_next_action_manifest"
+              ],
+              "role": "Pins the next investigation to canonical Vulkan logits/backend parity."
+            }
+          ]
+        }
+      ],
+      "status": "pending"
+    }
+  ],
+  "llama_cli": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-cli",
+  "missing_evidence": [
+    "llama_cpp_same_prompt_logits_artifact_present",
+    "llama_cpp_logits_dump_entrypoint_identified"
+  ],
+  "next_action_manifest": {
+    "artifact_kind": "stepfun_oracle_next_action_manifest",
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json",
+    "sha256": "4102fe519bb8a0a7269a821c9c3b678a8e83fddb9151d4120f4ce36d49674028",
+    "status": "blocked"
+  },
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This plan only describes the llama.cpp logits evidence work needed next; generated_text_matches_target remains unresolved."
+  },
+  "preflight_artifact": {
+    "artifact_kind": "stepfun_llamacpp_logits_preflight",
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
+    "sha256": "82c5ad55ab685614a543fe2d602fa07f544371ab522362d95e88873c27d5ec67",
+    "status": "blocked"
+  },
+  "ready": false,
+  "required_preflight_to_clear_plan_blocker": [
+    "scripts/stepfun_llamacpp_logits_preflight.py --status-only returns \"ready\"",
+    "scripts/stepfun_llamacpp_logits_preflight.py --missing-evidence-only returns []",
+    "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json exists and is retained"
+  ],
+  "schema_version": 1,
+  "source_map_artifact": {
+    "artifact_kind": "stepfun_oracle_source_map",
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json",
+    "sha256": "9cf5f0695b08023679c849dff379d066c4a9a11d6f38d92d967c6de49de253d3",
+    "status": "mapped"
+  },
+  "status": "blocked",
+  "step_keys": [
+    "identify_or_add_logits_dump_entrypoint",
+    "capture_same_prompt_llamacpp_logits",
+    "compare_host_vs_llamacpp_logits",
+    "refresh_oracle_handoff_artifacts"
+  ],
+  "target": {
+    "canonical_backend": "vulkan",
+    "expected_next_token_id": 369,
+    "expected_next_token_text": " |",
+    "generated_first_token_id": 671,
+    "generated_text": "The\n\n",
+    "host_top1_to_top2_margin": 0.8150444030761719,
+    "host_top_token_ids": [
+      369,
+      5,
+      15251,
+      223,
+      201
+    ],
+    "readiness_gate": "oracle_parity",
+    "unresolved_evidence_gap": "generated_text_matches_target"
+  }
+}

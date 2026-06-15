@@ -41148,3 +41148,34 @@ git diff --check
 ```
 
 Results: targeted logits-preflight/rollup tests passed (`8` tests); compact outputs were `"blocked"`, `false`, and `["llama_cpp_same_prompt_logits_artifact_present", "llama_cpp_logits_dump_entrypoint_identified"]`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `867d8ffcc2c7f4813da77ca3b346ab6de6ab3571792a02eb52c772778b40ac30`; remaining-blockers file SHA `38b814eaf06f757253a62f554775b2c730d7ba639cace7421ef137c6420ac1b8`; correctness-status file SHA `cc73e91b4bd7b4b364ea223694a17e1e31657ca716a5fdcdde747c63a0804400`; final-blocker file SHA `cb671e3bb952294b7c85f7d8a94019bc4b8bda10ae06d0d8ec4b9fe39a21c391`; handoff file SHA `9cb7435255d075a009dd4eb9166ce73081a3cd50dbae440213a1d76fddbbaa94`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp logits implementation plan
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 499. Added `scripts/stepfun_llamacpp_logits_plan.py`, a retained implementation plan that converts the llama.cpp logits preflight into ordered follow-up work, plus `tests/test_stepfun_llamacpp_logits_plan.py`. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the logits-plan artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json` reports `status=blocked`, `ready=false`, and `implementation_ready=true`. Ordered pending steps are `identify_or_add_logits_dump_entrypoint`, `capture_same_prompt_llamacpp_logits`, `compare_host_vs_llamacpp_logits`, and `refresh_oracle_handoff_artifacts`. Missing preflight evidence remains `llama_cpp_same_prompt_logits_artifact_present` and `llama_cpp_logits_dump_entrypoint_identified`; expected future artifact is `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json`. This is implementation-planning evidence only; canonical missing evidence remains `generated_text_matches_target`. Logits-plan file SHA is `862bd06cc64ca6a3be0cab01f2ada8d01eda4d8676f13ef594fac9549ab2d658`; stable payload SHA from `scripts/stepfun_llamacpp_logits_plan.py --sha-only` is `34faf59520ea125e4a6c52018858ba7baf6f23d91bee09e5001a4d12ac852a1b`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_plan.py tests/test_stepfun_llamacpp_logits_plan.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_plan.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --status-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --implementation-ready-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --step-keys-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted logits-plan/rollup tests passed (`7` tests); compact outputs were `"blocked"`, `true`, and `["identify_or_add_logits_dump_entrypoint", "capture_same_prompt_llamacpp_logits", "compare_host_vs_llamacpp_logits", "refresh_oracle_handoff_artifacts"]`; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `2517c8f6c498967cc21ba6c9050482ed06bcecb0b74b3215103fb6f67a2c1ae5`; remaining-blockers file SHA `77f0ab311b1cf8679453d7e581daaf5aa5b436a41c998623fef4fee909e43348`; correctness-status file SHA `9254bffc0b713e0878768e7423b91fd10051dcd683aa88ec3f21d472e6acb196`; final-blocker file SHA `794290e87795dc07e14c174119fcf9bc8f04d0773aafa68beb4a8bfd49d724c0`; handoff file SHA `162ec7ae8c8e80b1f16f3ec0eb2ddf5cea5b65a938645acebcd7f0856d527014`; full StepFun guard passed; `git diff --check` passed.
