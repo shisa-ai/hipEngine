@@ -210,6 +210,7 @@ class Qwen35GGUFMTPDraftSpec:
     hidden_size: int
     vocab_size: int
     eh_proj_shape: tuple[int, ...]
+    tensor_shapes: Mapping[str, tuple[int, ...]]
     embed_tokens_tensor: str
     shared_head_tensor: str
     shared_head_norm_tensor: str
@@ -221,6 +222,9 @@ class Qwen35GGUFMTPDraftSpec:
             "hidden_size": self.hidden_size,
             "vocab_size": self.vocab_size,
             "eh_proj_shape": list(self.eh_proj_shape),
+            "tensor_shapes": {
+                slot: list(shape) for slot, shape in self.tensor_shapes.items()
+            },
             "embed_tokens_tensor": self.embed_tokens_tensor,
             "shared_head_tensor": self.shared_head_tensor,
             "shared_head_norm_tensor": self.shared_head_norm_tensor,
@@ -493,19 +497,19 @@ def build_qwen35_gguf_mtp_draft_specs(
     hidden = config.hidden_size
     vocab = config.vocab_size
     for block_map in block_maps:
-        errors.extend(
-            _mtp_draft_shape_errors(
-                block_map,
-                hidden_size=hidden,
-                vocab_size=vocab,
-            )
-        )
+        errors.extend(_mtp_draft_shape_errors(block_map, config=config))
         specs.append(
             Qwen35GGUFMTPDraftSpec(
                 layer_id=block_map.layer_id,
                 hidden_size=hidden,
                 vocab_size=vocab,
                 eh_proj_shape=block_map.tensor("nextn.eh_proj").shape,
+                tensor_shapes=MappingProxyType(
+                    {
+                        slot: block_map.tensor(slot).shape
+                        for slot in _mtp_draft_expected_shapes(config)
+                    }
+                ),
                 embed_tokens_tensor=block_map.tensor("nextn.embed_tokens").name,
                 shared_head_tensor=block_map.tensor("nextn.shared_head_head").name,
                 shared_head_norm_tensor=block_map.tensor("nextn.shared_head_norm").name,
@@ -555,19 +559,10 @@ def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPB
 def _mtp_draft_shape_errors(
     block_map: Qwen35GGUFMTPBlockMap,
     *,
-    hidden_size: int,
-    vocab_size: int,
+    config: Qwen35GGUFConfig,
 ) -> list[str]:
-    expected = {
-        "nextn.eh_proj": (hidden_size, hidden_size * 2),
-        "nextn.enorm": (hidden_size,),
-        "nextn.hnorm": (hidden_size,),
-        "nextn.shared_head_norm": (hidden_size,),
-        "nextn.embed_tokens": (vocab_size, hidden_size),
-        "nextn.shared_head_head": (vocab_size, hidden_size),
-    }
     errors: list[str] = []
-    for slot, shape in expected.items():
+    for slot, shape in _mtp_draft_expected_shapes(config).items():
         actual = block_map.tensor(slot).shape
         if actual != shape:
             errors.append(
@@ -575,6 +570,71 @@ def _mtp_draft_shape_errors(
                 f"has shape {actual}, expected {shape}"
             )
     return errors
+
+
+def _mtp_draft_expected_shapes(config: Qwen35GGUFConfig) -> dict[str, tuple[int, ...]]:
+    hidden = config.hidden_size
+    vocab = config.vocab_size
+    attention_width = _attention_output_width(config)
+    shapes: dict[str, tuple[int, ...]] = {
+        "attn_norm": (hidden,),
+        "post_attention_norm": (hidden,),
+        "attn_q": (2 * config.head_count * config.key_length, hidden),
+        "attn_k": (config.head_count_kv * config.key_length, hidden),
+        "attn_v": (config.head_count_kv * config.value_length, hidden),
+        "attn_output": (hidden, attention_width),
+        "attn_q_norm": (config.key_length,),
+        "attn_k_norm": (config.key_length,),
+        "nextn.eh_proj": (hidden, hidden * 2),
+        "nextn.enorm": (hidden,),
+        "nextn.hnorm": (hidden,),
+        "nextn.shared_head_norm": (hidden,),
+        "nextn.embed_tokens": (vocab, hidden),
+        "nextn.shared_head_head": (vocab, hidden),
+    }
+    if config.is_moe:
+        shapes.update(
+            {
+                "ffn_gate_inp": (config.expert_count, hidden),
+                "ffn_gate_inp_shexp": (hidden,),
+                "ffn_gate_exps": (
+                    config.expert_count,
+                    config.expert_feed_forward_length,
+                    hidden,
+                ),
+                "ffn_up_exps": (
+                    config.expert_count,
+                    config.expert_feed_forward_length,
+                    hidden,
+                ),
+                "ffn_down_exps": (
+                    config.expert_count,
+                    hidden,
+                    config.expert_feed_forward_length,
+                ),
+                "ffn_gate_shexp": (
+                    config.expert_shared_feed_forward_length,
+                    hidden,
+                ),
+                "ffn_up_shexp": (
+                    config.expert_shared_feed_forward_length,
+                    hidden,
+                ),
+                "ffn_down_shexp": (
+                    hidden,
+                    config.expert_shared_feed_forward_length,
+                ),
+            }
+        )
+    else:
+        shapes.update(
+            {
+                "ffn_gate": (config.feed_forward_length, hidden),
+                "ffn_up": (config.feed_forward_length, hidden),
+                "ffn_down": (hidden, config.feed_forward_length),
+            }
+        )
+    return shapes
 
 
 def _build_layer_map(
@@ -735,7 +795,7 @@ def _shape_errors(config: Qwen35GGUFConfig, actual: Mapping[str, GGUFTensorInfo]
                     f"{prefix}.attn_q.weight": (2 * config.head_count * config.key_length, config.hidden_size),
                     f"{prefix}.attn_k.weight": (config.head_count_kv * config.key_length, config.hidden_size),
                     f"{prefix}.attn_v.weight": (config.head_count_kv * config.value_length, config.hidden_size),
-                    f"{prefix}.attn_output.weight": (config.hidden_size, config.ssm_inner_size),
+                    f"{prefix}.attn_output.weight": (config.hidden_size, _attention_output_width(config)),
                     f"{prefix}.attn_q_norm.weight": (config.key_length,),
                     f"{prefix}.attn_k_norm.weight": (config.key_length,),
                 }
@@ -754,6 +814,10 @@ def _mtp_required_tensor_names(config: Qwen35GGUFConfig, layer_id: int) -> tuple
         f"blk.{layer_id}.{suffix}" for suffix in _MTP_NEXTN_REQUIRED_SLOTS.values()
     )
     return tuple(dict.fromkeys(names))
+
+
+def _attention_output_width(config: Qwen35GGUFConfig) -> int:
+    return config.head_count * config.value_length
 
 
 def _linear_qkv_width(config: Qwen35GGUFConfig) -> int:

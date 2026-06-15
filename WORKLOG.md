@@ -93736,3 +93736,62 @@ Validation:
 - Prompt verifier passed: torch-free NumPy CPU-reference fix only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, KVLiveSpans
   reminder preserved, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF full draft tensor shape contract
+
+Implemented `mtp-gguf` multiloop iteration 26: extended the loader-side
+Qwen35 GGUF MTP draft spec from NextN-only shape checks to the full tensor set
+needed to feed one draft-only NextN layer CPU oracle.
+
+Scope note:
+- This is metadata/shape validation only. It does not materialize weights, alter
+  runtime generation, dispatch GPU kernels, or change KV paths.
+- Runtime attention/KV-write work still must use the KVLiveSpans paged-KV ABI;
+  this contract fails early before runtime work if GGUF tensor shapes do not
+  match the CPU-oracle/runtime expectations.
+
+Evidence:
+- Real GGUF smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... build_qwen35_gguf_mtp_draft_specs(GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf').info) ... PY`
+  passed and reported:
+  - `attn_q (8192, 2048)`
+  - `attn_k (512, 2048)`
+  - `attn_v (512, 2048)`
+  - `attn_output (2048, 4096)`
+  - `attn_q_norm (256,)`
+  - `ffn_gate_exps (256, 512, 2048)`
+  - `ffn_down_shexp (2048, 512)`
+  - `nextn.eh_proj (2048, 4096)`
+  - `nextn.shared_head_head (248320, 2048)` via target fallback.
+- llama.cpp source check:
+  `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '624,735p'`
+  confirms the same attention, routed-MoE/shared-expert, and shared-head tensor
+  groups used by the contract.
+
+Changes:
+- Added `tensor_shapes` to `Qwen35GGUFMTPDraftSpec` plus `as_dict()` emission.
+- Added `_mtp_draft_expected_shapes(config)` covering:
+  - attention norms/projections/qk norms with `attn_output` width
+    `head_count * value_length`;
+  - MoE router, expert gate/up/down, shared expert gate/up/down;
+  - NextN `eh_proj`/`enorm`/`hnorm` and shared-head fallback slots.
+- Updated MTP draft spec validation to check all of those slots before returning
+  specs.
+- Updated the existing full-attention shape check to use the same
+  `head_count * value_length` helper for `attn_output`.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` with the full synthetic
+  tensor-shape contract and a bad `attn_output` rejection fixture.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `21` selected tests (`15` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `12` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata change only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.

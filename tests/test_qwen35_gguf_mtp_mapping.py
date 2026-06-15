@@ -139,6 +139,31 @@ def test_qwen35moe_gguf_mtp_draft_spec_uses_target_fallback_shapes() -> None:
     assert spec.hidden_size == 8
     assert spec.vocab_size == 11
     assert spec.eh_proj_shape == (8, 16)
+    assert dict(spec.tensor_shapes) == {
+        "attn_norm": (8,),
+        "post_attention_norm": (8,),
+        "attn_q": (16, 8),
+        "attn_k": (4, 8),
+        "attn_v": (4, 8),
+        "attn_output": (8, 8),
+        "attn_q_norm": (4,),
+        "attn_k_norm": (4,),
+        "nextn.eh_proj": (8, 16),
+        "nextn.enorm": (8,),
+        "nextn.hnorm": (8,),
+        "nextn.shared_head_norm": (8,),
+        "nextn.embed_tokens": (11, 8),
+        "nextn.shared_head_head": (11, 8),
+        "ffn_gate_inp": (3, 8),
+        "ffn_gate_inp_shexp": (8,),
+        "ffn_gate_exps": (3, 5, 8),
+        "ffn_up_exps": (3, 5, 8),
+        "ffn_down_exps": (3, 8, 5),
+        "ffn_gate_shexp": (6, 8),
+        "ffn_up_shexp": (6, 8),
+        "ffn_down_shexp": (8, 6),
+    }
+    assert spec.as_dict()["tensor_shapes"]["attn_output"] == [8, 8]
     assert spec.embed_tokens_tensor == "token_embd.weight"
     assert spec.shared_head_tensor == "output.weight"
     assert spec.shared_head_norm_tensor == "blk.2.nextn.shared_head_norm.weight"
@@ -171,6 +196,18 @@ def test_qwen35moe_gguf_mtp_draft_spec_rejects_bad_nextn_shape() -> None:
     with pytest.raises(
         MissingGGUFTensorError,
         match="nextn\\.eh_proj has shape \\(8, 8\\), expected \\(8, 16\\)",
+    ):
+        build_qwen35_gguf_mtp_draft_specs(info)
+
+
+def test_qwen35moe_gguf_mtp_draft_spec_rejects_bad_attention_shape() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[_tensor("blk.2.attn_output.weight", (8, 16))],
+    )
+
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="attn_output has shape \\(8, 16\\), expected \\(8, 8\\)",
     ):
         build_qwen35_gguf_mtp_draft_specs(info)
 
@@ -293,7 +330,7 @@ def _full_attention_tensors(layer_id: int) -> list[GGUFTensorInfo]:
         _tensor(f"{prefix}.attn_q.weight", (16, 8)),
         _tensor(f"{prefix}.attn_k.weight", (4, 8)),
         _tensor(f"{prefix}.attn_v.weight", (4, 8)),
-        _tensor(f"{prefix}.attn_output.weight", (8, 16)),
+        _tensor(f"{prefix}.attn_output.weight", (8, 8)),
         _tensor(f"{prefix}.attn_q_norm.weight", (4,)),
         _tensor(f"{prefix}.attn_k_norm.weight", (4,)),
     ]
