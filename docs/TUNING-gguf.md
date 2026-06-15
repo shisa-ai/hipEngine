@@ -178,6 +178,15 @@ No-hold notes:
   `1855.806 -> 1806.887 tok/s`) and both retained decode medians (`127.012 ->
   126.991 tok/s`, `115.805 -> 115.624 tok/s`). Keep the default `tile_n=32` for
   rows `>=32`.
+- **G-P2 Q8 T16 dual gate+up WMMA prefill rejected (2026-06-16).** Adding a
+  resident Q8_0 T16 dual gate+up WMMA prefill kernel/wrapper/dispatch path
+  preserved generated IDs, memory, and bit-exact focused dual-vs-single tests,
+  but regressed retained prefill (`512/128` `1647.390 -> 1621.518 tok/s`,
+  `4K/128` `1855.806 -> 1850.689 tok/s`) and the `4K/128` decode gate
+  (`115.805 -> 115.764 tok/s`) despite improving `512/128` decode
+  (`127.012 -> 127.189 tok/s`). Keep Q8_0 T16 rows>1 gate/up prefill on the
+  existing singleton WMMA path unless a tile/codegen profile proves a fused
+  variant avoids the prefill loss.
 - **G-P4 chunk-min=8192 rejected (2026-06-15).** Raising the
   auto-chunk minimum from `1025` to `8192` disabled chunking for the 4K gate and
   preserved generated IDs, but raised tracked peak (`21.335 -> 21.416 GiB`),

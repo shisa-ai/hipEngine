@@ -93994,3 +93994,25 @@ PY` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-fb7c3b72ce5c35fa/ggu
 - Result: `512/128` median prefill/decode `1593.583942 / 127.089431 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1852.881742 / 115.639946 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
 - Decision: no-hold/reverted. It preserved IDs and memory and slightly improved `512/128` decode (`127.011979 -> 127.089431 tok/s`), but regressed `512/128` prefill (`1647.389814 -> 1593.583942 tok/s`), `4K/128` prefill (`1855.806476 -> 1852.881742 tok/s`), and the retained `4K/128` decode gate (`115.804576 -> 115.639946 tok/s`); keep the byte/union `fp16_bytes_to_float` Q6 `d` load unless a disassembly-guided variant avoids the prefill/4K loss.
+
+## 2026-06-16 - GGUF G-P2 Q8T16 dual WMMA prefill no-hold
+
+Tried a G-P2 resident Q8_0 T16 dual gate+up WMMA prefill path: added a fused
+concat-output T16 dual WMMA prefill kernel/wrapper/registry key and routed
+`launch_gguf_linear_pair_concat()` rows>1 Q8T16 gate/up prefill through it with
+`tile_m=16`, `tile_n=32`. The goal was to reduce dense Q8_0 WMMA prefill launch
+and dispatch overhead versus two singleton T16 WMMA prefill launches while
+preserving per-side accumulation order and the existing resident T16 layout.
+The candidate code was reverted after measurement.
+
+Validation and outcome:
+- Focused correctness/dispatch: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py tests/test_gguf_linear_dispatch.py -q -k 'dual_prefill or t16_pair_concat_routes_q8_shared_gate_up_to_wmma_prefill_when_enabled or registry_and_build_plan'` -> `9 passed`.
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import build_gguf_q8_0_t16_prefill
+artifact = build_gguf_q8_0_t16_prefill(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_prefill-f45276cf22bd6a03/gguf_q8_0_t16_prefill.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8t16-dual-wmma-prefill.json`.
+- Result: `512/128` median prefill/decode `1621.517799 / 127.188882 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.688664 / 115.764465 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. The fused path preserved IDs, memory, and focused bit-exact dual-vs-single tests, and improved `512/128` decode (`127.011979 -> 127.188882 tok/s`), but regressed retained prefill (`512/128` `1647.389814 -> 1621.517799 tok/s`, `4K/128` `1855.806476 -> 1850.688664 tok/s`) plus the retained `4K/128` decode gate (`115.804576 -> 115.764465 tok/s`). Keep Q8_0 T16 rows>1 gate/up prefill on the existing singleton WMMA path unless a tile/codegen profile proves a fused variant avoids the prefill loss.
