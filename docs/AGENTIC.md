@@ -1556,8 +1556,10 @@ Current state:
   `patternProperties` / `required` / `additionalProperties=false` or a
   supported subschema / `minProperties` / `maxProperties`, array `items` /
   `minItems` / `maxItems` / `uniqueItems`, string `minLength` / `maxLength` /
-  `pattern`, and numeric min/max / `multipleOf` bounds. Array `uniqueItems`
-  uses JSON value equality after generation. String `pattern` and object
+  `pattern`, and numeric min/max / `multipleOf` bounds. `enum`, `const`, and
+  array `uniqueItems` use JSON-typed value equality after generation, so
+  booleans are distinct from numbers while numeric `1` and `1.0` compare equal.
+  String `pattern` and object
   `patternProperties` use Python regular-expression search semantics after
   generation, and invalid regexes are rejected before generation. Numeric
   `multipleOf` uses decimal divisibility semantics after generation, and invalid
@@ -1690,8 +1692,9 @@ Current code reality:
   blocks, required/extra arguments, scalar types, `enum`, `const`, nested
   objects, object property-count bounds, object-valued additional-property
   schemas, pattern-property schemas, arrays, array length bounds, string length
-  bounds/patterns, array uniqueness, numeric bounds/multiples, and schema
-  composition with `allOf` / `anyOf` / `oneOf` / `not`;
+  bounds/patterns, JSON-typed `enum`/`const`/array uniqueness,
+  numeric bounds/multiples, and schema composition with `allOf` / `anyOf` /
+  `oneOf` / `not`;
 - strict schemas reject unsupported validation keywords before generation rather
   than silently ignoring constraints;
 - decode-time schema constraints and retry/repair remain future grammar work.

@@ -5084,6 +5084,56 @@ def test_completions_response_format_json_schema_validates_unique_items() -> Non
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_json_schema_uses_json_typed_equality() -> None:
+    schema = {
+        "name": "agent_result",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "const_num": {"const": 1},
+                "enum_num": {"enum": [1]},
+                "mixed": {"type": "array", "uniqueItems": True},
+            },
+            "required": ["const_num", "enum_num", "mixed"],
+            "additionalProperties": False,
+        },
+    }
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"const_num":1,"enum_num":1,"mixed":[true,1,"1"]}']),
+        )
+    )
+    invalid_outputs = [
+        '{"const_num":true,"enum_num":1,"mixed":[true,1,"1"]}',
+        '{"const_num":1,"enum_num":true,"mixed":[true,1,"1"]}',
+        '{"const_num":1,"enum_num":1,"mixed":[1,1.0]}',
+    ]
+
+    valid = valid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"const_num":1,"enum_num":1,"mixed":[true,1,"1"]}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    for generated in invalid_outputs:
+        invalid = TestClient(
+            create_app(
+                ServerConfig(model="fake-path", served_model_name="fake-model"),
+                llm=FakeLLM(outputs=[generated]),
+            )
+        ).post("/v1/completions", json=payload)
+        assert invalid.status_code == 200
+        invalid_choice = invalid.json()["choices"][0]
+        assert invalid_choice["text"] == ""
+        assert invalid_choice["finish_reason"] == "stop"
+        assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_json_schema_validates_composition_keywords() -> None:
     schema = {
         "name": "agent_result",
@@ -9550,6 +9600,64 @@ def test_chat_completion_strict_tool_schema_validates_unique_items() -> None:
         "messages": [{"role": "user", "content": "record tags"}],
         "tools": tools,
     }
+
+    valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
+    invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["finish_reason"] == "tool_calls"
+    assert valid_choice["finish_details"]["reason"] == "tool_calls"
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "tool_calls" not in invalid_choice["message"]
+
+
+def test_chat_completion_strict_tool_schema_uses_json_typed_equality() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "record",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "const_num": {"const": 1},
+                        "enum_num": {"enum": [1]},
+                        "mixed": {"type": "array", "uniqueItems": True},
+                    },
+                    "required": ["const_num", "enum_num", "mixed"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "record result"}],
+        "tools": tools,
+    }
+    valid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=[
+                '<tool_call>{"name":"record","arguments":{"const_num":1,"enum_num":1,'
+                '"mixed":[true,1,"1"]}}</tool_call>'
+            ]
+        ),
+    )
+    invalid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=[
+                '<tool_call>{"name":"record","arguments":{"const_num":true,"enum_num":1,'
+                '"mixed":[true,1,"1"]}}</tool_call>'
+            ]
+        ),
+    )
 
     valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
     invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)

@@ -9758,9 +9758,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
 
 def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> str | None:
     enum = schema.get("enum")
-    if isinstance(enum, Sequence) and not isinstance(enum, (str, bytes)) and value not in enum:
+    if (
+        isinstance(enum, Sequence)
+        and not isinstance(enum, (str, bytes))
+        and not any(_schema_json_values_equal(value, item) for item in enum)
+    ):
         return f"{path} is not one of the allowed enum values"
-    if "const" in schema and value != schema.get("const"):
+    if "const" in schema and not _schema_json_values_equal(value, schema.get("const")):
         return f"{path} does not match const"
     expected = schema.get("type")
     if expected is not None and not _json_schema_type_matches(value, expected):
@@ -9952,9 +9956,46 @@ def _schema_number_is_multiple_of(value: Any, multiple_of: Any) -> bool:
 def _schema_array_items_unique(values: Sequence[Any]) -> bool:
     for index, item in enumerate(values):
         for other in values[index + 1 :]:
-            if item == other:
+            if _schema_json_values_equal(item, other):
                 return False
     return True
+
+
+def _schema_json_values_equal(left: Any, right: Any) -> bool:
+    left_kind = _schema_json_value_kind(left)
+    right_kind = _schema_json_value_kind(right)
+    if left_kind != right_kind:
+        return False
+    if left_kind == "number":
+        left_number = _schema_decimal_number(left)
+        right_number = _schema_decimal_number(right)
+        return left_number is not None and right_number is not None and left_number == right_number
+    if left_kind == "array":
+        return len(left) == len(right) and all(
+            _schema_json_values_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    if left_kind == "object":
+        if set(left.keys()) != set(right.keys()):
+            return False
+        return all(_schema_json_values_equal(left[key], right[key]) for key in left)
+    return left == right
+
+
+def _schema_json_value_kind(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if _schema_decimal_number(value) is not None:
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, Mapping):
+        return "object"
+    return "unknown"
 
 
 def _json_schema_type_matches(value: Any, expected: Any) -> bool:

@@ -470,8 +470,10 @@ schema composition with `allOf` / `anyOf` / `oneOf` / `not`, object
 `additionalProperties: false` or a schema / `minProperties` / `maxProperties`,
 array `items` with `minItems` / `maxItems`, `uniqueItems`, string `minLength` /
 `maxLength` / `pattern`, and numeric `minimum` / `maximum` /
-`exclusiveMinimum` / `exclusiveMaximum` / `multipleOf`. Array `uniqueItems`
-uses JSON value equality after generation. String `pattern` and object
+`exclusiveMinimum` / `exclusiveMaximum` / `multipleOf`. `enum`, `const`, and
+array `uniqueItems` use JSON-typed value equality after generation, so booleans
+are distinct from numbers while numeric `1` and `1.0` compare equal. String
+`pattern` and object
 `patternProperties` use Python regular-expression search semantics after
 generation, and invalid regexes are rejected before generation. Numeric
 `multipleOf` uses decimal divisibility semantics after generation, and
