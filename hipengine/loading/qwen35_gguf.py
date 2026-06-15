@@ -203,6 +203,32 @@ class Qwen35GGUFMTPBlockMap:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPDraftSpec:
+    """Shape contract for draft-only GGUF NextN execution."""
+
+    layer_id: int
+    hidden_size: int
+    vocab_size: int
+    eh_proj_shape: tuple[int, ...]
+    embed_tokens_tensor: str
+    shared_head_tensor: str
+    shared_head_norm_tensor: str
+    fallback_slots: Mapping[str, str]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "layer_id": self.layer_id,
+            "hidden_size": self.hidden_size,
+            "vocab_size": self.vocab_size,
+            "eh_proj_shape": list(self.eh_proj_shape),
+            "embed_tokens_tensor": self.embed_tokens_tensor,
+            "shared_head_tensor": self.shared_head_tensor,
+            "shared_head_norm_tensor": self.shared_head_norm_tensor,
+            "fallback_slots": dict(self.fallback_slots),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFLayerMap:
     """Canonical tensor slots for one Qwen3.5 GGUF layer."""
 
@@ -453,6 +479,46 @@ def build_qwen35_gguf_mtp_block_maps(
     return tuple(maps)
 
 
+def build_qwen35_gguf_mtp_draft_specs(
+    info: GGUFModelInfo,
+    *,
+    strict: bool = True,
+) -> tuple[Qwen35GGUFMTPDraftSpec, ...]:
+    """Return NextN draft shape specs for trailing MTP blocks."""
+
+    config = qwen35_gguf_config_from_metadata(info)
+    block_maps = build_qwen35_gguf_mtp_block_maps(info, strict=strict)
+    specs: list[Qwen35GGUFMTPDraftSpec] = []
+    errors: list[str] = []
+    hidden = config.hidden_size
+    vocab = config.vocab_size
+    for block_map in block_maps:
+        errors.extend(
+            _mtp_draft_shape_errors(
+                block_map,
+                hidden_size=hidden,
+                vocab_size=vocab,
+            )
+        )
+        specs.append(
+            Qwen35GGUFMTPDraftSpec(
+                layer_id=block_map.layer_id,
+                hidden_size=hidden,
+                vocab_size=vocab,
+                eh_proj_shape=block_map.tensor("nextn.eh_proj").shape,
+                embed_tokens_tensor=block_map.tensor("nextn.embed_tokens").name,
+                shared_head_tensor=block_map.tensor("nextn.shared_head_head").name,
+                shared_head_norm_tensor=block_map.tensor("nextn.shared_head_norm").name,
+                fallback_slots=block_map.fallback_slots,
+            )
+        )
+    if errors:
+        preview = "; ".join(errors[:6])
+        more = "" if len(errors) <= 6 else f" (+{len(errors) - 6} more)"
+        raise MissingGGUFTensorError(f"MTP draft shape errors: {preview}{more}")
+    return tuple(specs)
+
+
 def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPBlockInventory, ...]:
     """Validate required trailing GGUF MTP/NextN tensor metadata.
 
@@ -484,6 +550,31 @@ def validate_qwen35_gguf_mtp_blocks(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPB
     if errors:
         raise MissingGGUFTensorError("; ".join(errors))
     return inventories
+
+
+def _mtp_draft_shape_errors(
+    block_map: Qwen35GGUFMTPBlockMap,
+    *,
+    hidden_size: int,
+    vocab_size: int,
+) -> list[str]:
+    expected = {
+        "nextn.eh_proj": (hidden_size, hidden_size * 2),
+        "nextn.enorm": (hidden_size,),
+        "nextn.hnorm": (hidden_size,),
+        "nextn.shared_head_norm": (hidden_size,),
+        "nextn.embed_tokens": (vocab_size, hidden_size),
+        "nextn.shared_head_head": (vocab_size, hidden_size),
+    }
+    errors: list[str] = []
+    for slot, shape in expected.items():
+        actual = block_map.tensor(slot).shape
+        if actual != shape:
+            errors.append(
+                f"MTP block {block_map.layer_id} slot {slot} "
+                f"has shape {actual}, expected {shape}"
+            )
+    return errors
 
 
 def _build_layer_map(
@@ -686,6 +777,7 @@ __all__ = [
     "Qwen35GGUFMappingValidation",
     "Qwen35GGUFModelMap",
     "build_qwen35_gguf_mtp_block_maps",
+    "build_qwen35_gguf_mtp_draft_specs",
     "build_qwen35_gguf_tensor_map",
     "qwen35_gguf_config_from_metadata",
     "qwen35_gguf_mtp_block_inventories",

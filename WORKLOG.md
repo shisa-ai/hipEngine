@@ -93303,3 +93303,44 @@ Validation:
 - Prompt verifier passed: metadata-only MTP tensor map resolution, no torch
   hot-path import, no backend/quant dispatch branches, no attention/KV/runtime
   behavior changes, no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF draft shape spec
+
+Implemented `mtp-gguf` multiloop iteration 16: a metadata-only NextN draft shape
+contract derived from the resolved trailing MTP block tensor map.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftSpec`.
+  - Records MTP layer id, hidden size, vocab size, `eh_proj` shape, effective
+    embed/head/head-norm tensor names, and optional fallback slots.
+- Added `build_qwen35_gguf_mtp_draft_specs(info, strict=True)`.
+  - Validates `nextn.eh_proj` shape `(hidden, 2*hidden)`.
+  - Validates `nextn.enorm`, `nextn.hnorm`, and `nextn.shared_head_norm` shapes
+    `(hidden,)`.
+  - Validates effective embed/head shapes `(vocab, hidden)`, including target
+    fallbacks when optional NextN tensors are absent.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` for fallback-shape success,
+  present optional preference, and bad `nextn.eh_proj` shape rejection.
+
+Real GGUF smoke:
+- Command: `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import build_qwen35_gguf_mtp_draft_specs
+p='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(p)
+(spec,)=build_qwen35_gguf_mtp_draft_specs(r.info)
+print(spec.as_dict())
+PY`
+- Result: layer `40`, hidden `2048`, vocab `248320`, `eh_proj_shape=[2048,
+  4096]`, embed fallback `token_embd.weight`, head fallback `output.weight`,
+  head norm `blk.40.nextn.shared_head_norm.weight`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- MTP draft spec tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `11` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py`.
+- Prompt verifier passed: metadata-only NextN draft shape/spec validation, no
+  torch hot-path import, no backend/quant dispatch branches, no attention/KV /
+  runtime behavior changes, no NextN math, and no performance claims.

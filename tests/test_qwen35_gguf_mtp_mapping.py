@@ -14,6 +14,7 @@ from hipengine.loading.qwen35_gguf import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
     build_qwen35_gguf_mtp_block_maps,
+    build_qwen35_gguf_mtp_draft_specs,
     build_qwen35_gguf_tensor_map,
     qwen35_gguf_mtp_block_inventories,
     required_qwen35_gguf_tensor_names,
@@ -111,8 +112,8 @@ def test_qwen35moe_gguf_mtp_block_map_resolves_target_fallbacks() -> None:
 def test_qwen35moe_gguf_mtp_block_map_prefers_present_optional_tensors() -> None:
     info = _synthetic_qwen35moe_mtp_info(
         extra_tensors=[
-            _tensor("blk.2.nextn.embed_tokens.weight", (64, 8)),
-            _tensor("blk.2.nextn.shared_head_head.weight", (64, 8)),
+            _tensor("blk.2.nextn.embed_tokens.weight", (11, 8)),
+            _tensor("blk.2.nextn.shared_head_head.weight", (11, 8)),
         ],
     )
 
@@ -127,6 +128,51 @@ def test_qwen35moe_gguf_mtp_block_map_prefers_present_optional_tensors() -> None
         == "blk.2.nextn.shared_head_head.weight"
     )
     assert dict(block_map.fallback_slots) == {}
+
+
+def test_qwen35moe_gguf_mtp_draft_spec_uses_target_fallback_shapes() -> None:
+    info = _synthetic_qwen35moe_mtp_info()
+
+    (spec,) = build_qwen35_gguf_mtp_draft_specs(info)
+
+    assert spec.layer_id == 2
+    assert spec.hidden_size == 8
+    assert spec.vocab_size == 11
+    assert spec.eh_proj_shape == (8, 16)
+    assert spec.embed_tokens_tensor == "token_embd.weight"
+    assert spec.shared_head_tensor == "output.weight"
+    assert spec.shared_head_norm_tensor == "blk.2.nextn.shared_head_norm.weight"
+    assert dict(spec.fallback_slots) == {
+        "nextn.embed_tokens": "token_embedding",
+        "nextn.shared_head_head": "lm_head",
+    }
+
+
+def test_qwen35moe_gguf_mtp_draft_spec_prefers_present_optional_tensors() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.nextn.embed_tokens.weight", (11, 8)),
+            _tensor("blk.2.nextn.shared_head_head.weight", (11, 8)),
+        ],
+    )
+
+    (spec,) = build_qwen35_gguf_mtp_draft_specs(info)
+
+    assert spec.embed_tokens_tensor == "blk.2.nextn.embed_tokens.weight"
+    assert spec.shared_head_tensor == "blk.2.nextn.shared_head_head.weight"
+    assert dict(spec.fallback_slots) == {}
+
+
+def test_qwen35moe_gguf_mtp_draft_spec_rejects_bad_nextn_shape() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[_tensor("blk.2.nextn.eh_proj.weight", (8, 8))],
+    )
+
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="nextn\\.eh_proj has shape \\(8, 8\\), expected \\(8, 16\\)",
+    ):
+        build_qwen35_gguf_mtp_draft_specs(info)
 
 
 def test_qwen35moe_gguf_mtp_block_validation_fails_missing_required_nextn() -> None:
