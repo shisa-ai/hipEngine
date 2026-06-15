@@ -186,6 +186,12 @@ No-hold notes:
   (`115.114 -> 115.085 tok/s`) and hurt `512/128` prefill noise. Keep the Q8_0
   T16 GEMV launch-bound at `128,4` unless an occupancy/code-object census shows
   a clearer pressure problem.
+- **G-D5 Q6 launch-bound=3 rejected (2026-06-15).** Relaxing the Q6_K T16
+  lm-head GEMV from `__launch_bounds__(128, 4)` to
+  `__launch_bounds__(128, 3)` preserved generated IDs and memory, but regressed
+  both gate decode medians versus the retained selected-down lb2 row
+  (`127.012 -> 126.932 tok/s`, `115.805 -> 115.631 tok/s`). Keep Q6_K T16
+  GEMV at `128,4`.
 - **G-D5 Q6 launch-bound=2 rejected (2026-06-15).** Relaxing the Q6_K T16
   lm-head GEMV `__launch_bounds__(128, 4)` minimum-block count to `2` preserved
   generated IDs and memory, but regressed the current lb1 gate metric
