@@ -957,7 +957,10 @@ reporting.
   is the drift check for that in-tree symbol/artifact-owner map. `scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json`, currently
   `status=blocked`, because the built `llama-debug` logits-dump entrypoint (`--save-logits`,
-  `--logits-output-dir`) does not expose a special-token parsing flag for the retained prompt. `scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty`
+  `--logits-output-dir`) does not expose a special-token parsing flag for the retained prompt;
+  `python3 scripts/stepfun_llamacpp_logits_preflight.py --verify-preflight --verification-status-only`
+  is the drift check for the blocked/ready preflight, missing-evidence, CLI-help, and same-prompt logits-artifact
+  presence metadata. `scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json`, now planning the future helper as an explicit `--token-ids` invocation with the retained prompt IDs, currently
   `status=blocked` with missing evidence `llama_debug_retained_token_ids_input_present` because the built helper still lacks that input path.
   `scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty` retains

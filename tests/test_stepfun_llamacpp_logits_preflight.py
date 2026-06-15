@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_llamacpp_logits_preflight import (
     build_llamacpp_logits_preflight,
     main,
+    verify_llamacpp_logits_preflight,
 )
 
 
@@ -308,3 +313,112 @@ def test_stepfun_llamacpp_logits_preflight_cli_compact_modes(tmp_path: Path) -> 
         "llama_cpp_logits_dump_entrypoint_identified",
         "llama_cpp_same_prompt_special_token_support_present",
     ]
+
+
+def test_stepfun_llamacpp_logits_preflight_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    manifest, source_map, margin, fake_cli, logits_artifact = _write_inputs(
+        tmp_path,
+        help_text="--save-logits --logits-output-dir PATH --logit-bias TOKEN",
+    )
+    artifact = tmp_path / "preflight.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--next-action-manifest",
+        str(manifest),
+        "--source-map-artifact",
+        str(source_map),
+        "--host-logit-margin-artifact",
+        str(margin),
+        "--llama-logits-artifact",
+        str(logits_artifact),
+        "--llama-cli",
+        str(fake_cli),
+        "--artifact-date",
+        "2030-01-31",
+    ]
+    current = build_llamacpp_logits_preflight(
+        next_action_manifest=manifest,
+        source_map_artifact=source_map,
+        host_logit_margin_artifact=margin,
+        llama_logits_artifact=logits_artifact,
+        llama_cli=fake_cli,
+        artifact_date="2030-01-31",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_preflight(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_ready"] is False
+    assert verification["current_ready"] is False
+    assert verification["persisted_missing_evidence"] == [
+        "llama_cpp_same_prompt_logits_artifact_present",
+        "llama_cpp_same_prompt_special_token_support_present",
+    ]
+    assert verification["current_missing_evidence"] == [
+        "llama_cpp_same_prompt_logits_artifact_present",
+        "llama_cpp_same_prompt_special_token_support_present",
+    ]
+    assert verification["persisted_logits_artifact_exists"] is False
+    assert verification["current_logits_artifact_exists"] is False
+    assert verification["persisted_cli_help_status"] == "executed"
+    assert verification["current_cli_help_status"] == "executed"
+    assert verification["persisted_cli_logits_dump_flag_present"] is True
+    assert verification["current_cli_logits_dump_flag_present"] is True
+    assert verification["persisted_cli_special_token_flag_present"] is False
+    assert verification["current_cli_special_token_flag_present"] is False
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-preflight",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["missing_evidence"] = ["llama_cpp_same_prompt_logits_artifact_present"]
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_preflight(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "llamacpp_logits_preflight_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-preflight",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "llamacpp_logits_preflight_drift"
+    )

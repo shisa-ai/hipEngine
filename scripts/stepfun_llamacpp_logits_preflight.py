@@ -124,6 +124,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the artifact payload.",
     )
+    parser.add_argument(
+        "--verify-preflight",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted llama.cpp logits preflight artifact with current "
+            f"source/input/logits-probe metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-preflight, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-preflight, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-preflight, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -357,6 +383,89 @@ def build_llamacpp_logits_preflight(
     }
 
 
+def verify_llamacpp_logits_preflight(
+    preflight_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted llama.cpp logits preflight artifact with current metadata."""
+
+    persisted = _load_json_object(preflight_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_preflight_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted llama.cpp logits preflight artifact differs from current "
+                    "next-action/source-map/host-margin/CLI/logits-artifact metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    persisted_logit_artifact = persisted.get("expected_llama_logits_artifact")
+    current_logit_artifact = current_report.get("expected_llama_logits_artifact")
+    persisted_cli = persisted.get("llama_cli_probe")
+    current_cli = current_report.get("llama_cli_probe")
+    return {
+        "schema_version": 1,
+        "artifact_path": str(preflight_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_ready": persisted.get("ready"),
+        "current_ready": current_report.get("ready"),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+        "persisted_logits_artifact_exists": (
+            persisted_logit_artifact.get("exists")
+            if isinstance(persisted_logit_artifact, dict)
+            else None
+        ),
+        "current_logits_artifact_exists": (
+            current_logit_artifact.get("exists")
+            if isinstance(current_logit_artifact, dict)
+            else None
+        ),
+        "persisted_cli_help_status": (
+            persisted_cli.get("help_status") if isinstance(persisted_cli, dict) else None
+        ),
+        "current_cli_help_status": (
+            current_cli.get("help_status") if isinstance(current_cli, dict) else None
+        ),
+        "persisted_cli_logits_dump_flag_present": (
+            persisted_cli.get("obvious_logits_dump_flag_present")
+            if isinstance(persisted_cli, dict)
+            else None
+        ),
+        "current_cli_logits_dump_flag_present": (
+            current_cli.get("obvious_logits_dump_flag_present")
+            if isinstance(current_cli, dict)
+            else None
+        ),
+        "persisted_cli_special_token_flag_present": (
+            persisted_cli.get("same_prompt_special_token_flag_present")
+            if isinstance(persisted_cli, dict)
+            else None
+        ),
+        "current_cli_special_token_flag_present": (
+            current_cli.get("same_prompt_special_token_flag_present")
+            if isinstance(current_cli, dict)
+            else None
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -370,6 +479,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         help_timeout_s=args.help_timeout_s,
         artifact_date=args.artifact_date,
     )
+    if args.verify_preflight is not None:
+        verification = verify_llamacpp_logits_preflight(
+            args.verify_preflight,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = report["status"]
     elif args.missing_evidence_only:
