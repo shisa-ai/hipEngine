@@ -9,6 +9,7 @@ from hipengine.kernels.cpu_reference import (
     qwen35_gguf_mtp_eh_proj,
     qwen35_gguf_mtp_ffn_sublayer,
     qwen35_gguf_mtp_moe_routing,
+    qwen35_gguf_mtp_nextn_layer_logits,
     qwen35_gguf_mtp_shared_head_logits,
 )
 from hipengine.kernels.registry import resolve
@@ -390,6 +391,119 @@ def test_qwen35_gguf_mtp_ffn_sublayer_validates_norm_shape() -> None:
         )
 
 
+def test_qwen35_gguf_mtp_nextn_layer_logits_composes_pinned_sublayers() -> None:
+    hidden_seed = np.asarray([[0.2, -0.4]], dtype=np.float32)
+    token_embedding = np.asarray([[0.3, 0.1]], dtype=np.float32)
+    hnorm = np.asarray([1.0, 1.5], dtype=np.float32)
+    enorm = np.asarray([0.5, 2.0], dtype=np.float32)
+    # Keep the hidden width fixed, as llama.cpp's eh_proj maps [e_norm, h_norm]
+    # back to the model hidden dimension.
+    eh_proj = np.asarray(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    attn_norm = np.ones((2,), dtype=np.float32)
+    q_norm = np.ones((2,), dtype=np.float32)
+    k_norm = np.ones((2,), dtype=np.float32)
+    wq = np.zeros((4, 2), dtype=np.float32)
+    # One head: [Q_head, gate_head]. With a single visible token, gate rows pin
+    # that the composed helper calls the attention sublayer in the llama.cpp order.
+    wq[2, 0] = 1.0
+    wq[3, 1] = -1.0
+    wk = np.zeros((2, 2), dtype=np.float32)
+    wv = np.eye(2, dtype=np.float32)
+    wo = np.eye(2, dtype=np.float32)
+
+    attn_post_norm = np.ones((2,), dtype=np.float32)
+    router = np.asarray([[1.0, 0.0], [0.0, -1.0]], dtype=np.float32)
+    gate_q = np.stack([np.eye(2, dtype=np.float32), 0.5 * np.eye(2, dtype=np.float32)]).astype(np.float32)
+    up_q = np.stack([0.25 * np.eye(2, dtype=np.float32), np.eye(2, dtype=np.float32)]).astype(np.float32)
+    down_q = np.stack([np.eye(2, dtype=np.float32), 2.0 * np.eye(2, dtype=np.float32)]).astype(np.float32)
+    shared_gate_logit = np.asarray([0.75, -0.25], dtype=np.float32)
+    shared_gate_q = np.eye(2, dtype=np.float32)
+    shared_up_q = 0.5 * np.eye(2, dtype=np.float32)
+    shared_down_q = np.eye(2, dtype=np.float32)
+    shared_norm = np.asarray([1.0, 1.25], dtype=np.float32)
+    shared_head = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, -1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    logits = qwen35_gguf_mtp_nextn_layer_logits(
+        hidden_seed,
+        token_embedding,
+        eh_proj,
+        hnorm,
+        enorm,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        attn_post_norm,
+        router,
+        gate_q,
+        up_q,
+        down_q,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        shared_gate_logit,
+        shared_gate_q,
+        shared_up_q,
+        shared_down_q,
+        GGMLQuantizationType.F32,
+        shared_norm,
+        shared_head,
+        num_heads=1,
+        num_kv_heads=1,
+        experts_used=1,
+    )
+
+    projected = qwen35_gguf_mtp_eh_proj(hidden_seed, token_embedding, eh_proj, hnorm, enorm)
+    attended = qwen35_gguf_mtp_attention_sublayer(
+        projected,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        num_heads=1,
+        num_kv_heads=1,
+    )
+    ffn_out = qwen35_gguf_mtp_ffn_sublayer(
+        attended,
+        attn_post_norm,
+        router,
+        gate_q,
+        up_q,
+        down_q,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        shared_gate_logit,
+        shared_gate_q,
+        shared_up_q,
+        shared_down_q,
+        GGMLQuantizationType.F32,
+        experts_used=1,
+    )
+    expected = qwen35_gguf_mtp_shared_head_logits(ffn_out, shared_norm, shared_head)
+    np.testing.assert_allclose(logits, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
 def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     eh_proj = resolve(
         backend="cpu_reference",
@@ -427,6 +541,12 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
         quant="gguf_moe",
         variant="qwen35_shared",
     )
+    nextn_layer = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_layer",
+        quant="gguf_moe",
+        variant="qwen35_dense_logits",
+    )
 
     assert eh_proj is qwen35_gguf_mtp_eh_proj
     assert shared_head is qwen35_gguf_mtp_shared_head_logits
@@ -434,3 +554,4 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     assert attention is qwen35_gguf_mtp_attention_sublayer
     assert moe_routing is qwen35_gguf_mtp_moe_routing
     assert ffn is qwen35_gguf_mtp_ffn_sublayer
+    assert nextn_layer is qwen35_gguf_mtp_nextn_layer_logits

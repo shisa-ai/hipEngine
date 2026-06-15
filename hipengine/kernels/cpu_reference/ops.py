@@ -564,6 +564,114 @@ def qwen35_gguf_mtp_ffn_sublayer(
     )
 
 
+def qwen35_gguf_mtp_nextn_layer_logits(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    attn_norm_weight: ArrayLike,
+    wq_weight: ArrayLike,
+    wk_weight: ArrayLike,
+    wv_weight: ArrayLike,
+    wo_weight: ArrayLike,
+    q_norm_weight: ArrayLike,
+    k_norm_weight: ArrayLike,
+    attn_post_norm_weight: ArrayLike,
+    router_weight: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    shared_gate_logit_weight: ArrayLike,
+    shared_gate_qweight: ArrayLike,
+    shared_up_qweight: ArrayLike,
+    shared_down_qweight: ArrayLike,
+    shared_qtype: GGMLQuantizationType,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    *,
+    num_heads: int,
+    num_kv_heads: int,
+    experts_used: int,
+    positions: ArrayLike | None = None,
+    context_counts: ArrayLike | None = None,
+    key_cache: ArrayLike | None = None,
+    value_cache: ArrayLike | None = None,
+    rope_cos: ArrayLike | None = None,
+    rope_sin: ArrayLike | None = None,
+    rotary_dim: int | None = None,
+    scale: float | None = None,
+    expert_weights_scale: float = 1.0,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for one dense Qwen35 GGUF MTP NextN draft layer.
+
+    The composition follows the llama.cpp draft-only layer order: ``hnorm`` and
+    ``enorm`` into ``eh_proj``, MTP self-attention with the dense CPU cache,
+    post-attention MoE/shared-expert FFN, then shared-head norm plus LM head
+    logits.  This is still a CPU oracle; runtime attention/KV writes must use
+    the KVLiveSpans paged-KV ABI rather than the dense cache arguments here.
+    """
+
+    projected = qwen35_gguf_mtp_eh_proj(
+        hidden_seed,
+        token_embedding,
+        eh_proj_weight,
+        hnorm_weight,
+        enorm_weight,
+        eps=eps,
+    )
+    attended = qwen35_gguf_mtp_attention_sublayer(
+        projected,
+        attn_norm_weight,
+        wq_weight,
+        wk_weight,
+        wv_weight,
+        wo_weight,
+        q_norm_weight,
+        k_norm_weight,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        positions=positions,
+        context_counts=context_counts,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        rope_cos=rope_cos,
+        rope_sin=rope_sin,
+        rotary_dim=rotary_dim,
+        scale=scale,
+        eps=eps,
+    )
+    ffn_out = qwen35_gguf_mtp_ffn_sublayer(
+        attended,
+        attn_post_norm_weight,
+        router_weight,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        gate_qtype,
+        up_qtype,
+        down_qtype,
+        shared_gate_logit_weight,
+        shared_gate_qweight,
+        shared_up_qweight,
+        shared_down_qweight,
+        shared_qtype,
+        experts_used=experts_used,
+        expert_weights_scale=expert_weights_scale,
+        eps=eps,
+    )
+    return qwen35_gguf_mtp_shared_head_logits(
+        ffn_out,
+        shared_head_norm_weight,
+        shared_head_weight,
+        eps=eps,
+    )
+
+
 def gguf_q4_k_moe_selected_ffn(
     x: ArrayLike,
     selected_experts: ArrayLike,
@@ -1369,6 +1477,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "qwen35_gguf_mtp_attention_sublayer": qwen35_gguf_mtp_attention_sublayer,
         "qwen35_gguf_mtp_moe_routing": qwen35_gguf_mtp_moe_routing,
         "qwen35_gguf_mtp_ffn_sublayer": qwen35_gguf_mtp_ffn_sublayer,
+        "qwen35_gguf_mtp_nextn_layer_logits": qwen35_gguf_mtp_nextn_layer_logits,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1421,6 +1530,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "mtp_nextn_ffn", "gguf_moe", "qwen35_shared"),
         qwen35_gguf_mtp_ffn_sublayer,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_layer", "gguf_moe", "qwen35_dense_logits"),
+        qwen35_gguf_mtp_nextn_layer_logits,
         replace=replace,
     )
     register(

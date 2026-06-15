@@ -93631,3 +93631,55 @@ Validation:
 - Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
   registry key, no backend/quant branches, no runtime KV/dispatch path changes,
   and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference NextN layer logits scaffold
+
+Implemented `mtp-gguf` multiloop iteration 24: a torch-free CPU-reference
+composition helper for one dense Qwen35 GGUF MTP NextN draft layer.
+
+Scope note:
+- This is still a CPU oracle over a dense cache and does not alter runtime
+  dispatch, GPU kernels, generation, or KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; the dense cache arguments here are for deterministic CPU tests only.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '604,735p'`
+- Confirmed order:
+  - `hnorm(h_embd)` and `enorm(tok_embd)`.
+  - Concatenate `[e_norm, h_norm]`, then `eh_proj` back to the model hidden
+    width.
+  - MTP attention: attn RMSNorm, interleaved Q/gate split, q/k RMSNorm, RoPE,
+    attention, sigmoid gate, `wo`, residual add.
+  - MTP FFN: `attn_post_norm`, softmax top-k MoE plus gated shared expert,
+    residual add.
+  - Shared head: `nextn.shared_head_norm` else `output_norm`, then
+    `nextn.shared_head_head` else model `output`.
+
+Changes:
+- Added `qwen35_gguf_mtp_nextn_layer_logits(...)` in
+  `hipengine/kernels/cpu_reference/ops.py`.
+  - Composes the previously pinned helpers in llama.cpp order:
+    `qwen35_gguf_mtp_eh_proj(...)`, `qwen35_gguf_mtp_attention_sublayer(...)`,
+    `qwen35_gguf_mtp_ffn_sublayer(...)`, and
+    `qwen35_gguf_mtp_shared_head_logits(...)`.
+  - Explicitly documents dense CPU-cache scope and the KVLiveSpans runtime
+    requirement.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_layer", "gguf_moe", "qwen35_dense_logits")`.
+- Extended `tests/test_gguf_mtp_cpu_reference.py` with a deterministic
+  composition fixture and registry assertion.
+  - A first draft fixture incorrectly attempted to change hidden width through
+    `eh_proj`; the final test keeps the hidden width fixed, matching llama.cpp.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `14` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py`,
+  `hipengine/kernels/cpu_reference/__init__.py`, and the updated test file.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
+  registry key, no backend/quant branches, no runtime KV/dispatch path changes,
+  explicit KVLiveSpans reminder, and no performance claims.
