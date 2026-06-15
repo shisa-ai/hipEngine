@@ -93379,3 +93379,44 @@ megakernel tuning cadence. Linked the new document from `docs/README.md`.
 Validation:
 - Re-read `docs/TUNING-gguf.md` and `docs/README.md` after edits.
 - `git -C ../hipEngine-gguf-tuning diff --check -- docs/TUNING-gguf.md docs/README.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - GGUF GPU1 punchlist loop baseline
+
+Started `pi-multiloop` punchlist lane `gguf-tuning/run-20260615-103446` for
+`docs/TUNING-gguf.md`: improve Qwen3.6-35B-A3B GGUF prefill and decode toward
+local llama.cpp and PARO targets while preserving correctness and avoiding
+memory bloat. The active eval/testbed is GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`,
+24 GiB-class). Primary gates are `512/128` and `4K/128`; `128K/128` is the final
+promotion check.
+
+Setup and hardware checks:
+- `cd /home/lhl/hipEngine-gguf-tuning && git status -sb && git branch --show-current && git rev-parse --short HEAD` -> clean `gguf-tuning` at `f825ddf5` before this doc update.
+- `HIP_VISIBLE_DEVICES=1 python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"` -> `hip OK`.
+- `rocm-smi -d 1 --showmeminfo vram --showuse --showtemp` -> GPU1 total VRAM `25753026560` bytes (`23.984 GiB`), idle at start.
+
+Baseline command notes:
+- First cached run failed because `--require-cached-build` was missing `runtime_state.so`; prebuilt outside rocprof with a one-run `512/128` command without `--require-cached-build`.
+- Prebuild run included lazy build time in prefill (`512/128` `15.445` prefill tok/s) and is not a performance baseline.
+- Then reran the cached gate command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+
+GPU1 Q4_K_S gate baseline (`/tmp/hipengine-gguf-tuning-gpu1-acceptance.json`):
+- `512/128`: median prefill `1652.310818 tok/s`, median decode `125.748702 tok/s`, tracked peak `21.334858 GiB`, stable final token `220`, finite logits.
+- `4K/128`: median prefill `1857.742868 tok/s`, median decode `114.601613 tok/s`, tracked peak `21.334858 GiB`, stable final token `570`, finite logits.
+- Sampled HIP used peak `21.954102 GiB` on `23.984375 GiB` total GPU1 VRAM.
+- Multiloop primary metric `min_gate_decode_tok_s=114.601613` recorded with all configured checks passing.
+
+Guard validation:
+- `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+
+Doc update:
+- Updated `docs/TUNING-gguf.md` to make the punchlist loop explicit, switch baseline/profile examples to GPU1, record the active `512/128` + `4K/128` gate baseline, and document `128K/128` as the promotion check.
+
+G-M2 profile pass:
+- Ran a GPU1 Q4_K_S `512/16` cached-build paired `rocprofv3` capture under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-512-d16/` (prefill-only trace plus full prefill+decode trace, summarized with `scripts/qwen35_gguf_rocprof_summary.py --strip-prefill-prefix`).
+  - Prefill kernel total `289.487 ms`: selected dual Q4_K WMMA prefill `111.306 ms` (`38.45%`), dense Q8_0 WMMA prefill `54.196 ms` (`18.72%`), GDN prefill recurrent `41.706 ms` (`14.41%`).
+  - Decode kernel total `131.242 ms` / `8.203 ms/token`: dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`), selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`), other `15.307 ms` (`11.66%`), lm-head Q6 T16 `10.158 ms` (`7.74%`).
+- Ran the same paired profile for `4K/16` under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-4k-d16/`.
+  - Prefill kernel total `2104.962 ms`: selected dual Q4_K WMMA prefill `808.629 ms` (`38.42%`), GDN prefill recurrent `354.059 ms` (`16.82%`), dense Q8_0 WMMA prefill `329.123 ms` (`15.64%`), full-attn prefill `85.832 ms` (`4.08%`).
+  - Decode kernel total `137.749 ms` / `8.609 ms/token`: dense Q8_0 T16 GEMV `50.620 ms` (`36.75%`), selected dual Q4_K T16 GEMV `16.822 ms` (`12.21%`), full-attn decode `13.913 ms` (`10.10%`), lm-head Q6 T16 `10.137 ms` (`7.36%`).
+- Multiloop iteration 2 logged the profile pass. First focused code lane from evidence: `G-D2` dense Q8_0 T16 GEMV launch-bound/tile-shape audit for decode. First prefill lane after that: `G-P1` selected dual Q4_K WMMA prefill.

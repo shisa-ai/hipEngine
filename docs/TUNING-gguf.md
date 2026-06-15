@@ -2,19 +2,27 @@
 
 Date: 2026-06-15
 Branch/worktree: `gguf-tuning` / `/home/lhl/hipEngine-gguf-tuning`
-Scope: Qwen3.6-35B-A3B GGUF on W7900/gfx1100 first, with the 0.8B GGUF fixtures kept as fast correctness sentinels.
+Scope: Qwen3.6-35B-A3B GGUF on GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`, 24 GiB-class) as the active eval/testbed, with W7900 rows kept as comparison references and the 0.8B GGUF fixtures kept as fast correctness sentinels.
 
 ## Thesis
 
 Our GGUF hot path is HIP/C++ and resident-weight based. Once a model is loaded,
 there should be no structural reason for hipEngine GGUF to trail either local
-`~/llama.cpp/` or the native PARO path on the same W7900. The gap should be
+`~/llama.cpp/` or the native PARO path on the same gfx1100 GPU. The gap should be
 closed the same way the recent MTP/DFlash work moved from a slow but correct
 path to retained wins: lock a same-suite baseline, profile the exact phase that
 is slow, keep every exact non-regressive micro-win, and reject attractive
 launch-reduction ideas when the profile says they move work to a slower bucket.
 
-This file is the active GGUF-specific tuning playbook. It complements:
+This file is the active GGUF-specific tuning playbook and punchlist. The running `pi-multiloop` lane is `gguf-tuning/run-20260615-103446`; keep iteration notes here and detailed evidence in `WORKLOG.md`.
+
+Active gates:
+
+- **Primary acceptance gates:** GPU1 `512/128` and `4K/128`, measuring both prefill and decode.
+- **Promotion check:** run `128K/128` before claiming a default-path GGUF win; if GPU1 cannot fit, record the blocker and rerun on the W7900 only as an explicitly labeled fallback.
+- **Correctness/memory:** stable generated IDs/logits on the gates, targeted GGUF tests green, and no raw+packed duplicate residency or unexplained peak-memory growth.
+
+It complements:
 
 - [`GGUF.md`](GGUF.md) — loader/runtime status and GGUF format notes.
 - [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md) — T16 decode-repack layout.
@@ -32,15 +40,19 @@ Close the GGUF gap without weakening the architecture:
    Re-measure current `~/llama.cpp/` first; the README rows are comparison
    anchors, not a substitute for a fresh matched run.
 2. **Reach PARO-class decode for c=1 short/mid shapes** where quant/model
-   differences do not make the comparison meaningless. Initial target: within
-   run noise of the parent PARO c=1 W7900 rows at `512/128`, `4K/128`, and
-   `32K/128`; beat them where GGUF has simpler quant overhead than PARO.
+   differences do not make the comparison meaningless. Primary acceptance is
+   GPU1 `512/128` and `4K/128`; later promotion must also survive `128K/128`.
+   Use the parent PARO c=1 W7900 rows at `512/128`, `4K/128`, and `32K/128` as
+   target anchors, but refresh same-host PARO rows whenever they fit the active
+   device.
 3. **Keep the GGUF value proposition:** no torch hot path, no llama.cpp FFI shim
    on the hot path, no backend/quant branches in model/dispatch code, and no
    raw+packed duplicate residency in promoted paths.
-4. **Restore 24 GiB-class viability where possible.** The current W7900 Q4_K_S
-   diagnostic peaks at `25.108 GiB`; promoted consumer-card rows need a
-   specific memory plan or must be labeled W7900-only.
+4. **Restore 24 GiB-class viability where possible.** The active GPU1 Q4_K_S
+   gate baseline fits `512/128` and `4K/128` at `21.335 GiB` tracked peak
+   (`21.954 GiB` sampled HIP used), but the stale W7900 full-sweep diagnostic
+   peaked at `25.108 GiB`. Promoted consumer-card rows need a specific memory
+   plan or must be labeled W7900-only.
 
 ## Current scorecard to explain, not yet the final baseline
 
@@ -73,6 +85,48 @@ Initial read: GGUF decode is already ahead of older llama.cpp HIP rows but behin
 llama.cpp Vulkan and PARO on most c=1 decode shapes, and it uses more memory.
 That points to kernel shape/layout, dispatch mix, and residency policy rather
 than file parsing or Python host code.
+
+## Active GPU1 gate baseline
+
+Established on 2026-06-15 from `/home/lhl/hipEngine-gguf-tuning` with
+`HIP_VISIBLE_DEVICES=1`, TheRock HIP `7.13.26162-1140233ffe`, cached HIP builds,
+`Qwen3.6-35B-A3B-UD-Q4_K_S.gguf`, `HIPENGINE_GGUF_DECODE_REPACK=1`, bulk prefill,
+WMMA prefill, and GEMV decode. Raw JSON lives at
+`/tmp/hipengine-gguf-tuning-gpu1-acceptance.json`; commit only compact retained
+artifacts after a tuning candidate is accepted.
+
+| Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 512/128 | `1652.311` | `125.749` | `21.335 GiB` | `21.954 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `1857.743` | `114.602` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
+
+Configured targeted GGUF guard tests also passed (`154 passed`). The primary
+multiloop metric is the minimum gate decode rate, currently `114.602 tok/s`.
+
+## Active GPU1 profile findings
+
+G-M2 paired `rocprofv3` captures were taken on 2026-06-15 with `decode_tokens=16`
+and prefill-only traces used to strip the prefill prefix from decode traces. Raw
+CSV/summary files are under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`.
+
+| Shape | Phase | Total kernel time | Top buckets |
+| --- | --- | ---: | --- |
+| 512/16 | prefill | `289.487 ms` | selected dual Q4_K WMMA `111.306 ms` (`38.45%`); dense Q8_0 WMMA `54.196 ms` (`18.72%`); GDN prefill recurrent `41.706 ms` (`14.41%`) |
+| 512/16 | decode | `131.242 ms` (`8.203 ms/token`) | dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`); selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`); lm-head Q6 T16 `10.158 ms` (`7.74%`) |
+| 4K/16 | prefill | `2104.962 ms` | selected dual Q4_K WMMA `808.629 ms` (`38.42%`); GDN prefill recurrent `354.059 ms` (`16.82%`); dense Q8_0 WMMA `329.123 ms` (`15.64%`); full-attn prefill `85.832 ms` (`4.08%`) |
+| 4K/16 | decode | `137.749 ms` (`8.609 ms/token`) | dense Q8_0 T16 GEMV `50.620 ms` (`36.75%`); selected dual Q4_K T16 GEMV `16.822 ms` (`12.21%`); full-attn decode `13.913 ms` (`10.10%`); lm-head Q6 T16 `10.137 ms` (`7.36%`) |
+
+Initial focused lanes from evidence:
+
+1. **G-D2 first for decode:** dense Q8_0 T16 GEMV is the dominant decode bucket
+   on both gates (`~37-38%` of decode kernel time), so launch-bound/tile-shape
+   tuning has the cleanest same-suite decode upside.
+2. **G-P1 first for prefill:** selected dual Q4_K WMMA prefill is the largest
+   prefill bucket on both gates (`~38%`), so any prefill push should start there
+   before chasing smaller glue kernels.
+3. **Secondary decode checks:** full-attention decode matters at 4K (`10.10%`)
+   and lm-head Q6 T16 is stable at `~7.4-7.7%`; keep them as follow-ups after
+   the Q8_0 T16 decode bucket is audited.
 
 ## What we copy from the MTP/DFlash/megakernel successes
 
@@ -107,7 +161,9 @@ For GGUF, copy these rules:
 ## Baseline refresh protocol
 
 Run these before editing kernels. Use a clean shell and do not let profiled
-processes spawn `hipcc`.
+processes spawn `hipcc`. The active tuning loop uses GPU1
+(`HIP_VISIBLE_DEVICES=1`), which maps to the 24 GiB-class testbed on this host;
+verify the sysfs card name before llama.cpp peak-memory runs.
 
 ```bash
 # From /home/lhl/hipEngine-gguf-tuning
@@ -120,34 +176,47 @@ $ROOT/bin/hipcc --version > /tmp/hipengine-hipcc-version-713.txt
 
 ```bash
 GGUF_S=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf
-HIP_VISIBLE_DEVICES=0 \
+HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_GGUF_DECODE_REPACK=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --engine gguf --model "$GGUF_S" --quant gguf_q4_k_s \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-  --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+  --workloads 512/128 4K/128 \
+  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
   --force-bulk-prefill --bulk-prefill-attention-mode bulk \
   --use-wmma-prefill --use-gemv-decode \
   --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
-  --json benchmarks/results/<date>-w7900-gguf-tuning-baseline-hipengine-q4ks.json
+  --json benchmarks/results/<date>-gpu1-gguf-tuning-gate-hipengine-q4ks.json
+
+# Promotion/final check, after a candidate survives the primary gates.
+HIP_VISIBLE_DEVICES=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
+PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
+  --engine gguf --model "$GGUF_S" --quant gguf_q4_k_s \
+  --workloads 128K/128 \
+  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
+  --json benchmarks/results/<date>-gpu1-gguf-tuning-final-128k-hipengine-q4ks.json
 ```
 
 Also run Q4_K_M when it fits the intended target:
 
 ```bash
-GGUF_M=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-HIP_VISIBLE_DEVICES=0 \
+GGUF_M=/home/lhl/hipEngine/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_GGUF_DECODE_REPACK=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --engine gguf --model "$GGUF_M" --quant gguf_q4_k_m \
-  --workloads 512/128 4K/128 32K/128 \
-  --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
+  --workloads 512/128 4K/128 \
+  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
   --force-bulk-prefill --bulk-prefill-attention-mode bulk \
   --use-wmma-prefill --use-gemv-decode \
   --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
-  --json benchmarks/results/<date>-w7900-gguf-tuning-baseline-hipengine-q4km.json
+  --json benchmarks/results/<date>-gpu1-gguf-tuning-gate-hipengine-q4km.json
 ```
 
 ### llama.cpp refresh
@@ -157,37 +226,37 @@ actually seeing:
 
 ```bash
 MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf
-HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_bench_with_peak.py \
+HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_bench_with_peak.py \
   --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
   --model "$MODEL" --backend hip \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --workloads 512/128 4K/128 \
   --repetitions 3 --ngl 99 --flash-attn 1 \
-  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
+  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card0 \
   --extra-args "-dev ROCm0" \
-  --output benchmarks/results/<date>-w7900-gguf-tuning-baseline-llamacpp-hip-q4ks.json
+  --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-hip-q4ks.json
 
 python3 scripts/llamacpp_bench_with_peak.py \
   --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
   --model "$MODEL" --backend vulkan \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --workloads 512/128 4K/128 \
   --repetitions 3 --ngl 99 --flash-attn 1 \
-  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
+  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card0 \
   --extra-args "-dev Vulkan0" \
-  --output benchmarks/results/<date>-w7900-gguf-tuning-baseline-llamacpp-vulkan-q4ks.json
+  --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-vulkan-q4ks.json
 ```
 
 ### PARO c=1 reference on the same host
 
 ```bash
 PARO=/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
-HIP_VISIBLE_DEVICES=0 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
+HIP_VISIBLE_DEVICES=1 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --engine paro --model "$PARO" --backend hip_gfx1100 \
   --shared-expert-format packed_paro_w4 --token-id 9707 \
-  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
-  --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 4 \
+  --workloads 512/128 4K/128 \
+  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 4 \
   --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
   --attn-aotriton-min-tokens 512 --graph-replay-decode \
-  --json benchmarks/results/<date>-w7900-gguf-tuning-baseline-hipengine-paro.json
+  --json benchmarks/results/<date>-gpu1-gguf-tuning-baseline-hipengine-paro.json
 ```
 
 ### Correctness gates for GGUF tuning
@@ -197,14 +266,17 @@ row:
 
 ```bash
 # Dense 0.8B and 35B smoke fixture path.
+HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
   PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2
 
 # qwen35moe safety gate when touching 35B GGUF kernels/materialization.
+HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
   PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py
 
 # Targeted bundles for decode-repack / T16 work.
+HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
   python3 -m pytest \
     tests/test_gguf_t16_repack.py \
@@ -225,6 +297,7 @@ RUN=/tmp/hipengine-gguf-tuning/<date>-q4ks-512
 mkdir -p "$RUN"
 
 # Warmup/build outside rocprofv3.
+HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_GGUF_DECODE_REPACK=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
 PYTHONPATH=. "$PY" scripts/qwen35_gguf_bench.py \
@@ -236,8 +309,9 @@ PYTHONPATH=. "$PY" scripts/qwen35_gguf_bench.py \
   --json "$RUN/warmup.json"
 
 # Trace a short decode window for kernel mix.
-rocprofv3 --kernel-trace --output-dir "$RUN/rocprof" -- \
-  env HIPENGINE_GGUF_DECODE_REPACK=1 \
+rocprofv3 --kernel-trace -d "$RUN/rocprof" -o q4ks512 -f csv -- \
+  env HIP_VISIBLE_DEVICES=1 \
+      HIPENGINE_GGUF_DECODE_REPACK=1 \
       HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
       PYTHONPATH=. \
       "$PY" scripts/qwen35_gguf_bench.py \
@@ -250,9 +324,9 @@ rocprofv3 --kernel-trace --output-dir "$RUN/rocprof" -- \
 
 # Summarize the CSV into a compact artifact.
 python3 scripts/qwen35_gguf_rocprof_summary.py \
-  --csv "$RUN/rocprof/<kernel-trace.csv>" \
+  --csv "$RUN/rocprof/q4ks512_kernel_trace.csv" \
   --tokens-decode 16 \
-  --json benchmarks/results/<date>-w7900-gguf-tuning-rocprof-summary.json
+  --json benchmarks/results/<date>-gpu1-gguf-tuning-rocprof-summary.json
 ```
 
 ## Tuning lanes
@@ -267,7 +341,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-M1 | Build a matched-token prompt fixture shared by hipEngine and llama.cpp. | Avoid token/template drift when comparing decode and MTP-bearing GGUFs. | Same token IDs and prompt length proven in artifacts. |
 | G-M2 | Produce per-shape GGUF rocprof bucket summaries for `512`, `4K`, `32K`, `128K`. | P9.C showed selected-MoE and Q8 buckets moved with shape; do not optimize blind. | `qwen35_gguf_rocprof_summary.py` artifacts list top buckets, dispatches, VGPR/scratch, and legacy fallback presence. |
 | G-M3 | Add/refresh code-object occupancy and scratch census for hot GGUF kernels. | Decode is memory-bound and occupancy-sensitive; any scratch on hot kernels is a bug. | Hot kernels report `Scratch_Size=0`, acceptable VGPR, and no unexpected LDS expansion. |
-| G-M4 | Memory residency census by tensor family/layout. | Current Q4_K_S peak is over 24 GiB; duplicate layouts hide in totals. | Artifact breaks down raw, T16, KV, scratch, graph, and sampler allocations. |
+| G-M4 | Memory residency census by tensor family/layout. | GPU1 gates fit but leave only ~2 GiB free, and stale full-sweep rows exceeded 24 GiB; duplicate layouts hide in totals. | Artifact breaks down raw, T16, KV, scratch, graph, and sampler allocations. |
 
 ### D lane — Decode throughput
 
@@ -287,7 +361,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-P1 | Revisit selected-MoE raw GGUF-K WMMA redesign from P9.C with the latest T16/repack context. | P9.C ended with a `~30 ms` 512/0 target-bucket gap; shallow sidecars regressed, but a deeper layout may still be needed. | Target bucket moves materially without >24 GiB duplicate storage. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
-| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current rows share `25.108 GiB` peak; chunking may recover 24 GiB-class fit. | Same throughput class with lower peak, or clear W7900-only label. |
+| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | Same throughput class with lower peak, or clear W7900-only label. |
 
 ### H lane — Host/runtime and graph replay
 
@@ -307,8 +381,9 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 
 ## First sprint checklist
 
-1. Create baseline artifacts for hipEngine GGUF Q4_K_S/Q4_K_M, local llama.cpp
-   HIP/Vulkan, and PARO on W7900 TheRock 7.13.
+1. Create GPU1 gate artifacts for hipEngine GGUF Q4_K_S/Q4_K_M, local llama.cpp
+   HIP/Vulkan, and PARO where it fits on TheRock 7.13. Keep W7900 comparison
+   artifacts only when GPU1 cannot fit a required final/promotion shape.
 2. Generate `G-M2` rocprof bucket summaries for at least `512/128` and `4K/128`.
 3. Answer these from data before editing kernels:
    - Is the gap primarily decode kernels, prefill kernels, host overhead, or memory/chunk policy?
@@ -316,7 +391,8 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
    - Are any legacy GGUF raw/prefill-out kernels still running in measured decode?
    - How much peak memory is raw tensors, T16 tensors, KV, scratch, and graph capture?
 4. Pick **one** highest-share bucket and run a focused multiloop-style pass:
-   hypothesis -> code -> correctness gate -> profile -> keep/revert/log.
+   hypothesis -> code -> correctness gate -> profile -> keep/revert/log. Primary
+   pass/fail is `512/128` plus `4K/128`; `128K/128` is the final promotion gate.
 5. If a change is exact and same-suite non-regressive, make it default and
    update artifacts/rollups. If it stays gated, record the blocker.
 
@@ -326,10 +402,10 @@ A GGUF tuning change is promoted only when all of the following hold:
 
 - Relevant GGUF correctness fixtures pass, including qwen35moe when 35B paths are touched.
 - `rocprofv3 --kernel-trace` confirms the intended kernel(s) ran and no unexpected fallback dominates.
-- Same-suite benchmark improves a retained metric or removes memory/launch/KV overhead without throughput regression.
+- Same-suite benchmark improves prefill and/or decode on the GPU1 `512/128` and `4K/128` gates, or removes memory/launch/KV overhead without throughput regression.
 - Benchmark artifact follows `docs/BENCHMARK.md` and rollup updates are made for accepted performance rows.
 - No torch hot-path import, no llama.cpp hot-path FFI, no model/dispatch `if backend == ...` or `if quant == ...` branch.
-- No unbounded duplicate residency; W7900-only rows are labeled as such.
+- No unbounded duplicate residency; GPU1 `128K/128` is checked before promotion, and W7900-only rows are labeled as such.
 
 ## Do-not-chase list for this lane
 
