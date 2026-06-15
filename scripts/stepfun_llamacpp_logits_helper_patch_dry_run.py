@@ -160,7 +160,42 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--patch-sha-only", action="store_true", help="Emit only the unified diff SHA-256.")
     parser.add_argument("--patch-only", action="store_true", help="Emit only the generated unified diff text.")
     parser.add_argument("--sha-only", action="store_true", help="Emit stable SHA-256 of the selected JSON payload.")
+    parser.add_argument(
+        "--verify-patch-dry-run",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted llama.cpp logits helper patch dry-run artifact with current "
+            f"patch/apply-check metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-patch-dry-run, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-patch-dry-run, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-patch-dry-run, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
+
+
+def _load_json_object(path: Path) -> dict[str, object] | None:
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return payload
 
 
 def _apply_transform(text: str, key: str, old: str, new: str) -> tuple[str, dict[str, object]]:
@@ -311,6 +346,100 @@ def build_llamacpp_logits_helper_patch_dry_run(
     }
 
 
+def verify_llamacpp_logits_helper_patch_dry_run(
+    patch_dry_run_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted llama.cpp logits helper patch dry-run with current metadata."""
+
+    persisted_payload = _load_json_object(patch_dry_run_artifact)
+    persisted: dict[str, object] = (
+        persisted_payload if persisted_payload is not None else {"exists": False}
+    )
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_helper_patch_dry_run_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted llama.cpp logits helper patch dry-run artifact differs "
+                    "from current patch/apply-check metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    persisted_patch_artifact = persisted.get("patch_artifact")
+    current_patch_artifact = current_report.get("patch_artifact")
+    persisted_apply_check = persisted.get("git_apply_check")
+    current_apply_check = current_report.get("git_apply_check")
+    return {
+        "schema_version": 1,
+        "artifact_path": str(patch_dry_run_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_ready": persisted.get("ready"),
+        "current_ready": current_report.get("ready"),
+        "persisted_source_exists": persisted.get("source_exists"),
+        "current_source_exists": current_report.get("source_exists"),
+        "persisted_patch_ready": persisted.get("patch_ready"),
+        "current_patch_ready": current_report.get("patch_ready"),
+        "persisted_patch_sha256": persisted.get("patch_sha256"),
+        "current_patch_sha256": current_report.get("patch_sha256"),
+        "persisted_patch_line_count": persisted.get("patch_line_count"),
+        "current_patch_line_count": current_report.get("patch_line_count"),
+        "persisted_missing_transforms": persisted.get("missing_transforms"),
+        "current_missing_transforms": current_report.get("missing_transforms"),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+        "persisted_apply_check_status": (
+            persisted_apply_check.get("status")
+            if isinstance(persisted_apply_check, dict)
+            else None
+        ),
+        "current_apply_check_status": (
+            current_apply_check.get("status")
+            if isinstance(current_apply_check, dict)
+            else None
+        ),
+        "persisted_patch_artifact_sha256": (
+            persisted_patch_artifact.get("sha256")
+            if isinstance(persisted_patch_artifact, dict)
+            else None
+        ),
+        "current_patch_artifact_sha256": (
+            current_patch_artifact.get("sha256")
+            if isinstance(current_patch_artifact, dict)
+            else None
+        ),
+        "persisted_patch_artifact_apply_command": (
+            persisted_patch_artifact.get("apply_command")
+            if isinstance(persisted_patch_artifact, dict)
+            else None
+        ),
+        "current_patch_artifact_apply_command": (
+            current_patch_artifact.get("apply_command")
+            if isinstance(current_patch_artifact, dict)
+            else None
+        ),
+        "persisted_build_command": persisted.get("build_command"),
+        "current_build_command": current_report.get("build_command"),
+        "persisted_probe_command_after_build": persisted.get("probe_command_after_build"),
+        "current_probe_command_after_build": current_report.get("probe_command_after_build"),
+    }
+
+
 def _select_payload(report: dict[str, object], patch_text: str, args: argparse.Namespace) -> object:
     if args.patch_only:
         return patch_text
@@ -354,7 +483,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     output = DEFAULT_OUTPUT if args.default_output else args.output
     patch_output = args.patch_output
-    if args.default_patch_output or args.default_output:
+    if args.default_patch_output or args.default_output or args.verify_patch_dry_run == DEFAULT_OUTPUT:
         patch_output = DEFAULT_PATCH_OUTPUT
     report = build_llamacpp_logits_helper_patch_dry_run(
         llama_cpp_root=args.llama_cpp_root,
@@ -371,6 +500,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             transformed, _ = _apply_transform(transformed, key, old, new)
         patch_text = _generate_patch(original, transformed, DEBUG_RELATIVE_PATH)
     _write_patch_artifact(patch_text, patch_output=patch_output)
+    if args.verify_patch_dry_run is not None:
+        verification = verify_llamacpp_logits_helper_patch_dry_run(
+            args.verify_patch_dry_run,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        if args.sha_only:
+            payload = status_mod._stable_json_sha256(payload)
+        _write_payload(payload, output=output, pretty=args.pretty, raw_text=False)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     payload = _select_payload(report, patch_text, args)
     raw_text = args.patch_only and not args.sha_only
     if args.sha_only:

@@ -5,9 +5,14 @@ import json
 from pathlib import Path
 
 from scripts import stepfun_llamacpp_logits_helper_patch_dry_run as dry_run
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_llamacpp_logits_helper_patch_dry_run import (
     build_llamacpp_logits_helper_patch_dry_run,
     main,
+    verify_llamacpp_logits_helper_patch_dry_run,
 )
 
 
@@ -160,3 +165,127 @@ def test_stepfun_llamacpp_logits_helper_patch_dry_run_cli_modes(tmp_path: Path) 
     assert "common_tokenize(ctx, params.prompt, add_bos, extra.parse_special)" in patch_text
     assert main([*base_args, "--sha-only", "--output", str(output)]) == 0
     assert isinstance(json.loads(output.read_text()), str)
+
+
+def test_stepfun_llamacpp_logits_helper_patch_dry_run_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    _write_debug_source(tmp_path)
+    artifact = tmp_path / "dry-run.json"
+    output = tmp_path / "verify.json"
+    patch_output = tmp_path / "helper.patch"
+    base_args = [
+        "--llama-cpp-root",
+        str(tmp_path),
+        "--skip-apply-check",
+        "--artifact-date",
+        "2030-04-11",
+        "--patch-output",
+        str(patch_output),
+    ]
+    current = build_llamacpp_logits_helper_patch_dry_run(
+        llama_cpp_root=tmp_path,
+        artifact_date="2030-04-11",
+        skip_apply_check=True,
+        patch_artifact=patch_output,
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_helper_patch_dry_run(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_ready"] is False
+    assert verification["current_ready"] is False
+    assert verification["persisted_source_exists"] is True
+    assert verification["current_source_exists"] is True
+    assert verification["persisted_patch_ready"] is True
+    assert verification["current_patch_ready"] is True
+    assert verification["persisted_patch_sha256"] == current["patch_sha256"]
+    assert verification["current_patch_sha256"] == current["patch_sha256"]
+    assert verification["persisted_patch_line_count"] == current["patch_line_count"]
+    assert verification["current_patch_line_count"] == current["patch_line_count"]
+    assert verification["persisted_missing_transforms"] == []
+    assert verification["current_missing_transforms"] == []
+    assert verification["persisted_missing_evidence"] == [
+        "llama_cpp_token_ids_helper_patch_applied",
+        "same_prompt_logits_helper_built",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    assert verification["current_missing_evidence"] == [
+        "llama_cpp_token_ids_helper_patch_applied",
+        "same_prompt_logits_helper_built",
+        "llama_cpp_same_prompt_logits_artifact_present",
+    ]
+    assert verification["persisted_apply_check_status"] == "skipped"
+    assert verification["current_apply_check_status"] == "skipped"
+    assert verification["persisted_patch_artifact_sha256"] == current["patch_artifact"]["sha256"]
+    assert verification["current_patch_artifact_sha256"] == current["patch_artifact"]["sha256"]
+    assert verification["persisted_patch_artifact_apply_command"] == (
+        f"git -C {tmp_path} apply --unidiff-zero {patch_output}"
+    )
+    assert verification["current_patch_artifact_apply_command"] == (
+        f"git -C {tmp_path} apply --unidiff-zero {patch_output}"
+    )
+    assert verification["persisted_build_command"] == current["build_command"]
+    assert verification["current_build_command"] == current["build_command"]
+    assert verification["persisted_probe_command_after_build"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py "
+        "--prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+    assert verification["current_probe_command_after_build"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py "
+        "--prompt-token-source retained-input-ids --execute --default-output --pretty"
+    )
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-patch-dry-run",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["patch_ready"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_helper_patch_dry_run(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "llamacpp_logits_helper_patch_dry_run_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-patch-dry-run",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "llamacpp_logits_helper_patch_dry_run_drift"
+    )

@@ -1003,8 +1003,10 @@ reporting.
   `a159fcf3b633e012578a75e18ad3ba1c571c2437d57f768a7f1ffd160bab2357`. The patch plan reports `anchors_ready=true`
   and remains `status=blocked` on
   `llama_cpp_token_ids_helper_patch_applied`, `same_prompt_logits_helper_built`, and
-  `llama_cpp_same_prompt_logits_artifact_present`. The dry-run has the same missing applied/build/capture evidence.
-  `scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty` retains
+  `llama_cpp_same_prompt_logits_artifact_present`. The dry-run has the same missing applied/build/capture evidence;
+  `python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --verify-patch-dry-run --verification-status-only`
+  is the drift check for patch text/apply-check status, missing-transform/evidence, patch artifact SHA/apply command,
+  and post-build probe metadata. `scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json`, a no-side-effect post-apply
   verifier that currently reports `status=blocked`, `git_worktree.clean_for_patch_apply=true` at
   llama.cpp revision `6e9007ae61f4`, `patch_dry_run_artifact.patch_ready=true`,
