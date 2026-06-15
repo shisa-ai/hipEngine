@@ -138,6 +138,18 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
     )
     assert kv_runner_handoff["session_contract_pre_run_upload_checks_passed"] is True
     assert kv_runner_handoff["session_contract_launch_operation_count"] == 135
+    assert kv_runner_handoff["decode_entrypoint_source"] == (
+        "StepFunResidentSession.decode_one_token_kv_bf16"
+    )
+    assert kv_runner_handoff["decode_entrypoint_executable"] is False
+    assert kv_runner_handoff["decode_entrypoint_ready"] is False
+    assert kv_runner_handoff["decode_entrypoint_blocked_by"] == (
+        "streaming_decode_loop_not_wired"
+    )
+    assert kv_runner_handoff["decode_entrypoint_next_action"] == (
+        "implement_resident_kv_streaming_decode_loop"
+    )
+    assert kv_runner_handoff["decode_entrypoint_no_kernel_launches"] is True
     assert kv_runner_handoff["evidence_preflight_status"] == "blocked"
     assert kv_runner_handoff["evidence_preflight_next_action"] == (
         "wire_streaming_decode_loop"

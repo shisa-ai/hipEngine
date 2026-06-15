@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.runtime.stepfun_gguf_runner import (
     DEFAULT_STEPFUN_SHORT_CONTEXT,
+    StepFunKVCacheAllocation,
     StepFunResidentSession,
     StepFunShortContextDecodePlanner,
 )
@@ -161,6 +162,16 @@ def build_kv_session_contract_artifact(
         backend=backend,
     )
     contract = session.kv_streaming_decode_contract(run_plan)
+    kv_cache = StepFunKVCacheAllocation(
+        buffers=(),
+        context_pages=context_pages,
+        page_size=page_size,
+        layer_nbytes=tuple((1, 1) for _ in range(planner.model_map.config.block_count)),
+    )
+    decode_entrypoint = session.decode_one_token_kv_bf16(
+        run_plan,
+        kv_cache=kv_cache,
+    )
     return {
         "schema_version": 1,
         "artifact_kind": "stepfun_kv_session_streaming_decode_contract",
@@ -176,6 +187,7 @@ def build_kv_session_contract_artifact(
         "context_pages": context_pages,
         "page_size": page_size,
         "contract": contract,
+        "decode_entrypoint_blocker": decode_entrypoint,
         "no_claim_policy": {
             "kv_backed_decode_claim_allowed": False,
             "e2e_inference_claim_allowed": False,

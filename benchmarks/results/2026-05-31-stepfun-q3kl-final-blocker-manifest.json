@@ -527,9 +527,15 @@
       "gate_blocked_by": "kv_backed_decode_not_wired",
       "gate_ready": false,
       "kv_runner_prerequisite_handoff": {
+        "decode_entrypoint_blocked_by": "streaming_decode_loop_not_wired",
+        "decode_entrypoint_executable": false,
+        "decode_entrypoint_next_action": "implement_resident_kv_streaming_decode_loop",
+        "decode_entrypoint_no_kernel_launches": true,
+        "decode_entrypoint_ready": false,
+        "decode_entrypoint_source": "StepFunResidentSession.decode_one_token_kv_bf16",
         "evidence_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json",
         "evidence_preflight_artifact_present": true,
-        "evidence_preflight_artifact_sha256": "a84be01aaa8faade52c9760dba59ddc452fa33a09f8be416625d7e61701b1d9e",
+        "evidence_preflight_artifact_sha256": "3ec799b6fc9f706d9c810e4ad49718f264e4bdddecc6f43c654af247b6d98014",
         "evidence_preflight_next_action": "wire_streaming_decode_loop",
         "evidence_preflight_refresh_command": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
         "evidence_preflight_refresh_command_sha256": "6c500864f3f15b0a0f1a0e0adcb434ed53660ce8ae6394b71c675e6f9e9176f7",
@@ -538,7 +544,7 @@
         "kv_blocker_status": "blocked",
         "kv_blocker_status_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json",
         "kv_blocker_status_artifact_present": true,
-        "kv_blocker_status_artifact_sha256": "a6b4470616fb8295052ddbc4c0bb3999fdfcd4e245946362ec2c2d819d03ef4a",
+        "kv_blocker_status_artifact_sha256": "3fef84850a5b25ad5b9caefcd95e9f4107a14387ada0bb0c63cbdb29338276f9",
         "kv_blocker_status_refresh_command": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
         "kv_blocker_status_refresh_command_sha256": "996ee6856dd4015e4b418cbdeadf8daa8bfaf6d2f19661437473e624c92f11ce",
         "kv_decode_dispatch_ready": true,
@@ -681,7 +687,7 @@
         "session_contract_all_launches_ready": true,
         "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
         "session_contract_artifact_present": true,
-        "session_contract_artifact_sha256": "65a9d3f48e05b0659d4547f1cfe5cc645e9a57e9b861c4aa9e3eec0dd7f03532",
+        "session_contract_artifact_sha256": "5e905fda4d3f7eec7aee57797ce6a884d3b0854a23e65b2ed16e3914b1f549e5",
         "session_contract_blocked_by": "streaming_decode_loop_not_wired",
         "session_contract_executable": false,
         "session_contract_launch_operation_count": 135,
@@ -741,7 +747,7 @@
       ]
     }
   ],
-  "entries_sha256": "4d37a4e6dca898f35f65b4bcad6902d9d7e34fff1fa8d5177cb76379fff5b108",
+  "entries_sha256": "333b9de3c7e9d48e4fcc045ced27395f608ac9515143be6e953f6ec067fd1a5d",
   "entry_count": 2,
   "gate_status_handoff": [
     {
@@ -994,13 +1000,13 @@
     "next_action_commands_sha256": "8cbe625238b5b2e51914a2d479657fa73ae836d38205c29f45166748c5c59862",
     "oracle_partial_output_handoff_sha256": "181b866b8e2625e8d0b02780bda484767aaa96350158c3b0fb5c738f809171a0",
     "oracle_progress_sha256": "09e06b1655a5b56610a0550a8ad27a5add7d542d369b2420df6461cab1bd204f",
-    "readiness_summary_sha256": "a3f372175ebf793d29580e2d8ace7b267728a3280bc77e3e468cb4c2ca970635",
+    "readiness_summary_sha256": "057d11892659dcfba5854647ac35a4ea4e599ff277f7e056d7bd7f0732e642a9",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "0d336fea2dd0d7926eb2a302bb08ec381fdd910f6aae1a6c7bc9f14332643667",
-        "size_bytes": 108827
+        "sha256": "3b79f990bf68c86c3b8ae8e4beca0e36bb3f9140f80004c548c41bf15e1b0b9d",
+        "size_bytes": 109014
       },
       "oracle": {
         "exists": true,
@@ -1027,10 +1033,10 @@
         "size_bytes": 178045
       }
     },
-    "source_artifacts_sha256": "b86722cd1db4e3be57b93cd6e6302ddb6868d4d451d3b0ceedec3d08e62458ae",
+    "source_artifacts_sha256": "52208f6a4928219d8cb0ffa53e791e2cfb1fd22ed76e5b9d6334093a6681717a",
     "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
   },
-  "status_provenance_sha256": "5b99f7d57c6ab902b49df8ee20e71bb37d6ac7b66da5de66f3339d3b200bef83",
+  "status_provenance_sha256": "0588e632367e3853696662ddadfda95172482a6379b78fb7f8232be68ea6e95b",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",

@@ -64,6 +64,36 @@ def test_stepfun_kv_session_contract_artifact_binds_session_contract() -> None:
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
     ]
+    decode_entrypoint = artifact["decode_entrypoint_blocker"]
+    assert decode_entrypoint["schema_version"] == 1
+    assert decode_entrypoint["source"] == "StepFunResidentSession.decode_one_token_kv_bf16"
+    assert decode_entrypoint["executable"] is False
+    assert decode_entrypoint["ready"] is False
+    assert decode_entrypoint["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert decode_entrypoint["next_action"] == "implement_resident_kv_streaming_decode_loop"
+    assert decode_entrypoint["contract_source"] == "StepFunResidentSession.kv_streaming_decode_contract"
+    assert decode_entrypoint["session_backend"] == "hip_gfx1151"
+    assert decode_entrypoint["session_layer_count"] == 45
+    assert decode_entrypoint["cache_layer_count"] == 45
+    assert decode_entrypoint["cache_layer_count_matches"] is True
+    assert decode_entrypoint["kv_cache_context_pages"] == 1
+    assert decode_entrypoint["kv_cache_page_size"] == 512
+    assert decode_entrypoint["kv_cache_tokens"] == 512
+    assert decode_entrypoint["kv_cache_nbytes"] == 90
+    assert decode_entrypoint["kv_cache_buffer_count"] == 0
+    assert decode_entrypoint["planned_launch_operation_count"] == 135
+    assert decode_entrypoint["all_planned_launches_ready"] is True
+    assert decode_entrypoint["no_kernel_launches"] is True
+    assert decode_entrypoint["required_artifacts"] == contract["required_artifacts"]
+    assert decode_entrypoint["no_claim_policy"] == {
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "This entrypoint validates the future resident KV streaming loop contract "
+            "but does not launch kernels or generate a token."
+        ),
+    }
     assert artifact["no_claim_policy"] == {
         "kv_backed_decode_claim_allowed": False,
         "e2e_inference_claim_allowed": False,
@@ -97,6 +127,10 @@ def test_stepfun_kv_session_contract_cli_writes_artifact(tmp_path: Path) -> None
     assert payload["status"] == "blocked"
     assert payload["contract"]["blocked_by"] == "streaming_decode_loop_not_wired"
     assert payload["contract"]["launch_operation_count"] == 135
+    assert payload["decode_entrypoint_blocker"]["blocked_by"] == (
+        "streaming_decode_loop_not_wired"
+    )
+    assert payload["decode_entrypoint_blocker"]["executable"] is False
 
 
 def test_stepfun_kv_session_contract_cli_compact_modes(tmp_path: Path) -> None:

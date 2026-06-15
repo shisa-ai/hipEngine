@@ -308,6 +308,11 @@ def _kv_runner_prerequisite_handoff() -> dict[str, object]:
     blocker_file = _repo_relative_path(blocker_path)
     session = _load_json_object_if_present(session_file) or {}
     contract = session.get("contract") if isinstance(session.get("contract"), dict) else {}
+    decode_entrypoint = (
+        session.get("decode_entrypoint_blocker")
+        if isinstance(session.get("decode_entrypoint_blocker"), dict)
+        else {}
+    )
     preflight = _load_json_object_if_present(preflight_file) or {}
     blocker = _load_json_object_if_present(blocker_file) or {}
     source_status = blocker.get("streaming_runner_source_status")
@@ -361,6 +366,14 @@ def _kv_runner_prerequisite_handoff() -> dict[str, object]:
         "session_contract_all_launches_ready": contract.get("all_launches_ready"),
         "session_contract_all_launches_have_dispatch_keys": contract.get(
             "all_launches_have_dispatch_keys"
+        ),
+        "decode_entrypoint_source": decode_entrypoint.get("source"),
+        "decode_entrypoint_executable": decode_entrypoint.get("executable"),
+        "decode_entrypoint_ready": decode_entrypoint.get("ready"),
+        "decode_entrypoint_blocked_by": decode_entrypoint.get("blocked_by"),
+        "decode_entrypoint_next_action": decode_entrypoint.get("next_action"),
+        "decode_entrypoint_no_kernel_launches": decode_entrypoint.get(
+            "no_kernel_launches"
         ),
         "evidence_preflight_artifact": str(preflight_path),
         "evidence_preflight_artifact_present": preflight_file.exists(),
