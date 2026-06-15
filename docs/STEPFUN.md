@@ -604,7 +604,8 @@ reporting.
   `ready=false`, `no_kernel_launches=true`, exact per-layer KV-cache byte geometry validated, `gguf_step35` KV dispatch
   key digest bound, canonical input-token/KVLiveSpans payload digests bound, and pre-run upload plus launch-trace digests bound to the run plan); `python3 scripts/stepfun_kv_session_contract.py --verify-session-contract --verification-status-only`
   is the drift check for that metadata-only session artifact; the remaining-blockers rollup mirrors those session-contract status, dispatch, input-payload, upload-plan, and launch-trace digests under its KV blocker entry; `scripts/stepfun_kv_evidence_preflight.py --default-output --pretty`
-  retains `benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json`, which confirms the metadata
+  retains `benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json`, with `python3 scripts/stepfun_kv_evidence_preflight.py --verify-preflight --verification-status-only`
+  as the drift check for the metadata-ready/missing-artifact preflight; it confirms the metadata
   contract exists but the required KV trace and KV-backed next-token artifacts are still absent, records exact
   `--fail-on-missing` trace/next-token checker commands with the retained resource/prompt artifacts, plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135

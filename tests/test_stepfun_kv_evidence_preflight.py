@@ -6,9 +6,14 @@ from pathlib import Path
 from scripts.stepfun_correctness_status import (
     DEFAULT_PROMPT_ARTIFACT,
     DEFAULT_RESOURCE_ARTIFACT,
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
     _stable_json_sha256,
 )
-from scripts.stepfun_kv_evidence_preflight import build_kv_evidence_preflight, main
+from scripts.stepfun_kv_evidence_preflight import (
+    build_kv_evidence_preflight,
+    main,
+    verify_kv_evidence_preflight,
+)
 
 
 def _write_session_contract(path: Path) -> None:
@@ -183,3 +188,90 @@ def test_stepfun_kv_evidence_preflight_cli_compact_modes(tmp_path: Path) -> None
     assert json.loads(output.read_text()) == [str(trace), str(next_token)]
     assert main([*base_args, "--next-action-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()) == "wire_streaming_decode_loop"
+
+
+def test_stepfun_kv_evidence_preflight_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    session_contract = tmp_path / "session-contract.json"
+    kv_blocker = tmp_path / "kv-blocker.json"
+    trace = tmp_path / "missing-trace.json"
+    next_token = tmp_path / "missing-next-token.json"
+    artifact = tmp_path / "preflight.json"
+    output = tmp_path / "verify.json"
+    _write_session_contract(session_contract)
+    _write_kv_blocker(kv_blocker)
+    base_args = [
+        "--session-contract-artifact",
+        str(session_contract),
+        "--kv-blocker-artifact",
+        str(kv_blocker),
+        "--trace-artifact",
+        str(trace),
+        "--next-token-artifact",
+        str(next_token),
+    ]
+    current = build_kv_evidence_preflight(
+        session_contract_artifact=session_contract,
+        kv_blocker_artifact=kv_blocker,
+        trace_artifact=trace,
+        next_token_artifact=next_token,
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_kv_evidence_preflight(artifact, current_report=current)
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_missing_required_artifact_paths"] == [
+        str(trace),
+        str(next_token),
+    ]
+    assert verification["current_missing_required_artifact_paths"] == [
+        str(trace),
+        str(next_token),
+    ]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-preflight",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["status"] = "ready_for_checkers"
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_kv_evidence_preflight(artifact, current_report=current)
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "kv_evidence_preflight_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-preflight",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "kv_evidence_preflight_drift"
