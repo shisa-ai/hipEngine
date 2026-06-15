@@ -7105,17 +7105,27 @@ def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) ->
 
 
 def _backend_scheduler_token_chunks(engine: Any) -> list[dict[str, Any]] | None:
-    batch_generation = getattr(engine, "last_batch_generation", None)
-    if not isinstance(batch_generation, Mapping):
-        return None
-    raw_chunks = batch_generation.get("scheduler_token_chunks")
-    if not isinstance(raw_chunks, Sequence) or isinstance(raw_chunks, (str, bytes, bytearray)):
-        return None
-    chunks: list[dict[str, Any]] = []
-    for raw_chunk in raw_chunks:
-        if isinstance(raw_chunk, Mapping):
-            chunks.append(deepcopy(dict(raw_chunk)))
-    return chunks or None
+    targets: list[Any] = [engine]
+    generator = getattr(engine, "_text_generator", None)
+    if generator is not None:
+        targets.append(generator)
+        inner = getattr(generator, "inner", None)
+        if inner is not None:
+            targets.append(inner)
+    for target in targets:
+        batch_generation = getattr(target, "last_batch_generation", None)
+        if not isinstance(batch_generation, Mapping):
+            continue
+        raw_chunks = batch_generation.get("scheduler_token_chunks")
+        if not isinstance(raw_chunks, Sequence) or isinstance(raw_chunks, (str, bytes, bytearray)):
+            continue
+        chunks: list[dict[str, Any]] = []
+        for raw_chunk in raw_chunks:
+            if isinstance(raw_chunk, Mapping):
+                chunks.append(deepcopy(dict(raw_chunk)))
+        if chunks:
+            return chunks
+    return None
 
 
 def _copy_scheduler_token_chunks(chunks: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]] | None:

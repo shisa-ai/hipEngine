@@ -93027,3 +93027,16 @@ Validation:
 - `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q` -> `21 passed`.
 - `python3 -m pytest tests/test_server_api.py -q -k 'streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `3 passed`.
 - `uv run ruff check hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py` -> `All checks passed!`.
+
+## 2026-06-15 - Wrapped generator scheduler chunk reachability
+
+Fixed the OpenAI server helper that reads backend
+`last_batch_generation.scheduler_token_chunks` so it also inspects the public
+`LLM` wrapper's `_text_generator` and wrapped `inner` generator. Without this,
+PARO/GGUF scheduler chunks were reachable in direct fake-server tests but could
+be missed in real server runs using the public `LLM` object.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q -k 'backend_scheduler_token_chunks_reads_wrapped_text_generator or generation_batcher_returns_scheduler_chunks_for_single_metadata_submission or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_logprobs'` -> `5 passed`.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.

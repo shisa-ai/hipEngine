@@ -35,6 +35,7 @@ from hipengine.server.api import (
     _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
     _TOOL_RESULT_VALIDATION_FAILURE_REASONS,
     _await_with_request_control,
+    _backend_scheduler_token_chunks,
     _chat_session_message_copy,
     _coerce_generation_output,
     _GenerationBatcher,
@@ -3149,6 +3150,26 @@ def test_generation_batcher_returns_scheduler_chunks_for_single_metadata_submiss
         ]
 
     asyncio.run(run())
+
+
+def test_backend_scheduler_token_chunks_reads_wrapped_text_generator() -> None:
+    source_chunks = [
+        {
+            "request_id": 0,
+            "token_index": 0,
+            "token_id": 101,
+            "chunk": {"text": "A", "telemetry": {"decode_state": {"execution_path": "gguf_serial_host_sampler_decode"}}},
+        }
+    ]
+    inner = SimpleNamespace(last_batch_generation={"scheduler_token_chunks": source_chunks})
+    engine = SimpleNamespace(_text_generator=SimpleNamespace(inner=inner))
+
+    chunks = _backend_scheduler_token_chunks(engine)
+
+    assert chunks == source_chunks
+    assert chunks is not None
+    assert chunks[0] is not source_chunks[0]
+    assert chunks[0]["chunk"] is not source_chunks[0]["chunk"]
 
 
 def test_generation_batcher_drops_scheduler_chunks_for_coalesced_metadata_submissions() -> None:
