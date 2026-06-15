@@ -3,10 +3,11 @@
 Last updated: 2026-06-15
 
 This page is the retained setup for hipEngine W7900 / gfx1100 benchmark runs
-that use AMD TheRock Python wheels. It records the install recipe, the package
-flavor choice, verification commands, and the ROCm 7.14 nightly regression
-diagnostics that keep ROCm 7.13 as the canonical stack for current topline rows.
-The upstream release-package reference is TheRock
+that use AMD TheRock Python wheels, plus the local Strix Halo / gfx1151 ROCm
+dev and PyTorch bootstrap recipe. It records the install recipes, package flavor
+choices, verification commands, and the ROCm 7.14 nightly regression diagnostics
+that keep ROCm 7.13 as the canonical stack for current W7900 topline rows. The
+upstream release-package reference is TheRock
 [`RELEASES.md`](https://github.com/ROCm/TheRock/blob/main/RELEASES.md).
 
 ## Retained Stack
@@ -71,9 +72,152 @@ the validated package/index name for this repo. Do not substitute
 performance rows unless it is revalidated, because the current evidence is tied
 to the explicit `gfx110X-all` package set.
 
+## gfx1151 / Strix Halo Local Nightly Install
+
+For local Strix Halo APUs (`gfx1151`, e.g. Ryzen AI Max / Radeon 8060S), use the
+per-architecture gfx1151 TheRock index, not the retained W7900 `gfx110X-all`
+index:
+
+```bash
+mamba create -n therock python=3.12
+mamba activate therock
+
+INDEX=https://rocm.nightlies.amd.com/v2/gfx1151/
+```
+
+The known-good local gfx1151 ROCm dev + PyTorch stack from June 2026 is pinned to
+one nightly tag throughout:
+
+| Package | Version |
+| --- | --- |
+| `rocm-sdk-libraries-gfx1151` | `7.13.0a20260411` |
+| `rocm-sdk-devel` | `7.13.0a20260411` |
+| `torch` | `2.12.0a0+rocm7.13.0a20260411` |
+| `torchvision` | `0.27.0a0+rocm7.13.0a20260411` |
+| `torchaudio` | `2.11.0a0+rocm7.13.0a20260411` |
+| `triton` | `3.7.0+git18f89f64.rocm7.13.0a20260411` |
+
+Install with exact pins:
+
+```bash
+pip install --pre --no-cache-dir \
+  --index-url "$INDEX" \
+  "rocm-sdk-libraries-gfx1151==7.13.0a20260411" \
+  "rocm-sdk-devel==7.13.0a20260411" \
+  "torch==2.12.0a0+rocm7.13.0a20260411" \
+  "torchvision==0.27.0a0+rocm7.13.0a20260411" \
+  "torchaudio==2.11.0a0+rocm7.13.0a20260411" \
+  "triton==3.7.0+git18f89f64.rocm7.13.0a20260411"
+```
+
+Expected result on the local Ryzen AI Max / Radeon 8060S box:
+
+```text
+torch 2.12.0a0+rocm7.13.0a20260411
+hip   7.13.60980
+torch.cuda.is_available() -> True
+device -> Radeon 8060S Graphics
+```
+
+### Why Every Package Is Pinned
+
+Do not run a floating install like this on gfx1151:
+
+```bash
+pip install --pre --index-url https://rocm.nightlies.amd.com/v2/gfx1151/ \
+  "rocm[libraries,devel]" "rocm-sdk-libraries-gfx1151" \
+  torch torchvision torchaudio triton
+```
+
+The gfx1151 nightlies publish ROCm SDK and PyTorch wheels independently. If the
+floating `rocm[libraries,devel]` meta advances to a newer ROCm tag than the
+newest torch wheel supports, pip tries to satisfy both constraints by
+backtracking through older torch wheels. The symptom is repeated multi-hundred-MB
+`torch` downloads with messages like `pip is looking at multiple versions of
+torch` and `This is taking longer than usual`. This can burn tens of GB and still
+not converge.
+
+Use torch's embedded ROCm tag as the source of truth:
+
+```text
+torch==2.12.0a0+rocm7.13.0a20260411
+                    └────────────┘  pin rocm-sdk-* to 7.13.0a20260411
+```
+
+Then pin `rocm-sdk-libraries-gfx1151`, `rocm-sdk-devel`, torch, torchvision,
+torchaudio, and triton to one matching nightly. Dropping the floating
+`rocm[libraries,devel]` meta avoids accidentally selecting a newer ROCm SDK than
+torch was built against; `rocm-sdk-devel` still provides HIP headers, compiler,
+and device libraries for hipEngine kernel builds.
+
+To discover the newest torch candidate without doing a full install:
+
+```bash
+pip index versions torch --pre --index-url https://rocm.nightlies.amd.com/v2/gfx1151/
+```
+
+Bump all packages together when moving to a newer nightly.
+
+### gfx1151 Verification And Cleanup
+
+```bash
+python - <<'PY'
+import torch
+print("torch:", torch.__version__)
+print("hip:", torch.version.hip)
+print("cuda.is_available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("device:", torch.cuda.get_device_name(0))
+PY
+
+ROOT=$(python -m rocm_sdk path --root)
+echo "$ROOT"
+"$ROOT/bin/hipcc" --version
+"$ROOT/bin/hipcc" --version > /tmp/hipengine-hipcc-version.txt
+rocminfo | grep -E 'Name:|gfx1151'
+```
+
+ROCm/HIP PyTorch builds expose AMD GPUs through the CUDA compatibility API, so
+`torch.cuda.is_available()` and `torch.cuda.get_device_name()` are the right
+checks. There is no separate `torch.hip` device namespace.
+
+If converting an existing gfx1100/gfx110X environment, remove stale device or
+library wheels before reinstalling or after the pinned install:
+
+```bash
+pip uninstall -y \
+  rocm-sdk-libraries-gfx110X-all \
+  rocm-sdk-libraries-gfx110X-dgpu \
+  rocm-sdk-libraries-gfx1100 \
+  rocm-sdk-libraries \
+  amd-torch-device-gfx1100 \
+  amd-torch-device-gfx11 \
+  amd-torchvision-device-gfx1100
+```
+
+Reclaim disk after failed floating installs or successful setup:
+
+```bash
+pip cache purge
+mamba clean --all --yes
+```
+
+For clean hipEngine benchmark or profiling processes on gfx1151, adapt the
+wrapper below by replacing `_rocm_sdk_libraries_gfx110X_all` with
+`_rocm_sdk_libraries_gfx1151` and setting `HIPENGINE_HIP_ARCH=gfx1151` when a
+native gfx1151 JIT build is required. Do not set `HSA_OVERRIDE_GFX_VERSION` for a
+real gfx1151 local device unless debugging a specific compatibility issue.
+
+Strix Halo uses shared system memory for the integrated GPU. If large model runs
+fail from memory pressure even though host RAM is available, check the platform's
+GTT / TTM configuration (for example `ttm.pages_limit` in the host modprobe or
+kernel-command-line setup); the default cap may be much lower than installed RAM.
+That host-level tuning is outside TheRock itself, but it is a prerequisite for
+large local LLM runs.
+
 ## Install Or Repair
 
-Start with the pinned reinstall:
+Start with the pinned W7900 / gfx1100 reinstall:
 
 ```bash
 PY=/home/lhl/mambaforge/envs/therock/bin/python3.12

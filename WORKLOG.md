@@ -92449,3 +92449,15 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - TheRock gfx1151 pinned nightly install notes
+
+Documented the local Strix Halo / gfx1151 TheRock ROCm dev + PyTorch bootstrap
+in `docs/THEROCK.md`. The new section captures the June 2026 known-good
+`gfx1151` package set, the pip resolver backtracking trap caused by floating
+`rocm[libraries,devel]` ahead of torch's embedded ROCm tag, the exact pinned
+install command, verification checks, stale gfx110X wheel cleanup, disk cleanup,
+and the shared-memory/GTT note for large local LLM runs.
+
+Validation:
+- `git diff --check -- docs/THEROCK.md` -> clean.
