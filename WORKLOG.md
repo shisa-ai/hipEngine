@@ -92461,3 +92461,38 @@ and the shared-memory/GTT note for large local LLM runs.
 
 Validation:
 - `git diff --check -- docs/THEROCK.md` -> clean.
+
+## 2026-06-15 - gfx1151 Qwen3.6 PARO 512/128 smoke
+
+Ran a basic local Strix Halo / gfx1151 hipEngine smoke for
+`shisa-ai/Qwen3.6-35B-A3B-PARO-packed` snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1` using repeated token id `9707`,
+512 prompt tokens, 128 measured decode tokens, 4 warmup decode tokens, BF16 KV,
+`--backend hip_gfx1151`, graph replay decode, and the gfx1151 chunk256 prefill
+flags. Environment used TheRock ROCm SDK `HIP version: 7.13.60980-c76140fa27`
+from `/home/lhl/miniforge3/envs/therock` with the project `uv run` Python
+`3.13.13`; JIT cache was cold and built gfx1151 HIP artifacts before the timed
+window. This is a smoke/diagnostic run, not a retained performance claim; the
+worktree was dirty from pre-existing AOTriton/LFS local changes.
+
+Command summary:
+```bash
+uv run python scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --backend hip_gfx1151 --shared-expert-format packed_paro_w4 \
+  --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 \
+  --prefill-full-attn-query-chunk-size 256 \
+  --prefill-full-attn-post-chunk-size 256 \
+  --prefill-full-attn-rope-chunk-size 256 \
+  --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt \
+  --json /tmp/hipengine-gfx1151-512128-20260615-124047/result.json
+```
+
+Result:
+- prefill `979.372 tok/s` (`0.522784 s`), native prefill path `single_request_native_full`;
+- decode `66.957 tok/s` (`1.911681 s`), graph replay enabled, median step `14.935 ms`;
+- tracked allocator peak `18.039 GiB`, sampled HIP peak `18.121 GiB`;
+- KV memory audit passed; generated preview repeats token `9707` (`.Q`) with finite logits.
