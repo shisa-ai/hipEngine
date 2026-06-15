@@ -215,6 +215,14 @@ No-hold notes:
   `512/128` decode up (`127.012 -> 127.112 tok/s`), but regressed the retained
   `4K/128` gate (`115.805 -> 115.704 tok/s`) and lowered 4K prefill. Keep Q8_0
   T16 GEMV decode at `128,4`.
+- **G-D2 Q8 dual-split launch-bound=3 rejected (2026-06-15).** Relaxing only
+  `q8_0_t16_dual_split_gemv_kernel` from `__launch_bounds__(128, 4)` to
+  `__launch_bounds__(128, 3)` preserved generated IDs and memory and improved
+  `512/128` prefill (`1647.390 -> 1664.017 tok/s`), but regressed both retained
+  decode gates (`127.012 -> 126.960 tok/s`, `115.805 -> 115.688 tok/s`) and
+  `4K/128` prefill (`1855.806 -> 1853.900 tok/s`). Keep all Q8_0 T16 GEMV
+  decode variants at `128,4` until variant-level codegen evidence says
+  otherwise.
 - **G-D2 Q8 launch-bound=5 rejected (2026-06-15).** Tightening all four Q8_0
   T16 GEMV decode kernels from `__launch_bounds__(128, 4)` to
   `__launch_bounds__(128, 5)` preserved generated IDs and memory, but regressed
