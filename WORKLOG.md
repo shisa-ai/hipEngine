@@ -91843,3 +91843,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC JSON schema object property bounds
+
+Strict tool schemas and structured-output JSON Schema validation now support
+object `minProperties` and `maxProperties`. The capability manifest advertises
+both enforced keywords, request validation rejects invalid non-negative integer
+bounds before generation, and result validation turns too-small or too-large
+objects into normal `schema_violation` responses.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_object_property_count tests/test_server_api.py::test_completions_response_format_rejects_invalid_property_count_bound tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_property_count tests/test_server_api.py::test_completions_response_format_json_schema_validates_result tests/test_server_api.py::test_chat_completion_strict_tool_schema_accepts_bounded_subset -q` -> `6 passed`.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> `140 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

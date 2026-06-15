@@ -169,6 +169,8 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "properties",
         "required",
         "additionalProperties",
+        "minProperties",
+        "maxProperties",
         "items",
         "minItems",
         "maxItems",
@@ -859,6 +861,8 @@ def _tool_schema_subset() -> list[str]:
         "object.properties",
         "object.required",
         "object.additionalProperties=false",
+        "object.minProperties",
+        "object.maxProperties",
         "array.items",
         "array.minItems",
         "array.maxItems",
@@ -9664,7 +9668,7 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
         if error is not None:
             return error
 
-    for key in ("minItems", "maxItems", "minLength", "maxLength"):
+    for key in ("minProperties", "maxProperties", "minItems", "maxItems", "minLength", "maxLength"):
         if key in schema and _schema_nonnegative_int(schema.get(key)) is None:
             return (f"{path}.{key}", f"{path}.{key} must be a non-negative integer")
     if "pattern" in schema:
@@ -9694,6 +9698,12 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
     if schema_type == "object":
         if not isinstance(value, Mapping):
             return f"{path} must be an object"
+        min_properties = _schema_nonnegative_int(schema.get("minProperties"))
+        if min_properties is not None and len(value) < min_properties:
+            return f"{path} must have at least {min_properties} properties"
+        max_properties = _schema_nonnegative_int(schema.get("maxProperties"))
+        if max_properties is not None and len(value) > max_properties:
+            return f"{path} must have at most {max_properties} properties"
         required = schema.get("required", ())
         if isinstance(required, Sequence) and not isinstance(required, (str, bytes)):
             for key in required:

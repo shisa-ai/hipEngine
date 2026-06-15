@@ -759,6 +759,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "object.properties",
             "object.required",
             "object.additionalProperties=false",
+            "object.minProperties",
+            "object.maxProperties",
             "array.items",
             "array.minItems",
             "array.maxItems",
@@ -825,6 +827,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "object.properties",
             "object.required",
             "object.additionalProperties=false",
+            "object.minProperties",
+            "object.maxProperties",
             "array.items",
             "array.minItems",
             "array.maxItems",
@@ -4846,6 +4850,59 @@ def test_completions_response_format_json_schema_validates_string_pattern() -> N
     assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_json_schema_validates_object_property_count() -> None:
+    schema = {
+        "name": "agent_result",
+        "schema": {
+            "type": "object",
+            "minProperties": 2,
+            "maxProperties": 2,
+            "properties": {
+                "ok": {"type": "boolean"},
+                "path": {"type": "string"},
+                "extra": {"type": "string"},
+            },
+        },
+    }
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true,"path":"README.md"}']),
+        )
+    )
+    too_few_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true}']),
+        )
+    )
+    too_many_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"ok":true,"path":"README.md","extra":"x"}']),
+        )
+    )
+
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid = valid_client.post("/v1/completions", json=payload)
+    too_few = too_few_client.post("/v1/completions", json=payload)
+    too_many = too_many_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"ok":true,"path":"README.md"}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    for response in (too_few, too_many):
+        assert response.status_code == 200
+        choice = response.json()["choices"][0]
+        assert choice["text"] == ""
+        assert choice["finish_reason"] == "stop"
+        assert choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_json_schema_length_rejects_invalid_json_continuation() -> None:
     client = TestClient(
         create_app(
@@ -5113,6 +5170,35 @@ def test_completions_response_format_rejects_invalid_schema_pattern() -> None:
     error = response.json()["error"]
     assert error["code"] == "invalid_request"
     assert error["param"] == "response_format.json_schema.schema.properties.path.pattern"
+    assert error["hipengine"]["code"] == "schema_violation"
+    assert error["hipengine"]["legacy_code"] == "invalid_request"
+    assert fake.calls == []
+
+
+def test_completions_response_format_rejects_invalid_property_count_bound() -> None:
+    fake = FakeLLM(outputs=['{"ok":true}'])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "json",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_result",
+                    "schema": {"type": "object", "minProperties": -1},
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == "response_format.json_schema.schema.minProperties"
     assert error["hipengine"]["code"] == "schema_violation"
     assert error["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
@@ -8855,6 +8941,60 @@ def test_chat_completion_strict_tool_schema_rejects_invalid_pattern_without_gene
     assert error["hipengine"]["code"] == "schema_violation"
     assert error["hipengine"]["legacy_code"] == "invalid_request"
     assert fake.calls == []
+
+
+def test_chat_completion_strict_tool_schema_validates_property_count() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "minProperties": 2,
+                    "maxProperties": 2,
+                    "properties": {
+                        "path": {"type": "string"},
+                        "mode": {"type": "string"},
+                        "extra": {"type": "string"},
+                    },
+                },
+            },
+        }
+    ]
+    valid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>']
+        ),
+    )
+    invalid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=[
+                '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw","extra":"x"}}</tool_call>'
+            ]
+        ),
+    )
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "read the readme"}],
+        "tools": tools,
+    }
+
+    valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
+    invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["finish_reason"] == "tool_calls"
+    assert valid_choice["finish_details"]["reason"] == "tool_calls"
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "tool_calls" not in invalid_choice["message"]
 
 
 def test_chat_completion_strict_tool_schema_accepts_annotation_keywords() -> None:
