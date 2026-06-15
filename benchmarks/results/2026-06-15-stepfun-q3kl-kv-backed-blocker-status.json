@@ -80,9 +80,36 @@
   ],
   "readiness_gate": "kv_backed_decode",
   "schema_version": 1,
-  "source_correctness_status_sha256": "49b3f832ade28b27efa790c06755ddf6fb2c4ff23aeaee68b76ebe881349688c",
-  "source_validator_status_sha256": "40729af5d2010b3a9e29a369cdd6736c93769168ea181c74de2c517819ad375a",
+  "source_correctness_status_sha256": "0df3b550df9c9ea578697071f46f03702e17ff985d28c0ac6e921c9f6646de75",
+  "source_validator_status_sha256": "732778afc71f93a5efab5e2083ff98856445a6198455689d92ef868ac8321bdd",
   "status": "blocked",
+  "streaming_runner_source_status": {
+    "blocked_by": "streaming_decode_loop_not_wired",
+    "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+    "blocker_count": 3,
+    "blocker_names": [
+      "streaming_decode_loop_not_wired",
+      "kv_kernel_trace_artifact_missing",
+      "kv_backed_next_token_artifact_missing"
+    ],
+    "blueprint_operation_count": 135,
+    "blueprint_sha256": "b65e74949ee62b255b84c29c18a3fbdab79eb7c79d2bcc53a27a0e516dc2e674",
+    "blueprint_stage_count": 4,
+    "executable": false,
+    "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+    "kv_decode_run_plan_present": true,
+    "last_blocker_name": "kv_backed_next_token_artifact_missing",
+    "next_action": "wire_streaming_decode_loop",
+    "no_kernel_launches": true,
+    "ready": false,
+    "required_artifact_names": [
+      "kv_kernel_trace_artifact",
+      "kv_backed_next_token_artifact"
+    ],
+    "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+    "schema_version": 1,
+    "source": "kv_decode_run_plan"
+  },
   "validator_command_kinds": [
     "kv_trace_check_command",
     "kv_next_token_check_command"

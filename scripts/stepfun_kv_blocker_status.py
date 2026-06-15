@@ -155,6 +155,55 @@ def _blocked_records_for_gate(
     ]
 
 
+def _load_json_object(path: Path) -> dict[str, object]:
+    with path.open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return payload
+
+
+def _dict_or_empty(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def _streaming_runner_source_status(resource_artifact: Path) -> dict[str, object]:
+    resource = _load_json_object(resource_artifact)
+    run_plan = _dict_or_empty(resource.get("kv_decode_run_plan"))
+    loop_status = _dict_or_empty(run_plan.get("streaming_decode_loop_status"))
+    blueprint = _dict_or_empty(run_plan.get("streaming_decode_loop_blueprint"))
+    blocker_summary = _dict_or_empty(run_plan.get("kv_decode_blocker_summary"))
+    artifacts_needed = blocker_summary.get("artifacts_needed", [])
+    if not isinstance(artifacts_needed, list):
+        artifacts_needed = []
+    return {
+        "schema_version": 1,
+        "resource_artifact": str(resource_artifact),
+        "kv_decode_run_plan_present": bool(run_plan),
+        "source": loop_status.get("source") or blueprint.get("source"),
+        "ready": loop_status.get("ready"),
+        "executable": loop_status.get("executable") or blueprint.get("executable"),
+        "blocked_by": loop_status.get("blocked_by") or blueprint.get("blocked_by"),
+        "blocked_by_sha256": loop_status.get("blocked_by_sha256")
+        or blueprint.get("blocked_by_sha256"),
+        "next_action": loop_status.get("next_action"),
+        "blocker_count": loop_status.get("blocker_count"),
+        "blocker_names": loop_status.get("blocker_names"),
+        "blueprint_operation_count": loop_status.get("blueprint_operation_count")
+        or blueprint.get("operation_count"),
+        "blueprint_stage_count": loop_status.get("blueprint_stage_count"),
+        "blueprint_sha256": loop_status.get("blueprint_sha256"),
+        "required_artifact_names": [
+            item.get("name") for item in artifacts_needed if isinstance(item, dict)
+        ],
+        "kernel_trace_blocker_name": blocker_summary.get("kernel_trace_blocker_name"),
+        "last_blocker_name": blocker_summary.get("last_blocker_name"),
+        "no_kernel_launches": _dict_or_empty(
+            run_plan.get("streaming_decode_launch_trace")
+        ).get("no_kernel_launches"),
+    }
+
+
 def build_kv_blocker_status(
     *,
     prompt_artifact: Path = status_mod.DEFAULT_PROMPT_ARTIFACT,
@@ -208,6 +257,7 @@ def build_kv_blocker_status(
                 if record.get("producer_command_kind")
             }
         ),
+        "streaming_runner_source_status": _streaming_runner_source_status(resource_artifact),
         "blocked_records": blocked,
         "no_claim_policy": {
             "kv_backed_decode_claim_allowed": False,

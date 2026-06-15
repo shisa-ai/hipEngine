@@ -59,6 +59,24 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "kv_next_token_check_command",
     ]
     assert artifact["producer_command_kinds"] == ["resource_plan_refresh_command"]
+    source_status = artifact["streaming_runner_source_status"]
+    assert source_status["schema_version"] == 1
+    assert source_status["kv_decode_run_plan_present"] is True
+    assert source_status["source"] == "kv_decode_run_plan"
+    assert source_status["ready"] is False
+    assert source_status["executable"] is False
+    assert source_status["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert source_status["next_action"] == "wire_streaming_decode_loop"
+    assert source_status["blocker_count"] == 3
+    assert source_status["blueprint_operation_count"] == 135
+    assert source_status["blueprint_stage_count"] == 4
+    assert source_status["kernel_trace_blocker_name"] == "kv_kernel_trace_artifact_missing"
+    assert source_status["last_blocker_name"] == "kv_backed_next_token_artifact_missing"
+    assert source_status["required_artifact_names"] == [
+        "kv_kernel_trace_artifact",
+        "kv_backed_next_token_artifact",
+    ]
+    assert source_status["no_kernel_launches"] is True
     assert artifact["no_claim_policy"] == {
         "kv_backed_decode_claim_allowed": False,
         "e2e_inference_claim_allowed": False,
@@ -105,6 +123,12 @@ def test_stepfun_kv_blocker_status_cli_writes_artifact(tmp_path: Path) -> None:
     assert payload["date"] == "2030-01-03"
     assert payload["status"] == "blocked"
     assert payload["blocked_count"] == 2
+    assert payload["streaming_runner_source_status"]["blocked_by"] == (
+        "streaming_decode_loop_not_wired"
+    )
+    assert payload["streaming_runner_source_status"]["next_action"] == (
+        "wire_streaming_decode_loop"
+    )
     assert payload["missing_artifact_paths"] == [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
