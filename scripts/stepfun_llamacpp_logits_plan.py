@@ -129,6 +129,7 @@ def _missing_only_expected_logits_evidence(missing: object) -> bool:
     expected = {
         "llama_cpp_same_prompt_logits_artifact_present",
         "llama_cpp_logits_dump_entrypoint_identified",
+        "llama_cpp_same_prompt_special_token_support_present",
     }
     return (
         isinstance(missing, list)
@@ -167,7 +168,10 @@ def build_llamacpp_logits_plan(
     llama_probe = preflight.get("llama_cli_probe")
     llama_cli = llama_probe.get("path") if isinstance(llama_probe, dict) else None
     missing_set = set(missing_evidence) if isinstance(missing_evidence, list) else set()
-    entrypoint_ready = "llama_cpp_logits_dump_entrypoint_identified" not in missing_set
+    entrypoint_ready = (
+        "llama_cpp_logits_dump_entrypoint_identified" not in missing_set
+        and "llama_cpp_same_prompt_special_token_support_present" not in missing_set
+    )
     prompt_entry = _source_entry(source_map, "host_prompt_logit_smoke")
     oracle_entry = _source_entry(source_map, "llamacpp_oracle_runner")
     handoff_entry = _source_entry(source_map, "oracle_blocker_handoff")
@@ -187,7 +191,12 @@ def build_llamacpp_logits_plan(
                 ]
                 if entrypoint_ready
                 else [
-                    "current preflight found llama-cli executable but no obvious logits dump flag",
+                    (
+                        "current preflight found a logits dump binary, but it cannot parse the retained "
+                        "prompt's special tokens"
+                        if "llama_cpp_same_prompt_special_token_support_present" in missing_set
+                        else "current preflight found llama-cli executable but no obvious logits dump flag"
+                    ),
                     "do not use --logit-bias as a substitute for logits capture",
                 ]
             ),

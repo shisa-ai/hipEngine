@@ -103,9 +103,11 @@ def test_stepfun_llamacpp_logits_preflight_reports_missing_logits_artifact_and_e
     assert report["llama_cli_probe"]["help_status"] == "executed"
     assert report["llama_cli_probe"]["help_mentions_logit_bias"] is True
     assert report["llama_cli_probe"]["obvious_logits_dump_flag_present"] is False
+    assert report["llama_cli_probe"]["same_prompt_special_token_flag_present"] is False
     assert report["missing_evidence"] == [
         "llama_cpp_same_prompt_logits_artifact_present",
         "llama_cpp_logits_dump_entrypoint_identified",
+        "llama_cpp_same_prompt_special_token_support_present",
     ]
     assert report["target"] == {
         "canonical_backend": "vulkan",
@@ -119,7 +121,7 @@ def test_stepfun_llamacpp_logits_preflight_reports_missing_logits_artifact_and_e
         "host_top1_to_top2_margin": 0.8150444030761719,
     }
     assert report["blocked_reason"] == (
-        "same-prompt llama.cpp logits artifact and/or logits dump entrypoint is missing"
+        "same-prompt logits probe binary lacks special-token parsing for the retained prompt"
     )
     assert report["next_action"] == (
         "identify or add a llama.cpp logits dump entrypoint for the retained StepFun prompt, "
@@ -141,7 +143,7 @@ def test_stepfun_llamacpp_logits_preflight_can_be_ready_when_artifact_and_entryp
     tmp_path: Path,
 ) -> None:
     manifest, source_map, margin, fake_cli, logits_artifact = _write_inputs(
-        tmp_path, help_text="--save-logits --logits-output-dir PATH --logit-bias TOKEN"
+        tmp_path, help_text="--save-logits --logits-output-dir PATH --special --logit-bias TOKEN"
     )
     _write_json(
         logits_artifact,
@@ -149,6 +151,8 @@ def test_stepfun_llamacpp_logits_preflight_can_be_ready_when_artifact_and_entryp
             "schema_version": 1,
             "artifact_kind": "stepfun_llamacpp_logits_probe",
             "status": "captured",
+            "ready": True,
+            "same_prompt_tokens_match": True,
         },
     )
 
@@ -175,7 +179,7 @@ def test_stepfun_llamacpp_logits_preflight_reports_only_missing_artifact_when_de
     tmp_path: Path,
 ) -> None:
     manifest, source_map, margin, fake_cli, logits_artifact = _write_inputs(
-        tmp_path, help_text="--save-logits --logits-output-dir PATH --logit-bias TOKEN"
+        tmp_path, help_text="--save-logits --logits-output-dir PATH --special --logit-bias TOKEN"
     )
 
     report = build_llamacpp_logits_preflight(
@@ -194,6 +198,38 @@ def test_stepfun_llamacpp_logits_preflight_reports_only_missing_artifact_when_de
     assert report["next_action"] == (
         "retain same-prompt logits from llama-debug using --save-logits, then compare expected "
         "token 369 with generated token 671"
+    )
+
+
+def test_stepfun_llamacpp_logits_preflight_reports_missing_special_token_support(
+    tmp_path: Path,
+) -> None:
+    manifest, source_map, margin, fake_cli, logits_artifact = _write_inputs(
+        tmp_path, help_text="--save-logits --logits-output-dir PATH --logit-bias TOKEN"
+    )
+
+    report = build_llamacpp_logits_preflight(
+        next_action_manifest=manifest,
+        source_map_artifact=source_map,
+        host_logit_margin_artifact=margin,
+        llama_logits_artifact=logits_artifact,
+        llama_cli=fake_cli,
+    )
+
+    assert report["status"] == "blocked"
+    assert report["llama_cli_probe"]["obvious_logits_dump_flag_present"] is True
+    assert report["llama_cli_probe"]["same_prompt_special_token_flag_present"] is False
+    assert report["missing_evidence"] == [
+        "llama_cpp_same_prompt_logits_artifact_present",
+        "llama_cpp_same_prompt_special_token_support_present",
+    ]
+    assert report["blocked_reason"] == (
+        "same-prompt logits probe binary lacks special-token parsing for the retained prompt"
+    )
+    assert report["next_action"] == (
+        "add or build a llama.cpp logits dump helper that parses special tokens or accepts explicit "
+        "token IDs for the retained StepFun prompt, then retain same-prompt logits before comparing "
+        "expected token 369 with generated token 671"
     )
 
 
@@ -270,4 +306,5 @@ def test_stepfun_llamacpp_logits_preflight_cli_compact_modes(tmp_path: Path) -> 
     assert json.loads(output.read_text()) == [
         "llama_cpp_same_prompt_logits_artifact_present",
         "llama_cpp_logits_dump_entrypoint_identified",
+        "llama_cpp_same_prompt_special_token_support_present",
     ]

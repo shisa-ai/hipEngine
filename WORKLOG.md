@@ -41279,3 +41279,37 @@ python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-j
 ```
 
 Results: targeted logits preflight/plan/inventory/rollup tests passed (`19` tests); status/manifest/handoff verification returned `"match"`; preflight stable payload SHA `feb12c5e0fa4bc37493c468e7b637b6284b1e21007636ef2b18f4a6a35f48aa9`, file SHA `48a6636ff8877e9f0cc3236b9d1b0f813eb7f485d0afd98f9ae14ae9cab5ce09`; plan stable payload SHA `d858d32e453e6cdde9458bf0f93598598ca46873ac8ead632fcfeb2185bfc325`, file SHA `5ed18abe5978cb883e9a8e7d9fd4d97eeb6dc7cc54154bb801d711ee7b01c966`; inventory stable payload SHA `97dec170ee59c5d34b73703b0a4d0ac5d27f77f2bb3a26070f40881f01d6dac6`, file SHA `ab25c6c7db94becea0e10a0aa6ae7de7cef18aa7b372f6eece04d9c9155aae12`; remaining-blockers stable payload SHA `384b52ef7c3517b2a7ab4032dce8056226f7f41047bb0fc16fdc1dd8b916c76c`, file SHA `9904a40795689f67e0ccc30319413e2e879e16a6e71391a429ee159ea4908001`; correctness-status file SHA `a29f7afe854c193ce8647006f280e24edb27659ee73d9db589b3bd79ea512a1b`; final-blocker file SHA `a32435e9c5b3321ecb89732f223415a42b9622b72211eb8c82a39cc8ed94709d`; handoff file SHA `2a740c21496a4c7544424d151f99ed94b2e980534dd9bc2d60be0abda23dc9bf`; P0-P12 open/partial count remains `2`; blocked gates remain `oracle_parity|kv_backed_decode|e2e_inference`; full StepFun guard passed and ended with `STEP_GUARD_PASS`; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama-debug same-prompt logits contract blocker
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 503. Added `scripts/stepfun_llamacpp_logits_probe.py` / `tests/test_stepfun_llamacpp_logits_probe.py` to retain a compact same-prompt llama.cpp logits probe artifact when a suitable logits-dump helper exists. The probe builds the exact `llama-debug --save-logits --logits-output-dir ... --special --override-kv tokenizer.ggml.add_bos_token=bool:false` command from the retained host prompt artifact, records the expected raw output paths, and refuses to execute unless the probe binary exposes a special-token parsing flag. Updated `scripts/stepfun_llamacpp_logits_preflight.py` / tests so the preflight requires a captured+ready same-prompt logits artifact and special-token support, updated `scripts/stepfun_llamacpp_logits_plan.py` so the entrypoint step is not marked completed when special-token support is missing, and linked the new probe artifact from `scripts/stepfun_remaining_blockers_rollup.py`.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json` reports `status=blocked`, `ready=false`, and missing evidence `llama_debug_same_prompt_special_token_support_present`; built `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug` still exposes `--save-logits`/`--logits-output-dir`, but its help does not expose `--special` or `--parse-special`, so it cannot reproduce the retained StepFun prompt IDs safely. The refreshed preflight remains `status=blocked` with missing evidence `llama_cpp_same_prompt_logits_artifact_present` and `llama_cpp_same_prompt_special_token_support_present`. The plan remains `implementation_ready=true` but all four implementation steps are pending again because the built dump entrypoint is not same-prompt capable. The canonical oracle gap remains `generated_text_matches_target`; no oracle/KV/e2e/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_probe.py scripts/stepfun_llamacpp_logits_preflight.py scripts/stepfun_llamacpp_logits_plan.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_llamacpp_logits_probe.py tests/test_stepfun_llamacpp_logits_preflight.py tests/test_stepfun_llamacpp_logits_plan.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_probe.py tests/test_stepfun_llamacpp_logits_preflight.py tests/test_stepfun_llamacpp_logits_plan.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_probe.py --execute --sha-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --docs-open-partial-count-only
+python3 scripts/stepfun_correctness_status.py --blocked-gates-joined-only
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+```
+
+Results: targeted logits probe/preflight/plan/rollup tests passed (`21` tests); status/manifest/handoff verification returned `"match"`; probe stable payload SHA `5aecd251d8075ae007e55c5e9e87e7deed7f26cccdb6e298cec9b5f0266a3ca9`, file SHA `43ce19a67f42c1b5b6ac21a39f054c7ea57ad0b53e8336a99f3b1f3c14d24bbb`; preflight stable payload SHA `eaaf29a248a3dcfd44c700798b24b3d4e003a0da9d935b6cac2f8572a9e44299`, file SHA `bac8f4dc529c8f6fbbcae091b940786bbe9144d167104aecca10ad161d06e29c`; plan stable payload SHA `2c4108a0ae312b7fc470a2d839afa56cf31707052d5cc822d4514155b942f789`, file SHA `ba3b2e0d863f924c58059837631161c4ea32da10b065e074bb3e6af891b67b48`; inventory stable payload SHA `ca602934c682bcbe6fa20d7d0e34769218960b35b9b563b7864f7ac2b092e8c8`, file SHA `6b6f00fef77b9486ca150367177a712199aacb14db407c994cad8153bc3b2732`; remaining-blockers stable payload SHA `cc6babd9d355088b02cf0de67fac25009c334c50a631de5f11ad036ae1d6a23d`, file SHA `e56bde52a332965f20982783621e926346b58ff125152b590cf0797cc3a2a533`; correctness-status file SHA `a980cba88eb81bdb0fb257c175ab337f3ecfe1e890997da13648897980713f0f`; final-blocker file SHA `be2961206449b554a349fb51acf7a6dfe135f9172a43ded341c938c468775bcb`; handoff file SHA `0811e13121faf9b63ac8cbbf4a43d984a0244ef6eb9f8c952438f476a0e2a027`; P0-P12 open/partial count remains `2`; blocked gates remain `oracle_parity|kv_backed_decode|e2e_inference`; full StepFun guard passed and ended with `STEP_GUARD_PASS`; `git diff --check` passed.

@@ -125,6 +125,12 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
     assert oracle_blocker["llamacpp_logits_preflight_generator_command"] == (
         "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty"
     )
+    assert oracle_blocker["llamacpp_logits_probe_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json"
+    )
+    assert oracle_blocker["llamacpp_logits_probe_generator_command"] == (
+        "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty"
+    )
     assert oracle_blocker["llamacpp_logits_plan_artifact"] == (
         "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json"
     )
@@ -195,6 +201,9 @@ def test_stepfun_remaining_blockers_rollup_links_oracle_and_kv(
         ),
         "llamacpp_logits_preflight": (
             "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty"
+        ),
+        "llamacpp_logits_probe": (
+            "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty"
         ),
         "llamacpp_logits_plan": (
             "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty"
@@ -333,6 +342,9 @@ def test_stepfun_remaining_blockers_rollup_cli_compact_modes(tmp_path: Path) -> 
     )
     assert commands["llamacpp_logits_preflight"].endswith(
         "stepfun_llamacpp_logits_preflight.py --default-output --pretty"
+    )
+    assert commands["llamacpp_logits_probe"].endswith(
+        "stepfun_llamacpp_logits_probe.py --execute --default-output --pretty"
     )
     assert commands["llamacpp_logits_plan"].endswith(
         "stepfun_llamacpp_logits_plan.py --default-output --pretty"

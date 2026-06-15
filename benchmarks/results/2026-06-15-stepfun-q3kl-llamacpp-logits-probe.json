@@ -1,0 +1,106 @@
+{
+  "artifact_kind": "stepfun_llamacpp_logits_probe",
+  "blocked_reason": "built llama-debug exposes --save-logits but does not accept a special-token parsing flag, so it cannot reproduce the retained StepFun prompt token IDs",
+  "command": [
+    "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
+    "--model",
+    "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "--prompt",
+    "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "--save-logits",
+    "--logits-output-dir",
+    "/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe",
+    "--gpu-layers",
+    "999",
+    "--no-warmup",
+    "--no-perf",
+    "--special",
+    "--override-kv",
+    "tokenizer.ggml.add_bos_token=bool:false"
+  ],
+  "command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --save-logits --logits-output-dir /tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe --gpu-layers 999 --no-warmup --no-perf --special --override-kv tokenizer.ggml.add_bos_token=bool:false",
+  "date": "2026-06-15",
+  "input_ids": [
+    0,
+    128006,
+    27824,
+    201,
+    77666,
+    288,
+    28,
+    3157,
+    271,
+    128007,
+    201,
+    128006,
+    5265,
+    201,
+    33310,
+    128007,
+    201,
+    128006,
+    624,
+    15059,
+    201,
+    128798,
+    201
+  ],
+  "llama_cpp_version": "version: 9641 (6e9007ae6)\nbuilt with GNU 16.1.1 for Linux x86_64",
+  "llama_debug": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
+  "llama_debug_same_prompt_capability": {
+    "executable": true,
+    "exists": true,
+    "help_returncode": 0,
+    "help_status": "executed",
+    "matched_same_prompt_special_markers": [],
+    "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
+    "same_prompt_special_markers_checked": [
+      "--special",
+      "--parse-special"
+    ],
+    "same_prompt_special_token_flag_present": false
+  },
+  "missing_evidence": [
+    "llama_debug_same_prompt_special_token_support_present"
+  ],
+  "model": "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+  "next_action": "add or build a logits-dump helper that tokenizes the retained prompt with special tokens enabled or accepts explicit token IDs, then rerun this probe",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact captures same-prompt logits evidence only; generated_text_matches_target remains unresolved."
+  },
+  "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "prompt_artifact": {
+    "artifact_kind": null,
+    "exists": true,
+    "path": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+    "sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+    "status": "partial_prompt_smoke"
+  },
+  "prompt_length": 23,
+  "raw_output_dir": "/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe",
+  "raw_output_paths": {
+    "logits_bin": "/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe/llamacpp-Step-3.7-flash-Q3_K_L-00001-of-00003.bin",
+    "logits_txt": "/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe/llamacpp-Step-3.7-flash-Q3_K_L-00001-of-00003.txt",
+    "prompt_txt": "/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe/llamacpp-Step-3.7-flash-Q3_K_L-00001-of-00003-prompt.txt",
+    "tokens_bin": "/tmp/hipengine-stepfun-q3kl-llamacpp-logits-probe/llamacpp-Step-3.7-flash-Q3_K_L-00001-of-00003-tokens.bin"
+  },
+  "raw_outputs_retained_after_parse": false,
+  "ready": false,
+  "schema_version": 1,
+  "status": "blocked",
+  "target": {
+    "canonical_backend": "vulkan",
+    "expected_next_token_id": 369,
+    "expected_next_token_text": " |",
+    "generated_first_token_id": 671,
+    "generated_first_token_text": "The",
+    "readiness_gate": "oracle_parity",
+    "unresolved_evidence_gap": "generated_text_matches_target"
+  },
+  "timeout_s": 900.0,
+  "top_k": 10
+}

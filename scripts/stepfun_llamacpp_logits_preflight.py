@@ -47,6 +47,7 @@ LOGITS_DUMP_HELP_MARKERS = (
     "--logprobs",
     "--top-logprobs",
 )
+SAME_PROMPT_SPECIAL_HELP_MARKERS = ("--special", "--parse-special")
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -142,6 +143,8 @@ def _artifact_ref(path: Path) -> dict[str, object]:
         "exists": True,
         "artifact_kind": payload.get("artifact_kind") if isinstance(payload, dict) else None,
         "status": payload.get("status") if isinstance(payload, dict) else None,
+        "ready": payload.get("ready") if isinstance(payload, dict) else None,
+        "same_prompt_tokens_match": payload.get("same_prompt_tokens_match") if isinstance(payload, dict) else None,
         "sha256": status_mod._stable_json_sha256(payload),
     }
 
@@ -168,6 +171,9 @@ def _help_info(llama_cli: Path, timeout_s: float) -> dict[str, object]:
         "help_markers_checked": list(LOGITS_DUMP_HELP_MARKERS),
         "obvious_logits_dump_flag_present": False,
         "matched_logits_dump_markers": [],
+        "same_prompt_special_markers_checked": list(SAME_PROMPT_SPECIAL_HELP_MARKERS),
+        "same_prompt_special_token_flag_present": False,
+        "matched_same_prompt_special_markers": [],
         "help_mentions_logit_bias": False,
     }
     if not info["exists"] or not info["executable"]:
@@ -190,12 +196,17 @@ def _help_info(llama_cli: Path, timeout_s: float) -> dict[str, object]:
         return info
     text = (completed.stdout or "") + (completed.stderr or "")
     matched = [marker for marker in LOGITS_DUMP_HELP_MARKERS if _marker_in_help(text, marker)]
+    same_prompt_matched = [
+        marker for marker in SAME_PROMPT_SPECIAL_HELP_MARKERS if _marker_in_help(text, marker)
+    ]
     info.update(
         {
             "help_status": "executed",
             "help_returncode": completed.returncode,
             "obvious_logits_dump_flag_present": bool(matched),
             "matched_logits_dump_markers": matched,
+            "same_prompt_special_token_flag_present": bool(same_prompt_matched),
+            "matched_same_prompt_special_markers": same_prompt_matched,
             "help_mentions_logit_bias": "--logit-bias" in text,
         }
     )
@@ -247,10 +258,18 @@ def build_llamacpp_logits_preflight(
         },
     ]
     missing_evidence: list[str] = []
-    if logits_artifact.get("exists") is not True:
+    logits_artifact_captured = (
+        logits_artifact.get("exists") is True
+        and logits_artifact.get("status") == "captured"
+        and logits_artifact.get("ready") is True
+        and logits_artifact.get("same_prompt_tokens_match") is True
+    )
+    if not logits_artifact_captured:
         missing_evidence.append("llama_cpp_same_prompt_logits_artifact_present")
     if help_record.get("obvious_logits_dump_flag_present") is not True:
         missing_evidence.append("llama_cpp_logits_dump_entrypoint_identified")
+    if help_record.get("same_prompt_special_token_flag_present") is not True:
+        missing_evidence.append("llama_cpp_same_prompt_special_token_support_present")
     for prereq in prerequisites:
         if prereq.get("passed") is not True:
             missing_evidence.append(str(prereq["name"]))
@@ -295,10 +314,16 @@ def build_llamacpp_logits_preflight(
                 "after a concrete logits dump entrypoint is identified, retain same-prompt "
                 f"llama.cpp logits as {llama_logits_artifact} and compare token 369 vs 671"
             ),
+            (
+                "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty "
+                "captures the compact logits artifact only after the probe binary can parse special tokens"
+            ),
         ],
         "blocked_reason": (
             "same-prompt llama.cpp logits artifact is missing"
             if missing_evidence == ["llama_cpp_same_prompt_logits_artifact_present"]
+            else "same-prompt logits probe binary lacks special-token parsing for the retained prompt"
+            if "llama_cpp_same_prompt_special_token_support_present" in missing_evidence
             else "same-prompt llama.cpp logits artifact and/or logits dump entrypoint is missing"
             if not ready
             else "same-prompt llama.cpp logits preflight is ready"
@@ -306,6 +331,13 @@ def build_llamacpp_logits_preflight(
         "next_action": (
             "retain same-prompt logits from llama-debug using --save-logits, then compare expected "
             "token 369 with generated token 671"
+            if help_record.get("obvious_logits_dump_flag_present") is True
+            and help_record.get("same_prompt_special_token_flag_present") is True
+            else (
+                "add or build a llama.cpp logits dump helper that parses special tokens or accepts explicit "
+                "token IDs for the retained StepFun prompt, then retain same-prompt logits before comparing "
+                "expected token 369 with generated token 671"
+            )
             if help_record.get("obvious_logits_dump_flag_present") is True
             else "identify or add a llama.cpp logits dump entrypoint for the retained StepFun prompt, "
             "then retain same-prompt logits before comparing expected token 369 with generated token 671"

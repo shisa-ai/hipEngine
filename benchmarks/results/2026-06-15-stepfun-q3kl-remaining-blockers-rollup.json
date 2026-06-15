@@ -11,6 +11,7 @@
     "llamacpp_logits_entrypoint_inventory": "python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty",
     "llamacpp_logits_plan": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
     "llamacpp_logits_preflight": "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
+    "llamacpp_logits_probe": "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
     "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
     "oracle_blocker_diagnosis": "python3 scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty",
     "oracle_evidence_consistency_check": "python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty",
@@ -104,6 +105,8 @@
       "llamacpp_logits_plan_generator_command": "python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty",
       "llamacpp_logits_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
       "llamacpp_logits_preflight_generator_command": "python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty",
+      "llamacpp_logits_probe_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
+      "llamacpp_logits_probe_generator_command": "python3 scripts/stepfun_llamacpp_logits_probe.py --execute --default-output --pretty",
       "next_action_manifest_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-next-action-manifest.json",
       "next_action_manifest_generator_command": "python3 scripts/stepfun_oracle_next_action_manifest.py --default-output --pretty",
       "oracle_parity_ready": false,
@@ -264,9 +267,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "c578199461640376fdfd0b8db4bc1407e1ce3bb5f8a9b6a97e74bbdf80b11ddd",
+    "kv_blocker_status": "8f1b814a90a5a8de60a6aa9f07a0e2ee107982340a0fa3a05711d7676126cd13",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "ca4a3cdedec12a2fcb9fd7ca4344395b3ff58b097cf44bbfacedd5da3eb81329"
+    "status": "faa18320802c09cc66177f1021baa1a5daeaa1a17cec2b07c6d39ca356a76834"
   },
   "status": "blocked"
 }

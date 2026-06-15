@@ -8,9 +8,13 @@
   "blocked_reason": "same-prompt llama.cpp logits capture is not implemented or retained yet",
   "date": "2026-06-15",
   "expected_llamacpp_logits_artifact": {
-    "exists": false,
+    "artifact_kind": "stepfun_llamacpp_logits_probe",
+    "exists": true,
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json",
-    "sha256": null
+    "ready": false,
+    "same_prompt_tokens_match": null,
+    "sha256": "5aecd251d8075ae007e55c5e9e87e7deed7f26cccdb6e298cec9b5f0266a3ca9",
+    "status": "blocked"
   },
   "implementation_ready": true,
   "implementation_steps": [
@@ -21,7 +25,7 @@
       ],
       "key": "identify_or_add_logits_dump_entrypoint",
       "notes": [
-        "current preflight found a llama.cpp probe binary with logits dump flags",
+        "current preflight found a logits dump binary, but it cannot parse the retained prompt's special tokens",
         "do not use --logit-bias as a substitute for logits capture"
       ],
       "owner_sources": [
@@ -99,7 +103,7 @@
           "role": "Compares llama.cpp generated token with retained host top-token IDs."
         }
       ],
-      "status": "completed"
+      "status": "pending"
     },
     {
       "acceptance": [
@@ -552,7 +556,8 @@
   ],
   "llama_cli": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
   "missing_evidence": [
-    "llama_cpp_same_prompt_logits_artifact_present"
+    "llama_cpp_same_prompt_logits_artifact_present",
+    "llama_cpp_same_prompt_special_token_support_present"
   ],
   "next_action_manifest": {
     "artifact_kind": "stepfun_oracle_next_action_manifest",
@@ -570,7 +575,7 @@
   "preflight_artifact": {
     "artifact_kind": "stepfun_llamacpp_logits_preflight",
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
-    "sha256": "feb12c5e0fa4bc37493c468e7b637b6284b1e21007636ef2b18f4a6a35f48aa9",
+    "sha256": "eaaf29a248a3dcfd44c700798b24b3d4e003a0da9d935b6cac2f8572a9e44299",
     "status": "blocked"
   },
   "ready": false,
