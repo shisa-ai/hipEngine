@@ -2027,11 +2027,12 @@ Current code reality:
 - Restore validates the snapshot object/schema envelope, top-level
   resident-state flag, same session id, model id, backend, quant, storage,
   transcript-inclusion flag, session resident-state flag, tokenizer metadata
-  when the model is loaded, timestamps, message shape, text content parts,
+  when the model is loaded, timestamps, message shape, supported roles
+  (`system`, `developer`, `user`, `assistant`, `tool`), text content parts,
   message string metadata, and nested assistant `tool_calls` shape, including
-  valid JSON `function.arguments` strings, before creating or replacing the app-local
-  transcript session. Incompatible snapshots fail with stable `invalid_request`
-  errors and do not create a session.
+  valid JSON `function.arguments` strings, before creating or replacing the
+  app-local transcript session. Incompatible snapshots fail with stable
+  `invalid_request` errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and
   fails with matched `engine_busy` route metadata without creating partial
   session state when full.

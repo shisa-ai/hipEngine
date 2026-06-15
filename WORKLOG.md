@@ -92228,3 +92228,20 @@ Validation:
 - `uv run ruff check scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `python3 scripts/validate_local_agent_config.py --help` and `python3 scripts/validate_pi_agent_models.py --help` -> printed help successfully.
 - `git diff --check -- scripts/validate_local_agent_config.py scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC chat role allowlist
+
+Added shared chat message role validation for live `/v1/chat/completions`
+requests and app-local session snapshot restore. The server now rejects roles
+outside `assistant`, `developer`, `system`, `tool`, and `user` before prompt
+rendering or restoring a transcript, preventing unsupported snapshot/request
+roles from injecting arbitrary prompt sections. Updated `docs/API.md` and
+`docs/AGENTIC.md` to document the role allowlist.
+
+Validation:
+- `uv run pytest tests/test_server_api.py::test_chat_completion_rejects_unsupported_message_role_before_generation tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_fields -q` -> `8 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'chat_completion_renders_messages_to_prompt or unsupported_message_role or snapshot_restore'` -> `26 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.

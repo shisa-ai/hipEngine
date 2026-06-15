@@ -93,7 +93,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and reject/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
-| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
+| `POST /v1/chat/completions` | Built in | Renders text-only messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
 
@@ -755,7 +755,8 @@ resident KV, tokenizer state, or decode/sampling state. Authenticated
 `POST /v1/hipengine/sessions/{session_id}/snapshot` restores the snapshot into
 the same session id after validating schema, model id, backend, quant, storage,
 tokenizer metadata when the model is loaded, message shape, text content parts,
-message string metadata, nested assistant `tool_calls` objects, and valid JSON
+supported roles (`system`, `developer`, `user`, `assistant`, `tool`), message
+string metadata, nested assistant `tool_calls` objects, and valid JSON
 `function.arguments` strings. Incompatible or corrupted snapshots fail before
 creating the session. Restoring a new session is subject to the configured
 chat-session cap; when the cap is full, the server returns `engine_busy` without

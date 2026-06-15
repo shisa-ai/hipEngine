@@ -65,6 +65,8 @@ _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
+_CHAT_MESSAGE_ROLES = ("assistant", "developer", "system", "tool", "user")
+_CHAT_MESSAGE_ROLE_SET = frozenset(_CHAT_MESSAGE_ROLES)
 _LOGPROB_OMISSION_REASON = "backend_omitted_logprob"
 _PROMPT_LOGPROB_OMISSION_REASON = "prompt_logprob_unavailable"
 _CONTINUATION_TTL_SECONDS = 15 * 60
@@ -6296,13 +6298,7 @@ def render_chat_prompt(
             role_value = message.role
             content_value = message.content
             tool_calls = message.tool_calls
-        role = str(role_value).strip()
-        if not role:
-            raise OpenAIHTTPError(
-                400,
-                "message role must be non-empty",
-                param=f"messages[{index}].role",
-            )
+        role = _chat_message_role(role_value, param=f"messages[{index}].role")
         content = _message_content_text(content_value, index)
         if role == "developer":
             role = "system"
@@ -6315,6 +6311,25 @@ def render_chat_prompt(
         rendered.append(f"<|im_start|>{role}\n{content}<|im_end|>")
     rendered.append(_assistant_prefix_for_thinking(thinking))
     return "\n".join(rendered)
+
+
+def _chat_message_role(value: Any, *, param: str) -> str:
+    if not isinstance(value, str):
+        raise OpenAIHTTPError(
+            400,
+            f"{param} must be one of: {', '.join(_CHAT_MESSAGE_ROLES)}",
+            code="invalid_request",
+            param=param,
+        )
+    role = value.strip()
+    if role not in _CHAT_MESSAGE_ROLE_SET:
+        raise OpenAIHTTPError(
+            400,
+            f"{param} must be one of: {', '.join(_CHAT_MESSAGE_ROLES)}",
+            code="invalid_request",
+            param=param,
+        )
+    return role
 
 
 def _validate_model(config: ServerConfig, requested: str | None, *, engine: Any | None = None) -> None:
@@ -7861,14 +7876,7 @@ def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
             code="invalid_request",
             param=f"messages[{index}].{extra[0]}",
         )
-    role = value.get("role")
-    if not isinstance(role, str) or not role.strip():
-        raise OpenAIHTTPError(
-            400,
-            f"session snapshot messages[{index}].role must be a non-empty string",
-            code="invalid_request",
-            param=f"messages[{index}].role",
-        )
+    role = _chat_message_role(value.get("role"), param=f"messages[{index}].role")
     payload: dict[str, Any] = {"role": role}
     if "content" in value:
         payload["content"] = _chat_session_snapshot_content(value.get("content"), message_index=index)
