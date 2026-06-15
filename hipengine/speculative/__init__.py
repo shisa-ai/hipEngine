@@ -68,6 +68,12 @@ from hipengine.speculative.verify_graph import (
     dflash_verify_graph_decision,
     fingerprint_int_arrays,
 )
+from hipengine.speculative.gguf_mtp import (
+    Qwen35GGUFMTPContext,
+    Qwen35GGUFMTPDraftBatch,
+    Qwen35GGUFMTPDraftRow,
+    Qwen35GGUFMTPSeedRow,
+)
 from hipengine.speculative.interfaces import (
     AcceptResult,
     DraftBatch,
@@ -129,6 +135,10 @@ __all__ = [
     "NativeMtpStepResult",
     "Qwen35MtpDraftProvider",
     "compile_mtp_chain",
+    "Qwen35GGUFMTPContext",
+    "Qwen35GGUFMTPDraftBatch",
+    "Qwen35GGUFMTPDraftRow",
+    "Qwen35GGUFMTPSeedRow",
     "append_materialized_kv_reference",
     "compile_dflash_chain",
     "dflash_layer_kv_weights",
