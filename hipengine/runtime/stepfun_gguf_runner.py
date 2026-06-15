@@ -1645,6 +1645,16 @@ class StepFunResidentSession:
                 "KV cache layer count does not match resident session: "
                 f"cache={cache_layer_count} session={session_layer_count}"
             )
+        expected_layer_nbytes = stepfun_kv_cache_layer_nbytes(
+            self.model_map.config,
+            context_pages=kv_cache.context_pages,
+            page_size=kv_cache.page_size,
+        )
+        if tuple(kv_cache.layer_nbytes) != expected_layer_nbytes:
+            raise ValueError("KV cache layer byte geometry does not match StepFun config")
+        expected_layer_nbytes_sha256 = hashlib.sha256(
+            json.dumps(expected_layer_nbytes, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         required_tokens = int(run_plan.decode_position) + 1
         if kv_cache.tokens < required_tokens:
             raise ValueError(
@@ -1681,6 +1691,8 @@ class StepFunResidentSession:
             "kv_cache_tokens": kv_cache.tokens,
             "kv_cache_nbytes": kv_cache.nbytes,
             "kv_cache_buffer_count": kv_cache.buffer_count,
+            "kv_cache_layer_nbytes_match_expected": True,
+            "kv_cache_layer_nbytes_sha256": expected_layer_nbytes_sha256,
             "decode_position": run_plan.decode_position,
             "decode_live_count": run_plan.decode_live_count,
             "stream": int(stream),

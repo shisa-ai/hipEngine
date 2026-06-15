@@ -23,6 +23,7 @@ from hipengine.runtime.stepfun_gguf_runner import (
     StepFunKVCacheAllocation,
     StepFunResidentSession,
     StepFunShortContextDecodePlanner,
+    stepfun_kv_cache_layer_nbytes,
 )
 from scripts import stepfun_correctness_status as status_mod
 
@@ -166,7 +167,11 @@ def build_kv_session_contract_artifact(
         buffers=(),
         context_pages=context_pages,
         page_size=page_size,
-        layer_nbytes=tuple((1, 1) for _ in range(planner.model_map.config.block_count)),
+        layer_nbytes=stepfun_kv_cache_layer_nbytes(
+            planner.model_map.config,
+            context_pages=context_pages,
+            page_size=page_size,
+        ),
     )
     decode_entrypoint = session.decode_one_token_kv_bf16(
         run_plan,

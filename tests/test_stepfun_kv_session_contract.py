@@ -79,8 +79,10 @@ def test_stepfun_kv_session_contract_artifact_binds_session_contract() -> None:
     assert decode_entrypoint["kv_cache_context_pages"] == 1
     assert decode_entrypoint["kv_cache_page_size"] == 512
     assert decode_entrypoint["kv_cache_tokens"] == 512
-    assert decode_entrypoint["kv_cache_nbytes"] == 90
+    assert decode_entrypoint["kv_cache_nbytes"] == 94371840
     assert decode_entrypoint["kv_cache_buffer_count"] == 0
+    assert decode_entrypoint["kv_cache_layer_nbytes_match_expected"] is True
+    assert decode_entrypoint["kv_cache_layer_nbytes_sha256"]
     assert decode_entrypoint["planned_launch_operation_count"] == 135
     assert decode_entrypoint["all_planned_launches_ready"] is True
     assert decode_entrypoint["no_kernel_launches"] is True

@@ -16,6 +16,7 @@ from hipengine.runtime.stepfun_gguf_runner import (
     STEPFUN_KV_ATTENTION_BLOCK_SIZE,
     StepFunKVCacheAllocation,
     StepFunResidentSession,
+    stepfun_kv_cache_layer_nbytes,
     StepFunShortContextDecodePlanner,
     stepfun_kv_cache_nbytes,
     stepfun_kv_decode_kernel_plan,
@@ -758,7 +759,11 @@ def test_stepfun_resident_session_decode_one_token_kv_bf16_reports_blocker() -> 
         buffers=(),
         context_pages=1,
         page_size=512,
-        layer_nbytes=tuple((1, 1) for _ in range(planner.model_map.config.block_count)),
+        layer_nbytes=stepfun_kv_cache_layer_nbytes(
+            planner.model_map.config,
+            context_pages=1,
+            page_size=512,
+        ),
     )
 
     blocker = session.decode_one_token_kv_bf16(
@@ -785,8 +790,22 @@ def test_stepfun_resident_session_decode_one_token_kv_bf16_reports_blocker() -> 
     assert blocker["kv_cache_context_pages"] == 1
     assert blocker["kv_cache_page_size"] == 512
     assert blocker["kv_cache_tokens"] == 512
-    assert blocker["kv_cache_nbytes"] == 90
+    assert blocker["kv_cache_nbytes"] == sum(
+        key + value for key, value in kv_cache.layer_nbytes
+    )
     assert blocker["kv_cache_buffer_count"] == 0
+    assert blocker["kv_cache_layer_nbytes_match_expected"] is True
+    assert blocker["kv_cache_layer_nbytes_sha256"] == hashlib.sha256(
+        json.dumps(
+            stepfun_kv_cache_layer_nbytes(
+                planner.model_map.config,
+                context_pages=1,
+                page_size=512,
+            ),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     assert blocker["decode_position"] == run_plan.decode_position
     assert blocker["decode_live_count"] == run_plan.decode_live_count
     assert blocker["stream"] == 7
@@ -843,7 +862,11 @@ def test_stepfun_resident_session_decode_one_token_kv_bf16_rejects_small_cache()
         buffers=(),
         context_pages=1,
         page_size=1,
-        layer_nbytes=tuple((1, 1) for _ in range(planner.model_map.config.block_count)),
+        layer_nbytes=stepfun_kv_cache_layer_nbytes(
+            planner.model_map.config,
+            context_pages=1,
+            page_size=1,
+        ),
     )
 
     with pytest.raises(ValueError, match="KV cache is too small"):
