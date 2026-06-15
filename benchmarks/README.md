@@ -58,7 +58,10 @@ history:
   OpenAI API on `127.0.0.1:8008`.
 - llama.cpp Q4_K_M model default: `$REPO_ROOT/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
   with a host-local fallback to `/home/lhl/hipEngine/...` when running from a
-  clean detached worktree that does not contain the large untracked GGUF. Set
+  clean detached worktree that does not contain the large untracked GGUF. For
+  MTP comparisons this should be the MTP-bearing Unsloth GGUF from
+  [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf),
+  not the older non-MTP file with the same basename. Set
   `LLAMACPP_Q4KM_MODEL=/path/to/model.gguf` to override explicitly.
 
 Recommended clean-worktree invocation:
@@ -666,6 +669,21 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 entry and
 | Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 4K/128 split | 1705.093 | 120.163 | 20.969 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
 | Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 32K/128 split | 1128.554 | 98.073 | 21.533 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
 | Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 128K/128 split | 480.539 | 64.478 | 23.596 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+
+### gfx1151 MTP comparison / Qwen3.6-35B-A3B UD-Q4_K_M
+
+Source: [`benchmarks/MTP.md`](MTP.md),
+[`2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`](results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json),
+and the MTP-bearing
+[`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf).
+These are local Strix Halo diagnostics, not accepted hipEngine performance
+claims.
+
+| Model/quant | Backend/mode | Workload | Decode tok/s | Speedup / acceptance | Source | Last updated | Notes |
+| --- | --- | --- | ---: | --- | --- | --- | --- |
+| Qwen3.6-35B-A3B PARO+MTP-BF16 | hipEngine `hip_gfx1151` B1 exact fallback | 9-prompt D32 suite | 59.56 | 0.912x vs AR / exact 9-of-9 | [`summary`](results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json), [`prompt suite`](results/2026-06-15-gfx1151-mtp-compare-20260615-060801-hipengine-paro-mtp-b1-d32-1run.json) | 2026-06-15 | Exact fallback flags required for current public packed+MTP sidecar. |
+| Qwen3.6-35B-A3B UD-Q4_K_M GGUF | llama.cpp HIP server B4 | same D32 prompt suite | 91.11 | 1.790x vs base / 0.743 accepted/output | same summary | 2026-06-15 | MTP-bearing Q4_K_M GGUF, f16 KV. |
+| Qwen3.6-35B-A3B UD-Q4_K_M GGUF | llama.cpp Vulkan server B4 | same D32 prompt suite | 108.96 | 1.733x vs base / 0.747 accepted/output | same summary | 2026-06-15 | MTP-bearing Q4_K_M GGUF, f16 KV. |
 
 ### llama.cpp ROCm / Qwen3.6-27B Q4_K_M MTP
 

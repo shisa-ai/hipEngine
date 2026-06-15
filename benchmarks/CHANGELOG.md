@@ -17,6 +17,11 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-15
+
+- [diagnostic retained] gfx1151 README rationalized sweep / Qwen3.6-35B-A3B / PARO-packed + UD-Q4_K_M GGUF / 512/128..128K/128: no prior same-host all-engine UD-Q4_K_M row -> hipEngine PARO 512/128 `956.67/66.97` and 128K/128 `425.73/30.29` prefill/decode tok/s; hipEngine GGUF UD-Q4_K_M `833.37/56.58` and `384.01/28.04`; llama.cpp HIP UD-Q4_K_M `1016.70/51.64` and `384.96/31.60`; llama.cpp Vulkan UD-Q4_K_M `1043.21/62.43` and `473.65/34.71`; one measured diagnostic run on Radeon 8060S / TheRock 7.13; `benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json`.
+- [diagnostic retained] gfx1151 MTP comparison / Qwen3.6-35B-A3B / UD-Q4_K_M MTP GGUF: prior workaround using UD-Q4_K_S B4 HIP/Vulkan `93.41/106.48 tok/s` -> proper MTP-bearing UD-Q4_K_M B4 HIP/Vulkan `91.11/108.96 tok/s` (`-2.5%/+2.3%`) after replacing the local non-MTP Q4_K_M file with `unsloth/Qwen3.6-35B-A3B-MTP-GGUF`; hipEngine PARO+MTP exact fallback remains exact 9/9 but below AR (`59.56` vs `65.37 tok/s`, `0.912x`); `benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`.
+
 ## 2026-06-14
 
 - [diagnostic refresh] Qwen3.6-35B-A3B README comparison / W7900 GPU0 exact rerun: prior top-level table PARO 512/4K/32K/128K prefill `2708.314/2871.122/2075.471/1054.427` and decode `114.724/105.468/91.922/60.216` -> new six-shape refresh `2729.701/2906.950/2879.578/2079.424/1559.096/1053.919` prefill and `115.227/102.927/105.253/91.965/77.666/60.349` decode; llama.cpp HIP/Vulkan and vLLM concurrency rerun on the same W7900/GPU0, with exact commands captured in `scripts/run_w7900_readme_refresh.sh`; `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json`.

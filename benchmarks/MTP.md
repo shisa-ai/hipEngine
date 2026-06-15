@@ -1,15 +1,55 @@
 # llama.cpp MTP External Comparison
 
-Last updated: 2026-05-19
+Last updated: 2026-06-15
 
-This page tracks the local llama.cpp MTP comparison used while evaluating
-Qwen3.6 27B behavior against hipEngine PARO diagnostics. These rows are
-external comparison diagnostics, not accepted hipEngine performance claims.
+This page tracks local llama.cpp MTP comparisons used while evaluating Qwen3.6
+behavior against hipEngine PARO diagnostics. These rows are external comparison
+diagnostics, not accepted hipEngine performance claims.
 
-Durable artifact:
-[`2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`](results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json)
+Durable artifacts:
+- [`2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`](results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json)
+- [`2026-06-15-gfx1151-mtp-compare-20260615-060801-hipengine-paro-mtp-b1-d32-1run.json`](results/2026-06-15-gfx1151-mtp-compare-20260615-060801-hipengine-paro-mtp-b1-d32-1run.json)
+- [`2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`](results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json)
 
-## How To Run
+## Qwen3.6-35B-A3B gfx1151 UD-Q4_K_M MTP Comparison
+
+The local Strix Halo / `gfx1151` diagnostic uses the MTP-bearing Unsloth GGUF:
+[`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf).
+The filename is still `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, but this
+MTP repo file has `753` tensors and `20` `blk.40` / `nextn` MTP tensors. The
+older non-MTP Unsloth GGUF with the same basename had `733` tensors and cannot
+exercise llama.cpp draft-MTP.
+
+Command:
+
+```bash
+RUN_TAG=20260615-060801 HIPENGINE_RUNS=1 MAX_TOKENS=32 \
+  DRAFT_MAX_VALUES=1,2,3,4 HIPENGINE_MTP_EXACT_FALLBACKS=1 \
+  GGUF_MTP_MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  GGUF_MTP_SOURCE_REPO=unsloth/Qwen3.6-35B-A3B-MTP-GGUF \
+  /tmp/run_gfx1151_mtp_compare.sh
+```
+
+Environment: AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`), TheRock HIP
+`7.13.60980-c76140fa27`, hipEngine worktree commit `2d0e9a5e`, llama.cpp commit
+`6e9007ae6` / build `9641`, f16 KV, D32 9-prompt suite.
+
+| Engine / mode | Mean decode tok/s | Wall tok/s | Speedup | Accepted/output | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| hipEngine PARO AR | 65.37 | — | 1.000x | — | same-session AR baseline |
+| hipEngine PARO+MTP B1 exact fallback | 59.56 | — | 0.912x | 0.360 | exact 9/9; exact fallback flags required |
+| llama.cpp HIP base | 50.90 | 37.14 | 1.000x | 0.000 | UD-Q4_K_M MTP GGUF |
+| llama.cpp HIP B4 | 91.11 | 52.47 | 1.790x | 0.743 | best HIP row in B1-B4 sweep |
+| llama.cpp Vulkan base | 62.87 | 42.35 | 1.000x | 0.000 | UD-Q4_K_M MTP GGUF |
+| llama.cpp Vulkan B4 | 108.96 | 57.69 | 1.733x | 0.747 | best Vulkan row in B1-B4 sweep |
+
+hipEngine used `HIPENGINE_GDN_TLOOP_C1_EXACT=1`,
+`HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`, and
+`HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1`. Without this exact
+fallback stack, the current public packed PARO trunk plus copied BF16 MTP sidecar
+fails the fast-path exactness gate on this prompt suite.
+
+## How To Run The Historical 27B llama.cpp Diagnostic
 
 ```bash
 python3 scripts/llamacpp_mtp_bench.py \

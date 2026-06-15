@@ -92594,3 +92594,51 @@ Results:
 Validation:
 - `python3 -m json.tool` passed for the summary and hipEngine prompt-suite artifacts.
 - `git diff --check -- benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-053555-summary.json benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-053555-hipengine-paro-mtp-b1-d32-1run.json` -> clean.
+
+## 2026-06-15 - gfx1151 MTP rerun with MTP-bearing UD-Q4_K_M
+
+After the prior gfx1151 MTP comparison used `UD-Q4_K_S` as a workaround, the
+local `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` was replaced with the
+MTP-bearing Unsloth file from
+`https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+Verification with `scripts/inspect_gguf.py` showed GGUF v3 `qwen35moe`,
+`MOSTLY_Q4_K_M`, `753` tensors, `22,652,396,032` tensor bytes, no unsupported
+dequant types, and `20` MTP-like `blk.40` / `nextn` tensors. The older non-MTP
+Q4_K_M file from `unsloth/Qwen3.6-35B-A3B-GGUF` had `733` tensors and no
+`nextn` tensors.
+
+Reran the local Strix Halo / gfx1151 D32 9-prompt MTP comparison with the proper
+Q4_K_M MTP GGUF:
+
+```bash
+RUN_TAG=20260615-060801 HIPENGINE_RUNS=1 MAX_TOKENS=32 \
+  DRAFT_MAX_VALUES=1,2,3,4 HIPENGINE_MTP_EXACT_FALLBACKS=1 \
+  GGUF_MTP_MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  GGUF_MTP_SOURCE_REPO=unsloth/Qwen3.6-35B-A3B-MTP-GGUF \
+  /tmp/run_gfx1151_mtp_compare.sh
+```
+
+Environment: AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`), TheRock HIP
+`7.13.60980-c76140fa27`, hipEngine worktree commit `2d0e9a5e`, llama.cpp commit
+`6e9007ae6` / build `9641`, f16 KV. The runner reused the local PARO+MTP-BF16
+sidecar and `/tmp/llamacpp-{hip,vulkan}-server-gfx1151-6e9007ae6` server builds.
+
+Results:
+- hipEngine PARO+MTP B1 exact fallback: exact `9/9`; MTP `59.56 tok/s` vs AR
+  `65.37 tok/s`, `0.912x` prompt-mean / `0.904x` total-time, `25.96 ms/cycle`,
+  `1.563` visible tokens/cycle, `0.563` accepted draft tokens/cycle.
+- llama.cpp HIP `UD-Q4_K_M`: base `50.90` mean tok/s; B1 `68.42` (`1.344x`),
+  B2 `78.14` (`1.535x`), B3 `85.38` (`1.677x`), B4 `91.11` (`1.790x`), B4
+  accepted/output `0.743`.
+- llama.cpp Vulkan `UD-Q4_K_M`: base `62.87` mean tok/s; B1 `83.05` (`1.321x`),
+  B2 `95.74` (`1.523x`), B3 `103.71` (`1.650x`), B4 `108.96` (`1.733x`), B4
+  accepted/output `0.747`.
+
+Artifacts:
+- `benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`
+- `benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-hipengine-paro-mtp-b1-d32-1run.json`
+- logs: `/tmp/hipengine-mtp-gfx1151-runs/20260615-060801/`
+
+Validation:
+- `python3 -m json.tool` passed for the new summary and hipEngine prompt-suite artifacts.
+- `git diff --check` passed for the touched docs/artifacts before commit.
