@@ -43498,3 +43498,51 @@ PY
 ```
 
 Results: targeted coverage test passed (`1` test); coverage scan reports `artifact_script_count=23`, `missing_verify_count=0`, and coverage digest `852cee4aed64a24759b5158edd9f78b4ae7cfd74819fd635d91fe9209fec0c5b`; P0-P12 open/partial count remains `2`; full StepFun guard passed; remaining-blockers, source-artifacts, final-blocker, and handoff verifiers returned `"match"`; file SHAs are coverage test `a444555d615addaca2ea55e55e841e6f29b89a519e36f3d853c568d78bb6cf19`, remaining-blockers rollup `a16893fd8922a8f4df5fda621cc73b61003a5cf2eade6281f0d8bb6680730783`, correctness-status `89dce4296634b39c4ed14031f72a7e0da88eb795d1657b6b0ea9856c8aa4a3c8`, final-blocker `a5f4a1111d13ced812fd73a9f1363b8b2f0c1e681852b6d7c1c0f2e184fe9773`, handoff `c42cb12c80df215a89cc0afc8c8b1c521ff9a2bd130634ac3b549d1b9d39cc66`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `7779346dc8183755ec3bac8fe601c177174ecf439e022439301d1880ddcd6e5e`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched test has no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle mismatch command routing
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 549. Corrected the first-blocker command routing for the retained llama.cpp oracle artifact after it has already executed successfully (`status=executed`, `returncode=0`) but still fails exact text parity. `scripts/stepfun_correctness_status.py` now routes that state to the non-timeout oracle helper refresh with `recommended_command_reason=investigate_generated_text_mismatch` and keeps the 900 s long-timeout helper as a separate fallback for timeout/incomplete oracle evidence. This removes the misleading `oracle_timeout_retry_with_longer_timeout` route from the current executed mismatch handoff while preserving partial-output safety metadata and the long-timeout command for genuine timeout evidence. It does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, capture same-prompt logits, or make performance/e2e claims.
+
+Retained evidence: `python3 scripts/stepfun_correctness_status.py --first-blocker-recommended-command-kind-only` now returns `"oracle_helper_refresh_command"`; `--first-blocker-recommended-command-reason-only` returns `"investigate_generated_text_mismatch"`; `--first-blocker-first-missing-evidence-only` returns `"oracle_exact_text_match"`; `--first-blocker-current-status-only` returns `"executed"`. `python3 scripts/stepfun_validator_status.py --next-action-producer-command-kind-only` also returns `"oracle_helper_refresh_command"`, while the validator gap remains `generated_text_matches_target`. Refreshed correctness-status, final-blocker, handoff, and remaining-blockers artifacts: final-blocker recommended commands SHA is `9608cbbc0ce8b82f0ab5117d276a0555ba403c44cdd46f9110e91af7e38f767f`, final-blocker entries SHA is `07971690c652d006914c0936f6619ba50d88acea16e151fcfd7cbb7264edbb53`, final-blocker manifest SHA is `a070c92590cb0326f8161cb6afa0e0c6c8280a8c5142ca5fcb38be66857c7048`, remaining-blockers rollup payload SHA is `3312119610e7cf75dcb4fa22efc4a1591b6b38c14c745833b52db21dc1944658`, and handoff status remains `blocked_verified`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_correctness_status.py tests/test_stepfun_correctness_status.py
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -k 'routes_executed_text_mismatch_to_refresh'
+python3 -m pytest -q tests/test_stepfun_correctness_status.py
+python3 scripts/stepfun_correctness_status.py --first-blocker-recommended-command-kind-only
+python3 scripts/stepfun_correctness_status.py --first-blocker-recommended-command-reason-only
+python3 scripts/stepfun_correctness_status.py --first-blocker-first-missing-evidence-only
+python3 scripts/stepfun_correctness_status.py --first-blocker-current-status-only
+python3 scripts/stepfun_validator_status.py --next-action-producer-command-kind-only
+python3 scripts/stepfun_validator_status.py --next-action-reason-only
+python3 scripts/stepfun_final_blocker_manifest.py --recommended-commands-only --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 -m pytest -q tests/test_stepfun_correctness_status.py tests/test_stepfun_final_blocker_manifest.py tests/test_stepfun_handoff_check.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_correctness_status.py tests/test_stepfun_correctness_status.py || true
+python3 scripts/stepfun_correctness_status.py --first-blocker-recommended-command-kind-only
+python3 scripts/stepfun_correctness_status.py --first-blocker-recommended-command-reason-only
+python3 scripts/stepfun_correctness_status.py --first-blocker-first-missing-evidence-only
+python3 scripts/stepfun_correctness_status.py --first-blocker-current-status-only
+python3 scripts/stepfun_validator_status.py --next-action-producer-command-kind-only
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_final_blocker_manifest.py --recommended-commands-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_handoff_check.py --status-only || true
+sha256sum benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json
+```
+
+Results: targeted mismatch-routing test passed; full `tests/test_stepfun_correctness_status.py` passed; final-blocker/handoff/remaining-blockers test bundle passed; P0-P12 open/partial count remains `2`; full StepFun guard passed; touched script/tests have no torch import and no backend/quant dispatch special-casing; final artifact file SHAs are correctness-status `6f916596c90ece3511c567f3f0996201d32456573fae70ac9f6480c522abbe19`, final-blocker `72b5d68d29732960d4613e543d8d70e98cb669542fbe1d78015abeaab1063991`, handoff `15774cca55424ad0a229249c1bf6e3fcf6383398d2bd902eade91dba5ea8488f`, remaining-blockers `e72677061b1b92fdd1b3112966cb1bd752aa38a7a0bd6cf848385335d284876e`; `git diff --check` passed.

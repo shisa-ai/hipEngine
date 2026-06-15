@@ -1353,9 +1353,12 @@ reporting.
   enabled for the canonical timeout artifact. The handoff now
   also records `oracle_helper_long_timeout_command` (`--timeout-s 900.0`, same
   canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
-  the first blocker work item. The blocker queue now also exposes a generic
-  `recommended_command` / digest for the first blocker, selecting that 900 s
-  oracle helper while oracle parity is the front-of-queue blocker. Status integrity
+  the first blocker work item. The blocker queue also exposes a generic
+  `recommended_command` / digest for the first blocker, but now routes an already
+  executed `returncode=0` oracle artifact whose first missing evidence is
+  `oracle_exact_text_match` to the non-timeout oracle helper refresh with
+  `recommended_command_reason=investigate_generated_text_mismatch`; it keeps the
+  900 s helper as a separate fallback for timeout/incomplete oracle evidence. Status integrity
   verifies the oracle compact output-mode mappings for helper command, long-timeout
   helper command, and timeout-termination payload/digest routes. Compact
   `--oracle-helper-long-timeout-command-only` /
@@ -1382,9 +1385,10 @@ reporting.
   `--first-blocker-kind-only` / `--first-blocker-kind-sha-only`, and
   `--first-blocker-recommended-command-kind-only` /
   `--first-blocker-recommended-command-kind-sha-only` outputs expose the current
-  first-blocker routing reason (`oracle_timeout_retry_with_longer_timeout`),
-  first missing evidence (`oracle_completed_successfully`), current status
-  (`timeout`), gap-report status (`blocked`), blocker kind, command kind, and command size
+  first-blocker routing reason (`investigate_generated_text_mismatch` for the retained
+  executed mismatch artifact, or `oracle_timeout_retry_with_longer_timeout` for timeout/incomplete evidence),
+  first missing evidence (`oracle_exact_text_match` for the retained artifact), current status
+  (`executed`), gap-report status (`blocked`), blocker kind, command kind, and command size
   without fetching the full work item. Status integrity also verifies the oracle progress
   digest and oracle compact output-mode mappings, including the progress/status/blocker-kind routes.
   The blocker queue also records a compact

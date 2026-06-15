@@ -6298,9 +6298,22 @@ def _handoff_summary(
                 if isinstance(oracle_helper_long_timeout_command, str)
                 else None
             )
-            oracle_recommended_command_kind = "oracle_helper_long_timeout_command"
-            oracle_recommended_command = oracle_helper_long_timeout_command_text
-            oracle_recommended_reason = "oracle_timeout_retry_with_longer_timeout"
+            oracle_first_missing_evidence = oracle_gap_report.get("first_missing_evidence")
+            oracle_current_status = oracle_progress.get("status")
+            oracle_current_returncode = oracle_progress.get("returncode")
+            oracle_text_mismatch_after_success = (
+                oracle_first_missing_evidence == "oracle_exact_text_match"
+                and oracle_current_status == "executed"
+                and oracle_current_returncode == 0
+            )
+            if oracle_text_mismatch_after_success and oracle_helper_command_text is not None:
+                oracle_recommended_command_kind = "oracle_helper_refresh_command"
+                oracle_recommended_command = oracle_helper_command_text
+                oracle_recommended_reason = "investigate_generated_text_mismatch"
+            else:
+                oracle_recommended_command_kind = "oracle_helper_long_timeout_command"
+                oracle_recommended_command = oracle_helper_long_timeout_command_text
+                oracle_recommended_reason = "oracle_timeout_retry_with_longer_timeout"
             if oracle_recommended_command is None:
                 oracle_recommended_command_kind = "oracle_helper_refresh_command"
                 oracle_recommended_command = oracle_helper_command_text

@@ -18627,3 +18627,85 @@ def test_stepfun_correctness_status_first_blocker_fail_on_blocked_returns_nonzer
     assert payload["blocker_kind"] == "oracle_parity_blocked"
     assert payload["primary_command_kind"] == "rerun_command_shell"
     assert payload["first_missing_evidence"] == "oracle_completed_successfully"
+
+
+def test_stepfun_correctness_status_routes_executed_text_mismatch_to_refresh(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_docs(docs)
+    _write_resource_artifact(resource)
+    oracle.write_text(
+        json.dumps(
+            {
+                "status": "executed",
+                "returncode": 0,
+                "text_matches_expected_exact": False,
+                "text_matches_expected_stripped": False,
+                "elapsed_s": 172.7,
+                "llama_cpp_version": "version: test (deadbeef)",
+                "stdout": "The\n\n",
+                "stderr": "",
+                "generated_text": "The\n\n",
+                "llama_cli": "/tmp/llama-cli",
+                "model": "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+                "prompt_length": 23,
+                "n_predict": 1,
+                "timeout_s": None,
+                "diagnostic_logs": True,
+                "extra_llama_args": ["--gpu-layers", "999"],
+                "command_shell": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+                "expected_next_token_id": 369,
+                "expected_next_token_text": " |",
+                "expected_next_token_logit": 19.158626556396484,
+                "expected_top_tokens": [
+                    {
+                        "rank": 1,
+                        "token_id": 369,
+                        "token_text": " |",
+                        "logit": 19.158626556396484,
+                    },
+                    {
+                        "rank": 2,
+                        "token_id": 671,
+                        "token_text": "The",
+                        "logit": 18.343582153320312,
+                    },
+                ],
+                "comparison_policy": {
+                    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
+                    "exact_text_match_field": "text_matches_expected_exact",
+                    "stripped_text_match_field": "text_matches_expected_stripped",
+                    "expected_text_field": "expected_next_token_text",
+                },
+                "oracle_blocker_kind": None,
+                "oracle_blocker_detail": None,
+                "step35_supported": None,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    first = status["handoff_summary"]["first_blocker_work_item"]
+
+    assert status["oracle_gap_report"]["first_missing_evidence"] == (
+        "oracle_exact_text_match"
+    )
+    assert first["current_status"] == "executed"
+    assert first["current_returncode"] == 0
+    assert first["first_missing_evidence"] == "oracle_exact_text_match"
+    assert first["recommended_command_kind"] == "oracle_helper_refresh_command"
+    assert first["recommended_command_reason"] == "investigate_generated_text_mismatch"
+    assert first["recommended_command"] == first["helper_command"]
+    assert "--timeout-s 900.0" not in str(first["recommended_command"])
+    assert first["long_timeout_helper_command_kind"] == (
+        "oracle_helper_long_timeout_command"
+    )
+    assert "--timeout-s 900.0" in str(first["long_timeout_helper_command"])
