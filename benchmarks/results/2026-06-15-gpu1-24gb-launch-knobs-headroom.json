@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "kind": "task71_gpu1_launch_knob_headroom_summary",
+  "run_dir": "/tmp/hipengine-task71-headroom-20260615-015457",
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100 / GPU1 / 24GB-class",
+  "software": {
+    "therock_python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "hipcc_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "uname": "Linux epyc 7.0.10-1-cachyos #1 SMP PREEMPT_DYNAMIC Sun, 24 May 2026 14:29:40 +0000 x86_64 GNU/Linux"
+  },
+  "rows": [
+    {
+      "context_tokens": 131072,
+      "status": "passed",
+      "prepare_seconds": 88.848,
+      "raw_warmup_seconds": 0.403,
+      "scratch_probe_seconds": 0.171,
+      "linear_prefill_chunk_rows": 1024,
+      "full_prefill_chunk_rows": 4096,
+      "linear_prefill_tree_state_rows": 1,
+      "linear_prefill_tree_state_saved_gib": 2.139,
+      "int8_oracle_gib": 0.25,
+      "peak_stage": "full_prefill_scratch_live",
+      "peak_used_gib": 21.395,
+      "min_free_gib": 2.59,
+      "artifact": "/tmp/hipengine-task71-headroom-20260615-015457/scratch-131072.json"
+    },
+    {
+      "context_tokens": 163840,
+      "status": "passed",
+      "prepare_seconds": 33.195,
+      "raw_warmup_seconds": 0.34,
+      "scratch_probe_seconds": 0.2,
+      "linear_prefill_chunk_rows": 1024,
+      "full_prefill_chunk_rows": 4096,
+      "linear_prefill_tree_state_rows": 1,
+      "linear_prefill_tree_state_saved_gib": 2.139,
+      "int8_oracle_gib": 0.312,
+      "peak_stage": "full_prefill_scratch_live",
+      "peak_used_gib": 22.057,
+      "min_free_gib": 1.928,
+      "artifact": "/tmp/hipengine-task71-headroom-20260615-015457/scratch-163840.json"
+    },
+    {
+      "context_tokens": 196608,
+      "status": "passed",
+      "prepare_seconds": 28.196,
+      "raw_warmup_seconds": 0.378,
+      "scratch_probe_seconds": 0.22,
+      "linear_prefill_chunk_rows": 1024,
+      "full_prefill_chunk_rows": 4096,
+      "linear_prefill_tree_state_rows": 1,
+      "linear_prefill_tree_state_saved_gib": 2.139,
+      "int8_oracle_gib": 0.375,
+      "peak_stage": "full_prefill_scratch_live",
+      "peak_used_gib": 22.746,
+      "min_free_gib": 1.238,
+      "artifact": "/tmp/hipengine-task71-headroom-20260615-015457/scratch-196608.json"
+    },
+    {
+      "context_tokens": 262144,
+      "status": "passed",
+      "prepare_seconds": 27.773,
+      "raw_warmup_seconds": 0.357,
+      "scratch_probe_seconds": 0.125,
+      "linear_prefill_chunk_rows": 256,
+      "full_prefill_chunk_rows": 256,
+      "linear_prefill_tree_state_rows": 1,
+      "linear_prefill_tree_state_saved_gib": 0.533,
+      "int8_oracle_gib": 0.5,
+      "peak_stage": "full_prefill_scratch_live",
+      "peak_used_gib": 23.32,
+      "min_free_gib": 0.664,
+      "artifact": "/tmp/hipengine-task71-headroom-20260615-015457/scratch-262144.json"
+    }
+  ],
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": "#71 Quantify safe launch knobs after verifier trunk fix",
+  "date": "2026-06-15",
+  "commands": {
+    "probe": "HIP_VISIBLE_DEVICES=1 TheRock ROCm 7.13 python probe: LLM.prepare(max_sequence_length=<ctx>), one-token raw warmup, prepare_request_scratch(max_prompt_tokens=ctx-1, max_new_tokens=0, max_batch_size=1, kv_storage=int8_per_token_head, release_after_probe=True)",
+    "contexts": [
+      131072,
+      163840,
+      196608,
+      262144
+    ]
+  },
+  "recommendation": {
+    "short_chat_and_4k_prompts": "Use model/default context (262144) with int8_per_token_head KV when full-context availability is desired; startup and max-prompt scratch probe pass on GPU1. For extra headroom on 24GB cards, cap --max-context-tokens to 131072 or 163840.",
+    "safe_full_context": "262144 passes but is tight: min_free_gib=0.664 at full_prefill_scratch_live with 256-token low-memory chunks and the 0.5 GiB BF16 INT8 prefill oracle.",
+    "balanced_24gb_context": "163840 keeps ~1.93 GiB live-probe free and retains faster 1024/4096 chunks.",
+    "conservative_24gb_context": "131072 keeps ~2.59 GiB live-probe free and retains faster 1024/4096 chunks.",
+    "next_memory_target": "Streaming/row-batched INT8 prefill attention to remove the temporary BF16 INT8 prefill oracle; persistent prefill metadata compaction remains useful too."
+  },
+  "host_stack": {
+    "kernel": "Linux epyc 7.0.10-1-cachyos #1 SMP PREEMPT_DYNAMIC Sun, 24 May 2026 14:29:40 +0000 x86_64 GNU/Linux",
+    "rocm_smi_excerpt": [
+      "Driver version: 7.0.10-1-cachyos",
+      "GPU[0]\t\t: VBIOS version: 113-D7070100-138",
+      "GPU[1]\t\t: VBIOS version: 113-EXT89622-001",
+      "GPU[0]\t\t: VRAM Total Memory (B): 48301604864",
+      "GPU[1]\t\t: VRAM Total Memory (B): 25753026560",
+      "GPU[0]\t\t: Card Series: \t\tAMD Radeon Pro W7900",
+      "GPU[0]\t\t: GFX Version: \t\tgfx1100",
+      "GPU[1]\t\t: Card Series: \t\tAMD Radeon RX 7900 XTX",
+      "GPU[1]\t\t: GFX Version: \t\tgfx1100"
+    ]
+  }
+}

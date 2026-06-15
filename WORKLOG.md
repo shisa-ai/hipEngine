@@ -92282,3 +92282,55 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - GPU1 24GB launch headroom and TheRock setup note
+
+Closed task #71 by rerunning direct GPU1 launch/headroom probes under the retained
+TheRock ROCm 7.13 stack (`HIP version: 7.13.26162-1140233ffe`) on kernel
+`Linux epyc 7.0.10-1-cachyos`. The probe shape was
+`LLM.prepare(max_sequence_length=N)`, one-token raw warmup, then
+`prepare_request_scratch(max_prompt_tokens=N-1, max_new_tokens=0, max_batch_size=1,
+kv_storage=int8_per_token_head, release_after_probe=True)` with
+`HIP_VISIBLE_DEVICES=1` on the RX 7900 XTX / 24GB-class card.
+
+Results are retained as diagnostic artifact
+`benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json`:
+
+| Context | Status | Chunk policy | INT8 oracle | Peak live stage | Peak used | Min free |
+| ---: | --- | --- | ---: | --- | ---: | ---: |
+| 131072 | pass | `linear=1024`, `full=4096` | 0.250 GiB | `full_prefill_scratch_live` | 21.395 GiB | 2.590 GiB |
+| 163840 | pass | `linear=1024`, `full=4096` | 0.312 GiB | `full_prefill_scratch_live` | 22.057 GiB | 1.928 GiB |
+| 196608 | pass | `linear=1024`, `full=4096` | 0.375 GiB | `full_prefill_scratch_live` | 22.746 GiB | 1.238 GiB |
+| 262144 | pass | `linear=256`, `full=256` | 0.500 GiB | `full_prefill_scratch_live` | 23.320 GiB | 0.664 GiB |
+
+Launch guidance recorded in `docs/OOM.md`: full 256Ki context is usable with
+INT8 KV when the startup scratch probe passes, but it is tight; 163840 is the
+safer 24GB service cap while retaining faster chunks, and 131072 is the most
+conservative cap. The next memory target is task #88, replacing the temporary
+BF16 INT8 prefill oracle with streaming/row-batched INT8 prefill attention.
+
+Updated setup docs:
+- `README.md` now points retained benchmark users to `docs/THEROCK.md`, names the
+  canonical TheRock ROCm 7.13 identity, and notes the observed ROCm 7.14
+  regression on this kernel/firmware setup.
+- `docs/THEROCK.md` now links upstream TheRock `RELEASES.md`, records the current
+  kernel/driver/VBIOS metadata, and keeps the pinned `pip install` recipe as the
+  exact source of truth.
+- README status now says v0.2.2 alpha and lists the current >0.2.2 server
+  startup/readiness, streaming, and reasoning-content features.
+
+User-report audit:
+- The Python 3.11 f-string issue around `"\n\n".join(control_prompts)` was already
+  fixed in current `hipengine/server/api.py` by assigning `control_block` before
+  the f-string.
+- The Hugging Face cache error was still relevant for safetensors model loading:
+  a missing two-component repo ID could fall through to a misleading partial-path
+  `config.json` error. Added a focused loader error/test so the full model ID is
+  preserved and the message says the model is absent from the local HF cache.
+
+Validation:
+- GPU1 direct probes passed for contexts `131072`, `163840`, `196608`, `262144`.
+- `python3 -m pytest tests/test_hf_cache.py tests/test_loading_safetensors.py -q` -> `9 passed`.
+- `python3 -m py_compile hipengine/loading/hf_cache.py hipengine/loading/safetensors.py tests/test_hf_cache.py` -> passed.
+- `python3 -m json.tool benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json >/dev/null` -> passed.
+- `git diff --check -- README.md CHANGELOG.md docs/THEROCK.md docs/OOM.md hipengine/loading/hf_cache.py hipengine/loading/safetensors.py tests/test_hf_cache.py benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json` -> clean.

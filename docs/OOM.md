@@ -180,8 +180,11 @@ and reduces without materializing huge per-row split partials.
 
 ## Current measurements
 
-All measurements below are from 2026-06-14 on GPU1 with a clean GPU before
-launch unless noted.
+Measurements below are from GPU1 with a clean GPU before launch unless noted.
+The current launch-knob/headroom refresh was run on 2026-06-15 under TheRock
+ROCm 7.13 (`HIP version: 7.13.26162-1140233ffe`) on kernel
+`Linux 7.0.10-1-cachyos`; artifact:
+[`benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json`](../benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json).
 
 ### Startup max-prompt scratch probe (new P0 gate)
 
@@ -197,11 +200,13 @@ All runs used `HIP_VISIBLE_DEVICES=1`, model
 `shisa-ai/Qwen3.6-35B-A3B-PARO-packed`, backend `hip_gfx1100`, quant `w4_paro`,
 `kv_storage=int8_per_token_head`, and a clean GPU1 before launch.
 
-| Context | Free after prepare | Free after raw warmup | Scratch probe | Evidence |
-| ---: | ---: | ---: | --- | --- |
-| 65,536 | 5.088 GiB | 5.051 GiB | pass in 0.050s | `prefill_hidden_bytes=268,431,360`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=134,217,728` |
-| 131,072 | 4.199 GiB | 4.162 GiB | pass in 0.054s | `prefill_hidden_bytes=536,866,816`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=268,435,456` |
-| 262,144 | ~2.04 GiB | ~2.01 GiB | pass in 0.115s after compact tree scratch | low-memory/full-context auto chunks `linear=moe=full=256`; `tree_rows=1`, `tree_saved=0.533 GiB`, `int8_oracle=0.5 GiB`; peak moved to `full_prefill_scratch_live`, used 23.320 GiB, min-free 0.664 GiB |
+| Context | Scratch probe | Peak live stage | Peak used | Min free | Evidence / chunk policy |
+| ---: | --- | --- | ---: | ---: | --- |
+| 65,536 | pass in 0.050s (2026-06-14) | — | — | — | `prefill_hidden_bytes=268,431,360`, `linear_prefill_chunk_rows=1024`, `full_prefill_chunk_rows=4096`, `int8_oracle_bytes=134,217,728` |
+| 131,072 | pass in 0.171s | `full_prefill_scratch_live` | 21.395 GiB | 2.590 GiB | faster chunks `linear=1024`, `full=4096`; `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.250 GiB` |
+| 163,840 | pass in 0.200s | `full_prefill_scratch_live` | 22.057 GiB | 1.928 GiB | faster chunks `linear=1024`, `full=4096`; `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.312 GiB` |
+| 196,608 | pass in 0.220s | `full_prefill_scratch_live` | 22.746 GiB | 1.238 GiB | faster chunks `linear=1024`, `full=4096`; `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.375 GiB` |
+| 262,144 | pass in 0.125s | `full_prefill_scratch_live` | 23.320 GiB | 0.664 GiB | low-memory/full-context auto chunks `linear=moe=full=256`; `tree_rows=1`, `tree_saved=0.533 GiB`, `int8_oracle=0.500 GiB` |
 
 Important implementation detail: the first raw warmup prompt is tiny, and the
 PARO session resolves prefill chunking based on the active prompt length. The
@@ -228,9 +233,25 @@ linear/MoE/full-attention prefill. With that profile, real startup reaches ready
 STARTUP_MEMORY: final_stage=guard final_free=2.01 GiB final_used=21.98 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=23.38 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=0.61 GiB total=23.98 GiB samples=7
 ```
 
-Conclusion: **262k/int8 can now start on the 24GB GPU**, but the transient
-scratch peak is still tight (`~0.61 GiB` free). The next optimization target is
-still linear prefill scratch, followed by the int8 BF16 prefill oracle.
+Conclusion / launch guidance:
+
+- **Full 256Ki (`262144`) context is usable** on the 24GB GPU with
+  `--kv-storage int8_per_token_head`, but it remains a tight full-context mode:
+  the current direct probe leaves only `0.664 GiB` free at the live
+  `full_prefill_scratch_live` peak.
+- For short chat and 4K-prompt use cases that still want maximum context
+  availability, the default/full-context launch is acceptable when startup passes
+  the max-prompt scratch probe.
+- For a safer 24GB service profile, cap `--max-context-tokens` to **163840**
+  (about `1.93 GiB` live-probe free) or **131072** (about `2.59 GiB` live-probe
+  free). Both retain the faster `1024/4096` chunk policy.
+- **196608** is a middle ground but still fairly tight (`1.24 GiB` live-probe
+  free) and should be treated as a diagnostic/advanced profile until more
+  request-shape probes are recorded.
+- The next memory target is no longer simply linear tree scratch; the current
+  peak is full-attention scratch plus the temporary BF16 INT8 prefill oracle.
+  Replacing that oracle with a streaming/row-batched INT8 prefill-attention
+  kernel is task #88.
 
 ### Legacy exact full-context server startup
 

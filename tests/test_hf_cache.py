@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 from safetensors.numpy import save_file
 
-from hipengine.loading import load_weight_index, resolve_model_path
+from hipengine.loading import MissingConfigError, load_weight_index, resolve_model_path
 from hipengine.loading.gguf import discover_gguf_files
 
 
@@ -26,6 +27,21 @@ def test_resolve_model_path_finds_hf_cache_snapshot(monkeypatch, tmp_path) -> No
     monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(hub))
 
     assert resolve_model_path("org/model") == snapshot
+
+
+def test_load_weight_index_reports_missing_hf_model_id_cache(monkeypatch, tmp_path) -> None:
+    hub = tmp_path / "hub"
+    hub.mkdir()
+    monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(hub))
+    repo_id = "missing-org/missing-paro"
+
+    with pytest.raises(MissingConfigError) as exc_info:
+        load_weight_index(repo_id)
+
+    message = str(exc_info.value)
+    assert repo_id in message
+    assert "local cache" in message
+    assert "config.json not found under missing-org" not in message
 
 
 def test_load_weight_index_accepts_hf_model_id_from_cache(monkeypatch, tmp_path) -> None:

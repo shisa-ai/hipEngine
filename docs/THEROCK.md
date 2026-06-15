@@ -1,11 +1,13 @@
 # TheRock ROCm Environment
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 This page is the retained setup for hipEngine W7900 / gfx1100 benchmark runs
 that use AMD TheRock Python wheels. It records the install recipe, the package
 flavor choice, verification commands, and the ROCm 7.14 nightly regression
 diagnostics that keep ROCm 7.13 as the canonical stack for current topline rows.
+The upstream release-package reference is TheRock
+[`RELEASES.md`](https://github.com/ROCm/TheRock/blob/main/RELEASES.md).
 
 ## Retained Stack
 
@@ -36,6 +38,19 @@ Expected compiler/runtime identity:
 HIP version: 7.13.26162-1140233ffe
 torch.version.hip 7.13.26162
 ```
+
+Current local host metadata for the retained stack:
+
+| Component | Value |
+| --- | --- |
+| Kernel | `Linux epyc 7.0.10-1-cachyos #1 SMP PREEMPT_DYNAMIC Sun, 24 May 2026 14:29:40 +0000 x86_64` |
+| ROCm driver reported by `rocm-smi` | `7.0.10-1-cachyos` |
+| GPU0 | AMD Radeon Pro W7900 / gfx1100, VBIOS `113-D7070100-138`, 44.984 GiB VRAM |
+| GPU1 | AMD Radeon RX 7900 XTX / gfx1100, VBIOS `113-EXT89622-001`, 23.985 GiB VRAM |
+
+If the kernel, firmware, or TheRock package set changes, re-run at least the
+README PARO/GGUF sweep and the 24GB startup/headroom smoke before promoting the
+stack.
 
 ## Package Flavor
 

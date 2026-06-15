@@ -20,6 +20,12 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
   want the OpenAI-compatible API. The old `hipengine-server` console script has
   been replaced by `hipengine serve`.
 
+### Fixed
+
+- Missing Hugging Face repo IDs now report that the full model ID is absent from
+  the local cache instead of falling through to a misleading partial-path
+  `config.json` error.
+
 ## v0.2.2 - 2026-05-26
 
 Patch release improving server startup context preallocation, KV memory

@@ -44,7 +44,10 @@ def resolve_model_path(model_ref: str | Path) -> Path:
     return path
 
 
-def _could_be_hf_repo_id(text: str) -> bool:
+def is_hf_repo_id(model_ref: str | Path) -> bool:
+    """Return whether a non-existing reference has Hugging Face repo-id shape."""
+
+    text = str(model_ref)
     if not text or text.startswith(("/", "./", "../", "~")):
         return False
     if "://" in text:
@@ -53,6 +56,10 @@ def _could_be_hf_repo_id(text: str) -> bool:
         return False
     # Hugging Face repo IDs are one or two path components for model repos.
     return 1 <= text.count("/") + 1 <= 2
+
+
+def _could_be_hf_repo_id(text: str) -> bool:
+    return is_hf_repo_id(text)
 
 
 def _resolve_with_huggingface_hub(repo_id: str) -> Path | None:
@@ -118,4 +125,4 @@ def _candidate_hub_caches() -> tuple[Path, ...]:
     return tuple(deduped)
 
 
-__all__ = ["resolve_model_path"]
+__all__ = ["is_hf_repo_id", "resolve_model_path"]

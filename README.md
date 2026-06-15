@@ -37,18 +37,20 @@ supported GPUs and models.
 
 ## Status
 
-**v0.2.1 alpha.** The runtime hot path is torch-free by construction, and the
+**v0.2.2 alpha.** The runtime hot path is torch-free by construction, and the
 first two 35B-class model-loading surfaces are now available on gfx1100:
 [shisa-ai/Qwen3.6-35B-A3B-PARO-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
 (19.07 GiB, 4.68 bpw) in packed
 [ParoQuant](https://github.com/shisa-ai/paroquant) format, plus Qwen3.6 GGUF
-`Q4_K_M` / `Q4_K_S` files through the new resident GGUF path.
-Older benchmark artifacts may still show the historical
+`Q4_K_M` / `Q4_K_S` files through the resident GGUF path. Older benchmark
+artifacts may still show the historical
 `Qwen3.6-35B-A3B-PARO-full4096-e5-packed` name or local MTP-BF16 assembly path;
 those rows use the same packed PARO architecture and remain the evidence for the
 numbers below.
 
 - INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
+- The OpenAI-compatible server now has resident context/KV preallocation, startup warmup, max-prompt scratch probing, bounded chat-shaped startup smoke, `/ready` diagnostics, request context admission, and `max_tokens=auto` defaults for chat requests that omit an output cap.
+- `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
 - Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
 - Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
 
@@ -347,6 +349,23 @@ pip install -e ".[dev]"
 
 Python 3.11+. A working ROCm install with `libamdhip64.so` on the loader path
 is required for any GPU run; CPU-reference correctness tests run without a GPU.
+
+### ROCm / TheRock setup for retained benchmark rows
+
+For retained gfx1100 benchmark rows, use the pinned AMD TheRock environment in
+[`docs/THEROCK.md`](docs/THEROCK.md), not an ad-hoc mixed `/opt/rocm` runtime.
+Current retained rows use TheRock ROCm `7.13.0a20260423` with:
+
+```text
+HIP version: 7.13.26162-1140233ffe
+```
+
+On this host (`Linux 7.0.10-1-cachyos`, W7900 VBIOS `113-D7070100-138`, RX 7900
+XTX VBIOS `113-EXT89622-001`), ROCm 7.14 nightly diagnostics showed GGUF prefill
+and MTP wall-time regressions, so 7.13 remains the canonical stack until a newer
+ROCm release beats the same gates. See `docs/THEROCK.md` for the exact `pip
+install`/repair commands, clean process wrapper, and the upstream TheRock
+[`RELEASES.md`](https://github.com/ROCm/TheRock/blob/main/RELEASES.md) reference.
 
 The installed app exposes a small command group:
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from hipengine.loading.hf_cache import resolve_model_path
+from hipengine.loading.hf_cache import is_hf_repo_id, resolve_model_path
 
 _DTYPE_NBYTES = {
     "BOOL": 1,
@@ -174,6 +174,13 @@ def read_tensor_storage_bytes(info: TensorInfo) -> bytes:
 
 def load_weight_index(model_path: str | Path) -> WeightIndex:
     path = resolve_model_path(model_path)
+    if not path.exists() and is_hf_repo_id(model_path):
+        raise MissingConfigError(
+            f"Hugging Face model {str(model_path)!r} is not available in the local cache; "
+            "hipEngine does not download model files during load. "
+            "Run `huggingface-cli download` or `huggingface_hub.snapshot_download` first, "
+            "or pass a local model directory."
+        )
     model_dir = path if path.is_dir() else path.parent
     config = read_config(model_dir)
     shards = discover_safetensor_shards(path)
