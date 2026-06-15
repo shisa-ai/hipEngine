@@ -40994,3 +40994,33 @@ git diff --check
 ```
 
 Results: targeted diagnosis/rollup tests passed (`7` tests); status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `5a47b6e99f4befcc8cb49a8d72ddb084532a5c20689b32d8da8ad54531c8c087`; remaining-blockers file SHA `6d98ae44d6422faf3f3ac79b295c54489a1ee5b8b39d484cf4d0081d32fb4dcb`; correctness-status file SHA `d49cdfb118aa5f8427f963381d7146d4d5008d9598d93bf8cfe8a849d952e147`; final-blocker file SHA `5370609c105a17f23f09023f9298ce867868814507b607b38b8f8b45f66f27ae`; handoff file SHA `dabc70fa663c7fc4039ec9ef048f0a4c7f1f25f6d2503e535650216b83104457`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle evidence consistency check
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 493. Added `scripts/stepfun_oracle_evidence_consistency_check.py`, a retained cross-artifact consistency checker for the oracle diagnosis bundle, plus `tests/test_stepfun_oracle_evidence_consistency_check.py`. The checker compares diagnosis artifact SHA references against live retained artifacts and verifies expected-token, generated-token, top-token, prompt-token, active-finding, and ruled-out-cause consistency before the next logits/backend parity investigation. Updated `scripts/stepfun_remaining_blockers_rollup.py` / `tests/test_stepfun_remaining_blockers_rollup.py` so the oracle blocker links the consistency-check artifact/generator, refreshed `docs/STEPFUN.md`, and regenerated status/final-blocker/handoff artifacts.
+
+The retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json` reports `status=match`, `check_count=16`, `passed_check_count=16`, and `inconsistency_count=0`. It keeps `oracle_parity_ready=false` and next action `investigate logits/backend parity for the canonical Vulkan executed oracle; do not claim oracle parity until generated_text_matches_target passes`. Consistency-check file SHA is `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c`; stable payload SHA from `scripts/stepfun_oracle_evidence_consistency_check.py --sha-only` is `3a6e53f03e723ffbe9d87e5df60ead423e32a3d114ebe88f3816915bed3ca02a`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_evidence_consistency_check.py tests/test_stepfun_oracle_evidence_consistency_check.py scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_oracle_evidence_consistency_check.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --status-only
+python3 scripts/stepfun_oracle_evidence_consistency_check.py --inconsistencies-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted evidence-consistency/rollup tests passed (`8` tests); status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `70c650c9b240f5a67adc77b6151af88785ac378888c6f94d11394d2fcd60a8f4`; remaining-blockers file SHA `031b140800aa819c672b9eebd4198b4a80dda78803712630573c4da0fb2e1d3e`; correctness-status file SHA `01d3e9bfd8689693842485156b0f7ea39e14acb3a5200c526a6f3ea908f7fd51`; final-blocker file SHA `6db095b02eb6943ef5d5ef35ee3091264e8845d65dac97f5bef94372dc98e1ee`; handoff file SHA `8cd37ab73fbdb2cd0efe49d845c50b406df736b0756d55ee947dfbb376e2a6da`; full StepFun guard passed; `git diff --check` passed.

@@ -1,0 +1,216 @@
+{
+  "artifact_kind": "stepfun_oracle_evidence_consistency_check",
+  "blocked_gates": [
+    "oracle_parity",
+    "kv_backed_decode",
+    "e2e_inference"
+  ],
+  "check_count": 16,
+  "checked_artifacts": {
+    "backend_matrix": {
+      "artifact_kind": "stepfun_llamacpp_oracle_backend_matrix",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
+      "sha256": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
+      "status": "blocked"
+    },
+    "prompt_token_roundtrip": {
+      "artifact_kind": "stepfun_prompt_token_roundtrip",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json",
+      "sha256": "1684aef6c074af5e0b4e1bd9ed894ed0b75d118af11726894c7693bb21636fd8",
+      "status": "passed"
+    },
+    "rank_check": {
+      "artifact_kind": "stepfun_llamacpp_oracle_rank_check",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json",
+      "sha256": "2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba",
+      "status": "failed"
+    },
+    "token_mismatch": {
+      "artifact_kind": null,
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json",
+      "sha256": "206f04205bc9cd48f6c23d19d4b74e203974c1b4ccd74dea3b1d5a61e9ee0979",
+      "status": "failed"
+    },
+    "top_token_roundtrip": {
+      "artifact_kind": "stepfun_host_top_token_roundtrip",
+      "path": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json",
+      "sha256": "53aa0da3e30fbfc839ed141b692af34924a1b1d9cf5eb5a13010a5560c2cfc14",
+      "status": "passed"
+    }
+  },
+  "checks": [
+    {
+      "actual": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
+      "evidence": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json stable SHA matches the diagnosis evidence_artifacts reference.",
+      "expected": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
+      "name": "diagnosis_backend_matrix_sha_matches_live_artifact",
+      "passed": true
+    },
+    {
+      "actual": "206f04205bc9cd48f6c23d19d4b74e203974c1b4ccd74dea3b1d5a61e9ee0979",
+      "evidence": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json stable SHA matches the diagnosis evidence_artifacts reference.",
+      "expected": "206f04205bc9cd48f6c23d19d4b74e203974c1b4ccd74dea3b1d5a61e9ee0979",
+      "name": "diagnosis_token_mismatch_sha_matches_live_artifact",
+      "passed": true
+    },
+    {
+      "actual": "2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba",
+      "evidence": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json stable SHA matches the diagnosis evidence_artifacts reference.",
+      "expected": "2d0bf0056890f9f09ca5ce509d02f6828f2951d20bee7056fd6b695d745ed1ba",
+      "name": "diagnosis_rank_check_sha_matches_live_artifact",
+      "passed": true
+    },
+    {
+      "actual": "53aa0da3e30fbfc839ed141b692af34924a1b1d9cf5eb5a13010a5560c2cfc14",
+      "evidence": "benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json stable SHA matches the diagnosis evidence_artifacts reference.",
+      "expected": "53aa0da3e30fbfc839ed141b692af34924a1b1d9cf5eb5a13010a5560c2cfc14",
+      "name": "diagnosis_top_token_roundtrip_sha_matches_live_artifact",
+      "passed": true
+    },
+    {
+      "actual": "1684aef6c074af5e0b4e1bd9ed894ed0b75d118af11726894c7693bb21636fd8",
+      "evidence": "benchmarks/results/2026-06-15-stepfun-q3kl-prompt-token-roundtrip.json stable SHA matches the diagnosis evidence_artifacts reference.",
+      "expected": "1684aef6c074af5e0b4e1bd9ed894ed0b75d118af11726894c7693bb21636fd8",
+      "name": "diagnosis_prompt_token_roundtrip_sha_matches_live_artifact",
+      "passed": true
+    },
+    {
+      "actual": 369,
+      "evidence": "token-mismatch and rank-check artifacts agree on expected_next_token_id.",
+      "expected": 369,
+      "name": "expected_next_token_id_consistent",
+      "passed": true
+    },
+    {
+      "actual": " |",
+      "evidence": "token-mismatch and rank-check artifacts agree on expected_next_token_text.",
+      "expected": " |",
+      "name": "expected_next_token_text_consistent",
+      "passed": true
+    },
+    {
+      "actual": [
+        369
+      ],
+      "evidence": "expected next-token text tokenizes as the expected token id.",
+      "expected": [
+        369
+      ],
+      "name": "expected_next_token_text_roundtrips_to_expected_id",
+      "passed": true
+    },
+    {
+      "actual": 671,
+      "evidence": "rank-check generated_first_token_id matches token-mismatch generated text tokenization.",
+      "expected": 671,
+      "name": "generated_first_token_id_consistent",
+      "passed": true
+    },
+    {
+      "actual": [
+        369,
+        5,
+        15251,
+        223,
+        201
+      ],
+      "evidence": "rank-check and host top-token round-trip artifacts use the same host top-token ids.",
+      "expected": [
+        369,
+        5,
+        15251,
+        223,
+        201
+      ],
+      "name": "host_top_token_ids_consistent",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "evidence": "prompt-token round-trip artifact reports host input_ids match llama-tokenize.",
+      "expected": true,
+      "name": "prompt_token_roundtrip_ready",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "evidence": "host top-token round-trip artifact reports all top-token texts match their token ids.",
+      "expected": true,
+      "name": "top_token_roundtrip_ready",
+      "passed": true
+    },
+    {
+      "actual": {
+        "diagnosis_finding_active": true,
+        "generated_token_in_host_top_tokens": false
+      },
+      "evidence": "rank-check absence agrees with the diagnosis active finding.",
+      "expected": {
+        "diagnosis_finding_active": true,
+        "generated_token_in_host_top_tokens": false
+      },
+      "name": "generated_token_absent_from_host_top_tokens_consistent",
+      "passed": true
+    },
+    {
+      "actual": {
+        "diagnosis_finding_active": true,
+        "text_matches_expected_stripped": false
+      },
+      "evidence": "token-mismatch generated-text failure agrees with the diagnosis active finding.",
+      "expected": {
+        "diagnosis_finding_active": true,
+        "text_matches_expected_stripped": false
+      },
+      "name": "generated_text_mismatch_consistent",
+      "passed": true
+    },
+    {
+      "actual": {
+        "diagnosis_finding_active": true,
+        "hip_outcome": "timeout"
+      },
+      "evidence": "backend matrix HIP timeout agrees with the diagnosis active finding.",
+      "expected": {
+        "diagnosis_finding_active": true,
+        "hip_outcome": "timeout"
+      },
+      "name": "hip_oracle_timeout_consistent",
+      "passed": true
+    },
+    {
+      "actual": {
+        "all_tokenizer_prompt_drift_causes_ruled_out": true,
+        "expected_next_token_text_tokenization_drift": true,
+        "host_top_token_text_label_drift": true,
+        "prompt_token_drift": true
+      },
+      "evidence": "diagnosis records the three tokenizer/prompt drift causes as ruled out.",
+      "expected": true,
+      "name": "diagnosis_ruled_out_causes_consistent",
+      "passed": true
+    }
+  ],
+  "date": "2026-06-15",
+  "diagnosis_artifact": {
+    "artifact_kind": "stepfun_oracle_blocker_diagnosis",
+    "path": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json",
+    "sha256": "2577f7dacb1458169774dac3d6a75b1c118252a4765a8f77833a67a8ca96564b",
+    "status": "blocked"
+  },
+  "inconsistencies": [],
+  "inconsistency_count": 0,
+  "next_action": "investigate logits/backend parity for the canonical Vulkan executed oracle; do not claim oracle parity until generated_text_matches_target passes",
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact only checks retained oracle evidence consistency; generated_text_matches_target remains unresolved."
+  },
+  "oracle_parity_ready": false,
+  "passed_check_count": 16,
+  "ready": true,
+  "schema_version": 1,
+  "status": "match"
+}
