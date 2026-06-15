@@ -59,7 +59,9 @@ Already available or recently added:
   buffered detailed-generation path by default, or live token/chunk
   streams when the engine explicitly advertises `supports_stream_logprobs` and
   yields per-chunk token metadata. PARO/GGUF c=1 host-sampled streams emit that
-  live token metadata for logprob requests. If generated-token metadata exists
+  live token metadata for logprob requests. Chat logprobs attach only to visible
+  assistant content after `<think>` splitting; hidden reasoning deltas do not
+  receive OpenAI `logprobs.content` entries. If generated-token metadata exists
   but the selected score is omitted, the OpenAI-compatible score field remains
   `null` and `choices[].logprobs.hipengine.omitted_token_logprobs[]` reports
   token index/id/text plus reason `backend_omitted_logprob`.
@@ -2200,11 +2202,14 @@ request return stable HTTP 501 `unsupported_feature` with
 `error.param="logprobs"`, and the capabilities manifest advertises that
 fallback under `features.logprobs.missing_backend_metadata_error`; it also
 advertises opt-in live stream support under
-`features.logprobs.live_chunk_metadata`. Server tests cover representative
-completion/chat logprob success, buffered streaming, live chunk streaming, and
-the missing-backend-metadata fallback. When token metadata is present but a
-generated-token selected score is omitted, successful completion/chat responses
-keep the OpenAI-compatible score as `null` and add
+`features.logprobs.live_chunk_metadata`. Chat logprobs are mapped to visible
+assistant content spans after reasoning markup is split, so hidden
+`reasoning_content` spans do not steal or receive public `logprobs.content`
+entries. Server tests cover representative completion/chat logprob success,
+buffered streaming, live chunk streaming, visible-content mapping after
+reasoning, and the missing-backend-metadata fallback. When token metadata is
+present but a generated-token selected score is omitted, successful
+completion/chat responses keep the OpenAI-compatible score as `null` and add
 `choices[].logprobs.hipengine.omitted_token_logprobs[]` with reason
 `backend_omitted_logprob`; echoed prompt prefixes use reason
 `prompt_logprob_unavailable`. `/v1/hipengine/capabilities` advertises the

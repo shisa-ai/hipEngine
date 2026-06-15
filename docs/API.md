@@ -134,6 +134,9 @@ Non-streaming completions accept OpenAI-style `logprobs: N` and return
 `top_logprobs: N` and returns `choices[].logprobs.content` entries. Requests for
 logprobs are routed through the host-logits metadata path so the selected token
 logprob/top candidates are based on the same processed logits used for sampling.
+When chat output contains Qwen `<think>` spans, chat logprobs are attached only
+to visible assistant `content` / streamed `delta.content` token spans;
+`reasoning_content` does not receive OpenAI `logprobs.content` entries.
 For completion `echo+logprobs`, the echoed prompt is represented as a prefix
 entry with `null` logprob, generated-token offsets are shifted accordingly, and
 `hipengine.omitted_token_logprobs[]` reports reason

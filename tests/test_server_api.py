@@ -7730,6 +7730,57 @@ def test_chat_completion_returns_openai_logprobs() -> None:
     assert fake.calls[0][1].top_logprobs == 1
 
 
+def test_chat_logprobs_use_visible_content_tokens_after_reasoning() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="<think>plan</think>answer",
+                token_logprobs=(
+                    TokenLogprob(token_id=3, token_text="<think>plan</think>", logprob=-0.1),
+                    TokenLogprob(
+                        token_id=4,
+                        token_text="answer",
+                        logprob=-0.2,
+                        top_logprobs=((4, "answer", -0.2),),
+                    ),
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 2,
+            "logprobs": True,
+            "top_logprobs": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["message"] == {
+        "role": "assistant",
+        "content": "answer",
+        "reasoning_content": "plan",
+    }
+    assert choice["logprobs"] == {
+        "content": [
+            {
+                "token": "answer",
+                "logprob": -0.2,
+                "bytes": None,
+                "top_logprobs": [{"token": "answer", "logprob": -0.2, "bytes": None}],
+            }
+        ],
+        "refusal": None,
+    }
+
+
 def test_chat_logprobs_omitted_selected_score_reports_reason() -> None:
     fake = FakeLLM(
         detailed_outputs=[
@@ -8112,7 +8163,9 @@ def test_streaming_chat_completion_keeps_reasoning_logprobs_on_buffered_parser()
         if choice["delta"].get("content") or choice["delta"].get("reasoning_content")
     } == {"buffered_final_metadata"}
     content = next(choice for choice in deltas if choice["delta"].get("content"))
-    assert content["logprobs"]["content"][0]["logprob"] == -0.1
+    assert content["logprobs"]["content"] == [
+        {"token": "A", "logprob": -0.2, "bytes": None, "top_logprobs": []}
+    ]
     assert fake.stream_calls == []
 
 

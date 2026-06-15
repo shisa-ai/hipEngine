@@ -4625,7 +4625,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if effective_cache_action != requested_cache_action:
                     choice["finish_details"]["cache_action"] = effective_cache_action
                 if request.logprobs:
-                    choice["logprobs"] = _chat_logprobs(detail, text)
+                    choice["logprobs"] = _chat_visible_content_logprobs(detail, text)
                 _mark_continuation_unavailable(choice["finish_details"])
                 if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
                     base_prompt = prompt if continuation is None else continuation.prompts[index]
@@ -4778,7 +4778,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     },
                     engine=getattr(app.state, "hipengine_llm", None),
                 )
-                logprobs = _chat_logprobs(batch.details[index], text) if request.logprobs else None
+                logprobs = _chat_visible_content_logprobs(batch.details[index], text) if request.logprobs else None
                 token_accounting = (
                     _StreamTokenAccounting.for_engine(getattr(app.state, "hipengine_llm", None))
                     if include_hipengine
@@ -9556,6 +9556,79 @@ def _chat_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
     if omitted:
         payload["hipengine"] = {"omitted_token_logprobs": omitted}
     return payload
+
+
+def _chat_visible_content_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
+    split = _split_reasoning(text)
+    if split.content == text:
+        return _chat_logprobs(detail, text)
+    tokens = _visible_content_token_logprobs(detail.token_logprobs, text, split.content)
+    return _chat_logprobs(GenerationOutput(text=split.content, token_logprobs=tokens), split.content)
+
+
+def _visible_content_token_logprobs(
+    tokens: Sequence[TokenLogprob],
+    raw_text: str,
+    visible_text: str,
+) -> tuple[TokenLogprob, ...]:
+    if not tokens or not visible_text:
+        return ()
+    spans = tuple(
+        (start, end)
+        for field, start, end in _reasoning_text_segments(raw_text)
+        if field == "content" and start < end
+    )
+    selected = _token_logprobs_for_spans(tokens, spans)
+    if "".join(token.token_text for token in selected) == visible_text:
+        return selected
+    return ()
+
+
+def _reasoning_text_segments(text: str) -> tuple[tuple[str, int, int], ...]:
+    segments: list[tuple[str, int, int]] = []
+    cursor = 0
+    in_reasoning = False
+    while cursor < len(text):
+        tag = _REASONING_CLOSE_TAG if in_reasoning else _REASONING_OPEN_TAG
+        index = text.find(tag, cursor)
+        if index < 0:
+            if cursor < len(text):
+                field = "reasoning_content" if in_reasoning else "content"
+                segments.append((field, cursor, len(text)))
+            break
+        if index > cursor:
+            field = "reasoning_content" if in_reasoning else "content"
+            segments.append((field, cursor, index))
+        cursor = index + len(tag)
+        in_reasoning = not in_reasoning
+    return tuple(segments)
+
+
+def _token_logprobs_for_spans(
+    tokens: Sequence[TokenLogprob],
+    spans: Sequence[tuple[int, int]],
+) -> tuple[TokenLogprob, ...]:
+    if not tokens or not spans:
+        return ()
+    selected: list[TokenLogprob] = []
+    span_index = 0
+    cursor = 0
+    for token in tokens:
+        token_start = cursor
+        token_end = token_start + len(token.token_text)
+        cursor = token_end
+        while span_index < len(spans) and spans[span_index][1] <= token_start:
+            span_index += 1
+        if span_index >= len(spans):
+            continue
+        span_start, span_end = spans[span_index]
+        if token_start >= span_start and token_end <= span_end:
+            selected.append(token)
+            continue
+        if token_end <= span_start or token_start >= span_end:
+            continue
+        return ()
+    return tuple(selected)
 
 
 def _logprob_omission(token: TokenLogprob, index: int) -> dict[str, Any]:
