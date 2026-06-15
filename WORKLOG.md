@@ -40702,3 +40702,33 @@ git diff --check
 ```
 
 Results: targeted KV blocker generator tests passed (`2` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `9791a97c549267cdb2b81d5fe3f26e8cb6da8866e6bffbbc6c4cd24959bf926a`; final-blocker file SHA `0341fea2f71c05045d9bfd509b2110f0a1fb27b9e6436c62ea8ac5daaae867d7`; handoff file SHA `fb1f94771fd57105be5172cbb590fc34ff31ce5569435724a36cc370ee0855ee`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L HIP llama.cpp oracle timed out
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 483. Checked whether the retained Vulkan oracle mismatch is backend-specific by building/running the current HIP llama.cpp `llama-completion` target from `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-completion` with the same deterministic StepFun Q3_K_L oracle command shape used for the Vulkan executed-mismatch artifact. The HIP attempt used `/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf`, `--gpu-layers 999`, `--no-warmup`, `--no-perf`, `--no-conversation`, `--special`, and `--override-kv tokenizer.ggml.add_bos_token=bool:false`.
+
+Retained artifacts:
+
+- `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json`
+- `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout-check.json`
+
+Result: HIP llama.cpp `version: 9641 (6e9007ae6)` reached the 900 s helper timeout (`elapsed_s=902.9110473229994`) with `status=timeout`, `oracle_blocker_kind=llama_cpp_oracle_timeout`, no return code, and empty `generated_text`. The checker summary fails with missing evidence `oracle_success_status`, `oracle_returncode_zero`, `no_timeout_or_oracle_blocker`, `generated_text_nonempty`, and `generated_text_matches_target`. This is backend-specific timeout evidence only; it does not replace the canonical Vulkan executed-mismatch oracle artifact (`The\n\n` / token `671` vs expected ` |` / token `369`) and makes no oracle/e2e/performance claim.
+
+Validation:
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build-hip-release --target llama-completion llama-tokenize -j 8
+python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-completion --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --execute --timeout-s 900 --diagnostic-logs --llama-arg=--gpu-layers --llama-arg=999 --llama-arg=--no-warmup --llama-arg=--no-perf --llama-arg=--no-conversation --llama-arg=--special --llama-arg=--override-kv --llama-arg=tokenizer.ggml.add_bos_token=bool:false --output benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json --pretty
+python3 scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json --summary-only --pretty > benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout-check.json
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; HIP oracle artifact SHA `fa268e97051cc1f5134cc3f97677dc455b8811606afabacc83cc0ab84e921503`; HIP checker summary SHA `4ea98a89141c011702f0c7e7f27aaa72ba08acbc4bfa3a3dde743b157f1d0319`; correctness-status file SHA `6703d2e7c8e8291939906cfab37411d72dda881341b853b3d932f98f851feea1`; final-blocker file SHA `ab60d3e2e5522d51b0765812db18c2a4be113bf2ad53dc77c86f1e0baa75f003`; handoff file SHA `c2e407a128c5180d9c06e5e150055c1e9226f9350c7aaf2da384b3bffc324aa4`; full StepFun guard passed; `git diff --check` passed.

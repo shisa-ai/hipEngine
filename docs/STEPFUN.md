@@ -886,7 +886,15 @@ reporting.
   tokenizes to `[671, 271]` (`"The\n\n"`) and stripped stdout tokenizes to
   `[671]` (`"The"`). The current oracle blocker is therefore downstream of
   prompt tokenization/BOS handling and is now narrowed to an actual generated
-  token mismatch (`671` vs expected `369`). Historical
+  token mismatch (`671` vs expected `369`). A same-command HIP `llama-completion`
+  attempt from `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-completion`
+  is retained in
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json`
+  with checker summary
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout-check.json`;
+  it reached the 900 s helper timeout without generated text, so it is backend-specific
+  timeout evidence only and does not replace the canonical Vulkan executed-mismatch
+  oracle artifact. Historical
   CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
   outer-supervisor timeout remain documented by git history and the separate
   wrapper-timeout source artifact. The oracle helper now also traps `SIGTERM`/`SIGINT` from

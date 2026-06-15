@@ -1,0 +1,119 @@
+{
+  "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "command": [
+    "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-completion",
+    "--model",
+    "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "--prompt",
+    "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "--predict",
+    "1",
+    "--temp",
+    "0",
+    "--top-k",
+    "1",
+    "--top-p",
+    "1",
+    "--min-p",
+    "0",
+    "--repeat-penalty",
+    "1",
+    "--seed",
+    "0",
+    "--no-display-prompt",
+    "--simple-io",
+    "--gpu-layers",
+    "999",
+    "--no-warmup",
+    "--no-perf",
+    "--no-conversation",
+    "--special",
+    "--override-kv",
+    "tokenizer.ggml.add_bos_token=bool:false"
+  ],
+  "command_shell": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-completion --model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --gpu-layers 999 --no-warmup --no-perf --no-conversation --special --override-kv tokenizer.ggml.add_bos_token=bool:false",
+  "comparison_policy": {
+    "exact_text_match_field": "text_matches_expected_exact",
+    "expected_text_field": "expected_next_token_text",
+    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
+    "stripped_text_match_field": "text_matches_expected_stripped"
+  },
+  "diagnostic_logs": true,
+  "elapsed_s": 902.9110473229994,
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "expected_top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ],
+  "extra_llama_args": [
+    "--gpu-layers",
+    "999",
+    "--no-warmup",
+    "--no-perf",
+    "--no-conversation",
+    "--special",
+    "--override-kv",
+    "tokenizer.ggml.add_bos_token=bool:false"
+  ],
+  "generated_text": "",
+  "llama_cli": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-completion",
+  "llama_cpp_version": "version: 9641 (6e9007ae6)\nbuilt with GNU 16.1.1 for Linux x86_64",
+  "model": "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+  "n_predict": 1,
+  "note": "Dry-run oracle plan by default. Use --execute only when the machine can afford a llama.cpp one-token run over the StepFun Q3_K_L GGUF shards; compare output/tokenization manually or with a follow-up parser before claiming parity.",
+  "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
+  "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+  "partial_output_path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json",
+  "partial_output_written_before_launch": true,
+  "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "prompt_length": 23,
+  "status": "timeout",
+  "stderr": "0.00.023.789 I llama_completion: llama backend init\n0.00.023.797 I llama_completion: load the model and apply lora adapter, if any\n0.00.023.809 I common_init_result: fitting params to device memory ...\n0.00.023.810 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)\n0.00.023.789 I llama_completion: llama backend init\n0.00.023.797 I llama_completion: load the model and apply lora adapter, if any\n0.00.023.809 I common_init_result: fitting params to device memory ...\n0.00.023.810 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)\n",
+  "stdout": "",
+  "step35_supported": null,
+  "text_matches_expected_exact": false,
+  "text_matches_expected_stripped": false,
+  "timeout_s": 900.0,
+  "timeout_termination": {
+    "communicate_after_signal_timeout_s": 10.0,
+    "fallback_proc_kill_used": false,
+    "process_exited_before_signal": false,
+    "process_group_started": true,
+    "termination_method": "os.killpg",
+    "termination_path": "killpg_sigkill_then_communicate",
+    "termination_signal": "SIGKILL",
+    "termination_signal_number": 9,
+    "timeout_reached": true,
+    "timeout_s": 900.0
+  }
+}

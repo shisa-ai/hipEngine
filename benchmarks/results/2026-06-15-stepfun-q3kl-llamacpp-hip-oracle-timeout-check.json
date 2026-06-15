@@ -1,0 +1,38 @@
+{
+  "artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-hip-oracle-timeout.json",
+  "artifact_sha256": "1c23a63c663448512d5a3a84dee715923035531d5696d558cfa21d55422422a2",
+  "evidence_checks_sha256": "a5cb73492e33e7803e424b4f9eb90743c128cc1be4e237985fa504747dc3ae1d",
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "generated_text": "",
+  "generated_text_len": 0,
+  "missing_evidence": [
+    "oracle_success_status",
+    "oracle_returncode_zero",
+    "no_timeout_or_oracle_blocker",
+    "generated_text_nonempty",
+    "generated_text_matches_target"
+  ],
+  "missing_evidence_count": 5,
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "llama_cpp_oracle_success_artifact_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "Oracle validation checks only the retained llama.cpp one-token artifact; KV-backed decode and benchmark gates remain separate."
+  },
+  "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+  "oracle_returncode": null,
+  "oracle_status": "timeout",
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "prompt_artifact_sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+  "ready": false,
+  "schema_version": 1,
+  "status": "failed",
+  "step35_supported": null,
+  "text_matches_expected_exact": false,
+  "text_matches_expected_stripped": false,
+  "tokenization_diagnostic": null
+}
