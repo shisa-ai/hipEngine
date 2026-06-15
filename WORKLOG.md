@@ -93928,3 +93928,15 @@ PY` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-daa14cf2ce9a4977
 - Result: `512/128` median prefill/decode `1618.595927 / 127.040141 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.922509 / 115.616891 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
 - Decision: no-hold/reverted. It preserved IDs and memory and nudged `512/128` decode up (`127.011979 -> 127.040141 tok/s`), but regressed `512/128` prefill (`1647.389814 -> 1618.595927 tok/s`), `4K/128` prefill (`1855.806476 -> 1850.922509 tok/s`), and the retained `4K/128` decode gate (`115.804576 -> 115.616891 tok/s`); keep selected-down T16 GEMV at `__launch_bounds__(128, 2)`.
+
+## 2026-06-15 - GGUF G-P3/G-P4 full-attn query chunk=2048 no-hold
+
+Tried lowering the auto-tuned full-attention query chunk in
+`hipengine/runtime/prefill.py` from `4096` to `2048`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-fullattn-query2048.json`.
+- Result: `512/128` median prefill/decode `1647.371639 / 126.880581 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1814.442744 / 115.545829 tok/s`, stable IDs `[15, 15, 15]`; tracked peak dropped to `20.688847 GiB` and sampled HIP used peak dropped to `~21.31 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. The smaller query chunk reduced memory materially, but changed the retained `4K/128` final token (`570 -> 15`) and regressed both retained decode gates plus `4K/128` prefill; keep the full-attention query chunk at `4096` until chunked-attention exactness is fixed.
