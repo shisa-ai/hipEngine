@@ -6294,11 +6294,19 @@ def render_chat_prompt(
             role_value = message.get("role", "")
             content_value = message.get("content", "")
             tool_calls = message.get("tool_calls")
+            tool_call_id = message.get("tool_call_id")
         else:
             role_value = message.role
             content_value = message.content
             tool_calls = message.tool_calls
+            tool_call_id = message.tool_call_id
         role = _chat_message_role(role_value, param=f"messages[{index}].role")
+        _validate_chat_message_tool_fields(
+            role,
+            tool_calls=tool_calls,
+            tool_call_id=tool_call_id,
+            param_prefix=f"messages[{index}]",
+        )
         content = _message_content_text(content_value, index)
         if role == "developer":
             role = "system"
@@ -6330,6 +6338,36 @@ def _chat_message_role(value: Any, *, param: str) -> str:
             param=param,
         )
     return role
+
+
+def _validate_chat_message_tool_fields(
+    role: str,
+    *,
+    tool_calls: Any,
+    tool_call_id: Any,
+    param_prefix: str,
+) -> None:
+    if tool_calls is not None and role != "assistant":
+        raise OpenAIHTTPError(
+            400,
+            f"{param_prefix}.tool_calls is only supported on assistant messages",
+            code="invalid_request",
+            param=f"{param_prefix}.tool_calls",
+        )
+    if tool_call_id is not None and role != "tool":
+        raise OpenAIHTTPError(
+            400,
+            f"{param_prefix}.tool_call_id is only supported on tool messages",
+            code="invalid_request",
+            param=f"{param_prefix}.tool_call_id",
+        )
+    if role == "tool" and (not isinstance(tool_call_id, str) or not tool_call_id.strip()):
+        raise OpenAIHTTPError(
+            400,
+            f"{param_prefix}.tool_call_id is required for tool messages",
+            code="invalid_request",
+            param=f"{param_prefix}.tool_call_id",
+        )
 
 
 def _validate_model(config: ServerConfig, requested: str | None, *, engine: Any | None = None) -> None:
@@ -7877,6 +7915,12 @@ def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
             param=f"messages[{index}].{extra[0]}",
         )
     role = _chat_message_role(value.get("role"), param=f"messages[{index}].role")
+    _validate_chat_message_tool_fields(
+        role,
+        tool_calls=value.get("tool_calls"),
+        tool_call_id=value.get("tool_call_id"),
+        param_prefix=f"messages[{index}]",
+    )
     payload: dict[str, Any] = {"role": role}
     if "content" in value:
         payload["content"] = _chat_session_snapshot_content(value.get("content"), message_index=index)

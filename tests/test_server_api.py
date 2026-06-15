@@ -2504,6 +2504,10 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
         ("content_part_wrong_type", "messages[0].content[0]"),
         ("content_part_non_string_text", "messages[0].content[0].text"),
         ("unsupported_role", "messages[0].role"),
+        ("user_tool_calls", "messages[0].tool_calls"),
+        ("assistant_tool_call_id", "messages[1].tool_call_id"),
+        ("tool_missing_tool_call_id", "messages[2].tool_call_id"),
+        ("tool_with_tool_calls", "messages[2].tool_calls"),
         ("empty_name", "messages[0].name"),
         ("non_string_tool_call_id", "messages[0].tool_call_id"),
     ],
@@ -2530,7 +2534,21 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_fields(
         headers=headers,
         json={
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "snapshot prompt"}],
+            "messages": [
+                {"role": "user", "content": "snapshot prompt"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_snap",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_snap", "content": "snapshot tool result"},
+            ],
             "session": {"id": "sess_corrupt_fields"},
             "max_tokens": 4,
         },
@@ -2547,6 +2565,14 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_fields(
         snapshot["messages"][0]["content"] = [{"type": "text", "text": 7}]
     elif corruption == "unsupported_role":
         snapshot["messages"][0]["role"] = "critic"
+    elif corruption == "user_tool_calls":
+        snapshot["messages"][0]["tool_calls"] = snapshot["messages"][1]["tool_calls"]
+    elif corruption == "assistant_tool_call_id":
+        snapshot["messages"][1]["tool_call_id"] = "call_snap"
+    elif corruption == "tool_missing_tool_call_id":
+        del snapshot["messages"][2]["tool_call_id"]
+    elif corruption == "tool_with_tool_calls":
+        snapshot["messages"][2]["tool_calls"] = snapshot["messages"][1]["tool_calls"]
     elif corruption == "empty_name":
         snapshot["messages"][0]["name"] = ""
     elif corruption == "non_string_tool_call_id":
@@ -7735,6 +7761,50 @@ def test_chat_completion_rejects_unsupported_message_role_before_generation() ->
     assert error["code"] == "invalid_request"
     assert error["param"] == "messages[0].role"
     assert "assistant, developer, system, tool, user" in error["message"]
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("message", "param"),
+    [
+        (
+            {
+                "role": "user",
+                "content": "hello",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "read", "arguments": "{}"},
+                    }
+                ],
+            },
+            "messages[0].tool_calls",
+        ),
+        (
+            {"role": "assistant", "content": "hello", "tool_call_id": "call_1"},
+            "messages[0].tool_call_id",
+        ),
+        ({"role": "tool", "content": "tool result"}, "messages[0].tool_call_id"),
+    ],
+)
+def test_chat_completion_rejects_invalid_role_specific_tool_fields_before_generation(
+    message: dict[str, Any],
+    param: str,
+) -> None:
+    fake = FakeLLM(outputs=["should not generate"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [message], "max_tokens": 4},
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == param
     assert fake.calls == []
 
 

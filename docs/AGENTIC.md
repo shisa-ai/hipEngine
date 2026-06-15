@@ -2029,9 +2029,10 @@ Current code reality:
   transcript-inclusion flag, session resident-state flag, tokenizer metadata
   when the model is loaded, timestamps, message shape, supported roles
   (`system`, `developer`, `user`, `assistant`, `tool`), text content parts,
-  message string metadata, and nested assistant `tool_calls` shape, including
-  valid JSON `function.arguments` strings, before creating or replacing the
-  app-local transcript session. Incompatible snapshots fail with stable
+  message string metadata, role-specific `tool_calls` / `tool_call_id`
+  placement, and nested assistant `tool_calls` shape, including valid JSON
+  `function.arguments` strings, before creating or replacing the app-local
+  transcript session. Incompatible snapshots fail with stable
   `invalid_request` errors and do not create a session.
 - Restoring a new snapshot session respects the configured chat-session cap and
   fails with matched `engine_busy` route metadata without creating partial

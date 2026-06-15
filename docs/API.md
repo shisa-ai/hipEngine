@@ -412,7 +412,10 @@ split into concatenable fragments after the full tool-call block has been parsed
 and validated; the first chunk carries the function name, and all chunks carry
 the same tool-call id and index. Prior assistant `tool_calls` and `role: "tool"`
 messages are also replayed into the prompt as `<tool_call>` and
-`<tool_response>` blocks so multi-turn tool loops can continue.
+`<tool_response>` blocks so multi-turn tool loops can continue. Request message
+shapes are role-specific: `tool_calls` is accepted only on assistant messages,
+and `tool_call_id` is required for tool messages and rejected on non-tool
+messages.
 Inconsistent request shapes fail before generation: `tool_choice="required"`
 or a specific function choice requires at least one `tools` entry, and a
 specific function choice must use a valid object shape and name a declared
@@ -756,8 +759,9 @@ resident KV, tokenizer state, or decode/sampling state. Authenticated
 the same session id after validating schema, model id, backend, quant, storage,
 tokenizer metadata when the model is loaded, message shape, text content parts,
 supported roles (`system`, `developer`, `user`, `assistant`, `tool`), message
-string metadata, nested assistant `tool_calls` objects, and valid JSON
-`function.arguments` strings. Incompatible or corrupted snapshots fail before
+string metadata, role-specific `tool_calls` / `tool_call_id` placement, nested
+assistant `tool_calls` objects, and valid JSON `function.arguments` strings.
+Incompatible or corrupted snapshots fail before
 creating the session. Restoring a new session is subject to the configured
 chat-session cap; when the cap is full, the server returns `engine_busy` without
 creating partial session state and includes matched `error.hipengine.routing`

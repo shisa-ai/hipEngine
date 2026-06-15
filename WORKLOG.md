@@ -92245,3 +92245,21 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC chat tool-field placement
+
+Tightened chat message protocol validation for live chat requests and restored
+app-local session snapshots. `tool_calls` is now accepted only on assistant
+messages, `tool_call_id` is required for tool messages, and `tool_call_id` is
+rejected on non-tool messages before prompt rendering or transcript restore.
+This keeps prior assistant tool calls and tool results from being silently
+ignored or injected under the wrong role.
+
+Validation:
+- `uv run pytest tests/test_server_api.py::test_chat_completion_rejects_invalid_role_specific_tool_fields_before_generation tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_fields -q` -> `14 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'chat_completion_renders_messages_to_prompt or invalid_role_specific_tool_fields or unsupported_message_role or snapshot_restore or token_diagnostics_use_session_prefix_for_chat'` -> `34 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
