@@ -96113,3 +96113,49 @@ Validation:
   backend/quant dispatch branch; no generation integration, native MTP execution,
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF verification denominator metrics
+
+Implemented `mtp-gguf` multiloop iteration 76: added a torch-free GGUF MTP
+verification metrics contract for accepted-per-draft and accepted-per-output
+parity denominators.
+
+Scope note:
+- Context/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This defines the aggregate denominator semantics that B1-B4 parity artifacts
+  must use after runtime verification exists: accepted draft tokens over generated
+  draft tokens, and accepted draft tokens over visible output tokens.
+
+Changes:
+- Added `Qwen35GGUFMTPVerificationMetrics` in
+  `hipengine/speculative/gguf_mtp.py`, aggregating one or more
+  `Qwen35GGUFMTPVerificationResult` rows.
+- The metrics contract exposes `cycle_count`, `draft_token_count`,
+  `accepted_token_count`, `output_token_count`, `accepted_per_draft`, and
+  `accepted_per_output`, and validates that accepted draft tokens do not exceed
+  visible output tokens.
+- Added tests for denominator aggregation and invalid denominator cases.
+- Updated `docs/MTP-gguf.md` to note that the target-attached context now covers
+  proposal verification plus aggregate accepted/output denominator contracts.
+
+Validation:
+- Focused context/CPU-reference/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` -> `43` passed.
+- Verification metrics smoke passed:
+  two verification results with accepted counts `1` and `2`, four draft tokens,
+  and five visible output tokens -> `accepted_per_draft=0.75` and
+  `accepted_per_output=0.6`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: context/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Metrics contract only defines denominator accounting; future MTP
+  attention/KV-write execution remains KVLiveSpans-gated.

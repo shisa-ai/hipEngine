@@ -605,8 +605,10 @@ Current status:
   append/decode cache from a draft batch, can bundle proposal + KVLiveSpans
   into a single draft execution-plan contract carrying CPU-reference-shaped
   append/decode kwargs, and can score proposed draft tokens against target tokens
-  to produce accepted counts while applying the llama.cpp verify-row reseed rule.
-  It does not allocate MTP KV buffers or run NextN draft kernels yet.
+  to produce accepted counts while applying the llama.cpp verify-row reseed rule,
+  plus an aggregate metrics contract for `accepted_per_draft` and
+  `accepted_per_output` denominators. It does not allocate MTP KV buffers or run
+  NextN draft kernels yet.
 
 Deliverables:
 
@@ -866,9 +868,9 @@ is now answered by the M1 required/optional table.)
       and the committed hipEngine/llama.cpp D32 token fixtures match on all 9
       prompts.
 - [ ] Run B1 exactness and accepted/output parity against llama.cpp B1. The
-      target-attached context now has a torch-free proposal verification result
-      contract for accepted-count/reseed accounting, and the preflight child
-      records `draft_budget_precheck`,
+      target-attached context now has torch-free proposal verification and
+      aggregate denominator contracts for accepted-count/reseed accounting, and
+      the preflight child records `draft_budget_precheck`,
       `draft_sampling_contract_precheck`, and `hidden_seed_contract_precheck`
       sections so a requested B1-B4 artifact cannot silently reuse mismatched
       budget, stale draft `top_k=1` sampling, or a non-fp32/non-post-`output_norm`

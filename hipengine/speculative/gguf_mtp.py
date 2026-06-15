@@ -426,6 +426,62 @@ class Qwen35GGUFMTPVerificationResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPVerificationMetrics:
+    """Aggregate denominator contract for GGUF MTP parity metrics."""
+
+    results: tuple[Qwen35GGUFMTPVerificationResult, ...]
+    output_token_count: int
+
+    @classmethod
+    def from_results(
+        cls,
+        results: Sequence[Qwen35GGUFMTPVerificationResult],
+        *,
+        output_token_count: int,
+    ) -> "Qwen35GGUFMTPVerificationMetrics":
+        return cls(results=tuple(results), output_token_count=int(output_token_count))
+
+    def __post_init__(self) -> None:
+        if not self.results:
+            raise ValueError("verification metrics require at least one result")
+        if self.output_token_count <= 0:
+            raise ValueError("output_token_count must be positive")
+        if self.accepted_token_count > self.output_token_count:
+            raise ValueError("accepted draft tokens cannot exceed visible output tokens")
+
+    @property
+    def cycle_count(self) -> int:
+        return len(self.results)
+
+    @property
+    def draft_token_count(self) -> int:
+        return sum(len(result.proposed_token_ids) for result in self.results)
+
+    @property
+    def accepted_token_count(self) -> int:
+        return sum(result.n_accepted for result in self.results)
+
+    @property
+    def accepted_per_draft(self) -> float:
+        return float(self.accepted_token_count) / float(self.draft_token_count)
+
+    @property
+    def accepted_per_output(self) -> float:
+        return float(self.accepted_token_count) / float(self.output_token_count)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "cycle_count": self.cycle_count,
+            "draft_token_count": self.draft_token_count,
+            "accepted_token_count": self.accepted_token_count,
+            "output_token_count": self.output_token_count,
+            "accepted_per_draft": self.accepted_per_draft,
+            "accepted_per_output": self.accepted_per_output,
+            "results": [result.as_dict() for result in self.results],
+        }
+
+
 @dataclass(slots=True)
 class Qwen35GGUFMTPContext:
     """Target-attached GGUF MTP state shell.

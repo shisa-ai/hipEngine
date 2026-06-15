@@ -14,6 +14,7 @@ from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPKVLiveSpansPlan,
     Qwen35GGUFMTPSeedRow,
+    Qwen35GGUFMTPVerificationMetrics,
     Qwen35GGUFMTPVerificationResult,
 )
 
@@ -301,6 +302,56 @@ def test_gguf_mtp_context_verifies_full_proposal_acceptance_from_execution_plan(
     assert result.target_token_id_at_mismatch is None
     assert result.reseed == seeds[2]
     assert result.as_dict()["accepted_per_draft"] == 1.0
+
+
+def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:
+    accepted_one = Qwen35GGUFMTPVerificationResult(
+        proposed_token_ids=(1, 2),
+        target_token_ids=(1, 9),
+        n_accepted=1,
+        first_mismatch_index=1,
+        rejected_proposal_token_id=2,
+        target_token_id_at_mismatch=9,
+        verify_seed_count=3,
+        reseed=Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    accepted_two = Qwen35GGUFMTPVerificationResult(
+        proposed_token_ids=(3, 4),
+        target_token_ids=(3, 4),
+        n_accepted=2,
+        verify_seed_count=3,
+        reseed=Qwen35GGUFMTPSeedRow(token_id=13, position=8, hidden_ptr=0x4000, hidden_size=8),
+    )
+
+    metrics = Qwen35GGUFMTPVerificationMetrics.from_results(
+        (accepted_one, accepted_two),
+        output_token_count=5,
+    )
+
+    assert metrics.cycle_count == 2
+    assert metrics.draft_token_count == 4
+    assert metrics.accepted_token_count == 3
+    assert metrics.accepted_per_draft == 0.75
+    assert metrics.accepted_per_output == 0.6
+    assert metrics.as_dict()["accepted_per_output"] == 0.6
+    assert metrics.as_dict()["results"][0]["first_mismatch_index"] == 1
+
+
+def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
+    result = Qwen35GGUFMTPVerificationResult(
+        proposed_token_ids=(1,),
+        target_token_ids=(1,),
+        n_accepted=1,
+        verify_seed_count=2,
+        reseed=Qwen35GGUFMTPSeedRow(token_id=2, position=1, hidden_ptr=0x2000, hidden_size=8),
+    )
+
+    with pytest.raises(ValueError, match="at least one"):
+        Qwen35GGUFMTPVerificationMetrics.from_results((), output_token_count=1)
+    with pytest.raises(ValueError, match="output_token_count"):
+        Qwen35GGUFMTPVerificationMetrics.from_results((result,), output_token_count=0)
+    with pytest.raises(ValueError, match="visible output"):
+        Qwen35GGUFMTPVerificationMetrics.from_results((result, result), output_token_count=1)
 
 
 def test_gguf_mtp_context_rejects_incomplete_verification_inputs() -> None:
