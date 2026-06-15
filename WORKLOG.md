@@ -94872,3 +94872,64 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, or attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF llama.cpp D32 token capture
+
+Implemented `mtp-gguf` multiloop iteration 50: captured the real llama.cpp HIP
+`/tokenize` D32 prompt token arrays for the local MTP-bearing GGUF and wired the
+result into the parity precheck tests.
+
+Scope note:
+- Fixture/test/docs only. No runtime generation, GGUF loading semantics, MTP
+  draft execution, sampling implementation, GPU kernel, attention/KV path, or
+  performance path changed.
+- This is deliberately a blocker artifact: the current hipEngine tokenizer
+  fixture and llama.cpp `/tokenize` fixture do **not** match on every prompt, so
+  M5 accepted/output comparisons must not proceed yet.
+
+Capture:
+- Started llama.cpp server with bg_task and stopped it after capture:
+  `/tmp/llamacpp-hip-server-gfx1151-6e9007ae6/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --host 127.0.0.1 --port 8092 -c 4096 -ngl 999 --no-webui`.
+- Server log reported ROCm device `Radeon 8060S Graphics`, model loaded, and
+  listening on `http://127.0.0.1:8092`.
+- Generated
+  `benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`
+  with:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_gguf_prompt_token_inventory.py --server-url http://127.0.0.1:8092 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json --out benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+- llama.cpp token counts/hash prefixes:
+  code_python 20 `df5cfe8fb2ea`, code_cpp 30 `b7674a2fc241`,
+  explain_concept 17 `2883b59eb337`, summarize 52 `151456ec3da2`,
+  qa_factual 14 `f6a560f94186`, translation 15 `cc5ea118187c`,
+  creative_short 11 `eacdaaaf5cdc`, stepwise_math 50 `4be6b5e9415c`,
+  long_code_review 721 `cd84a137f572`.
+- Comparison against the committed hipEngine D32 token fixture currently fails:
+  `all_match=False`, 4 matched prompts (`explain_concept`, `qa_factual`,
+  `summarize`, `translation`), 5 mismatches (`code_cpp`, `code_python`,
+  `creative_short`, `long_code_review`, `stepwise_math`).
+
+Changes:
+- Added the llama.cpp D32 token fixture.
+- Extended prompt-token inventory tests to validate the llama.cpp fixture and to
+  pin the current hipEngine-vs-llama.cpp tokenization mismatch set/counts.
+- Extended parity precheck tests to prove the real committed hipEngine and
+  llama.cpp D32 token fixtures fail the token-id gate.
+- Updated `docs/MTP-gguf.md` parity/M0 status and checked off the llama.cpp D32
+  token capture backlog row. The sampling artifact and draft-logit trace rows
+  remain open.
+
+Validation:
+- Token inventory + parity precheck tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_prompt_token_inventory_compare.py tests/test_gguf_mtp_parity_precheck.py` -> `16` passed.
+- Real fixture precheck fail-fast smoke passed as expected:
+  `scripts/gguf_mtp_parity_precheck.py --hipengine-token-inventory benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --llamacpp-token-inventory benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --fail-on-mismatch --out <tmp>` -> exit `1`, `all_pass False`, `token_match False`, `mismatches 5`, matched prompts `explain_concept,qa_factual,summarize,translation`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile tests/test_gguf_prompt_token_inventory_compare.py tests/test_gguf_mtp_parity_precheck.py` and
+  `git diff --check -- tests/test_gguf_prompt_token_inventory_compare.py tests/test_gguf_mtp_parity_precheck.py docs/MTP-gguf.md benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: tokenizer fixture/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, or attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.

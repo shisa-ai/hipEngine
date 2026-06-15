@@ -17,6 +17,9 @@ from scripts.gguf_prompt_token_inventory import load_prompt_suite, sha256_token_
 HIPENGINE_D32_TOKEN_FIXTURE = Path(
     "benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
 )
+LLAMACPP_HIP_D32_TOKEN_FIXTURE = Path(
+    "benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
+)
 D32_PROMPTS = Path("benchmarks/fixtures/llamacpp_mtp_bench_prompts.json")
 
 
@@ -155,3 +158,78 @@ def test_committed_hipengine_d32_prompt_token_fixture_is_self_consistent() -> No
         assert len(token_ids) == row["token_count"]
         assert all(isinstance(token_id, int) for token_id in token_ids)
         assert row["token_ids_sha256"] == sha256_token_ids(token_ids)
+
+
+def test_committed_llamacpp_d32_prompt_token_fixture_is_self_consistent() -> None:
+    fixture = json.loads(LLAMACPP_HIP_D32_TOKEN_FIXTURE.read_text())
+    suite = load_prompt_suite(D32_PROMPTS)
+    expected_names = [str(prompt["name"]) for prompt in suite["prompts"]]
+    expected_counts = {
+        "code_python": 20,
+        "code_cpp": 30,
+        "explain_concept": 17,
+        "summarize": 52,
+        "qa_factual": 14,
+        "translation": 15,
+        "creative_short": 11,
+        "stepwise_math": 50,
+        "long_code_review": 721,
+    }
+
+    assert fixture["schema"] == 1
+    assert fixture["kind"] == "llamacpp_prompt_token_inventory"
+    assert fixture["model"].endswith("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    assert fixture["prompts_file"] == str(D32_PROMPTS)
+    assert fixture["prompt_render"] == "raw"
+    assert fixture["add_special"] is False
+    assert fixture["parse_special"] is True
+    assert fixture["with_pieces"] is True
+    assert fixture["tokenization"] == "llamacpp.server.tokenize"
+    rows = fixture["prompts"]
+    assert [row["name"] for row in rows] == expected_names
+    assert len(rows) == 9
+    for row in rows:
+        token_ids = row["token_ids"]
+        assert row["token_count"] == expected_counts[row["name"]]
+        assert len(token_ids) == row["token_count"]
+        assert all(isinstance(token_id, int) for token_id in token_ids)
+        assert row["token_ids_sha256"] == sha256_token_ids(token_ids)
+        assert row["token_pieces"]
+
+
+def test_committed_d32_prompt_token_fixtures_record_current_tokenizer_mismatch() -> None:
+    hipengine = json.loads(HIPENGINE_D32_TOKEN_FIXTURE.read_text())
+    llamacpp = json.loads(LLAMACPP_HIP_D32_TOKEN_FIXTURE.read_text())
+
+    comparison = compare_prompt_token_inventories(
+        hipengine,
+        llamacpp,
+        left_label="hipengine",
+        right_label="llamacpp",
+        context_tokens=1,
+    )
+
+    assert comparison["all_match"] is False
+    assert comparison["compared_prompts"] == 9
+    assert comparison["matched_prompts"] == [
+        "explain_concept",
+        "qa_factual",
+        "summarize",
+        "translation",
+    ]
+    assert comparison["missing_in_left"] == []
+    assert comparison["missing_in_right"] == []
+    mismatches = {row["name"]: row for row in comparison["mismatches"]}
+    assert set(mismatches) == {
+        "code_cpp",
+        "code_python",
+        "creative_short",
+        "long_code_review",
+        "stepwise_math",
+    }
+    assert mismatches["code_python"]["left_token_count"] == 21
+    assert mismatches["code_python"]["right_token_count"] == 20
+    assert mismatches["code_python"]["first_mismatch_index"] == 8
+    assert mismatches["creative_short"]["first_mismatch_index"] == 3
+    assert mismatches["long_code_review"]["left_token_count"] == 766
+    assert mismatches["long_code_review"]["right_token_count"] == 721

@@ -156,6 +156,22 @@ def test_parity_precheck_cli_fails_on_mismatch_when_requested(tmp_path: Path) ->
     assert payload["token_ids"]["mismatches"]
 
 
+def test_parity_precheck_fails_committed_hipengine_vs_llamacpp_token_fixtures() -> None:
+    hip_fixture = Path("benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
+    llama_fixture = Path("benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
+
+    precheck = build_parity_precheck(
+        hipengine_token_inventory=json.loads(hip_fixture.read_text()),
+        llamacpp_token_inventory=json.loads(llama_fixture.read_text()),
+    )
+
+    assert precheck["all_pass"] is False
+    assert precheck["token_ids"]["all_match"] is False
+    assert len(precheck["token_ids"]["mismatches"]) == 5
+    assert precheck["sampling"]["checked"] is False
+    assert precheck["sampling"]["passed"] is True
+
+
 def test_parity_precheck_cli_passes_matching_committed_hipengine_fixture(tmp_path: Path) -> None:
     hip_fixture = Path("benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
     sampling = tmp_path / "sampling.json"

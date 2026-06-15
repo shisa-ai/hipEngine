@@ -321,8 +321,12 @@ defeats the parity goal:
 
 Current status: `scripts/gguf_mtp_parity_precheck.py` wraps the token-id
 inventory comparison and optional exact sampling-settings comparison into a
-single fail-fast JSON gate. Real llama.cpp token/sampling artifacts still need to
-be captured before M5 metrics are compared.
+single fail-fast JSON gate. The llama.cpp HIP `/tokenize` D32 artifact is
+captured at
+`benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`,
+and currently fails parity against the hipEngine tokenizer fixture on 5/9
+prompts (matched: explain_concept, qa_factual, summarize, translation). Sampling
+artifacts still need to be captured before M5 metrics are compared.
 
 ## Implementation Milestones
 
@@ -346,9 +350,13 @@ Deliverables:
   prompt (required, promoted from backlog).** This is one of the two M3 parity
   oracles; M3 blocks on having it or the `cpu_reference` NextN forward.
 - Capture llama.cpp prompt tokenization / token-id arrays + rendered prompt
-  hashes for the D32 suite (feeds Parity Precondition (a)). Current hipEngine
-  comparison fixture:
-  `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+  hashes for the D32 suite (feeds Parity Precondition (a)). Current fixtures:
+  `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`
+  and
+  `benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+  The current comparison is a useful blocker: 4/9 prompts match exactly and 5/9
+  diverge at tokenization, so M5 accepted/output comparisons must not proceed
+  until the tokenizer identity issue is fixed or explicitly scoped.
 
 Acceptance:
 
@@ -758,9 +766,11 @@ is now answered by the M1 required/optional table.)
       `benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`.
 - [ ] **Capture a llama.cpp draft logits/top-k trace for one short prompt
       (required M0 oracle, not "if possible").**
-- [ ] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a));
-      hipEngine-side D32 token fixture is committed at
-      `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+- [x] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a));
+      hipEngine-side and llama.cpp-side D32 fixtures are committed at
+      `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`
+      and
+      `benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
 - [x] Extend `Qwen35GGUFModelMap` with an MTP block descriptor + required/optional
       fallback table.
 - [x] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation
