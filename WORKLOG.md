@@ -40551,3 +40551,25 @@ git diff --check
 ```
 
 Results: status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status SHA `a639a48f584aa464d1a8c0982157d036a4db0140bcf3e845ba3ae6de5f647ccc`; final-blocker SHA `1a180c45929441b6f1e4cddb60d171e2cc2eda79aed816b5bfc75e1b0ccd223e`; handoff SHA `343a380650ef5fa23dae4640e1fc32b6870d774e67c4c00e4ba1291db6ec5943`; full StepFun guard passed (`377` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L KV blocker status artifact retained
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 477. Switched focus from the now-executed oracle mismatch to the second open P11 blocker: KV-backed decode is still not wired. Retained `benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json`, a compact machine-readable blocker status built from the current correctness-status/final-blocker/validator reports. It records `kv_decode_dispatch_ready=true`, `kv_backed_decode_ready=false`, and two missing KV artifacts: `benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json` (`kv_trace_check_command`) and `benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json` (`kv_next_token_check_command`). This is blocker-status evidence only; it contains no kernel trace, no KV-backed next-token result, and makes no KV/e2e/performance claim.
+
+Artifact generation used the in-tree status/manifest/validator modules to build the current manifest, filter validator results for `readiness_gate == "kv_backed_decode"`, and write the compact JSON. The artifact file SHA after the final docs/status refresh is `d351c44ae14e9af84cf570e332c63e10f1a19424e37b86a89d61292709900f1c`.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `a4ae57bb232bbaba37aa828deb4ad2d957d446735e64d00d65bd875a7a032a34`; final-blocker file SHA `4ff7d00b2b3fc9c9930f3ac18e56206effa3f478930708f598d14fb174714305`; handoff file SHA `ed849e3b19557a221ba84dc40d08ea61162e177c906d2a64cbff8489db072978`; full StepFun guard passed; `git diff --check` passed.

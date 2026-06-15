@@ -584,7 +584,10 @@ reporting.
   and a metadata-only combined upload plan with cleanup order, decode position/live-count,
   stop IDs, KV dispatch keys, resource-fit booleans, and a `kv_decode_blocker_summary`
   that names the first/kernel-trace/last runtime blockers, validated upload/launch prerequisites, required
-  trace/next-token artifacts, and the no-oracle/no-performance-claim policy), plus the planned per-layer KV launch
+  trace/next-token artifacts, and the no-oracle/no-performance-claim policy), plus a compact retained KV blocker
+  status artifact (`benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json`) that records
+  `kv_decode_dispatch_ready=true` but `kv_backed_decode_ready=false` because the required kernel-trace and
+  KV-backed next-token artifacts are both still missing, plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations plus source-level `streaming_runner_blockers` naming the still-missing
   decode loop, kernel trace, and KV-backed next-token artifact), and includes a compact

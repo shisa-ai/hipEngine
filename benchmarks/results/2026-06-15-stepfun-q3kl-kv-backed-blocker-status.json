@@ -1,0 +1,90 @@
+{
+  "artifact_kind": "stepfun_kv_backed_decode_blocker_status",
+  "blocked_artifact_names": [
+    "kv_kernel_trace_artifact",
+    "kv_backed_next_token_artifact"
+  ],
+  "blocked_count": 2,
+  "blocked_records": [
+    {
+      "artifact_name": "kv_kernel_trace_artifact",
+      "producer_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "producer_command_kind": "resource_plan_refresh_command",
+      "producer_command_reason": "refresh_kv_resource_and_run_plan_artifact",
+      "producer_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "producer_partial_output_overwrite_policy": null,
+      "producer_partial_output_path": null,
+      "producer_partial_output_status": null,
+      "producer_partial_output_supervisor_signal_handoff_safe": null,
+      "producer_writes_partial_output_before_launch": null,
+      "readiness_gate": "kv_backed_decode",
+      "ready": false,
+      "reason": "artifact_file_missing",
+      "required_for": "kv_kernel_trace_artifact_missing",
+      "status": "missing",
+      "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+      "validator_command_concrete": "python3 scripts/stepfun_kv_trace_check.py --trace benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+      "validator_command_concrete_sha256": "62413aea4323a70ef13641c75406f17a8218dcdca0eec0c0ab6916738ae17ad4",
+      "validator_command_kind": "kv_trace_check_command",
+      "validator_missing_evidence": [
+        "artifact_file_present"
+      ],
+      "validator_missing_evidence_count": 1
+    },
+    {
+      "artifact_name": "kv_backed_next_token_artifact",
+      "producer_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "producer_command_kind": "resource_plan_refresh_command",
+      "producer_command_reason": "refresh_kv_resource_and_run_plan_artifact",
+      "producer_command_sha256": "a7cd8b5dc03db0310c9ebc625d7f5c7c972bb1987b3539158cf8da2295c2cac1",
+      "producer_partial_output_overwrite_policy": null,
+      "producer_partial_output_path": null,
+      "producer_partial_output_status": null,
+      "producer_partial_output_supervisor_signal_handoff_safe": null,
+      "producer_writes_partial_output_before_launch": null,
+      "readiness_gate": "kv_backed_decode",
+      "ready": false,
+      "reason": "artifact_file_missing",
+      "required_for": "kv_backed_next_token_artifact_missing",
+      "status": "missing",
+      "validator_artifact_path": "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+      "validator_command_concrete": "python3 scripts/stepfun_kv_next_token_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
+      "validator_command_concrete_sha256": "350d9d427afc31cbaa3ab6da1cf7f14461439850094dc3e7f1532cb7cad8c13a",
+      "validator_command_kind": "kv_next_token_check_command",
+      "validator_missing_evidence": [
+        "artifact_file_present"
+      ],
+      "validator_missing_evidence_count": 1
+    }
+  ],
+  "date": "2026-06-15",
+  "e2e_inference_ready": false,
+  "kv_backed_decode_ready": false,
+  "kv_decode_dispatch_ready": true,
+  "missing_artifact_paths": [
+    "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+    "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+  ],
+  "next_required_evidence": [
+    "produce benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and pass scripts/stepfun_kv_trace_check.py",
+    "produce benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json and pass scripts/stepfun_kv_next_token_check.py"
+  ],
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact records missing KV evidence only; it does not contain a kernel trace or a KV-backed next-token result."
+  },
+  "producer_command_kinds": [
+    "resource_plan_refresh_command"
+  ],
+  "readiness_gate": "kv_backed_decode",
+  "schema_version": 1,
+  "source_correctness_status_sha256": "49b3f832ade28b27efa790c06755ddf6fb2c4ff23aeaee68b76ebe881349688c",
+  "source_validator_status_sha256": "40729af5d2010b3a9e29a369cdd6736c93769168ea181c74de2c517819ad375a",
+  "status": "blocked",
+  "validator_command_kinds": [
+    "kv_trace_check_command",
+    "kv_next_token_check_command"
+  ]
+}
