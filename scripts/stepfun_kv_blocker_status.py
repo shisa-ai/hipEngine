@@ -10,6 +10,7 @@ claim.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import sys
 from pathlib import Path
@@ -240,6 +241,84 @@ def _runtime_wiring_map() -> dict[str, object]:
     }
 
 
+def _ast_class_methods(path: Path) -> dict[str, set[str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    class_methods: dict[str, set[str]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        methods = {
+            child.name
+            for child in node.body
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
+        }
+        class_methods[node.name] = methods
+    return class_methods
+
+
+def _symbol_validation_for_runtime_wiring_map(
+    wiring_map: dict[str, object],
+) -> dict[str, object]:
+    runner_file = str(wiring_map.get("runner_file") or "")
+    runner_path = REPO_ROOT / runner_file
+    class_methods = _ast_class_methods(runner_path)
+
+    symbol_records: list[dict[str, object]] = []
+
+    def add_symbol(symbol: object, *, role: str) -> None:
+        symbol_text = str(symbol)
+        class_name, sep, method_name = symbol_text.partition(".")
+        class_present = class_name in class_methods
+        method_present = bool(sep) and method_name in class_methods.get(class_name, set())
+        symbol_records.append(
+            {
+                "symbol": symbol_text,
+                "role": role,
+                "class_name": class_name,
+                "method_name": method_name if sep else None,
+                "class_present": class_present,
+                "method_present": method_present,
+                "present": class_present and method_present,
+            }
+        )
+
+    planner = _dict_or_empty(wiring_map.get("planner_entrypoint"))
+    add_symbol(planner.get("symbol"), role="planner_entrypoint")
+    resource_plan = _dict_or_empty(wiring_map.get("resource_plan_entrypoint"))
+    add_symbol(resource_plan.get("symbol"), role="resource_plan_entrypoint")
+    for entry in wiring_map.get("device_input_entrypoints", []):
+        if isinstance(entry, dict):
+            add_symbol(entry.get("symbol"), role="device_input_entrypoint")
+    for entry in wiring_map.get("metadata_only_trace_entrypoints", []):
+        if isinstance(entry, dict):
+            add_symbol(entry.get("symbol"), role="metadata_only_trace_entrypoint")
+    prompt_smoke = _dict_or_empty(wiring_map.get("current_host_composed_prompt_smoke"))
+    add_symbol(prompt_smoke.get("symbol"), role="current_host_composed_prompt_smoke")
+
+    missing_execution = _dict_or_empty(wiring_map.get("missing_execution_entrypoint"))
+    owner = str(missing_execution.get("owner") or "")
+    owner_record = {
+        "owner": owner,
+        "class_present": owner in class_methods,
+        "present": owner in class_methods,
+    }
+    missing_symbols = [
+        record["symbol"] for record in symbol_records if record.get("present") is not True
+    ]
+    if owner_record["present"] is not True:
+        missing_symbols.append(owner)
+    return {
+        "schema_version": 1,
+        "source": "ast_symbol_validation",
+        "file": runner_file,
+        "all_symbols_present": not missing_symbols,
+        "missing_symbols": missing_symbols,
+        "symbol_count": len(symbol_records),
+        "symbols": symbol_records,
+        "missing_execution_owner": owner_record,
+    }
+
+
 def _streaming_runner_source_status(resource_artifact: Path) -> dict[str, object]:
     resource = _load_json_object(resource_artifact)
     run_plan = _dict_or_empty(resource.get("kv_decode_run_plan"))
@@ -306,6 +385,7 @@ def build_kv_blocker_status(
         for record in blocked
         if record.get("reason") == "artifact_file_missing"
     ]
+    wiring_map = _runtime_wiring_map()
     return {
         "schema_version": 1,
         "artifact_kind": "stepfun_kv_backed_decode_blocker_status",
@@ -331,7 +411,10 @@ def build_kv_blocker_status(
             }
         ),
         "streaming_runner_source_status": _streaming_runner_source_status(resource_artifact),
-        "runtime_wiring_map": _runtime_wiring_map(),
+        "runtime_wiring_map": wiring_map,
+        "runtime_wiring_symbol_validation": _symbol_validation_for_runtime_wiring_map(
+            wiring_map
+        ),
         "blocked_records": blocked,
         "no_claim_policy": {
             "kv_backed_decode_claim_allowed": False,

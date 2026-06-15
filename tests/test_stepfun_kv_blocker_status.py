@@ -111,6 +111,29 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "performance_claim_allowed": False,
         "reason": "This is an entrypoint map, not an executable KV-backed decode run.",
     }
+    validation = artifact["runtime_wiring_symbol_validation"]
+    assert validation["schema_version"] == 1
+    assert validation["source"] == "ast_symbol_validation"
+    assert validation["file"] == "hipengine/runtime/stepfun_gguf_runner.py"
+    assert validation["all_symbols_present"] is True
+    assert validation["missing_symbols"] == []
+    assert validation["symbol_count"] == 8
+    assert {record["symbol"] for record in validation["symbols"]} == {
+        "StepFunShortContextDecodePlanner.plan_kv_decode_chat",
+        "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule",
+        "StepFunKVDecodeRunPlan.upload_decode_inputs",
+        "StepFunKVDecodeRunPlan.decode_input_upload_plan",
+        "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint",
+        "StepFunKVDecodeRunPlan.streaming_decode_launch_trace",
+        "StepFunKVDecodeRunPlan.streaming_decode_loop_status",
+        "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16",
+    }
+    assert all(record["present"] is True for record in validation["symbols"])
+    assert validation["missing_execution_owner"] == {
+        "owner": "StepFunResidentSession",
+        "class_present": True,
+        "present": True,
+    }
     assert artifact["no_claim_policy"] == {
         "kv_backed_decode_claim_allowed": False,
         "e2e_inference_claim_allowed": False,
@@ -167,6 +190,8 @@ def test_stepfun_kv_blocker_status_cli_writes_artifact(tmp_path: Path) -> None:
         "StepFunResidentSession"
     )
     assert payload["runtime_wiring_map"]["next_action"] == "wire_streaming_decode_loop"
+    assert payload["runtime_wiring_symbol_validation"]["all_symbols_present"] is True
+    assert payload["runtime_wiring_symbol_validation"]["missing_symbols"] == []
     assert payload["missing_artifact_paths"] == [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",

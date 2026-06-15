@@ -143,9 +143,96 @@
     "schema_version": 1,
     "source": "static_runtime_symbol_map"
   },
+  "runtime_wiring_symbol_validation": {
+    "all_symbols_present": true,
+    "file": "hipengine/runtime/stepfun_gguf_runner.py",
+    "missing_execution_owner": {
+      "class_present": true,
+      "owner": "StepFunResidentSession",
+      "present": true
+    },
+    "missing_symbols": [],
+    "schema_version": 1,
+    "source": "ast_symbol_validation",
+    "symbol_count": 8,
+    "symbols": [
+      {
+        "class_name": "StepFunShortContextDecodePlanner",
+        "class_present": true,
+        "method_name": "plan_kv_decode_chat",
+        "method_present": true,
+        "present": true,
+        "role": "planner_entrypoint",
+        "symbol": "StepFunShortContextDecodePlanner.plan_kv_decode_chat"
+      },
+      {
+        "class_name": "StepFunTextDecodeResourcePlan",
+        "class_present": true,
+        "method_name": "kv_decode_launch_schedule",
+        "method_present": true,
+        "present": true,
+        "role": "resource_plan_entrypoint",
+        "symbol": "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule"
+      },
+      {
+        "class_name": "StepFunKVDecodeRunPlan",
+        "class_present": true,
+        "method_name": "upload_decode_inputs",
+        "method_present": true,
+        "present": true,
+        "role": "device_input_entrypoint",
+        "symbol": "StepFunKVDecodeRunPlan.upload_decode_inputs"
+      },
+      {
+        "class_name": "StepFunKVDecodeRunPlan",
+        "class_present": true,
+        "method_name": "decode_input_upload_plan",
+        "method_present": true,
+        "present": true,
+        "role": "device_input_entrypoint",
+        "symbol": "StepFunKVDecodeRunPlan.decode_input_upload_plan"
+      },
+      {
+        "class_name": "StepFunKVDecodeRunPlan",
+        "class_present": true,
+        "method_name": "streaming_decode_loop_blueprint",
+        "method_present": true,
+        "present": true,
+        "role": "metadata_only_trace_entrypoint",
+        "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint"
+      },
+      {
+        "class_name": "StepFunKVDecodeRunPlan",
+        "class_present": true,
+        "method_name": "streaming_decode_launch_trace",
+        "method_present": true,
+        "present": true,
+        "role": "metadata_only_trace_entrypoint",
+        "symbol": "StepFunKVDecodeRunPlan.streaming_decode_launch_trace"
+      },
+      {
+        "class_name": "StepFunKVDecodeRunPlan",
+        "class_present": true,
+        "method_name": "streaming_decode_loop_status",
+        "method_present": true,
+        "present": true,
+        "role": "metadata_only_trace_entrypoint",
+        "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_status"
+      },
+      {
+        "class_name": "StepFunResidentSession",
+        "class_present": true,
+        "method_name": "layer_prefix_prompt_logits_probe_bf16",
+        "method_present": true,
+        "present": true,
+        "role": "current_host_composed_prompt_smoke",
+        "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+      }
+    ]
+  },
   "schema_version": 1,
-  "source_correctness_status_sha256": "3557b3889bb77e8b59ccb5bbfda293f04b9f57367dfa2c9b06d8d1f4872069b4",
-  "source_validator_status_sha256": "ef113b9cc5c4182d9c67c9c497a97e906167de53a4ff408734512071d69568c8",
+  "source_correctness_status_sha256": "62d3f51c23d5c49074a58434e3f48d92adb2e1b4d5f339932cccedbd464bd8a8",
+  "source_validator_status_sha256": "7a9c80d9908aca31028ff7f77672f0ca32f359672f298f0b8f377b69e955167d",
   "status": "blocked",
   "streaming_runner_source_status": {
     "blocked_by": "streaming_decode_loop_not_wired",
