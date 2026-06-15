@@ -369,6 +369,63 @@ class Qwen35GGUFMTPDraftExecutionPlan:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPVerificationResult:
+    """Prefix-match result for GGUF MTP proposal verification."""
+
+    proposed_token_ids: tuple[int, ...]
+    target_token_ids: tuple[int, ...]
+    n_accepted: int
+    reseed: Qwen35GGUFMTPSeedRow
+    verify_seed_count: int
+    first_mismatch_index: int | None = None
+    rejected_proposal_token_id: int | None = None
+    target_token_id_at_mismatch: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.proposed_token_ids:
+            raise ValueError("proposed_token_ids must be non-empty")
+        if len(self.target_token_ids) < len(self.proposed_token_ids):
+            raise ValueError("target_token_ids must cover every proposed token")
+        if self.verify_seed_count <= len(self.proposed_token_ids):
+            raise ValueError("verify_seed_count must include proposed rows plus the next target row")
+        if self.n_accepted < 0 or self.n_accepted > len(self.proposed_token_ids):
+            raise ValueError("n_accepted must be in 0..len(proposed_token_ids)")
+        if self.first_mismatch_index is None:
+            if self.n_accepted != len(self.proposed_token_ids):
+                raise ValueError("missing first_mismatch_index for partial acceptance")
+            if self.rejected_proposal_token_id is not None or self.target_token_id_at_mismatch is not None:
+                raise ValueError("mismatch token ids must be empty when all drafts are accepted")
+        else:
+            if self.first_mismatch_index != self.n_accepted:
+                raise ValueError("first_mismatch_index must equal n_accepted")
+            if self.rejected_proposal_token_id is None or self.target_token_id_at_mismatch is None:
+                raise ValueError("mismatch token ids must be present for partial acceptance")
+
+    @property
+    def accepted_token_ids(self) -> tuple[int, ...]:
+        return self.proposed_token_ids[: self.n_accepted]
+
+    @property
+    def accepted_per_draft(self) -> float:
+        return float(self.n_accepted) / float(len(self.proposed_token_ids))
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "proposed_token_ids": list(self.proposed_token_ids),
+            "target_token_ids": list(self.target_token_ids),
+            "accepted_token_ids": list(self.accepted_token_ids),
+            "n_accepted": self.n_accepted,
+            "draft_count": len(self.proposed_token_ids),
+            "accepted_per_draft": self.accepted_per_draft,
+            "first_mismatch_index": self.first_mismatch_index,
+            "rejected_proposal_token_id": self.rejected_proposal_token_id,
+            "target_token_id_at_mismatch": self.target_token_id_at_mismatch,
+            "verify_seed_count": self.verify_seed_count,
+            "reseed": self.reseed.as_dict(),
+        }
+
+
 @dataclass(slots=True)
 class Qwen35GGUFMTPContext:
     """Target-attached GGUF MTP state shell.
@@ -407,11 +464,14 @@ class Qwen35GGUFMTPContext:
         self.pending_seed = row
         return row
 
-    def record_verify_seeds(self, seeds: Sequence[_DraftSeedLike]) -> tuple[Qwen35GGUFMTPSeedRow, ...]:
+    def record_verify_seeds(
+        self,
+        seeds: Sequence[Qwen35GGUFMTPSeedRow | _DraftSeedLike],
+    ) -> tuple[Qwen35GGUFMTPSeedRow, ...]:
         if not seeds:
             raise ValueError("verify seeds must contain at least one row")
         rows = tuple(
-            Qwen35GGUFMTPSeedRow.from_seed(seed, source=f"verify[{index}]")
+            self._coerce_seed_row(seed, source=f"verify[{index}]")
             for index, seed in enumerate(seeds)
         )
         hidden_sizes = {row.hidden_size for row in rows}
@@ -531,6 +591,56 @@ class Qwen35GGUFMTPContext:
         return Qwen35GGUFMTPDraftExecutionPlan(
             proposal=proposal,
             kv_live_spans=kv_live_spans,
+        )
+
+    def verify_draft_proposal(
+        self,
+        proposal: Qwen35GGUFMTPDraftProposal | Qwen35GGUFMTPDraftExecutionPlan,
+        *,
+        target_token_ids: Sequence[int],
+        verify_seeds: Sequence[Qwen35GGUFMTPSeedRow | _DraftSeedLike],
+    ) -> Qwen35GGUFMTPVerificationResult:
+        """Compare proposed draft tokens to target tokens and reseed.
+
+        The method applies the llama.cpp reseed rule already used by ``accept``:
+        ``verify_h[min(n_accepted, n_rows - 1)]``.  Verification seeds must
+        include one row per proposal plus the next target row, so full acceptance
+        can reseed from the post-proposal target row.
+        """
+
+        draft_proposal = proposal.proposal if isinstance(proposal, Qwen35GGUFMTPDraftExecutionPlan) else proposal
+        proposed = draft_proposal.proposed_token_ids
+        targets = tuple(int(token_id) for token_id in target_token_ids)
+        if len(targets) < len(proposed):
+            raise ValueError("target_token_ids must cover every proposed token")
+        if len(verify_seeds) <= len(proposed):
+            raise ValueError("verify_seeds must include proposed rows plus the next target row")
+        self.record_verify_seeds(verify_seeds)
+        accepted = 0
+        for proposed_token, target_token in zip(proposed, targets, strict=False):
+            if proposed_token != target_token:
+                break
+            accepted += 1
+            if accepted == len(proposed):
+                break
+        reseed = self.accept(accepted)
+        if accepted == len(proposed):
+            mismatch_index = None
+            rejected_token = None
+            target_mismatch_token = None
+        else:
+            mismatch_index = accepted
+            rejected_token = proposed[mismatch_index]
+            target_mismatch_token = targets[mismatch_index]
+        return Qwen35GGUFMTPVerificationResult(
+            proposed_token_ids=proposed,
+            target_token_ids=targets,
+            n_accepted=accepted,
+            first_mismatch_index=mismatch_index,
+            rejected_proposal_token_id=rejected_token,
+            target_token_id_at_mismatch=target_mismatch_token,
+            reseed=reseed,
+            verify_seed_count=len(verify_seeds),
         )
 
     def build_draft_batch(

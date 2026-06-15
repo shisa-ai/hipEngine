@@ -96062,3 +96062,54 @@ Validation:
   claim. Hidden-seed precheck records fp32 post-`output_norm` provenance and
   call-spec shape while future MTP attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF proposal verification contract
+
+Implemented `mtp-gguf` multiloop iteration 75: added a torch-free GGUF MTP
+proposal verification result contract for accepted-count/reseed accounting.
+
+Scope note:
+- Context/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This models the post-target-verify accounting step: compare proposed draft
+  tokens against target tokens, count the accepted prefix, and apply llama.cpp's
+  `verify_h[min(n_accepted, n_rows - 1)]` reseed rule.
+
+Changes:
+- Added `Qwen35GGUFMTPVerificationResult` in
+  `hipengine/speculative/gguf_mtp.py`, carrying proposed/target token IDs,
+  accepted token IDs/count, first mismatch details, accepted-per-draft ratio,
+  verify seed count, and the selected reseed row.
+- Added `Qwen35GGUFMTPContext.verify_draft_proposal(...)`, which accepts either a
+  `Qwen35GGUFMTPDraftProposal` or `Qwen35GGUFMTPDraftExecutionPlan`, requires
+  verify seeds to include proposal rows plus the next target row, records verify
+  seeds, computes the accepted prefix, and reseeds via the existing `accept()`
+  path.
+- Updated `record_verify_seeds()` to also accept already-normalized
+  `Qwen35GGUFMTPSeedRow` instances.
+- Added tests for partial acceptance/mismatch reseed, full acceptance from an
+  execution plan, and incomplete target/verify inputs.
+- Updated `docs/MTP-gguf.md` to document the proposal verification state scaffold
+  and clarify that B1 exactness/parity now has an accepted-count/reseed contract
+  before runtime execution exists.
+
+Validation:
+- Focused context/CPU-reference/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` -> `41` passed.
+- Verification contract smoke passed:
+  constructed a two-token proposal `[1, 2]`, target tokens `[1, 9]`, and three
+  verify seed rows -> `n_accepted=1`, accepted tokens `[1]`, first mismatch at
+  index `1`, rejected proposal token `2`, target token `9`, and reseed row at
+  token `11` / position `6`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: context/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Future MTP attention/KV-write execution remains KVLiveSpans-gated.

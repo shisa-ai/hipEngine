@@ -14,6 +14,7 @@ from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPKVLiveSpansPlan,
     Qwen35GGUFMTPSeedRow,
+    Qwen35GGUFMTPVerificationResult,
 )
 
 
@@ -233,6 +234,89 @@ def test_gguf_mtp_execution_plan_validates_positions_match_spans() -> None:
 
     with pytest.raises(ValueError, match="token_positions"):
         Qwen35GGUFMTPDraftExecutionPlan(proposal=proposal, kv_live_spans=mismatched_spans)
+
+
+def test_gguf_mtp_context_verifies_proposal_prefix_and_reseeds_from_mismatch_row() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=12, position=7, hidden_ptr=0x3000, hidden_size=8),
+    )
+    logits = np.asarray(
+        [
+            [0.0, 4.0, 1.0],
+            [3.0, 2.0, 5.0],
+        ],
+        dtype=np.float32,
+    )
+    proposal = context.build_draft_proposal_from_logits(request_id=0, logits=logits, seed_rows=seeds[:2], top_k=1)
+
+    result = context.verify_draft_proposal(
+        proposal,
+        target_token_ids=(1, 9),
+        verify_seeds=seeds,
+    )
+
+    assert isinstance(result, Qwen35GGUFMTPVerificationResult)
+    assert result.n_accepted == 1
+    assert result.accepted_token_ids == (1,)
+    assert result.first_mismatch_index == 1
+    assert result.rejected_proposal_token_id == 2
+    assert result.target_token_id_at_mismatch == 9
+    assert result.reseed == seeds[1]
+    assert context.pending_seed == seeds[1]
+    assert result.as_dict()["accepted_per_draft"] == 0.5
+
+
+def test_gguf_mtp_context_verifies_full_proposal_acceptance_from_execution_plan() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=12, position=7, hidden_ptr=0x3000, hidden_size=8),
+    )
+    logits = np.asarray(
+        [
+            [0.0, 4.0, 1.0],
+            [3.0, 2.0, 5.0],
+        ],
+        dtype=np.float32,
+    )
+    plan = context.build_draft_execution_plan_from_logits(
+        request_id=0,
+        logits=logits,
+        seed_rows=seeds[:2],
+        top_k=1,
+    )
+
+    result = context.verify_draft_proposal(plan, target_token_ids=(1, 2), verify_seeds=seeds)
+
+    assert result.n_accepted == 2
+    assert result.accepted_token_ids == (1, 2)
+    assert result.first_mismatch_index is None
+    assert result.rejected_proposal_token_id is None
+    assert result.target_token_id_at_mismatch is None
+    assert result.reseed == seeds[2]
+    assert result.as_dict()["accepted_per_draft"] == 1.0
+
+
+def test_gguf_mtp_context_rejects_incomplete_verification_inputs() -> None:
+    register_cpu_reference_kernels(replace=True)
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    logits = np.asarray([[0.0, 4.0, 1.0], [3.0, 2.0, 5.0]], dtype=np.float32)
+    proposal = context.build_draft_proposal_from_logits(request_id=0, logits=logits, seed_rows=seeds, top_k=1)
+
+    with pytest.raises(ValueError, match="target_token_ids"):
+        context.verify_draft_proposal(proposal, target_token_ids=(1,), verify_seeds=seeds)
+    with pytest.raises(ValueError, match="verify_seeds"):
+        context.verify_draft_proposal(proposal, target_token_ids=(1, 2), verify_seeds=seeds)
 
 
 def test_gguf_mtp_context_builds_metadata_only_kvlivespans_plan_for_draft_batch() -> None:
