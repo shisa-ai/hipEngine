@@ -92539,3 +92539,58 @@ Validation:
 - hipEngine final token IDs were stable across the single measured repetition;
   PARO KV audit passed and tracked allocator peak was `21.248 GiB`; GGUF tracked
   peak was `26.264 GiB`.
+
+## 2026-06-15 - gfx1151 MTP comparison diagnostic
+
+Ran a local Strix Halo / gfx1151 MTP comparison diagnostic using the D32
+9-prompt llama.cpp MTP suite. The top-level successful command was:
+
+```bash
+RUN_TAG=20260615-053555 HIPENGINE_RUNS=1 MAX_TOKENS=32 \
+  DRAFT_MAX_VALUES=1,2,3,4 HIPENGINE_MTP_EXACT_FALLBACKS=1 \
+  /tmp/run_gfx1151_mtp_compare.sh
+```
+
+Setup notes:
+- Local `UD-Q4_K_M` GGUF is not MTP-bearing (`733` tensors, `0` `blk.40` /
+  `nextn` tensors), so llama.cpp draft-MTP used the local MTP-capable
+  `UD-Q4_K_S` GGUF (`753` tensors, `20` `blk.40` / `nextn` tensors).
+- The host lacked `llama-server` binaries, so the runner built HIP and Vulkan
+  `llama-server` targets in `/tmp/llamacpp-{hip,vulkan}-server-gfx1151-6e9007ae6`
+  from llama.cpp commit `6e9007ae6` / build `9641` without modifying the
+  external source trees.
+- The runner downloaded Qwen's `mtp.safetensors` and assembled a local,
+  non-committed PARO+MTP-BF16 model at
+  `/home/lhl/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` from the
+  public `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` snapshot.
+- A first fast-path attempt (`RUN_TAG=20260615-052843`) reproduced the known
+  current-public-packed exactness issue and failed on `explain_concept`. The
+  successful run enabled `HIPENGINE_GDN_TLOOP_C1_EXACT=1`,
+  `HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`, and
+  `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=1`, making the D32 suite
+  exact `9/9` but slower than AR.
+
+Environment: AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`), TheRock HIP
+`7.13.60980-c76140fa27`, hipEngine worktree commit `a1014ee6`, project Python
+`3.13.13` with TheRock ROCm libraries on `LD_LIBRARY_PATH`.
+
+Artifacts:
+- `benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-053555-summary.json`
+- `benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-053555-hipengine-paro-mtp-b1-d32-1run.json`
+- Detailed logs are under `/tmp/hipengine-mtp-gfx1151-runs/20260615-053555/`.
+
+Results:
+- hipEngine PARO+MTP-BF16 B=1 exact-fallback: exact `9/9`; MTP `59.59 tok/s`
+  vs AR `65.46 tok/s` prompt-mean, `0.911x` prompt-mean / `0.903x` total-time;
+  `25.98 ms/cycle` wall, `22.17 ms` verifier, `3.78 ms` proposal/update,
+  `1.563` visible tokens/cycle, `0.563` accepted draft tokens/cycle.
+- llama.cpp HIP `UD-Q4_K_S` draft-MTP: base `51.26` mean tok/s; B1 `68.65`
+  (`1.339x`), B2 `78.51` (`1.532x`), B3 `85.43` (`1.667x`), B4 `93.41`
+  (`1.822x`), accepted/output at B4 `0.743`.
+- llama.cpp Vulkan `UD-Q4_K_S` draft-MTP: base `63.77` mean tok/s; B1 `83.69`
+  (`1.312x`), B2 `94.50` (`1.482x`), B3 `105.06` (`1.648x`), B4 `106.48`
+  (`1.670x`), accepted/output at B4 `0.743`.
+
+Validation:
+- `python3 -m json.tool` passed for the summary and hipEngine prompt-suite artifacts.
+- `git diff --check -- benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-053555-summary.json benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-053555-hipengine-paro-mtp-b1-d32-1run.json` -> clean.
