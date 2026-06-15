@@ -864,6 +864,7 @@ def _tool_schema_subset() -> list[str]:
         "object.properties",
         "object.required",
         "object.additionalProperties=false",
+        "object.additionalProperties=schema",
         "object.minProperties",
         "object.maxProperties",
         "array.items",
@@ -9659,11 +9660,22 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
         if any(not isinstance(item, str) for item in required):
             return (f"{path}.required", f"{path}.required must contain only strings")
 
-    if "additionalProperties" in schema and not isinstance(schema.get("additionalProperties"), bool):
-        return (
-            f"{path}.additionalProperties",
-            f"{path}.additionalProperties must be a boolean in hipEngine JSON schema subset",
-        )
+    additional_properties = schema.get("additionalProperties")
+    if "additionalProperties" in schema:
+        if isinstance(additional_properties, bool):
+            pass
+        elif isinstance(additional_properties, Mapping):
+            error = _validate_json_schema_subset(
+                additional_properties,
+                path=f"{path}.additionalProperties",
+            )
+            if error is not None:
+                return error
+        else:
+            return (
+                f"{path}.additionalProperties",
+                f"{path}.additionalProperties must be a boolean or object in hipEngine JSON schema subset",
+            )
 
     items = schema.get("items")
     if items is not None:
@@ -9725,11 +9737,27 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
                 error = _validate_json_schema_value(value[key], subschema, path=f"{path}.{key}")
                 if error is not None:
                     return error
-        if schema.get("additionalProperties") is False:
+        additional_properties = schema.get("additionalProperties")
+        if additional_properties is False:
             allowed = {str(key) for key in property_map}
             extra = sorted(str(key) for key in value.keys() if str(key) not in allowed)
             if extra:
                 return f"{path}.{extra[0]} is not allowed"
+        elif isinstance(additional_properties, Mapping):
+            allowed = {str(key) for key in property_map}
+            extra_items = sorted(
+                (str(key), key)
+                for key in value.keys()
+                if str(key) not in allowed
+            )
+            for key, raw_key in extra_items:
+                error = _validate_json_schema_value(
+                    value[raw_key],
+                    additional_properties,
+                    path=f"{path}.{key}",
+                )
+                if error is not None:
+                    return error
     elif schema_type == "array":
         if not isinstance(value, list):
             return f"{path} must be an array"
