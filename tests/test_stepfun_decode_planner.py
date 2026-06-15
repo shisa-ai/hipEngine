@@ -14,6 +14,7 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.runtime.stepfun_gguf_runner import (
     STEPFUN_GGUF_KERNEL_QUANT,
     STEPFUN_KV_ATTENTION_BLOCK_SIZE,
+    StepFunKVCacheAllocation,
     StepFunResidentSession,
     StepFunShortContextDecodePlanner,
     stepfun_kv_cache_nbytes,
@@ -732,6 +733,121 @@ def test_stepfun_resident_session_kv_streaming_decode_contract_binds_run_plan() 
             "but does not launch kernels or generate a token."
         ),
     }
+
+
+def test_stepfun_resident_session_decode_one_token_kv_bf16_reports_blocker() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+    session = StepFunResidentSession(
+        info=planner.info,
+        model_map=planner.model_map,
+        tokenizer=planner.tokenizer,
+        weights=object(),
+        backend="hip_gfx1151",
+    )
+    kv_cache = StepFunKVCacheAllocation(
+        buffers=(),
+        context_pages=1,
+        page_size=512,
+        layer_nbytes=tuple((1, 1) for _ in range(planner.model_map.config.block_count)),
+    )
+
+    blocker = session.decode_one_token_kv_bf16(
+        run_plan,
+        kv_cache=kv_cache,
+        stream=7,
+    )
+
+    assert blocker["schema_version"] == 1
+    assert blocker["source"] == "StepFunResidentSession.decode_one_token_kv_bf16"
+    assert blocker["executable"] is False
+    assert blocker["ready"] is False
+    assert blocker["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert blocker["next_action"] == "implement_resident_kv_streaming_decode_loop"
+    assert blocker["contract_source"] == "StepFunResidentSession.kv_streaming_decode_contract"
+    expected_contract = session.kv_streaming_decode_contract(run_plan)
+    assert blocker["contract_sha256"] == hashlib.sha256(
+        json.dumps(expected_contract, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert blocker["session_backend"] == "hip_gfx1151"
+    assert blocker["session_layer_count"] == 45
+    assert blocker["cache_layer_count"] == 45
+    assert blocker["cache_layer_count_matches"] is True
+    assert blocker["kv_cache_context_pages"] == 1
+    assert blocker["kv_cache_page_size"] == 512
+    assert blocker["kv_cache_tokens"] == 512
+    assert blocker["kv_cache_nbytes"] == 90
+    assert blocker["kv_cache_buffer_count"] == 0
+    assert blocker["decode_position"] == run_plan.decode_position
+    assert blocker["decode_live_count"] == run_plan.decode_live_count
+    assert blocker["stream"] == 7
+    assert blocker["runtime_provided"] is False
+    assert blocker["required_runtime_steps"] == [
+        "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+        "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+        "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+        "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+        "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+        "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+        "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
+    assert blocker["required_artifacts"] == expected_contract["required_artifacts"]
+    assert blocker["planned_launch_operation_count"] == 135
+    assert blocker["planned_launch_per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert blocker["all_planned_launches_ready"] is True
+    assert blocker["no_kernel_launches"] is True
+    assert blocker["no_claim_policy"] == {
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "This entrypoint validates the future resident KV streaming loop contract "
+            "but does not launch kernels or generate a token."
+        ),
+    }
+
+
+def test_stepfun_resident_session_decode_one_token_kv_bf16_rejects_small_cache() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+    session = StepFunResidentSession(
+        info=planner.info,
+        model_map=planner.model_map,
+        tokenizer=planner.tokenizer,
+        weights=object(),
+        backend="hip_gfx1151",
+    )
+    kv_cache = StepFunKVCacheAllocation(
+        buffers=(),
+        context_pages=1,
+        page_size=1,
+        layer_nbytes=tuple((1, 1) for _ in range(planner.model_map.config.block_count)),
+    )
+
+    with pytest.raises(ValueError, match="KV cache is too small"):
+        session.decode_one_token_kv_bf16(run_plan, kv_cache=kv_cache)
 
 
 def test_stepfun_resident_session_kv_streaming_decode_contract_rejects_backend_mismatch() -> None:

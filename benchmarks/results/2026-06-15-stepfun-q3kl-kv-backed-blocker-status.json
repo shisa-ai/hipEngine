@@ -163,13 +163,16 @@
     "all_symbols_present": true,
     "file": "hipengine/runtime/stepfun_gguf_runner.py",
     "future_execution_entrypoint": {
+      "blocked_by": "streaming_decode_loop_not_wired",
       "class_name": "StepFunResidentSession",
       "class_present": true,
-      "expected_missing_until_streaming_loop_wired": true,
+      "executable": false,
+      "expected_missing_until_streaming_loop_wired": false,
       "expected_signature": "decode_one_token_kv_bf16(run_plan: StepFunKVDecodeRunPlan, *, kv_cache: StepFunKVCacheAllocation, runtime: HipRuntime | None = None, stream: int = 0) -> dict[str, object]",
       "method_name": "decode_one_token_kv_bf16",
-      "method_present": false,
-      "present": false,
+      "method_present": true,
+      "present": true,
+      "ready": false,
       "required_runtime_steps": [
         "validate the run_plan backend/layer count with kv_streaming_decode_contract",
         "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
@@ -179,6 +182,7 @@
         "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
         "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
       ],
+      "surface_present": true,
       "symbol": "StepFunResidentSession.decode_one_token_kv_bf16"
     },
     "missing_execution_owner": {
@@ -275,8 +279,8 @@
     ]
   },
   "schema_version": 1,
-  "source_correctness_status_sha256": "3a74df7cc5a7b168d5d1de2dab1338a83baecf4341c74ea39e47470bd8b40387",
-  "source_validator_status_sha256": "d30faf7b445bc5bf84a88ad229bb421da1f27ee7deca35d7fb6ec24496552c51",
+  "source_correctness_status_sha256": "8150e32cbbc776cb794cb53a694b91e6b18ecc48011c1190c34ba5bc6b668b26",
+  "source_validator_status_sha256": "db9f3ad8a78e1f52ed1b73532bcc9f3724565c86668cf2a7ef3ee8f9eb56d558",
   "status": "blocked",
   "streaming_runner_source_status": {
     "blocked_by": "streaming_decode_loop_not_wired",

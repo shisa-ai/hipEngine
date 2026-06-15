@@ -159,11 +159,17 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "StepFunResidentSession.decode_one_token_kv_bf16"
     )
     assert validation["future_execution_entrypoint"]["class_present"] is True
-    assert validation["future_execution_entrypoint"]["method_present"] is False
-    assert validation["future_execution_entrypoint"]["present"] is False
+    assert validation["future_execution_entrypoint"]["method_present"] is True
+    assert validation["future_execution_entrypoint"]["surface_present"] is True
+    assert validation["future_execution_entrypoint"]["present"] is True
+    assert validation["future_execution_entrypoint"]["executable"] is False
+    assert validation["future_execution_entrypoint"]["ready"] is False
+    assert validation["future_execution_entrypoint"]["blocked_by"] == (
+        "streaming_decode_loop_not_wired"
+    )
     assert validation["future_execution_entrypoint"][
         "expected_missing_until_streaming_loop_wired"
-    ] is True
+    ] is False
     assert validation["future_execution_entrypoint"]["required_runtime_steps"] == (
         wiring_map["missing_execution_entrypoint"]["required_runtime_steps"]
     )
@@ -228,7 +234,10 @@ def test_stepfun_kv_blocker_status_cli_writes_artifact(tmp_path: Path) -> None:
     assert payload["runtime_wiring_map"]["next_action"] == "wire_streaming_decode_loop"
     assert payload["runtime_wiring_symbol_validation"]["all_symbols_present"] is True
     assert payload["runtime_wiring_symbol_validation"]["future_execution_entrypoint"][
-        "present"
+        "surface_present"
+    ] is True
+    assert payload["runtime_wiring_symbol_validation"]["future_execution_entrypoint"][
+        "executable"
     ] is False
     assert payload["runtime_wiring_symbol_validation"]["missing_symbols"] == []
     assert payload["missing_artifact_paths"] == [

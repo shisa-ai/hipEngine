@@ -336,8 +336,12 @@ def _symbol_validation_for_runtime_wiring_map(
         "method_name": expected_method_name if expected_sep else None,
         "class_present": expected_class_present,
         "method_present": expected_method_present,
+        "surface_present": expected_class_present and expected_method_present,
         "present": expected_class_present and expected_method_present,
-        "expected_missing_until_streaming_loop_wired": True,
+        "executable": False,
+        "ready": False,
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "expected_missing_until_streaming_loop_wired": False,
         "expected_signature": missing_execution.get("expected_signature"),
         "required_runtime_steps": missing_execution.get("required_runtime_steps"),
     }

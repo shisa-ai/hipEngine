@@ -1620,6 +1620,88 @@ class StepFunResidentSession:
             },
         }
 
+    def decode_one_token_kv_bf16(
+        self,
+        run_plan: StepFunKVDecodeRunPlan,
+        *,
+        kv_cache: StepFunKVCacheAllocation,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> dict[str, object]:
+        """Return the guarded non-executing contract for the KV decode loop.
+
+        This is the executable-loop API surface that the future StepFun KV-backed
+        decode implementation will fill in. For now it validates the resident
+        session/run-plan/KV-cache shape and returns explicit blocker evidence;
+        it intentionally does not launch kernels, copy logits, or produce a
+        next-token artifact.
+        """
+
+        contract = self.kv_streaming_decode_contract(run_plan)
+        session_layer_count = int(self.model_map.config.block_count)
+        cache_layer_count = len(kv_cache.layer_nbytes)
+        if cache_layer_count != session_layer_count:
+            raise ValueError(
+                "KV cache layer count does not match resident session: "
+                f"cache={cache_layer_count} session={session_layer_count}"
+            )
+        required_tokens = int(run_plan.decode_position) + 1
+        if kv_cache.tokens < required_tokens:
+            raise ValueError(
+                "KV cache is too small for StepFun decode position: "
+                f"tokens={kv_cache.tokens} required={required_tokens}"
+            )
+        contract_sha256 = hashlib.sha256(
+            json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        required_runtime_steps = [
+            "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+            "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+            "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+            "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+            "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+            "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+            "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+        ]
+        return {
+            "schema_version": 1,
+            "source": "StepFunResidentSession.decode_one_token_kv_bf16",
+            "executable": False,
+            "ready": False,
+            "blocked_by": "streaming_decode_loop_not_wired",
+            "next_action": "implement_resident_kv_streaming_decode_loop",
+            "contract_source": contract["source"],
+            "contract_sha256": contract_sha256,
+            "session_backend": self.backend,
+            "session_layer_count": session_layer_count,
+            "cache_layer_count": cache_layer_count,
+            "cache_layer_count_matches": True,
+            "kv_cache_context_pages": kv_cache.context_pages,
+            "kv_cache_page_size": kv_cache.page_size,
+            "kv_cache_tokens": kv_cache.tokens,
+            "kv_cache_nbytes": kv_cache.nbytes,
+            "kv_cache_buffer_count": kv_cache.buffer_count,
+            "decode_position": run_plan.decode_position,
+            "decode_live_count": run_plan.decode_live_count,
+            "stream": int(stream),
+            "runtime_provided": runtime is not None,
+            "required_runtime_steps": required_runtime_steps,
+            "required_artifacts": contract["required_artifacts"],
+            "planned_launch_operation_count": contract["launch_operation_count"],
+            "planned_launch_per_layer_order": contract["launch_per_layer_order"],
+            "all_planned_launches_ready": contract["all_launches_ready"],
+            "no_kernel_launches": True,
+            "no_claim_policy": {
+                "kv_backed_decode_claim_allowed": False,
+                "e2e_inference_claim_allowed": False,
+                "performance_claim_allowed": False,
+                "reason": (
+                    "This entrypoint validates the future resident KV streaming loop "
+                    "contract but does not launch kernels or generate a token."
+                ),
+            },
+        }
+
     def weight_for_slot(self, slot_path: str):
         """Return a resident weight by StepFun materialization slot path."""
 

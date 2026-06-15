@@ -41721,3 +41721,38 @@ python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-j
 ```
 
 Results: targeted KV-blocker/KV-preflight/final-manifest/handoff tests passed (`14` tests); status/manifest/handoff verification returned `"match"`; KV blocker status remains `"blocked"`; missing required paths remain the KV trace and KV-backed next-token artifacts; KV blocker stable payload SHA is `22a25c317069584c02536bb0904a99c75bb8c75f7b4cf68b3a87ceb1ac612de0`, KV evidence preflight stable payload SHA is `4fb3e82fbf204e4b54266a783fa63eca984d312708ba4c9a95aa00f1daff7077`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are KV blocker `7ac7de3f5bdebf3b65cc96132340f4e98ad5d49b1b3b57a0231fa83cd48131a6`, KV preflight `b12466076337f0ed24c2349b65de69bb53c65fe3d61e6f468b2fb43d2a378909`, correctness-status `70f63e386b01ad45cf65efbcbeb5ec6fdd97b7d1b4ef016d2cd04524a54dacc4`, final-blocker `2fc39134f4dac633d18616f8d7d5d2cc746a23e788f8eecbe87eca09e1e208fb`, handoff `6287132927848235104aaf557d73daefc5e926ebf0b5962b2e6bfb8accd07d5b`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun guarded KV decode entrypoint surface
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 517. Added the guarded non-executing resident-session entrypoint `StepFunResidentSession.decode_one_token_kv_bf16(...)` in `hipengine/runtime/stepfun_gguf_runner.py`. The method validates the existing `kv_streaming_decode_contract`, resident/backend/layer counts, and KV-cache token capacity, then returns explicit blocked evidence (`executable=false`, `ready=false`, `blocked_by=streaming_decode_loop_not_wired`) plus the required runtime steps and retained artifact paths. It does not launch kernels, copy logits, or generate a token. Updated `scripts/stepfun_kv_blocker_status.py` / `tests/test_stepfun_kv_blocker_status.py` so the blocker distinguishes the now-present API surface from the still-blocked executable loop (`surface_present=true`, `executable=false`, `ready=false`). Added decode-planner coverage for the entrypoint contract and small-cache rejection; those GGUF-dependent tests skip when StepFun shards are unavailable. No KV-backed decode, e2e, oracle, or performance claim is made.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json` remains `status=blocked` with missing KV trace and KV-backed next-token artifacts, while `runtime_wiring_symbol_validation.future_execution_entrypoint` now records `symbol=StepFunResidentSession.decode_one_token_kv_bf16`, `class_present=true`, `method_present=true`, `surface_present=true`, `present=true`, `executable=false`, `ready=false`, and `blocked_by=streaming_decode_loop_not_wired`. Existing metadata symbol validation remains `all_symbols_present=true`. Updated `docs/STEPFUN.md` P11 and refreshed KV-blocker, KV-evidence-preflight, correctness-status, final-blocker-manifest, and handoff artifacts.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_kv_blocker_status.py tests/test_stepfun_decode_planner.py -k 'kv_blocker_status or decode_one_token_kv_bf16 or kv_streaming_decode_contract'
+python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty
+python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -m compileall -q hipengine/runtime/stepfun_gguf_runner.py scripts/stepfun_kv_blocker_status.py tests/test_stepfun_kv_blocker_status.py tests/test_stepfun_decode_planner.py
+python3 -m pytest -q tests/test_stepfun_kv_blocker_status.py tests/test_stepfun_decode_planner.py -k 'kv_blocker_status or decode_one_token_kv_bf16 or kv_streaming_decode_contract'
+python3 scripts/stepfun_kv_blocker_status.py --status-only
+python3 scripts/stepfun_kv_blocker_status.py --missing-paths-only
+python3 scripts/stepfun_kv_blocker_status.py --sha-only
+python3 scripts/stepfun_kv_evidence_preflight.py --sha-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n hipengine/runtime/stepfun_gguf_runner.py scripts/stepfun_kv_blocker_status.py tests/test_stepfun_kv_blocker_status.py tests/test_stepfun_decode_planner.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+```
+
+Results: targeted KV-blocker/decode-planner selection passed with `2` tests run and `4` StepFun-GGUF-dependent tests skipped in this environment; status/manifest/handoff verification returned `"match"`; KV blocker status remains `"blocked"`; missing required paths remain the KV trace and KV-backed next-token artifacts; KV blocker stable payload SHA is `6998c9b6ecae74f5704ba2f478119dbee75166394dfcf3b9ab01bf8aa97b9a8d`, KV evidence preflight stable payload SHA is `f3f3023a6a1e1686eabbc41abf28a015ff2ec08089bf9152813458e66380e18e`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are KV blocker `a6b4470616fb8295052ddbc4c0bb3999fdfcd4e245946362ec2c2d819d03ef4a`, KV preflight `a84be01aaa8faade52c9760dba59ddc452fa33a09f8be416625d7e61701b1d9e`, correctness-status `2f3cbe79282638fe28c43f72490e90e0ce98a7dff3f7e391b91938b38dd1c2ef`, final-blocker `b637361ffb75cc754b36c2504279fb82cc7deb6f7aec744d469b20b44ba1a367`, handoff `0df45ef240a4dcbb37e7442d86088747f7c8c924781e196f1d9e94c7704bdfde`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests/runtime files have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
