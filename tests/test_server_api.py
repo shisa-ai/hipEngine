@@ -2508,6 +2508,9 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_shape() -> None
         ("assistant_tool_call_id", "messages[1].tool_call_id"),
         ("tool_missing_tool_call_id", "messages[2].tool_call_id"),
         ("tool_with_tool_calls", "messages[2].tool_calls"),
+        ("tool_unknown_tool_call_id", "messages[2].tool_call_id"),
+        ("duplicate_tool_result", "messages[3].tool_call_id"),
+        ("duplicate_tool_call_id", "messages[1].tool_calls[1].id"),
         ("empty_name", "messages[0].name"),
         ("non_string_tool_call_id", "messages[0].tool_call_id"),
     ],
@@ -2573,6 +2576,21 @@ def test_chat_session_snapshot_restore_rejects_corrupted_message_fields(
         del snapshot["messages"][2]["tool_call_id"]
     elif corruption == "tool_with_tool_calls":
         snapshot["messages"][2]["tool_calls"] = snapshot["messages"][1]["tool_calls"]
+    elif corruption == "tool_unknown_tool_call_id":
+        snapshot["messages"][2]["tool_call_id"] = "call_missing"
+    elif corruption == "duplicate_tool_result":
+        snapshot["messages"].insert(
+            3,
+            {"role": "tool", "tool_call_id": "call_snap", "content": "duplicate tool result"},
+        )
+    elif corruption == "duplicate_tool_call_id":
+        snapshot["messages"][1]["tool_calls"].append(
+            {
+                "id": "call_snap",
+                "type": "function",
+                "function": {"name": "write", "arguments": "{}"},
+            }
+        )
     elif corruption == "empty_name":
         snapshot["messages"][0]["name"] = ""
     elif corruption == "non_string_tool_call_id":
@@ -7799,6 +7817,74 @@ def test_chat_completion_rejects_invalid_role_specific_tool_fields_before_genera
     response = client.post(
         "/v1/chat/completions",
         json={"model": "fake-model", "messages": [message], "max_tokens": 4},
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == param
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("messages", "param"),
+    [
+        (
+            [{"role": "tool", "tool_call_id": "call_missing", "content": "orphan tool result"}],
+            "messages[0].tool_call_id",
+        ),
+        (
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": "{}"},
+                        },
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "write", "arguments": "{}"},
+                        },
+                    ],
+                }
+            ],
+            "messages[0].tool_calls[1].id",
+        ),
+        (
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": "first result"},
+                {"role": "tool", "tool_call_id": "call_1", "content": "duplicate result"},
+            ],
+            "messages[2].tool_call_id",
+        ),
+    ],
+)
+def test_chat_completion_rejects_invalid_tool_transcript_before_generation(
+    messages: list[dict[str, Any]],
+    param: str,
+) -> None:
+    fake = FakeLLM(outputs=["should not generate"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": messages, "max_tokens": 4},
     )
 
     assert response.status_code == 400

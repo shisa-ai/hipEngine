@@ -5829,6 +5829,7 @@ def _render_chat_prompt_for_request(
     chat_default_max_tokens: int | None,
     engine: Any | None = None,
     max_context_tokens: int | None = None,
+    validate_tool_transcript: bool = True,
 ) -> tuple[str, _ThinkingControl]:
     thinking = _thinking_control_from_request(
         request,
@@ -5845,6 +5846,7 @@ def _render_chat_prompt_for_request(
         guided_choice=request.guided_choice,
         guided_patch=request.guided_patch,
         guided_diff=request.guided_diff,
+        validate_tool_transcript=validate_tool_transcript,
     )
     if engine is None:
         return prompt, thinking
@@ -5873,6 +5875,7 @@ def _render_chat_prompt_for_request(
             guided_choice=request.guided_choice,
             guided_patch=request.guided_patch,
             guided_diff=request.guided_diff,
+            validate_tool_transcript=validate_tool_transcript,
         )
         if adjusted == thinking and adjusted_prompt == prompt:
             return prompt, thinking
@@ -6262,6 +6265,7 @@ def render_chat_prompt(
     guided_choice: Any | None = None,
     guided_patch: Any | None = None,
     guided_diff: Any | None = None,
+    validate_tool_transcript: bool = True,
 ) -> str:
     """Render OpenAI chat messages to a Qwen-style text prompt.
 
@@ -6289,6 +6293,8 @@ def render_chat_prompt(
     if control_prompts:
         control_block = "\n\n".join(control_prompts)
         rendered.append(f"<|im_start|>system\n{control_block}<|im_end|>")
+    pending_tool_call_ids: set[str] = set()
+    seen_tool_call_ids: set[str] = set()
     for index, message in enumerate(messages):
         if isinstance(message, Mapping):
             role_value = message.get("role", "")
@@ -6307,12 +6313,6 @@ def render_chat_prompt(
             tool_call_id=tool_call_id,
             param_prefix=f"messages[{index}]",
         )
-        content = _message_content_text(content_value, index)
-        if role == "developer":
-            role = "system"
-        if role == "tool":
-            rendered.append(f"<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>")
-            continue
         normalized_tool_calls: list[dict[str, Any]] = []
         if role == "assistant" and tool_calls is not None:
             normalized_tool_calls = _chat_message_tool_calls(
@@ -6320,6 +6320,22 @@ def render_chat_prompt(
                 message_index=index,
                 context="chat message",
             )
+        if validate_tool_transcript:
+            _validate_chat_message_tool_transcript_entry(
+                role,
+                tool_calls=normalized_tool_calls,
+                tool_call_id=tool_call_id,
+                message_index=index,
+                context="chat message",
+                pending_tool_call_ids=pending_tool_call_ids,
+                seen_tool_call_ids=seen_tool_call_ids,
+            )
+        content = _message_content_text(content_value, index)
+        if role == "developer":
+            role = "system"
+        if role == "tool":
+            rendered.append(f"<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>")
+            continue
         if role == "assistant" and normalized_tool_calls:
             tool_call_text = "\n".join(_render_tool_call_for_prompt(item) for item in normalized_tool_calls)
             content = "\n".join(part for part in (content, tool_call_text) if part)
@@ -6400,6 +6416,63 @@ def _chat_message_tool_calls(
         )
         for tool_index, call in enumerate(value)
     ]
+
+
+def _validate_chat_message_tool_transcript(
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    context: str,
+) -> None:
+    pending_tool_call_ids: set[str] = set()
+    seen_tool_call_ids: set[str] = set()
+    for index, message in enumerate(messages):
+        tool_calls = message.get("tool_calls")
+        _validate_chat_message_tool_transcript_entry(
+            str(message.get("role") or ""),
+            tool_calls=tool_calls if isinstance(tool_calls, Sequence) and not isinstance(tool_calls, (str, bytes)) else [],
+            tool_call_id=message.get("tool_call_id"),
+            message_index=index,
+            context=context,
+            pending_tool_call_ids=pending_tool_call_ids,
+            seen_tool_call_ids=seen_tool_call_ids,
+        )
+
+
+def _validate_chat_message_tool_transcript_entry(
+    role: str,
+    *,
+    tool_calls: Sequence[Mapping[str, Any]],
+    tool_call_id: Any,
+    message_index: int,
+    context: str,
+    pending_tool_call_ids: set[str],
+    seen_tool_call_ids: set[str],
+) -> None:
+    if role == "assistant":
+        for tool_index, tool_call in enumerate(tool_calls):
+            call_id = str(tool_call.get("id") or "")
+            if call_id in seen_tool_call_ids:
+                param = f"messages[{message_index}].tool_calls[{tool_index}].id"
+                raise OpenAIHTTPError(
+                    400,
+                    f"{context} {param} duplicates a prior assistant tool call id",
+                    code="invalid_request",
+                    param=param,
+                )
+            seen_tool_call_ids.add(call_id)
+            pending_tool_call_ids.add(call_id)
+        return
+    if role != "tool":
+        return
+    call_id = str(tool_call_id or "").strip()
+    if call_id not in pending_tool_call_ids:
+        raise OpenAIHTTPError(
+            400,
+            f"{context} messages[{message_index}].tool_call_id must reference a prior unconsumed assistant tool call",
+            code="invalid_request",
+            param=f"messages[{message_index}].tool_call_id",
+        )
+    pending_tool_call_ids.remove(call_id)
 
 
 def _validate_model(config: ServerConfig, requested: str | None, *, engine: Any | None = None) -> None:
@@ -7420,6 +7493,7 @@ def _thinking_budget_sampling_kwargs(
         chat_default_max_tokens=config.chat_default_max_tokens,
         engine=engine,
         max_context_tokens=max_context_tokens,
+        validate_tool_transcript=False,
     )
     if thinking.enabled is False or thinking.hard_think_cap is None:
         return {}
@@ -7923,10 +7997,12 @@ def _chat_session_snapshot_messages(value: Any) -> tuple[dict[str, Any], ...]:
             code="invalid_request",
             param="messages",
         )
-    return tuple(
+    messages = tuple(
         _chat_session_snapshot_message(item, index=index)
         for index, item in enumerate(value)
     )
+    _validate_chat_message_tool_transcript(messages, context="session snapshot")
+    return messages
 
 
 def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:

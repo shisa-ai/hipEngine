@@ -92334,3 +92334,25 @@ Validation:
 - `python3 -m py_compile hipengine/loading/hf_cache.py hipengine/loading/safetensors.py tests/test_hf_cache.py` -> passed.
 - `python3 -m json.tool benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json >/dev/null` -> passed.
 - `git diff --check -- README.md CHANGELOG.md docs/THEROCK.md docs/OOM.md hipengine/loading/hf_cache.py hipengine/loading/safetensors.py tests/test_hf_cache.py benchmarks/results/2026-06-15-gpu1-24gb-launch-knobs-headroom.json` -> clean.
+
+## 2026-06-15 - AGENTIC tool-result transcript validation
+
+Tightened live chat prompt rendering and chat-session snapshot restore so tool
+result messages cannot be orphaned or replayed twice. Prior assistant
+`tool_calls` now register unique call ids across the effective transcript, and
+each `role: "tool"` message must reference a prior unconsumed assistant
+tool-call id before the prompt renders. Session-backed tool-result turns still
+work because the final prompt render validates the stored session prefix plus
+the request messages together; early tokenizer-budget sampling setup skips only
+this cross-message matching check while preserving role and shape validation.
+Updated the API/AGENTIC docs and the golden trace fixture to capture and reuse
+dynamic tool-call ids.
+
+Validation:
+- `uv run pytest tests/test_server_api.py::test_chat_completion_rejects_invalid_tool_transcript_before_generation tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_message_fields tests/test_server_api.py::test_token_diagnostics_use_session_prefix_for_chat -q` -> `18 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'tool_transcript or role_specific_tool_fields or prior_assistant_tool_call_shape or snapshot_restore_rejects_corrupted_message_fields or snapshot_restore_rejects_corrupted_tool_call_shape or token_diagnostics_use_session_prefix_for_chat or chat_completion_renders_messages_to_prompt'` -> `39 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py tests/test_agentic_harness_traces.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py tests/fixtures/agentic_traces/golden_traces.json docs/API.md docs/AGENTIC.md` -> clean.

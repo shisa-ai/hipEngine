@@ -418,7 +418,9 @@ and `tool_call_id` is required for tool messages and rejected on non-tool
 messages. Incoming assistant `tool_calls`, including restored chat-session
 snapshots, must use OpenAI-style function-call objects with non-empty `id` and
 `function.name`, `type: "function"`, no unexpected nested keys, and a JSON-string
-`function.arguments` value.
+`function.arguments` value. Tool-call transcripts are matched before prompt
+rendering: assistant tool-call ids must be unique in the transcript, and each
+`role: "tool"` message must reference a prior unconsumed assistant tool-call id.
 Inconsistent request shapes fail before generation: `tool_choice="required"`
 or a specific function choice requires at least one `tools` entry, and a
 specific function choice must use a valid object shape and name a declared
@@ -763,7 +765,9 @@ the same session id after validating schema, model id, backend, quant, storage,
 tokenizer metadata when the model is loaded, message shape, text content parts,
 supported roles (`system`, `developer`, `user`, `assistant`, `tool`), message
 string metadata, role-specific `tool_calls` / `tool_call_id` placement, nested
-assistant `tool_calls` objects, and valid JSON `function.arguments` strings.
+assistant `tool_calls` objects, unique assistant tool-call ids, tool-result
+references to prior unconsumed tool-call ids, and valid JSON
+`function.arguments` strings.
 Incompatible or corrupted snapshots fail before
 creating the session. Restoring a new session is subject to the configured
 chat-session cap; when the cap is full, the server returns `engine_busy` without

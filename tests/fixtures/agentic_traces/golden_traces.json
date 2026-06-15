@@ -759,13 +759,14 @@
             "message_content": "",
             "reasoning_content": "hidden plan",
             "tool_call": {"name": "read", "arguments": {"path": "README.md"}},
+            "capture_tool_call_id": true,
             "response_excludes": ["<think>", "<tool_call>"]
           }
         },
         {
           "request": {
             "model": "fake-model",
-            "messages": [{"role": "tool", "tool_call_id": "call_1", "content": "hello from README"}],
+            "messages": [{"role": "tool", "tool_call_id": "$tool_call_id", "content": "hello from README"}],
             "tools": [
               {
                 "type": "function",
