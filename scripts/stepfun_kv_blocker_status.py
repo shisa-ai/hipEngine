@@ -227,10 +227,25 @@ def _runtime_wiring_map() -> dict[str, object]:
         },
         "missing_execution_entrypoint": {
             "owner": "StepFunResidentSession",
+            "expected_symbol": "StepFunResidentSession.decode_one_token_kv_bf16",
+            "expected_signature": (
+                "decode_one_token_kv_bf16(run_plan: StepFunKVDecodeRunPlan, *, "
+                "kv_cache: StepFunKVCacheAllocation, runtime: HipRuntime | None = None, "
+                "stream: int = 0) -> dict[str, object]"
+            ),
             "expected_role": (
                 "Launch resident prompt KV writes, one-token decode KV writes, and gated paged attention "
                 "from the uploaded StepFunKVDecodeRunPlan inputs, then emit the KV-backed next-token artifact."
             ),
+            "required_runtime_steps": [
+                "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+                "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+                "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+                "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+                "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+                "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+                "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+            ],
             "required_artifacts": [
                 "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
                 "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
@@ -309,6 +324,23 @@ def _symbol_validation_for_runtime_wiring_map(
         "class_present": owner in class_methods,
         "present": owner in class_methods,
     }
+    expected_symbol = str(missing_execution.get("expected_symbol") or "")
+    expected_class_name, expected_sep, expected_method_name = expected_symbol.partition(".")
+    expected_class_present = expected_class_name in class_methods
+    expected_method_present = bool(expected_sep) and expected_method_name in class_methods.get(
+        expected_class_name, set()
+    )
+    future_execution_entrypoint = {
+        "symbol": expected_symbol,
+        "class_name": expected_class_name,
+        "method_name": expected_method_name if expected_sep else None,
+        "class_present": expected_class_present,
+        "method_present": expected_method_present,
+        "present": expected_class_present and expected_method_present,
+        "expected_missing_until_streaming_loop_wired": True,
+        "expected_signature": missing_execution.get("expected_signature"),
+        "required_runtime_steps": missing_execution.get("required_runtime_steps"),
+    }
     missing_symbols = [
         record["symbol"] for record in symbol_records if record.get("present") is not True
     ]
@@ -323,6 +355,7 @@ def _symbol_validation_for_runtime_wiring_map(
         "symbol_count": len(symbol_records),
         "symbols": symbol_records,
         "missing_execution_owner": owner_record,
+        "future_execution_entrypoint": future_execution_entrypoint,
     }
 
 

@@ -103,6 +103,23 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "StepFunResidentSession.kv_streaming_decode_contract"
     )
     assert wiring_map["missing_execution_entrypoint"]["owner"] == "StepFunResidentSession"
+    assert wiring_map["missing_execution_entrypoint"]["expected_symbol"] == (
+        "StepFunResidentSession.decode_one_token_kv_bf16"
+    )
+    assert wiring_map["missing_execution_entrypoint"]["expected_signature"] == (
+        "decode_one_token_kv_bf16(run_plan: StepFunKVDecodeRunPlan, *, "
+        "kv_cache: StepFunKVCacheAllocation, runtime: HipRuntime | None = None, "
+        "stream: int = 0) -> dict[str, object]"
+    )
+    assert wiring_map["missing_execution_entrypoint"]["required_runtime_steps"] == [
+        "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+        "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+        "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+        "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+        "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+        "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+        "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
     assert wiring_map["missing_execution_entrypoint"]["required_artifacts"] == [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
@@ -138,6 +155,18 @@ def test_stepfun_kv_blocker_status_summarizes_missing_kv_artifacts(
         "class_present": True,
         "present": True,
     }
+    assert validation["future_execution_entrypoint"]["symbol"] == (
+        "StepFunResidentSession.decode_one_token_kv_bf16"
+    )
+    assert validation["future_execution_entrypoint"]["class_present"] is True
+    assert validation["future_execution_entrypoint"]["method_present"] is False
+    assert validation["future_execution_entrypoint"]["present"] is False
+    assert validation["future_execution_entrypoint"][
+        "expected_missing_until_streaming_loop_wired"
+    ] is True
+    assert validation["future_execution_entrypoint"]["required_runtime_steps"] == (
+        wiring_map["missing_execution_entrypoint"]["required_runtime_steps"]
+    )
     assert artifact["no_claim_policy"] == {
         "kv_backed_decode_claim_allowed": False,
         "e2e_inference_claim_allowed": False,
@@ -193,8 +222,14 @@ def test_stepfun_kv_blocker_status_cli_writes_artifact(tmp_path: Path) -> None:
     assert payload["runtime_wiring_map"]["missing_execution_entrypoint"]["owner"] == (
         "StepFunResidentSession"
     )
+    assert payload["runtime_wiring_map"]["missing_execution_entrypoint"]["expected_symbol"] == (
+        "StepFunResidentSession.decode_one_token_kv_bf16"
+    )
     assert payload["runtime_wiring_map"]["next_action"] == "wire_streaming_decode_loop"
     assert payload["runtime_wiring_symbol_validation"]["all_symbols_present"] is True
+    assert payload["runtime_wiring_symbol_validation"]["future_execution_entrypoint"][
+        "present"
+    ] is False
     assert payload["runtime_wiring_symbol_validation"]["missing_symbols"] == []
     assert payload["missing_artifact_paths"] == [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",

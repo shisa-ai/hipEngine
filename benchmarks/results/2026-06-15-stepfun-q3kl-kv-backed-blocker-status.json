@@ -116,10 +116,21 @@
     ],
     "missing_execution_entrypoint": {
       "expected_role": "Launch resident prompt KV writes, one-token decode KV writes, and gated paged attention from the uploaded StepFunKVDecodeRunPlan inputs, then emit the KV-backed next-token artifact.",
+      "expected_signature": "decode_one_token_kv_bf16(run_plan: StepFunKVDecodeRunPlan, *, kv_cache: StepFunKVCacheAllocation, runtime: HipRuntime | None = None, stream: int = 0) -> dict[str, object]",
+      "expected_symbol": "StepFunResidentSession.decode_one_token_kv_bf16",
       "owner": "StepFunResidentSession",
       "required_artifacts": [
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
         "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+      ],
+      "required_runtime_steps": [
+        "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+        "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+        "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+        "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+        "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+        "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+        "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
       ]
     },
     "next_action": "wire_streaming_decode_loop",
@@ -151,6 +162,25 @@
   "runtime_wiring_symbol_validation": {
     "all_symbols_present": true,
     "file": "hipengine/runtime/stepfun_gguf_runner.py",
+    "future_execution_entrypoint": {
+      "class_name": "StepFunResidentSession",
+      "class_present": true,
+      "expected_missing_until_streaming_loop_wired": true,
+      "expected_signature": "decode_one_token_kv_bf16(run_plan: StepFunKVDecodeRunPlan, *, kv_cache: StepFunKVCacheAllocation, runtime: HipRuntime | None = None, stream: int = 0) -> dict[str, object]",
+      "method_name": "decode_one_token_kv_bf16",
+      "method_present": false,
+      "present": false,
+      "required_runtime_steps": [
+        "validate the run_plan backend/layer count with kv_streaming_decode_contract",
+        "upload input token IDs plus KVLiveSpans base_offsets/live_counts/token_positions",
+        "launch prompt KV writes for every layer using gguf_step35 mixed_bf16_prompt_spans",
+        "launch one-token decode KV writes for every layer using gguf_step35 mixed_bf16_spans",
+        "launch gated paged decode attention for every layer using bf16_split_k_gate_f32_spans",
+        "compute final next-token logits from resident output_norm/lm_head without host-composed layer-prefix outputs",
+        "retain benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json and benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+      ],
+      "symbol": "StepFunResidentSession.decode_one_token_kv_bf16"
+    },
     "missing_execution_owner": {
       "class_present": true,
       "owner": "StepFunResidentSession",
@@ -245,8 +275,8 @@
     ]
   },
   "schema_version": 1,
-  "source_correctness_status_sha256": "1552d6be5190e5afda21e6f73886e9cdc84c911128efa29c6d807eeba96ce21a",
-  "source_validator_status_sha256": "4a8b91b210d59cb29841e1d1eef46121ae5425b99cf51f4244667febba45a6de",
+  "source_correctness_status_sha256": "3a74df7cc5a7b168d5d1de2dab1338a83baecf4341c74ea39e47470bd8b40387",
+  "source_validator_status_sha256": "d30faf7b445bc5bf84a88ad229bb421da1f27ee7deca35d7fb6ec24496552c51",
   "status": "blocked",
   "streaming_runner_source_status": {
     "blocked_by": "streaming_decode_loop_not_wired",
