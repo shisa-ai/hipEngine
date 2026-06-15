@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_host_logit_margin import build_host_logit_margin, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_host_logit_margin import (
+    build_host_logit_margin,
+    main,
+    verify_host_logit_margin,
+)
 from test_stepfun_oracle_rank_check import _write_prompt_with_top_tokens  # type: ignore[import-not-found]
 
 
@@ -185,3 +193,74 @@ def test_stepfun_host_logit_margin_cli_compact_modes(tmp_path: Path) -> None:
     assert json.loads(output.read_text()) == 0.8150444030761719
     assert main([*base_args, "--expected-top1-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()) is True
+
+
+def test_stepfun_host_logit_margin_verifies_persisted_artifact(tmp_path: Path) -> None:
+    prompt, rank_check = _write_inputs(tmp_path)
+    artifact = tmp_path / "host-margin.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--prompt-artifact",
+        str(prompt),
+        "--rank-check-artifact",
+        str(rank_check),
+        "--artifact-date",
+        "2030-01-24",
+    ]
+    current = build_host_logit_margin(
+        prompt_artifact=prompt,
+        rank_check_artifact=rank_check,
+        artifact_date="2030-01-24",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_host_logit_margin(artifact, current_report=current)
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "passed"
+    assert verification["current_status"] == "passed"
+    assert verification["persisted_ready"] is True
+    assert verification["current_ready"] is True
+    assert verification["persisted_top1_to_top2_margin"] == 0.8150444030761719
+    assert verification["current_top1_to_top2_margin"] == 0.8150444030761719
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-margin",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["ready"] = False
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_host_logit_margin(artifact, current_report=current)
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == "host_logit_margin_drift"
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-margin",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "host_logit_margin_drift"

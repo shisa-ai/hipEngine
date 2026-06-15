@@ -926,7 +926,8 @@ reporting.
   showing generated token `671` is absent from the host top-5 token IDs `[369, 5, 15251, 223, 201]`.
   `scripts/stepfun_host_logit_margin.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-logit-margin.json`, showing expected
-  token `369` is host top-1 with top-1→top-2 visible logit margin `0.8150444030761719`.
+  token `369` is host top-1 with top-1→top-2 visible logit margin `0.8150444030761719`; `python3 scripts/stepfun_host_logit_margin.py --verify-margin --verification-status-only`
+  is the drift check for that prompt/rank-check margin evidence.
   `scripts/stepfun_top_token_roundtrip.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-host-top-token-roundtrip.json`, showing those
   five host top-token texts round-trip through llama.cpp no-BOS tokenization to the same IDs;
