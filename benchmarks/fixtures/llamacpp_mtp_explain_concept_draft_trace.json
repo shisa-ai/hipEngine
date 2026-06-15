@@ -1,0 +1,139 @@
+{
+  "calls": [
+    {
+      "accept_generated": 1,
+      "accepted": 0,
+      "call_count": 1,
+      "candidates": [
+        {
+          "line": 3630,
+          "piece": "Spec",
+          "pos": 0,
+          "prob": 0.476,
+          "rank": 0,
+          "seq_id": 3,
+          "token_id": 8068
+        },
+        {
+          "line": 3631,
+          "piece": "1",
+          "pos": 0,
+          "prob": 0.168,
+          "rank": 1,
+          "seq_id": 3,
+          "token_id": 16
+        },
+        {
+          "line": 3632,
+          "piece": "<think>",
+          "pos": 0,
+          "prob": 0.106,
+          "rank": 2,
+          "seq_id": 3,
+          "token_id": 248068
+        }
+      ],
+      "generated": 1,
+      "hist_size": 17,
+      "line": 3633
+    },
+    {
+      "accept_generated": 1,
+      "accepted": 0,
+      "call_count": 2,
+      "candidates": [
+        {
+          "line": 3650,
+          "piece": "\n\n",
+          "pos": 0,
+          "prob": 0.95,
+          "rank": 0,
+          "seq_id": 3,
+          "token_id": 271
+        },
+        {
+          "line": 3653,
+          "piece": "\n",
+          "pos": 0,
+          "prob": 0.05,
+          "rank": 1,
+          "seq_id": 3,
+          "token_id": 198
+        },
+        {
+          "line": 3655,
+          "piece": ".",
+          "pos": 0,
+          "prob": 0.0,
+          "rank": 2,
+          "seq_id": 3,
+          "token_id": 13
+        }
+      ],
+      "generated": 1,
+      "hist_size": 18,
+      "line": 3656
+    }
+  ],
+  "kind": "llamacpp_mtp_draft_candidate_trace",
+  "llamacpp_timing_summary": {
+    "draft_acceptance": 0.0,
+    "draft_n": 2,
+    "draft_n_accepted": 0
+  },
+  "metadata": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "notes": [
+      "Captured from llama.cpp verbose LOG_DBG draft-mtp candidate lines.",
+      "Server used --no-spec-draft-backend-sampling so candidate probabilities are visible in the log; this is an oracle/debug trace, not a performance benchmark."
+    ],
+    "request": {
+      "cache_prompt": false,
+      "endpoint": "/completion",
+      "min_p": 0.0,
+      "n_predict": 4,
+      "prompt": "Explain how speculative decoding works in large language model inference, in three short paragraphs.",
+      "prompt_name": "explain_concept",
+      "seed": 12345,
+      "stream": false,
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0
+    },
+    "server_bin": "/tmp/llamacpp-hip-server-gfx1151-6e9007ae6/bin/llama-server",
+    "server_command": [
+      "/tmp/llamacpp-hip-server-gfx1151-6e9007ae6/bin/llama-server",
+      "-m",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8093",
+      "-c",
+      "4096",
+      "-ngl",
+      "999",
+      "--no-webui",
+      "--spec-type",
+      "draft-mtp",
+      "--spec-draft-n-max",
+      "1",
+      "--no-spec-draft-backend-sampling",
+      "--log-verbosity",
+      "5",
+      "--no-log-prefix",
+      "--no-log-timestamps"
+    ]
+  },
+  "prompt_tokens": 17,
+  "schema": 1,
+  "source_log": "bg-12 verbose llama-server log (not committed; see WORKLOG capture command)",
+  "summary": {
+    "candidate_count": 6,
+    "draft_acceptance": 0.0,
+    "draft_call_count": 2,
+    "draft_n": 2,
+    "draft_n_accepted": 0,
+    "observed_top_k": 3
+  }
+}

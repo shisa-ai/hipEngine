@@ -94976,3 +94976,58 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, or attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF llama.cpp draft trace fixture
+
+Implemented `mtp-gguf` multiloop iteration 52: captured a short-prompt llama.cpp
+`draft-mtp` candidate trace and added a parser/test fixture so M0/M3 have a
+concrete top-k oracle artifact.
+
+Scope note:
+- Fixture/parser/test/docs only. No hipEngine runtime generation, GGUF loading
+  semantics, MTP draft execution, sampling implementation, GPU kernel, or
+  attention/KV path changed.
+- The capture uses llama.cpp verbose `LOG_DBG` candidate probabilities with
+  `--no-spec-draft-backend-sampling` solely so top-k probabilities are visible in
+  logs. This is an oracle/debug fixture, not a performance benchmark and not a
+  retained speed row.
+- The real D32 token parity blocker remains: hipEngine-vs-llama.cpp token
+  fixtures still differ on 5/9 prompts.
+
+Capture:
+- Started llama.cpp server with bg_task and stopped it after capture:
+  `/tmp/llamacpp-hip-server-gfx1151-6e9007ae6/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --host 127.0.0.1 --port 8093 -c 4096 -ngl 999 --no-webui --spec-type draft-mtp --spec-draft-n-max 1 --no-spec-draft-backend-sampling --log-verbosity 5 --no-log-prefix --no-log-timestamps`.
+- Request:
+  `/completion`, prompt `explain_concept` (`Explain how speculative decoding works in large language model inference, in three short paragraphs.`), `n_predict=4`, `temperature=0`, `top_k=1`, `top_p=1`, `min_p=0`, `seed=12345`, `cache_prompt=false`, `stream=false`.
+- llama.cpp response: `tokens_evaluated=17`, `tokens_predicted=4`, `draft_n=2`, `draft_n_accepted=0`.
+- Parsed trace fixture:
+  `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json`.
+  It records 2 draft calls, 6 candidates, observed top-3, and 0/2 accepted
+  drafts. First call top-3: `(8068, 0.476, 'Spec')`, `(16, 0.168, '1')`,
+  `(248068, 0.106, '<think>')`. Second call top-3: `(271, 0.950, '\n\n')`,
+  `(198, 0.050, '\n')`, `(13, 0.000, '.')`.
+
+Changes:
+- Added executable `scripts/llamacpp_mtp_draft_trace.py`, a parser for llama.cpp
+  verbose `draft-mtp` candidate lines including multiline token pieces.
+- Added `tests/test_llamacpp_mtp_draft_trace.py` coverage for multiline pieces,
+  acceptance parsing, and the committed short-prompt fixture values.
+- Updated `docs/MTP-gguf.md` M3 current status and checked off the llama.cpp
+  draft logits/top-k trace backlog row.
+
+Validation:
+- Draft trace tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_llamacpp_mtp_draft_trace.py` -> `2` passed.
+- CLI parser smoke on the capture log passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_draft_trace.py /tmp/vstack-pi-bg/bg-12-1781543512988.log --metadata /tmp/llamacpp-mtp-draft-trace-metadata.json --out <tmp>` -> `trace 2 6 2 0`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/llamacpp_mtp_draft_trace.py tests/test_llamacpp_mtp_draft_trace.py` and
+  `git diff --check -- scripts/llamacpp_mtp_draft_trace.py tests/test_llamacpp_mtp_draft_trace.py docs/MTP-gguf.md benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: parser/fixture/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no hipEngine generation, MTP execution,
+  sampling implementation, GPU kernel, or attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.

@@ -551,6 +551,12 @@ Current status:
   Fixture `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`
   pins a deterministic hidden/token row, finite logits, and top-k IDs for the
   full `eh_proj -> attention -> MoE/shared expert -> shared head` oracle.
+- llama.cpp verbose `draft-mtp` candidate fixture
+  `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` captures a
+  short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
+  and 0/2 accepted drafts. It was captured with backend draft sampling disabled
+  only to expose candidate probabilities in the log; it is an oracle/debug
+  fixture, not a performance benchmark.
 
 Acceptance:
 
@@ -767,8 +773,9 @@ is now answered by the M1 required/optional table.)
 - [x] Add a GGUF MTP inventory fixture for the Unsloth `UD-Q4_K_M` MTP file
       (full 20-tensor trailing block, 4 `nextn.*`):
       `benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`.
-- [ ] **Capture a llama.cpp draft logits/top-k trace for one short prompt
-      (required M0 oracle, not "if possible").**
+- [x] **Capture a llama.cpp draft logits/top-k trace for one short prompt
+      (required M0 oracle, not "if possible").** Fixture:
+      `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json`.
 - [x] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a));
       hipEngine-side and llama.cpp-side D32 fixtures are committed at
       `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`
