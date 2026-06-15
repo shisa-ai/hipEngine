@@ -93328,6 +93328,23 @@ Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
 
+## 2026-06-16 - AGENTIC P2 fail-closed status audit
+
+Audited the remaining `docs/AGENTIC.md` P2 bucket against the current server,
+scheduler, native sampler, and MTP guards. Updated the roadmap to state that the
+P2 fail-closed gates are implemented and covered: live c>N unsupported surfaces
+buffer or withhold diagnostics, native/scheduler sampler gaps fall back with
+shared planner metadata, raw-argmax MTP verification rejects processed rows and
+advertises `processed_target_verification=false`, unsupported grammar fields
+reject before generation, safe context-overflow policies are explicit, and
+invalid tool-call hard-error mode is opt-in. Full native/MTP/grammar parity
+remains deferred until those capabilities are advertised.
+
+Validation:
+- `sed -n '1,20p' docs/AGENTIC.md` -> re-read updated header.
+- `sed -n '3019,3062p' docs/AGENTIC.md` -> re-read updated P2 bucket.
+- `git diff -- docs/AGENTIC.md` -> doc-only P2 status update.
+
 ## 2026-06-15 - Scheduler logprob fallback diagnostics
 
 Added sanitized final-choice diagnostics when buffered chat streams request

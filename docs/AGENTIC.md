@@ -1,6 +1,6 @@
 # Agentic Inference Roadmap
 
-Last updated: 2026-06-15
+Last updated: 2026-06-16
 
 `AGENTIC.md` is the implementation handoff for making hipEngine useful as a
 local **agent runtime**. The scope is not broad project management; it is the
@@ -3022,6 +3022,12 @@ These items should improve the runtime when feasible, but current behavior is
 acceptable when it rejects explicitly, falls back to host/server buffering, or
 withholds ambiguous backend chunks with diagnostics.
 
+Status: the P2 fail-closed gates are implemented and covered by deterministic
+endpoint or scheduler tests. Treat new work here as P2 only when it changes an
+advertised reject/fallback/withheld surface or causes the server to claim support
+it cannot honor. Full parity implementations belong in the subsystem sections
+above and in P3/P4 until the server advertises those capabilities.
+
 1. **Runtime-native live c>N telemetry parity.** Broader c>N
    tool/structured/logprob streams still need emitted chunk/final metadata,
    public handling for invalid/unmappable tool-call chunks, live unmappable
@@ -3029,21 +3035,36 @@ withholds ambiguous backend chunks with diagnostics.
    Until then, buffering or withheld diagnostics is correct. Current endpoint
    tests pin that tools, logprobs, structured-output validation, and stop
    strings stay on the buffered path even when the engine advertises live
-   multi-row streaming, and that streaming or `n>1` continuation resumes reject
-   without consuming the handle.
+   multi-row streaming; invalid/unmappable scheduler tool chunks and unmappable
+   logprob spans are withheld with sanitized `choices[].hipengine` diagnostics;
+   and streaming or `n>1` continuation resumes reject without consuming the
+   handle.
 2. **Native/scheduler controlled-decoding parity.** GGUF/native GPU sampler
    paths and live c>N surfaces should eventually match host AR sampling
    metadata and logprob semantics. Unsupported processor combinations may keep
-   falling back or rejecting explicitly.
+   falling back or rejecting explicitly. Current code uses the shared sampler
+   planner for scheduler rows, advertises native GPU sampler unsupported
+   capability fields from the same source as `supports_native_gpu_sampling()`,
+   reports `native_gpu_unsupported_request` or processed-logits fallback
+   metadata when requested native sampling cannot run, and keeps `top_logprobs`
+   plus unsupported processor shapes off the native route.
 3. **Speculative/MTP processed-target verification.** Processed-target MTP
    should apply the same EOS, logit-bias, penalty, suppression, forced-token,
    thinking-budget, stop, and logprob policy as AR sampling. Until that exists,
-   preserve `raw_target_top1` /
-   `processed_target_verification=false` metadata and block processed rows.
+   the public server advertises no speculative serving route, capabilities list
+   every raw-argmax blocker from
+   `SPECULATIVE_MTP_INCOMPATIBLE_FIELDS`, scheduler verify work rejects rows
+   with those blockers before materializing target verification, and successful
+   speculative verify plans preserve `raw_target_top1`,
+   `processed_target_verification=false`, and
+   `compatible_sampling_modes=("greedy_fast",)` metadata.
 4. **Decode-time grammar constraints.** Tokenizer-aware JSON/tool/patch grammars
    should reuse the shared DFA/forced-token path. Current result-validation plus
-   narrow JSON close-suffix forcing is acceptable if strict decoding remains
-   advertised as unsupported.
+   narrow JSON close-suffix forcing is acceptable because strict decoding is
+   advertised as unsupported, grammar/guidance fields that would imply token
+   masks (`grammar`, `guided_grammar`, `guided_decoding_backend`) reject before
+   generation on completion and chat endpoints, and supported JSON/regex/choice/
+   patch guidance is advertised as result-validation-only.
 5. **Additional context policies.** `auto_clear_transient`, `new_session`, and
    `truncate_oldest_visible` cover the currently safe transcript-prefix
    policies. The current `auto_clear_transient` path is a deterministic no-op
