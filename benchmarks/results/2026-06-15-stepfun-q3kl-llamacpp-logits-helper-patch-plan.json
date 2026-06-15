@@ -1,0 +1,239 @@
+{
+  "anchors_ready": true,
+  "artifact_kind": "stepfun_llamacpp_logits_helper_patch_plan",
+  "blocked_reason": "retained-token llama.cpp helper patch is planned but not applied, rebuilt, or captured",
+  "build_command": "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j",
+  "date": "2026-06-15",
+  "expected_probe_command_shape": [
+    "--prompt-token-source retained-input-ids",
+    "--token-ids",
+    "0,128006,27824,201,77666,288,28,3157,271,128007,201,128006,5265,201,33310,128007,201,128006,624,15059,201,128798,201",
+    "--save-logits",
+    "--logits-output-dir"
+  ],
+  "expected_probe_token_ids_argument": "0,128006,27824,201,77666,288,28,3157,271,128007,201,128006,5265,201,33310,128007,201,128006,624,15059,201,128798,201",
+  "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+  "missing_anchors": [],
+  "missing_evidence": [
+    "llama_cpp_token_ids_helper_patch_applied",
+    "same_prompt_logits_helper_built",
+    "llama_cpp_same_prompt_logits_artifact_present"
+  ],
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This artifact is a patch recipe only; generated_text_matches_target remains unresolved until the retained-token helper captures same-prompt logits and oracle comparison passes."
+  },
+  "patch_application_policy": {
+    "allowed_next_step": "apply the reviewed patch manually in the llama.cpp checkout, rebuild llama-debug, then rerun the retained-token probe",
+    "edits_external_tree": false,
+    "reason": "hipEngine evidence records the exact helper patch plan, but this script does not modify the external llama.cpp checkout."
+  },
+  "patch_steps": [
+    {
+      "anchors": [
+        "debug_include_regex",
+        "debug_common_params_parse"
+      ],
+      "edit_kind": "insert helper-local argv pre-parser",
+      "key": "add_helper_local_cli_state",
+      "path": "examples/debug/debug.cpp",
+      "proposed_code_shapes": [
+        "struct stepfun_debug_extra_params { bool parse_special = false; std::vector<llama_token> token_ids; };",
+        "accept --token-ids comma-separated llama_token IDs and remove it plus its value before common_params_parse",
+        "accept --parse-special as a debug-helper-local prompt tokenization flag and remove it before common_params_parse",
+        "include the helper flags in debug.cpp print_usage so llama-debug --help advertises them"
+      ],
+      "why": "common/arg.cpp scopes --parse-special to imatrix in this checkout; a debug-local pre-parser avoids broad common-arg behavior changes."
+    },
+    {
+      "anchors": [
+        "debug_run_signature",
+        "debug_run_current_tokenize"
+      ],
+      "edit_kind": "replace prompt tokenization selection",
+      "key": "decode_retained_tokens",
+      "path": "examples/debug/debug.cpp",
+      "proposed_code_shapes": [
+        "const bool add_bos = extra.token_ids.empty() ? llama_vocab_get_add_bos(vocab) : false;",
+        "std::vector<llama_token> tokens = extra.token_ids.empty() ? common_tokenize(ctx, params.prompt, add_bos, extra.parse_special) : extra.token_ids;",
+        "reject empty explicit token-id lists before llama_decode"
+      ],
+      "why": "the retained StepFun prompt artifact already has the exact special-token IDs; bypassing text tokenization removes the current oracle evidence ambiguity."
+    },
+    {
+      "anchors": [
+        "debug_output_data_constructor",
+        "debug_output_data_current_tokenize",
+        "debug_save_output_data_call"
+      ],
+      "edit_kind": "thread decoded tokens into output_data",
+      "key": "save_exact_prompt_tokens",
+      "path": "examples/debug/debug.cpp",
+      "proposed_code_shapes": [
+        "output_data(llama_context * ctx, const llama_model * model, const common_params & params, const std::vector<llama_token> & input_tokens)",
+        "tokens = input_tokens;",
+        "output_data output {ctx, model, params, tokens};"
+      ],
+      "why": "logits and saved prompt-token metadata must describe the same retained tokens that were decoded before llama_get_logits_ith(ctx, tokens.size() - 1)."
+    },
+    {
+      "anchors": [
+        "debug_common_params_parse",
+        "debug_run_call"
+      ],
+      "edit_kind": "thread helper-local params through main",
+      "key": "wire_main_to_helper_args",
+      "path": "examples/debug/debug.cpp",
+      "proposed_code_shapes": [
+        "stepfun_debug_extra_params stepfun_extra;",
+        "auto filtered_argv = stepfun_filter_debug_args(argc, argv, stepfun_extra);",
+        "common_params_parse(filtered_argc, filtered_argv.data(), params, LLAMA_EXAMPLE_DEBUG, print_usage)",
+        "run(ctx, params, stepfun_extra)"
+      ],
+      "why": "the future helper binary should keep normal llama-debug behavior except for the explicit retained-token oracle path."
+    }
+  ],
+  "probe_command_after_build": "python3 scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty",
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "prompt_contract": {
+    "expected_next_token_id": 369,
+    "expected_next_token_text": " |",
+    "input_id_count": 23,
+    "input_ids": [
+      0,
+      128006,
+      27824,
+      201,
+      77666,
+      288,
+      28,
+      3157,
+      271,
+      128007,
+      201,
+      128006,
+      5265,
+      201,
+      33310,
+      128007,
+      201,
+      128006,
+      624,
+      15059,
+      201,
+      128798,
+      201
+    ],
+    "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "prompt_artifact_present": true,
+    "prompt_length": 23,
+    "token_ids_csv": "0,128006,27824,201,77666,288,28,3157,271,128007,201,128006,5265,201,33310,128007,201,128006,624,15059,201,128798,201"
+  },
+  "ready": false,
+  "schema_version": 1,
+  "source_anchors": [
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_include_regex",
+      "line": 13,
+      "line_text": "#include <regex>",
+      "marker": "#include <regex>",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "insert <sstream> for CSV token-id parsing near existing standard includes"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_output_data_constructor",
+      "line": 55,
+      "line_text": "output_data(llama_context * ctx, const llama_model * model, const common_params & params) {",
+      "marker": "output_data(llama_context * ctx, const llama_model * model, const common_params & params) {",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "thread already-decoded prompt tokens into output_data without re-tokenizing"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_output_data_current_tokenize",
+      "line": 59,
+      "line_text": "tokens = common_tokenize(ctx, params.prompt, add_bos);",
+      "marker": "tokens = common_tokenize(ctx, params.prompt, add_bos);",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "replace output_data re-tokenization with caller-provided retained tokens"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_run_signature",
+      "line": 184,
+      "line_text": "static bool run(llama_context * ctx, const common_params & params) {",
+      "marker": "static bool run(llama_context * ctx, const common_params & params) {",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "pass helper-local tokenization options into run()"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_run_current_tokenize",
+      "line": 190,
+      "line_text": "std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, add_bos);",
+      "marker": "std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, add_bos);",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "select retained --token-ids or parse-special prompt tokenization before decode"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_save_output_data_call",
+      "line": 206,
+      "line_text": "output_data output {ctx, model, params};",
+      "marker": "output_data output {ctx, model, params};",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "save logits and prompt-token metadata for the exact decoded token vector"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_common_params_parse",
+      "line": 223,
+      "line_text": "if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_DEBUG, print_usage)) {",
+      "marker": "if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_DEBUG, print_usage)) {",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "strip helper-local --token-ids/--parse-special before common_params_parse"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/examples/debug/debug.cpp",
+      "exists": true,
+      "key": "debug_run_call",
+      "line": 251,
+      "line_text": "if (!run(ctx, params)) {",
+      "marker": "if (!run(ctx, params)) {",
+      "marker_present": true,
+      "path": "examples/debug/debug.cpp",
+      "role": "pass helper-local tokenization options to run()"
+    },
+    {
+      "absolute_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/common/common.h",
+      "exists": true,
+      "key": "common_tokenize_parse_special_signature",
+      "line": 956,
+      "line_text": "bool   parse_special = false);",
+      "marker": "bool   parse_special = false);",
+      "marker_present": true,
+      "path": "common/common.h",
+      "role": "confirm parse_special is already supported by common_tokenize"
+    }
+  ],
+  "status": "blocked"
+}

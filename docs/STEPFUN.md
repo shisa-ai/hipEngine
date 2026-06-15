@@ -950,7 +950,14 @@ reporting.
   flag scope; and requires the helper to either tokenize with `parse_special=true` and `add_bos=false` or accept those
   explicit retained token IDs before reading final prompt-token logits. The in-tree probe now has a tested
   `--prompt-token-source retained-input-ids` mode that emits `--token-ids 0,128006,...` for a future helper, so no
-  free-form shell rewrite is needed once the helper binary exists. The contract reports `implementation_ready=true`
+  free-form shell rewrite is needed once the helper binary exists. `scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty`
+  retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-patch-plan.json`, which checks the
+  current `/home/lhl/llama.cpp/llama.cpp-vulkan` anchors and emits the exact reviewed patch recipe without editing the
+  external tree: add a debug-local `--token-ids`/`--parse-special` pre-parser, select retained IDs before decode, thread
+  those decoded tokens into `output_data`, rebuild with `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j`,
+  then rerun the retained-token probe. The patch plan reports `anchors_ready=true` and remains `status=blocked` on
+  `llama_cpp_token_ids_helper_patch_applied`, `same_prompt_logits_helper_built`, and
+  `llama_cpp_same_prompt_logits_artifact_present`. The contract reports `implementation_ready=true`
   and `source_hooks_ready=true`, but remains `status=blocked` until `same_prompt_logits_helper_built` and
   `llama_cpp_same_prompt_logits_artifact_present` are captured. The remaining mismatch is therefore not explained by
   prompt-token drift or host top-token text-label drift; the next llama.cpp evidence blocker is building that
