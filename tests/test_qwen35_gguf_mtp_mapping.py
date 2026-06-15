@@ -10,6 +10,7 @@ from hipengine.loading.gguf import (
     GGUFTensorInfo,
     MissingGGUFTensorError,
 )
+from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.loading.qwen35_gguf import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
@@ -288,6 +289,12 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "down_qtype": "F32",
         "shared_qtype": "F32",
     }
+    assert dict(plan.qtype_enum_argument_map) == {
+        "gate_qtype": GGMLQuantizationType.F32,
+        "up_qtype": GGMLQuantizationType.F32,
+        "down_qtype": GGMLQuantizationType.F32,
+        "shared_qtype": GGMLQuantizationType.F32,
+    }
     assert plan.tensor_bindings[0].fallback_slot == "token_embedding"
     assert plan.tensor_bindings[13].qtype_argument == "gate_qtype"
     plan_dict = plan.as_dict()
@@ -302,6 +309,12 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
     }
     assert plan_dict["tensor_argument_map"]["wq_weight"] == "blk.2.attn_q.weight"
     assert plan_dict["qtype_argument_map"] == {
+        "gate_qtype": "F32",
+        "up_qtype": "F32",
+        "down_qtype": "F32",
+        "shared_qtype": "F32",
+    }
+    assert plan_dict["qtype_enum_argument_map"] == {
         "gate_qtype": "F32",
         "up_qtype": "F32",
         "down_qtype": "F32",
@@ -322,6 +335,21 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_orders_cpu_oracle_slots() -> None:
         "ggml_type_name": "F32",
         "qtype_argument": "gate_qtype",
     }
+
+
+def test_qwen35moe_gguf_mtp_draft_tensor_plan_rejects_unknown_qtype_binding() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.ffn_gate_exps.weight", (3, 5, 8), ggml_type_name="UNKNOWN_Q")
+        ],
+    )
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="gate_qtype to unsupported GGML type 'UNKNOWN_Q'",
+    ):
+        dict(plan.qtype_enum_argument_map)
 
 
 def test_qwen35moe_gguf_mtp_draft_tensor_plan_prefers_present_optional_tensors() -> None:
@@ -489,14 +517,19 @@ def _full_attention_tensors(layer_id: int) -> list[GGUFTensorInfo]:
     ]
 
 
-def _tensor(name: str, shape: tuple[int, ...]) -> GGUFTensorInfo:
+def _tensor(
+    name: str,
+    shape: tuple[int, ...],
+    *,
+    ggml_type_name: str = "F32",
+) -> GGUFTensorInfo:
     n_elements = int(prod(shape))
     return GGUFTensorInfo(
         name=name,
         shape=shape,
         ggml_shape=tuple(reversed(shape)),
         ggml_type=0,
-        ggml_type_name="F32",
+        ggml_type_name=ggml_type_name,
         n_elements=n_elements,
         nbytes=n_elements * 4,
         offset=0,

@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo, MissingGGUFTensorError
+from hipengine.quant.gguf import GGMLQuantizationType
 
 FULL_ATTENTION = "full_attention"
 LINEAR_ATTENTION = "linear_attention"
@@ -327,6 +328,19 @@ class Qwen35GGUFMTPDraftTensorPlan:
         return MappingProxyType(result)
 
     @property
+    def qtype_enum_argument_map(self) -> Mapping[str, GGMLQuantizationType]:
+        result: dict[str, GGMLQuantizationType] = {}
+        for argument, ggml_type_name in self.qtype_argument_map.items():
+            try:
+                result[argument] = GGMLQuantizationType[ggml_type_name]
+            except KeyError as exc:
+                raise MissingGGUFTensorError(
+                    f"MTP draft tensor plan for block {self.layer_id} maps "
+                    f"{argument} to unsupported GGML type {ggml_type_name!r}"
+                ) from exc
+        return MappingProxyType(result)
+
+    @property
     def kernel_kwargs(self) -> Mapping[str, object]:
         """Scalar kwargs for ``qwen35_gguf_mtp_nextn_layer_logits``."""
 
@@ -362,6 +376,10 @@ class Qwen35GGUFMTPDraftTensorPlan:
             "kernel_kwargs": dict(self.kernel_kwargs),
             "tensor_argument_map": dict(self.tensor_argument_map),
             "qtype_argument_map": dict(self.qtype_argument_map),
+            "qtype_enum_argument_map": {
+                argument: qtype.name
+                for argument, qtype in self.qtype_enum_argument_map.items()
+            },
             "cpu_reference_kernel": list(self.cpu_reference_kernel),
             "slots": [slot.as_dict() for slot in self.slots],
             "tensor_bindings": [binding.as_dict() for binding in self.tensor_bindings],

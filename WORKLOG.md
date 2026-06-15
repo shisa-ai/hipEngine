@@ -93975,3 +93975,55 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU oracle qtype enum bridge
+
+Implemented `mtp-gguf` multiloop iteration 30: added validated
+`GGMLQuantizationType` enum bindings for the GGUF MTP draft tensor plan's CPU
+oracle qtype arguments.
+
+Scope note:
+- This is metadata/planning only. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this bridge only converts already-resolved GGUF type names into enum
+  values for future CPU parity harnesses.
+
+Evidence:
+- Real GGUF smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... build_qwen35_gguf_mtp_draft_tensor_plans(GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf').info) ... PY`
+  passed and reported:
+  - `gate_qtype=Q4_K` -> enum value `12`
+  - `up_qtype=Q4_K` -> enum value `12`
+  - `down_qtype=Q5_K` -> enum value `13`
+  - `shared_qtype=Q8_0` -> enum value `8`
+  - serialized `qtype_enum_argument_map` emits the enum names.
+- Source check:
+  `nl -ba hipengine/quant/gguf.py | sed -n '20,38p'` confirms the existing
+  torch-free `GGMLQuantizationType` enum contains F32, Q8_0, Q4_K, Q5_K, and
+  related GGML formats.
+
+Changes:
+- Imported `GGMLQuantizationType` into `hipengine/loading/qwen35_gguf.py`.
+- Added `Qwen35GGUFMTPDraftTensorPlan.qtype_enum_argument_map`.
+  - Converts `qtype_argument_map` string values into enum members.
+  - Raises `MissingGGUFTensorError` if a bound GGUF type name is not supported by
+    the enum, preventing future parity harnesses from silently passing a bogus
+    qtype.
+- Added JSON-friendly `qtype_enum_argument_map` serialization to `as_dict()`.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` with enum-map assertions and
+  an unsupported qtype rejection fixture.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `24` selected tests (`18` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `15` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for `hipengine/loading/qwen35_gguf.py` and the updated
+  mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free loader metadata bridge only, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
