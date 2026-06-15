@@ -42285,3 +42285,52 @@ python3 scripts/stepfun_kv_evidence_preflight.py --sha-only
 ```
 
 Results: targeted KV blocker-status tests passed (`3` tests); KV blocker-status verifier status returns `"match"`, verifier failures `[]`, verifier digest `0e553a3ac15fe08d1847d7b47b6e2b77318e61c4177203992a297b712306c03b`; status/final-blocker/handoff verification returned `"match"`; KV blocker status remains `"blocked"`; compact blocked count remains `2`; compact missing paths remain `["benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json", "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"]`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `855924ea4b661b35cc83d4638daaead62402d67e31fa2b628eba6ae2fee002d5`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are KV blocker `f76f1da91deac929e55d8134704d2704b32b973971334aa5008043f0e708f9cc`, KV preflight `92e014196bd1d8b25449f049a040668b0cb45f46453aa2de5c64ea2553b347ff`, remaining-blockers rollup `c0fbbb8d6d9a2855f8ec43c7d2e5c1dc7fa6ae0aca7e2730692ea7e1a0a1bcfb`, correctness-status `a96d5263318568a839b076e8098fbac248661785f832246ef01cff6d965ca43b`, final-blocker `9329ff95642669cf7795d37985eaec9f4b9e7f63912d4ad1470a6f09594afea8`, handoff `2a2933a32cef87ce4130fde576acd2fbfe0875be0fafa4bc4fadc25a00a6c74b`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle backend-matrix drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 531. Added an explicit verifier for the retained llama.cpp oracle backend-matrix artifact. `scripts/stepfun_oracle_backend_matrix.py --verify-matrix` now rebuilds the Vulkan executed-mismatch plus HIP timeout matrix from the current oracle/prompt/tokenizer inputs and compares it with the persisted `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json`, with compact status/failure/digest modes for handoff polling. This verifies the oracle-backend blocker evidence for drift before it is consumed by the remaining-blockers rollup or handoff artifacts; it does not resolve the generated-token mismatch, satisfy oracle parity, wire KV decode, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json` remains unchanged at file SHA `1867ce7a15e8ffc3e3432685fcf4ca9cf7aac5c8936683deaa1da7389c1ae9e3` and stable payload SHA `8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952`; it remains `status=blocked`, backend outcomes `[{"backend":"vulkan","outcome":"executed_token_mismatch"},{"backend":"hip","outcome":"timeout"}]`, and no parity/e2e/performance claim is allowed. `--verify-matrix --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `d183e132a7db6df9c8c408075d7b22611e18e271804474fb08c07d47bf464e41`. Refreshed `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json`, and `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` after documenting the new verifier. The remaining-blockers rollup remains blocked with stable payload SHA `69a21c646f5256c636b3d12f8fa1897b3d0276358a147ee7c92f6314557d8366`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_backend_matrix.py tests/test_stepfun_oracle_backend_matrix.py
+python3 -m pytest -q tests/test_stepfun_oracle_backend_matrix.py
+python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-status-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-failures-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-sha-only
+python3 scripts/stepfun_oracle_backend_matrix.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_oracle_backend_matrix.py --status-only
+python3 scripts/stepfun_oracle_backend_matrix.py --backend-outcomes-only
+python3 scripts/stepfun_oracle_backend_matrix.py --sha-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-status-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-failures-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_oracle_backend_matrix.py tests/test_stepfun_oracle_backend_matrix.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-status-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-failures-only
+python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+```
+
+Results: targeted oracle backend-matrix tests passed (`4` tests); backend-matrix verifier status returns `"match"`, verifier failures `[]`, verifier digest `d183e132a7db6df9c8c408075d7b22611e18e271804474fb08c07d47bf464e41`; status/final-blocker/handoff verification returned `"match"`; backend matrix status remains `"blocked"`; compact backend outcomes remain `[{"backend": "vulkan", "outcome": "executed_token_mismatch"}, {"backend": "hip", "outcome": "timeout"}]`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `c4970416691b9c28081b51e8af38ef27ae33805df3ea553b20e25655c1eab7f1`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are backend matrix `1867ce7a15e8ffc3e3432685fcf4ca9cf7aac5c8936683deaa1da7389c1ae9e3`, remaining-blockers rollup `645d0736b1501f349abba1b41ec7dcfaa7808849100d53fbbe8282b9713ad70d`, correctness-status `0125d0fa2c837508043e3639e82637e62c30285826707925b295a4cc8e624c16`, final-blocker `1976282056cce0acf9c9786f0944283beeecda0bbdfd603607f00f38def8cecf`, handoff `17759ece02f95174a36f1613c2b79e9d831d1f5a1da5b10d48fa66f86d725a2e`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

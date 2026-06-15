@@ -919,7 +919,8 @@ reporting.
   oracle artifact. The two backend outcomes are consolidated by
   `scripts/stepfun_oracle_backend_matrix.py --default-output --pretty` in
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json`
-  (`vulkan=executed_token_mismatch`, `hip=timeout`) with no parity/e2e/performance
+  (`python3 scripts/stepfun_oracle_backend_matrix.py --verify-matrix --verification-status-only` is the drift check;
+  `vulkan=executed_token_mismatch`, `hip=timeout`) with no parity/e2e/performance
   claim. `scripts/stepfun_oracle_rank_check.py --default-output --pretty` also retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-rank-check.json`,
   showing generated token `671` is absent from the host top-5 token IDs `[369, 5, 15251, 223, 201]`.

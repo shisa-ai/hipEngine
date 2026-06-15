@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_oracle_backend_matrix import build_oracle_backend_matrix, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_oracle_backend_matrix import (
+    build_oracle_backend_matrix,
+    main,
+    verify_oracle_backend_matrix,
+)
 from test_stepfun_oracle_artifact_check import (  # type: ignore[import-not-found]
     _oracle_artifact,
     _write_prompt,
@@ -179,3 +187,91 @@ def test_stepfun_oracle_backend_matrix_cli_backend_outcomes_only(tmp_path: Path)
         {"backend": "vulkan", "outcome": "executed_token_mismatch"},
         {"backend": "hip", "outcome": "timeout"},
     ]
+
+
+def test_stepfun_oracle_backend_matrix_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    prompt, vulkan, hip, model, fake_tokenize = _write_inputs(tmp_path)
+    artifact = tmp_path / "backend-matrix.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--vulkan-artifact",
+        str(vulkan),
+        "--hip-artifact",
+        str(hip),
+        "--prompt-artifact",
+        str(prompt),
+        "--llama-tokenize",
+        str(fake_tokenize),
+        "--tokenizer-model",
+        str(model),
+        "--artifact-date",
+        "2030-01-04",
+    ]
+    current = build_oracle_backend_matrix(
+        vulkan_artifact=vulkan,
+        hip_artifact=hip,
+        prompt_artifact=prompt,
+        llama_tokenize=fake_tokenize,
+        tokenizer_model=model,
+        artifact_date="2030-01-04",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_oracle_backend_matrix(artifact, current_matrix=current)
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_backend_outcomes"] == [
+        {"backend": "vulkan", "outcome": "executed_token_mismatch"},
+        {"backend": "hip", "outcome": "timeout"},
+    ]
+    assert verification["current_backend_outcomes"] == [
+        {"backend": "vulkan", "outcome": "executed_token_mismatch"},
+        {"backend": "hip", "outcome": "timeout"},
+    ]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-matrix",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["backend_count"] = 1
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_oracle_backend_matrix(artifact, current_matrix=current)
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "oracle_backend_matrix_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-matrix",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "oracle_backend_matrix_drift"

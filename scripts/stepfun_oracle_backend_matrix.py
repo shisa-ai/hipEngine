@@ -9,6 +9,7 @@ imply oracle parity, KV-backed decode readiness, e2e readiness, or performance.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -98,6 +99,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--sha-only",
         action="store_true",
         help="Emit only the stable SHA-256 digest of the matrix payload.",
+    )
+    parser.add_argument(
+        "--verify-matrix",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted oracle backend-matrix artifact with current "
+            f"Vulkan/HIP oracle metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-matrix, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-matrix, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-matrix, emit only the stable verification digest.",
     )
     return parser.parse_args(argv)
 
@@ -238,6 +265,51 @@ def build_oracle_backend_matrix(
     }
 
 
+def verify_oracle_backend_matrix(
+    matrix_artifact: Path,
+    *,
+    current_matrix: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted oracle backend-matrix artifact with current metadata."""
+
+    persisted = json.loads(matrix_artifact.read_text())
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_matrix)
+    failures: list[dict[str, object]] = []
+    if persisted != current_matrix:
+        failures.append(
+            {
+                "name": "oracle_backend_matrix_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted oracle backend-matrix artifact differs from current "
+                    "Vulkan/HIP oracle artifact metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(matrix_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status")
+        if isinstance(persisted, dict)
+        else None,
+        "current_status": current_matrix.get("status"),
+        "persisted_backend_outcomes": persisted.get("backend_outcomes")
+        if isinstance(persisted, dict)
+        else None,
+        "current_backend_outcomes": current_matrix.get("backend_outcomes"),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -251,6 +323,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         tokenizer_timeout_s=args.tokenizer_timeout_s,
         artifact_date=args.artifact_date,
     )
+    if args.verify_matrix is not None:
+        verification = verify_oracle_backend_matrix(
+            args.verify_matrix,
+            current_matrix=matrix,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = matrix["status"]
     elif args.backend_outcomes_only:
