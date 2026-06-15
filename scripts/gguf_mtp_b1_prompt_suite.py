@@ -53,11 +53,24 @@ DEFAULT_LLAMACPP_TOKENS = Path(
     "benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
 )
 DEFAULT_SAMPLING = Path("benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json")
+DEFAULT_SAMPLING_BY_DRAFT_MAX = {
+    1: DEFAULT_SAMPLING,
+    2: Path("benchmarks/fixtures/gguf_mtp_b2_sampling_greedy_seed12345.json"),
+    3: Path("benchmarks/fixtures/gguf_mtp_b3_sampling_greedy_seed12345.json"),
+    4: Path("benchmarks/fixtures/gguf_mtp_b4_sampling_greedy_seed12345.json"),
+}
 DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json")
 
 
 class B1PromptSuitePreflightError(RuntimeError):
     """Raised when the B1 harness cannot build a preflight artifact."""
+
+
+def default_sampling_fixture(draft_max: int) -> Path:
+    try:
+        return DEFAULT_SAMPLING_BY_DRAFT_MAX[int(draft_max)]
+    except KeyError as exc:
+        raise B1PromptSuitePreflightError("draft_max must be in 1..4 for B1-B4 preflight") from exc
 
 
 def _kernel_key_payload(key: KernelKey) -> list[str]:
@@ -662,8 +675,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompts-file", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--hipengine-token-inventory", type=Path, default=DEFAULT_HIPENGINE_TOKENS)
     parser.add_argument("--llamacpp-token-inventory", type=Path, default=DEFAULT_LLAMACPP_TOKENS)
-    parser.add_argument("--hipengine-sampling", type=Path, default=DEFAULT_SAMPLING)
-    parser.add_argument("--llamacpp-sampling", type=Path, default=DEFAULT_SAMPLING)
+    parser.add_argument(
+        "--hipengine-sampling",
+        type=Path,
+        help="hipEngine sampling fixture (default: matching gguf_mtp_bN fixture for --draft-max)",
+    )
+    parser.add_argument(
+        "--llamacpp-sampling",
+        type=Path,
+        help="llama.cpp sampling fixture (default: matching gguf_mtp_bN fixture for --draft-max)",
+    )
     parser.add_argument("--oracle-fixture", type=Path, default=DEFAULT_ORACLE_FIXTURE)
     parser.add_argument("--llamacpp-trace-fixture", type=Path, default=DEFAULT_LLAMACPP_TRACE_FIXTURE)
     parser.add_argument("--prompt-limit", type=int)
@@ -683,13 +704,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    default_sampling = default_sampling_fixture(args.draft_max)
     artifact = build_b1_prompt_suite_artifact(
         model=args.model,
         prompts_file=args.prompts_file,
         hipengine_token_inventory=args.hipengine_token_inventory,
         llamacpp_token_inventory=args.llamacpp_token_inventory,
-        hipengine_sampling=args.hipengine_sampling,
-        llamacpp_sampling=args.llamacpp_sampling,
+        hipengine_sampling=args.hipengine_sampling or default_sampling,
+        llamacpp_sampling=args.llamacpp_sampling or default_sampling,
         oracle_fixture=args.oracle_fixture,
         llamacpp_trace_fixture=args.llamacpp_trace_fixture,
         prompt_limit=args.prompt_limit,

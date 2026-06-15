@@ -328,8 +328,11 @@ and the hipEngine fixture now matches it on all 9 D32 prompts after porting the
 Qwen3.5 pre-tokenizer semantics. The B1 deterministic sampling/request artifact
 is committed at `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json`
 and now encodes the llama.cpp draft sampler contract (`top_k=10`, greedy top-1
-from the top-k set), so Parity Preconditions (a) and (b) have fixture coverage;
-M5 still also requires the numeric KL/top-1 gate and actual GGUF MTP execution.
+from the top-k set). Matching B2-B4 deterministic fixtures are also committed as
+`benchmarks/fixtures/gguf_mtp_b{2,3,4}_sampling_greedy_seed12345.json`, so the
+preflight child can pick a budget-matched fixture for `--draft-max {1,2,3,4}` by
+default. Parity Preconditions (a) and (b) have fixture coverage; M5 still also
+requires the numeric KL/top-1 gate and actual GGUF MTP execution.
 
 ## Implementation Milestones
 
@@ -887,8 +890,9 @@ is now answered by the M1 required/optional table.)
       the hipEngine-side `Qwen35GGUFMTPVerificationMetrics` denominator contract
       that native runtime must fill.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
-      `--draft-max {1,2,3,4}` for budget-aware blocked artifacts; actual B2-B4
-      execution/parity still waits on native draft execution.
+      `--draft-max {1,2,3,4}` for budget-aware blocked artifacts and selects the
+      matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default;
+      actual B2-B4 execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
       `full_vocab_d2h` fallback/oracle is registered and advertised in MTP

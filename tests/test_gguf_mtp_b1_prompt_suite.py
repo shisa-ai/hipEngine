@@ -366,6 +366,33 @@ def test_b1_prompt_suite_preflight_can_request_b4_when_sampling_matches(
     ]
 
 
+def test_b1_prompt_suite_default_sampling_fixtures_cover_b1_to_b4(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    for draft_max in (1, 2, 3, 4):
+        fixture = suite.default_sampling_fixture(draft_max)
+        artifact = suite.build_b1_prompt_suite_artifact(
+            model=tmp_path / "model.gguf",
+            prompts_file=_prompt_suite(tmp_path / f"prompts-b{draft_max}.json"),
+            hipengine_token_inventory=_token_inventory(tmp_path / f"hip-b{draft_max}.json"),
+            llamacpp_token_inventory=_token_inventory(tmp_path / f"llama-b{draft_max}.json"),
+            hipengine_sampling=fixture,
+            llamacpp_sampling=fixture,
+            draft_max=draft_max,
+        )
+
+        assert artifact["budget"] == f"B{draft_max}"
+        assert artifact["draft_budget_precheck"]["passed"] is True
+        assert artifact["draft_sampling_contract_precheck"]["passed"] is True
+        assert artifact["blockers"][0]["code"] == "native_gguf_mtp_runtime_missing"
+
+    with pytest.raises(suite.B1PromptSuitePreflightError, match="draft_max"):
+        suite.default_sampling_fixture(5)
+
+
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

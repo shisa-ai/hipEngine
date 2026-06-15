@@ -96297,3 +96297,53 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. The contract only records denominator accounting for future
   accepted/output artifacts.
+
+## 2026-06-15 - MTP-GGUF B1-B4 sampling fixtures
+
+Implemented `mtp-gguf` multiloop iteration 80: added committed deterministic
+sampling fixtures for B2-B4 and taught the GGUF MTP preflight child to choose the
+budget-matched default fixture for `--draft-max`.
+
+Scope note:
+- Preflight fixture/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- This lets B2-B4 blocked artifacts pass budget/sampling-contract prechecks
+  without manual `--hipengine-sampling` / `--llamacpp-sampling` overrides before
+  native runtime exists.
+
+Changes:
+- Added deterministic sampling fixtures:
+  - `benchmarks/fixtures/gguf_mtp_b2_sampling_greedy_seed12345.json`
+  - `benchmarks/fixtures/gguf_mtp_b3_sampling_greedy_seed12345.json`
+  - `benchmarks/fixtures/gguf_mtp_b4_sampling_greedy_seed12345.json`
+- Added `DEFAULT_SAMPLING_BY_DRAFT_MAX` and `default_sampling_fixture()` to
+  `scripts/gguf_mtp_b1_prompt_suite.py`.
+- `scripts/gguf_mtp_b1_prompt_suite.py --draft-max N` now defaults both
+  hipEngine and llama.cpp sampling inputs to the matching `gguf_mtp_bN_*`
+  fixture unless explicit sampling paths are passed.
+- Extended B1 preflight tests to cover default B1-B4 fixture selection, passing
+  budget prechecks, passing draft sampling contract prechecks, and invalid budget
+  rejection.
+- Updated `docs/MTP-gguf.md` to document the committed B1-B4 fixture family and
+  default preflight selection behavior.
+
+Validation:
+- Focused B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `13` passed.
+- Real local B4 preflight smoke passed with no explicit sampling override:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` ->
+  `suite blocked B4 budget_precheck True sampling_precheck True blocker native_gguf_mtp_runtime_missing`.
+- `py_compile`, JSON validation, and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py`,
+  `/home/lhl/miniforge3/envs/therock/bin/python -m json.tool benchmarks/fixtures/gguf_mtp_b{1,2,3,4}_sampling_greedy_seed12345.json`, and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py benchmarks/fixtures/gguf_mtp_b2_sampling_greedy_seed12345.json benchmarks/fixtures/gguf_mtp_b3_sampling_greedy_seed12345.json benchmarks/fixtures/gguf_mtp_b4_sampling_greedy_seed12345.json docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight fixture/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. Future MTP attention/KV-write execution remains
+  KVLiveSpans-gated.
