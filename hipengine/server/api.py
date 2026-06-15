@@ -173,7 +173,9 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "not",
         "properties",
         "patternProperties",
+        "propertyNames",
         "required",
+        "dependentRequired",
         "additionalProperties",
         "minProperties",
         "maxProperties",
@@ -872,7 +874,9 @@ def _tool_schema_subset() -> list[str]:
         "composition.not",
         "object.properties",
         "object.patternProperties",
+        "object.propertyNames",
         "object.required",
+        "object.dependentRequired",
         "object.additionalProperties=false",
         "object.additionalProperties=schema",
         "object.minProperties",
@@ -9703,12 +9707,33 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             if error is not None:
                 return error
 
+    property_names = schema.get("propertyNames")
+    if property_names is not None:
+        if not isinstance(property_names, Mapping):
+            return (f"{path}.propertyNames", f"{path}.propertyNames must be an object")
+        error = _validate_json_schema_subset(property_names, path=f"{path}.propertyNames")
+        if error is not None:
+            return error
+
     required = schema.get("required")
     if required is not None:
         if not isinstance(required, Sequence) or isinstance(required, (str, bytes)):
             return (f"{path}.required", f"{path}.required must be an array of strings")
         if any(not isinstance(item, str) for item in required):
             return (f"{path}.required", f"{path}.required must contain only strings")
+
+    dependent_required = schema.get("dependentRequired")
+    if dependent_required is not None:
+        if not isinstance(dependent_required, Mapping):
+            return (f"{path}.dependentRequired", f"{path}.dependentRequired must be an object")
+        for raw_key, dependencies in dependent_required.items():
+            dependency_path = f"{path}.dependentRequired.{raw_key}"
+            if not isinstance(raw_key, str):
+                return (f"{path}.dependentRequired", f"{path}.dependentRequired keys must be strings")
+            if not isinstance(dependencies, Sequence) or isinstance(dependencies, (str, bytes)):
+                return (dependency_path, f"{dependency_path} must be an array of strings")
+            if any(not isinstance(item, str) for item in dependencies):
+                return (dependency_path, f"{dependency_path} must contain only strings")
 
     additional_properties = schema.get("additionalProperties")
     if "additionalProperties" in schema:
@@ -9813,6 +9838,22 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
             for key in required:
                 if isinstance(key, str) and key not in value:
                     return f"{path}.{key} is required"
+        property_names = schema.get("propertyNames")
+        if isinstance(property_names, Mapping):
+            for raw_key in value:
+                key = str(raw_key)
+                error = _validate_json_schema_value(key, property_names, path=f"{path}.{key}")
+                if error is not None:
+                    return f"{path}.{key} property name is invalid"
+        dependent_required = schema.get("dependentRequired")
+        if isinstance(dependent_required, Mapping):
+            for raw_key, dependencies in dependent_required.items():
+                if not isinstance(raw_key, str) or raw_key not in value:
+                    continue
+                if isinstance(dependencies, Sequence) and not isinstance(dependencies, (str, bytes)):
+                    for dependency in dependencies:
+                        if isinstance(dependency, str) and dependency not in value:
+                            return f"{path}.{dependency} is required when {raw_key} is present"
         properties = schema.get("properties")
         property_map = properties if isinstance(properties, Mapping) else {}
         for key, subschema in property_map.items():

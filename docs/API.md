@@ -466,7 +466,8 @@ left partially emitted.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 schema composition with `allOf` / `anyOf` / `oneOf` / `not`, object
-`properties` / `patternProperties` / `required` /
+`properties` / `patternProperties` / `propertyNames` / `required` /
+`dependentRequired` /
 `additionalProperties: false` or a schema / `minProperties` / `maxProperties`,
 array `items` with `minItems` / `maxItems`, `uniqueItems`, string `minLength` /
 `maxLength` / `pattern`, and numeric `minimum` / `maximum` /
@@ -514,8 +515,9 @@ reason under
 `"host_json_object_suffix"` for the host close-forcing path.
 
 JSON-schema result validation uses the same supported subset as strict tool
-argument validation: `type`, `enum`, `const`, object `properties` / `required` /
-`patternProperties` / `additionalProperties: false` or a supported subschema /
+argument validation: `type`, `enum`, `const`, object `properties` /
+`patternProperties` / `propertyNames` / `required` / `dependentRequired` /
+`additionalProperties: false` or a supported subschema /
 `minProperties` / `maxProperties`, array `items` / `minItems` / `maxItems` /
 `uniqueItems`, string `minLength` / `maxLength` / `pattern`, numeric min/max
 / `multipleOf` bounds, and schema composition with `allOf` / `anyOf` / `oneOf`
