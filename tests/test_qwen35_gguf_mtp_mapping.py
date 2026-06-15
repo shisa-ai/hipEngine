@@ -368,6 +368,21 @@ def test_qwen35moe_gguf_mtp_draft_tensor_plan_rejects_unknown_qtype_binding() ->
         dict(plan.qtype_enum_argument_map)
 
 
+def test_qwen35moe_gguf_mtp_draft_tensor_plan_rejects_mixed_shared_qtypes() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.ffn_up_shexp.weight", (6, 8), ggml_type_name="Q8_0"),
+        ],
+    )
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="shared_qtype to both F32 and Q8_0",
+    ):
+        dict(plan.qtype_argument_map)
+
+
 def test_qwen35moe_gguf_mtp_draft_tensor_plan_prefers_present_optional_tensors() -> None:
     info = _synthetic_qwen35moe_mtp_info(
         extra_tensors=[

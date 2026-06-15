@@ -94087,3 +94087,44 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF shared qtype consistency regression
+
+Implemented `mtp-gguf` multiloop iteration 32: added explicit regression
+coverage for mixed GGUF types bound to the same CPU-reference qtype argument in
+the GGUF MTP draft tensor plan.
+
+Scope note:
+- This is test-only coverage for an existing torch-free loader metadata guard.
+  It does not materialize weights, alter runtime generation, dispatch GPU
+  kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI; this test only pins metadata fail-fast behavior for future CPU parity
+  harnesses.
+
+Evidence:
+- Synthetic mixed-qtype smoke:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... dict(plan.qtype_argument_map) ... PY`
+  raised `MissingGGUFTensorError` with:
+  `MTP draft tensor plan for block 2 maps shared_qtype to both F32 and Q8_0`.
+
+Changes:
+- Added `test_qwen35moe_gguf_mtp_draft_tensor_plan_rejects_mixed_shared_qtypes`.
+  - Overrides one shared expert tensor (`blk.2.ffn_up_shexp.weight`) to `Q8_0`
+    while the other shared qtype-bound synthetic tensors remain `F32`.
+  - Asserts `qtype_argument_map` raises instead of silently selecting one shared
+    qtype.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `25` selected tests (`19` pass, `6` skip).
+- Mapping tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py` -> `16` passed.
+- Focused qtype tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py -k 'qtype or tensor_plan'` -> `4` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for the updated mapping test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: test-only loader metadata coverage, no backend/quant
+  branches, no runtime generation/GPU/KV path changes, no performance claims.
