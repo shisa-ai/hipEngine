@@ -696,6 +696,7 @@ def build_b1_b4_prompt_suite_matrix(
     llamacpp_trace_fixture: Path = DEFAULT_LLAMACPP_TRACE_FIXTURE,
     prompt_limit: int | None = None,
     backend: str = DEFAULT_BACKEND,
+    include_artifacts: bool = True,
 ) -> dict[str, Any]:
     artifacts = [
         build_b1_prompt_suite_artifact(
@@ -714,7 +715,7 @@ def build_b1_b4_prompt_suite_matrix(
         for draft_max in (1, 2, 3, 4)
     ]
     readiness_by_budget = {item["budget"]: _matrix_budget_readiness(item) for item in artifacts}
-    return {
+    matrix = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
         "mode": "preflight",
@@ -723,6 +724,8 @@ def build_b1_b4_prompt_suite_matrix(
         "backend": str(backend),
         "budgets": [item["budget"] for item in artifacts],
         "draft_max_values": [item["draft_max"] for item in artifacts],
+        "artifact_count": len(artifacts),
+        "artifacts_included": bool(include_artifacts),
         "all_parity_prechecks_pass": all(item["parity_precheck"]["all_pass"] for item in artifacts),
         "all_budget_prechecks_pass": all(item["draft_budget_precheck"]["passed"] for item in artifacts),
         "all_sampling_contract_prechecks_pass": all(
@@ -742,8 +745,10 @@ def build_b1_b4_prompt_suite_matrix(
         "blocker_codes_by_budget": {
             budget: readiness["blocker_codes"] for budget, readiness in readiness_by_budget.items()
         },
-        "artifacts": artifacts,
     }
+    if include_artifacts:
+        matrix["artifacts"] = artifacts
+    return matrix
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -779,6 +784,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="emit a B1-B4 preflight matrix using budget-matched default sampling fixtures",
     )
+    parser.add_argument(
+        "--compact-matrix",
+        action="store_true",
+        help="with --all-budgets, omit full child artifacts and keep only readiness summaries",
+    )
     parser.add_argument("--out", type=Path, help="write JSON artifact to this path")
     parser.add_argument(
         "--fail-on-blocked",
@@ -787,6 +797,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.compact_matrix and not args.all_budgets:
+        parser.error("--compact-matrix requires --all-budgets")
     if args.all_budgets:
         if args.hipengine_sampling or args.llamacpp_sampling:
             parser.error("--all-budgets uses budget-matched default sampling fixtures; omit sampling overrides")
@@ -799,6 +811,7 @@ def main(argv: list[str] | None = None) -> int:
             llamacpp_trace_fixture=args.llamacpp_trace_fixture,
             prompt_limit=args.prompt_limit,
             backend=args.backend,
+            include_artifacts=not args.compact_matrix,
         )
     else:
         default_sampling = default_sampling_fixture(args.draft_max)

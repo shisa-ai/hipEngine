@@ -411,6 +411,9 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["status"] == "blocked"
     assert matrix["budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
+    assert matrix["artifact_count"] == 4
+    assert matrix["artifacts_included"] is True
+    assert len(matrix["artifacts"]) == 4
     assert matrix["all_parity_prechecks_pass"] is True
     assert matrix["all_budget_prechecks_pass"] is True
     assert matrix["all_sampling_contract_prechecks_pass"] is True
@@ -452,6 +455,28 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         {"budget": "B4", "draft_max": 4},
     ]
     assert [item["hipengine_metrics_contract"]["draft_max"] for item in matrix["artifacts"]] == [1, 2, 3, 4]
+
+
+def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    matrix = suite.build_b1_b4_prompt_suite_matrix(
+        model=tmp_path / "model.gguf",
+        prompts_file=_prompt_suite(tmp_path / "prompts-compact.json"),
+        hipengine_token_inventory=_token_inventory(tmp_path / "hip-compact.json"),
+        llamacpp_token_inventory=_token_inventory(tmp_path / "llama-compact.json"),
+        prompt_limit=1,
+        include_artifacts=False,
+    )
+
+    assert matrix["artifact_count"] == 4
+    assert matrix["artifacts_included"] is False
+    assert "artifacts" not in matrix
+    assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
+    assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
 
 
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(

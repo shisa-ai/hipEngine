@@ -96434,3 +96434,44 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Readiness summary only aggregates existing blocked preflight status;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF compact matrix artifact
+
+Implemented `mtp-gguf` multiloop iteration 83: added a compact B1-B4 matrix
+artifact mode to the GGUF MTP preflight child.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This keeps the B1-B4 readiness/blocker summary while omitting the full child
+  artifacts, so preflight output can be stored as compact benchmark evidence
+  before native runtime exists.
+
+Changes:
+- Added `include_artifacts` to `build_b1_b4_prompt_suite_matrix(...)`.
+- Matrix artifacts now record `artifact_count` and `artifacts_included`.
+- Added `--compact-matrix`, valid only with `--all-budgets`, to omit the full
+  `artifacts` payload and keep `readiness_by_budget` / blocker summaries.
+- Extended preflight tests for the compact matrix shape.
+- Updated `docs/MTP-gguf.md` to document `--compact-matrix` for compact evidence.
+
+Validation:
+- Focused B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `15` passed.
+- Real local compact B1-B4 matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `compact_matrix blocked 4 False False ['native_gguf_mtp_runtime_missing']`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Compact matrix mode only omits full child artifacts while retaining
+  readiness/blocker summaries; future MTP attention/KV-write execution remains
+  KVLiveSpans-gated.
