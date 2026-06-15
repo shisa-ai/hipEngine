@@ -300,6 +300,13 @@ No-hold notes:
   both retained decode medians (`127.012 -> 126.784 tok/s`, `115.805 ->
   115.604 tok/s`) and lowered both prefill medians. Keep Q6_K T16 GEMV at
   `128,4`.
+- **G-D5 Q6 per-tile d preload rejected (2026-06-15).** Preloading the Q6_K T16
+  lm-head GEMV per-column `d[16]` and scales pointer outside the `k` loop
+  preserved generated IDs and memory and improved `512/128` prefill
+  (`1647.390 -> 1656.158 tok/s`), but regressed `4K/128` prefill
+  (`1855.806 -> 1855.017 tok/s`) and the retained `4K/128` decode gate
+  (`115.805 -> 115.579 tok/s`). Keep the original in-loop `d` loads unless an
+  ISA/occupancy profile proves the preload no longer costs the 4K path.
 - **G-D4 split decode threshold=8192 rejected (2026-06-15).** Raising the
   full-attention split/gate fused decode threshold from `1024` to `8192` forced
   the `4K/128` gate onto the direct context + gate-mul path and looked faster
