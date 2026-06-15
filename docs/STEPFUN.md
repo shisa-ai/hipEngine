@@ -993,7 +993,10 @@ reporting.
   `llama_cpp_same_prompt_logits_artifact_present`; after applying the retained patch and rebuilding `llama-debug`, this
   verifier is the mechanical check before rerunning the retained-token logits probe; it also binds the ordered
   patch/build/probe handoff commands with command-record digest
-  `73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d` so the external-tree steps stay reproducible.
+  `73702fd003b435a97749cd5ae47d95025fc58d3f5a382c10738af98629681a3d` so the external-tree steps stay reproducible;
+  `python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only` is the
+  drift check for that readiness artifact and currently returns `match` with verifier digest
+  `5e676bc2d211067a762ae1ae3aa11455e33076f46f6e360960dd1c5ce8dff74c`.
   The contract reports
   `implementation_ready=true`
   and `source_hooks_ready=true`, but remains `status=blocked` until `same_prompt_logits_helper_built` and

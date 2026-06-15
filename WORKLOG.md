@@ -42143,3 +42143,48 @@ python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
 ```
 
 Results: targeted KV session-contract tests passed (`4` tests); KV session verifier status returns `"match"`, verifier failures `[]`, verifier digest `99c952ec1bf3a3e131f40a604d5763ac4ad628a2763a2671692ac4d942e903b3`; status/final-blocker/handoff verification returned `"match"`; KV session status remains `"blocked"`; `--blocked-by-only` remains `"streaming_decode_loop_not_wired"`; final manifest entries SHA `c9f34d306875101b4efa75357761be61bc44bb6615d793081fed0d361ed71554`, manifest SHA `b0942d9aaa453c8c9be03a2cb17d63d9d77a468525340a9a0c101dd34429e201`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are KV session `8b3f137e6ead32ae150d2dd84a67146c0d983da19249be117e40397941a653da`, remaining-blockers rollup `9980715cc5f030d8a8b7a74c295a4234c59e9b0379e5cc3ac8af749afcdbd898`, correctness-status `5cb8903ba2e7413f12a73d3c140bcf41babb4e7828a2df15de2cc5480cdd7bb1`, final-blocker `67378bf74ae588da2021283bc16f4d532893452b881e1cb541255604ed6e9a6b`, handoff `ab95217ca6d0410f87f46a08872b06d3f80fe16de4a2f1b34093b49b78f848fd`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp helper readiness drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 528. Added an explicit verifier for the retained-token llama.cpp helper readiness artifact. `scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness` now rebuilds the no-side-effect helper readiness report from the current external llama.cpp patch/build/probe metadata and compares it with the persisted `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json`, with compact status/failure/digest modes for handoff polling. This verifies the oracle-helper blocker metadata for drift before it is consumed by the remaining-blockers rollup or final handoff; it does not apply the external patch, rebuild `llama-debug`, capture logits, satisfy oracle parity, wire KV decode, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json` remains unchanged at file SHA `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191` and stable payload SHA `8003614229ffb72144300079ef4cc99eeb636e62adb583785b2be0c7c562ebf7`; it remains `status=blocked` with missing evidence `llama_cpp_token_ids_helper_patch_applied`, `llama_debug_retained_token_ids_input_present`, and `llama_cpp_same_prompt_logits_artifact_present`. `--verify-readiness --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `5e676bc2d211067a762ae1ae3aa11455e33076f46f6e360960dd1c5ce8dff74c`. Refreshed `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, `benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json`, and `benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json` after documenting the new verifier. The rollup remains `status=blocked`, open count `2`, stable payload SHA `55c6ad332615e7216b38b8707602ccdd9a392fe2740248afed6acd05ec47dbd7`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_llamacpp_logits_helper_readiness.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_helper_readiness.py
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-failures-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --missing-evidence-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --open-count-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_llamacpp_logits_helper_readiness.py tests/test_stepfun_llamacpp_logits_helper_readiness.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-readiness.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-failures-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+```
+
+Results: targeted helper readiness tests passed (`5` tests); helper readiness verifier status returns `"match"`, verifier failures `[]`, verifier digest `5e676bc2d211067a762ae1ae3aa11455e33076f46f6e360960dd1c5ce8dff74c`; status/final-blocker/handoff verification returned `"match"`; helper readiness status remains `"blocked"`; helper missing evidence remains `["llama_cpp_token_ids_helper_patch_applied", "llama_debug_retained_token_ids_input_present", "llama_cpp_same_prompt_logits_artifact_present"]`; final manifest entries SHA `c9f34d306875101b4efa75357761be61bc44bb6615d793081fed0d361ed71554`, manifest SHA `90040c0512e06cccb4f64f7a825e7bb1d39ce07e41d8b5cfb3941c687a4884df`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are helper readiness `8d6ddb13463fde594ab3dff2fc25cb9b1cbe134cc744b1bef6ad5d932655f191`, remaining-blockers rollup `281f31a417d15ab4d7bafb1bdd5447a00fd0a0c89ba5438a83e46eef0839a187`, correctness-status `b0825227ac17dbc81bdf934c699b3008a451c77d6b2a9fac8a8ba243f880c44e`, final-blocker `ffa29cc7b1ea77feb6dfac441a79531e861acb16b0028289cd9d3a079fe0494c`, handoff `d1241e6c7bd89842e32a07e8dacdefd551054f07f5bcc3204376b814bcb330b7`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.

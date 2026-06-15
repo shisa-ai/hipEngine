@@ -6,11 +6,19 @@ import stat
 import subprocess
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
 from scripts.stepfun_llamacpp_logits_helper_readiness import (
     PATCH_APPLIED_MARKERS,
     build_llamacpp_logits_helper_readiness,
     main,
+    verify_llamacpp_logits_helper_readiness,
 )
+
+
+def _stable_json_sha256(payload: object) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -295,3 +303,103 @@ def test_stepfun_llamacpp_logits_helper_readiness_cli_modes(tmp_path: Path) -> N
     ]
     assert main([*base_args, "--sha-only", "--output", str(output)]) == 0
     assert isinstance(json.loads(output.read_text()), str)
+
+
+def test_stepfun_llamacpp_logits_helper_readiness_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "llama.cpp"
+    patch = tmp_path / "helper.patch"
+    dry_run = tmp_path / "dry-run.json"
+    helper = tmp_path / "build/bin/llama-debug"
+    logits = tmp_path / "logits.json"
+    artifact = tmp_path / "readiness.json"
+    output = tmp_path / "verify.json"
+    _write_source(root, patched=False)
+    _init_git(root)
+    patch.write_text("patch")
+    _write_dry_run_artifact(dry_run, patch=patch)
+    _write_fake_llama_debug(helper, help_text="--save-logits --logits-output-dir --special")
+    _write_json(logits, {"status": "blocked", "ready": False})
+    base_args = [
+        "--llama-cpp-root",
+        str(root),
+        "--llama-debug",
+        str(helper),
+        "--patch-artifact",
+        str(patch),
+        "--patch-dry-run-artifact",
+        str(dry_run),
+        "--llama-logits-artifact",
+        str(logits),
+        "--artifact-date",
+        "2030-04-13",
+    ]
+    current = build_llamacpp_logits_helper_readiness(
+        llama_cpp_root=root,
+        llama_debug=helper,
+        patch_artifact=patch,
+        patch_dry_run_artifact=dry_run,
+        llama_logits_artifact=logits,
+        artifact_date="2030-04-13",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_llamacpp_logits_helper_readiness(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_missing_evidence"] == current["missing_evidence"]
+    assert verification["current_missing_evidence"] == current["missing_evidence"]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-readiness",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["status"] = "ready"
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_llamacpp_logits_helper_readiness(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "llamacpp_logits_helper_readiness_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-readiness",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "llamacpp_logits_helper_readiness_drift"
+    )

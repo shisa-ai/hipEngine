@@ -99,6 +99,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ready-only", action="store_true", help="Emit only end-to-end readiness boolean.")
     parser.add_argument("--missing-evidence-only", action="store_true", help="Emit only missing evidence.")
     parser.add_argument("--sha-only", action="store_true", help="Emit stable SHA-256 of the selected payload.")
+    parser.add_argument(
+        "--verify-readiness",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted retained-token helper readiness artifact with "
+            f"current patch/build/probe metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-readiness, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-readiness, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-readiness, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -387,6 +413,49 @@ def build_llamacpp_logits_helper_readiness(
     }
 
 
+def verify_llamacpp_logits_helper_readiness(
+    readiness_artifact: Path,
+    *,
+    current_report: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted helper-readiness artifact with current metadata."""
+
+    persisted = _load_json_object(readiness_artifact)
+    if persisted is None:
+        raise FileNotFoundError(readiness_artifact)
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_report)
+    failures: list[dict[str, object]] = []
+    if persisted != current_report:
+        failures.append(
+            {
+                "name": "llamacpp_logits_helper_readiness_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted retained-token helper readiness artifact differs "
+                    "from current llama.cpp patch/build/probe metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    return {
+        "schema_version": 1,
+        "artifact_path": str(readiness_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": persisted.get("status"),
+        "current_status": current_report.get("status"),
+        "persisted_missing_evidence": persisted.get("missing_evidence"),
+        "current_missing_evidence": current_report.get("missing_evidence"),
+    }
+
+
 def _select_payload(report: dict[str, object], args: argparse.Namespace) -> object:
     if args.status_only:
         return report["status"]
@@ -423,6 +492,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         llama_logits_artifact=args.llama_logits_artifact,
         artifact_date=args.artifact_date,
     )
+    if args.verify_readiness is not None:
+        verification = verify_llamacpp_logits_helper_readiness(
+            args.verify_readiness,
+            current_report=report,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        _write_json(payload, output=output, pretty=args.pretty)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     payload = _select_payload(report, args)
     if args.sha_only:
         payload = status_mod._stable_json_sha256(payload)
