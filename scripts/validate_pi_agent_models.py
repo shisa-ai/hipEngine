@@ -500,7 +500,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config)
-        if args.base_url or args.chat_smoke or args.reasoning_smoke:
+        if args.base_url or args.chat_smoke or args.streaming_smoke or args.reasoning_smoke:
             provider = _live_provider(config, provider_name=args.provider)
             base_url = str(args.base_url or provider["baseUrl"])
             api_key = args.api_key if args.api_key is not None else str(provider.get("apiKey") or "")

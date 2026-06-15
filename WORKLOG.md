@@ -92415,3 +92415,18 @@ Validation:
 - `uv run pytest tests/test_local_agent_config.py -q` -> `41 passed`.
 - `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
 - `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+
+## 2026-06-15 - AGENTIC pi streaming smoke CLI live mode
+
+Fixed the pi validator CLI so `--streaming-smoke` alone enters live validation
+mode, fetches `/v1/hipengine/capabilities`, and runs the SSE smoke against the
+configured provider URL. Added a monkeypatched CLI regression to prove
+`--streaming-smoke` does not get silently treated as offline-only validation
+when `--base-url`, `--chat-smoke`, and `--reasoning-smoke` are absent.
+
+Validation:
+- `uv run pytest tests/test_local_agent_config.py -q -k 'streaming_smoke_cli or pi_agent_streaming'` -> `6 passed`.
+- `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
+- `uv run ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> clean.
+- `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.

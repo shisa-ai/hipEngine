@@ -772,6 +772,72 @@ def test_pi_agent_streaming_chat_smoke_response_rejects_raw_tool_call_markup() -
         )
 
 
+def test_pi_agent_streaming_smoke_cli_enters_live_mode_without_base_url(monkeypatch, capsys) -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    provider = config["providers"]["hipengine-local"]
+    model_id = provider["models"][0]["id"]
+    capabilities = {
+        "model": {"id": model_id},
+        "context": {"effective_max_context_tokens": provider["models"][0]["contextWindow"]},
+        "features": {
+            "chat_completions": True,
+            "streaming": True,
+            "stream_options": {"include_usage": True},
+            "tools": {"enabled": True},
+            "reasoning_controls": {"enabled": True, "fields": ["enable_thinking"]},
+        },
+    }
+    calls: dict[str, object] = {}
+
+    def fake_fetch_capabilities(base_url, *, api_key=None, timeout=10.0):
+        calls["fetch"] = {"base_url": base_url, "api_key": api_key, "timeout": timeout}
+        return capabilities
+
+    def fake_streaming_smoke(base_url, config, capabilities, *, api_key=None, timeout=30.0):
+        calls["streaming"] = {
+            "base_url": base_url,
+            "api_key": api_key,
+            "timeout": timeout,
+            "model": capabilities["model"]["id"],
+        }
+        return {
+            "finish_reason": "tool_calls",
+            "tool_name": "record_result",
+            "argument_keys": ["result"],
+            "result": "ok",
+            "sse_payloads": 4,
+            "usage_chunk": True,
+            "done": True,
+        }
+
+    monkeypatch.setattr(validate_pi_agent_models, "fetch_capabilities", fake_fetch_capabilities)
+    monkeypatch.setattr(validate_pi_agent_models, "run_pi_streaming_chat_smoke", fake_streaming_smoke)
+
+    status = validate_pi_agent_models.main(
+        ["--config", str(PI_CONFIG_PATH), "--streaming-smoke"]
+    )
+
+    assert status == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True
+    assert out["streaming_smoke"]["done"] is True
+    assert "chat_smoke" not in out
+    assert "reasoning_smoke" not in out
+    assert calls == {
+        "fetch": {
+            "base_url": provider["baseUrl"],
+            "api_key": provider["apiKey"],
+            "timeout": 10.0,
+        },
+        "streaming": {
+            "base_url": provider["baseUrl"],
+            "api_key": provider["apiKey"],
+            "timeout": 30.0,
+            "model": model_id,
+        },
+    }
+
+
 @pytest.mark.parametrize(
     "content",
     [
