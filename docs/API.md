@@ -214,7 +214,8 @@ metadata when the backend provides it (`active_processors`,
 `logits_d2h_bytes` is the per-token full-vocabulary logits vector readback size
 when known, not a cumulative transfer counter. Current PARO/GGUF host-logits
 sampled paths report `full_vocab_logits_d2h=true` with the known vector byte
-size; the PARO c=1 native GPU sampler reports `false` and `0`.
+size; PARO c=1 and env-enabled c>N serial per-slot native GPU sampler routes
+report `false` and `0`.
 PARO scheduler-owned c>N paths report `execution_path` plus the native packed
 prefill / c-aware decode / serial fallback flags when that metadata is known.
 For engines that yield detailed stream chunks with backend `GenerationTelemetry`,
@@ -967,10 +968,10 @@ in local, non-sensitive debugging sessions.
   `suppress_token_ids`, forced-token queues, `min_tokens` / `eos_token_id`,
   `seed`, and `n` through the host-logits compatibility path.
   Greedy-equivalent requests stay on each engine's graph/argmax fast path. PARO
-  c=1 also has a default-off native GPU sampler route for supported sampled
-  requests behind
-  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; c>N, GGUF, `top_logprobs`,
-  suppress-token ids, min-token/EOS policy, forced-token queues,
+  c=1 and scheduler-owned c>N serial per-slot decode also have a default-off
+  native GPU sampler route for supported sampled requests behind
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; true batched c>N sampling, GGUF,
+  `top_logprobs`, suppress-token ids, min-token/EOS policy, forced-token queues,
   sequence-completion repair, JSON object close forcing, thinking-budget
   controls, and unsupported native filter combinations fall back to the host
   path. The capabilities manifest
@@ -996,8 +997,8 @@ in local, non-sensitive debugging sessions.
 - OpenAI `stop` strings are always post-trimmed; when tokenizer access is
   available, one-token stops lower to runtime `stop_token_ids` and multi-token
   stops lower to suffix-matched `stop_token_sequences` for early runtime
-  termination. PARO c=1 native sampling checks the same metadata after token
-  selection; native c>N and GGUF GPU paths still need parity.
+  termination. PARO c=1 and serial per-slot c>N native sampling check the same
+  metadata after token selection; GGUF GPU sampling still needs parity.
 - Tool calling uses Qwen-style prompt markup and output parsing; malformed
   `<tool_call>` JSON is treated as ordinary assistant text except for the common
   duplicated-start wrapper around otherwise valid inner tool JSON.

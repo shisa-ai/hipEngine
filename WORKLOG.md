@@ -92869,3 +92869,43 @@ Comparison:
 Validation/docs:
 - `python3 -m json.tool benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json >/dev/null` -> passed.
 - Updated `benchmarks/README.md` diagnostic history and `benchmarks/CHANGELOG.md` with `performance_claim=false` blocker status.
+
+## 2026-06-15 - PARO c>N serial native sampler rows
+
+Implemented the next AGENTIC sampler slice for PARO sampled batches:
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=1` can now route scheduler-owned c>N sampled
+rows through per-slot native GPU sampler state when every row is covered by the
+existing native sampler contract. Unsupported rows still use the host sampler
+with explicit `native_gpu_unsupported_request` fallback metadata. This is not a
+true batched native sampler path; decode still uses the serial layer bridge.
+
+Runtime/generation changes:
+- Added `configure_native_sampler_rows()` and per-slot native sampler state to
+  `Qwen35ParoResidentSession`, with slot-aware sampling shared by packed prefill
+  and serial decode.
+- `Qwen35ParoOneTokenGenerator._generate_batch_sampled()` now plans rows with
+  native availability only when the resident session exposes native row
+  configuration, chooses native row sampling only for all-`GPU_SAMPLE` batches,
+  and records `native_sampler_rows` plus the native/host execution path.
+- Updated `docs/AGENTIC.md`, `docs/API.md`, and `docs/SAMPLING.md` to reflect
+  serial per-slot c>N native sampling while keeping true batched c>N, GGUF,
+  `top_logprobs`, and performance promotion as open work.
+
+Server-contract note:
+- Existing coverage already includes pi/local-agent smoke validators and the
+  agentic golden trace harness for tool, reasoning, structured-output,
+  continuation/session, streaming, and failure patterns. No new live server test
+  family was needed for this sampler-path change; the targeted unit tests cover
+  the changed runtime telemetry consumed by those server paths.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py tests/test_local_agent_config.py` -> passed.
+- `uv run pytest tests/test_generation_qwen35_paro.py -q -k 'sampled_batch_uses_scheduler_packed_prefill or sampled_batch_uses_native_sampler_rows_when_available'` -> `3 passed`.
+- `uv run pytest tests/test_gpu_sampler_kernel.py -q -k 'native_sampler_route_falls_back_to_host_for_forced_tokens or native_sampler_rows_route_by_slot_and_clear_host_state'` -> `2 passed`.
+- `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run ruff check hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py tests/test_local_agent_config.py` -> `All checks passed!`.
+- `uv run pytest tests/test_generation_qwen35_paro.py -q` -> `39 passed`.
+- `uv run pytest tests/test_gpu_sampler_kernel.py -q -k 'not gpu1 and not c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state'` -> `9 passed`.
+- `uv run pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+- `git diff --check -- hipengine/generation/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py docs/AGENTIC.md docs/API.md docs/SAMPLING.md` -> clean.

@@ -1860,6 +1860,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     ]
     assert generator.last_batch_generation["path"] == "scheduler_native_packed_prefill_serial_host_sampler_decode"
     assert generator.last_batch_generation["native_compact_prefill"] is True
+    assert generator.last_batch_generation["native_sampler_rows"] is False
     assert generator.last_batch_generation["sampler_plan_metadata"] == [
         {
             "request_id": 0,
@@ -1968,6 +1969,137 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     assert first_decode_state["sampler_fast_path_blockers"] == ["temperature", "logit_bias", "logprobs"]
     assert first_decode_state["full_vocab_logits_d2h"] is True
     assert first_decode_state["logits_d2h_bytes"] == 2048
+
+
+def test_qwen35_paro_sampled_batch_uses_native_sampler_rows_when_available(monkeypatch) -> None:
+    calls = []
+    token_rows = {"alpha": [10, 11], "beta": [20]}
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: None,
+            decode=lambda ids: {100: "A", 101: "B", 200: "C", 201: "D"}.get(int(ids[0]), "?"),
+        )
+        block_size = 256
+        vocab_size = 512
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length, kwargs.get("max_batch_size")))
+            self.max_sequence_length = max_sequence_length
+            self.max_batch_size = kwargs.get("max_batch_size", 1)
+
+        def configure_host_sampler_rows(self, params, states_by_slot):  # pragma: no cover - should not be selected
+            raise AssertionError("native row sampler fixture should not configure host rows")
+
+        def configure_native_sampler_rows(self, params, states_by_slot):
+            calls.append(
+                (
+                    "configure_native_sampler_rows",
+                    None if params is None else params.temperature,
+                    None if params is None else params.logit_bias,
+                    None
+                    if states_by_slot is None
+                    else {slot: tuple(state.generated_tokens) for slot, state in states_by_slot.items()},
+                )
+            )
+
+        def prefill_native_packed(self, slab, *, sample: bool = True):
+            calls.append(("prefill_native_packed", slab.request_ids, slab.physical_slot_ids, sample))
+            return tuple(
+                _result(100 + request_id, {0: "A", 1: "B"}[request_id], logprob={0: -0.1, 1: -0.2}[request_id])
+                for request_id in slab.request_ids
+            )
+
+        def step_batch_serial(self, token_ids, *, positions, slots, sample: bool = True):
+            calls.append(("step_batch_serial", tuple(token_ids), tuple(positions), tuple(slots), sample))
+            return (
+                _result(200, "C", logprob=-0.3),
+                _result(201, "D", logprob=-0.4),
+            )
+
+        def batch_execution_metadata(self, *, scheduler_owned: bool = False, native_decode: bool = False):
+            calls.append(("batch_execution_metadata", scheduler_owned, native_decode))
+            return SimpleNamespace(native_compact_prefill=True)
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    out = generator.generate(
+        _request(
+            prompts=("alpha", "beta"),
+            max_tokens=2,
+            temperature=0.7,
+            seed=5,
+            logit_bias={42: 1.5},
+            logprobs=True,
+        )
+    )
+
+    assert out == ["AC", "BD"]
+    assert calls == [
+        ("init", runner, 4096, 2),
+        ("configure_native_sampler_rows", 0.7, ((42, 1.5),), {0: (), 1: ()}),
+        ("prefill_native_packed", (0, 1), (0, 1), True),
+        ("configure_native_sampler_rows", 0.7, ((42, 1.5),), {0: (100,), 1: (101,)}),
+        ("step_batch_serial", (100, 101), (2, 1), (0, 1), True),
+        ("configure_native_sampler_rows", None, None, None),
+        ("batch_execution_metadata", True, False),
+    ]
+    assert generator.last_batch_generation["path"] == "scheduler_native_packed_prefill_serial_native_sampler_decode"
+    assert generator.last_batch_generation["native_compact_prefill"] is True
+    assert generator.last_batch_generation["native_sampler_rows"] is True
+    assert generator.last_batch_generation["sampler_plan_metadata"] == [
+        {
+            "request_id": 0,
+            "mode": "gpu_sample",
+            "active_processors": ["logit_bias"],
+            "sampler_fast_path_blockers": ["temperature", "logit_bias", "logprobs"],
+            "native_gpu_available": True,
+            "uses_host_logits": False,
+        },
+        {
+            "request_id": 1,
+            "mode": "gpu_sample",
+            "active_processors": ["logit_bias"],
+            "sampler_fast_path_blockers": ["temperature", "logit_bias", "logprobs"],
+            "native_gpu_available": True,
+            "uses_host_logits": False,
+        },
+    ]
+    assert [_decode_state(output)["sampler_mode"] for output in generator.last_generation_outputs] == [
+        "gpu_sample",
+        "gpu_sample",
+    ]
+    assert [
+        _decode_state(output).get("sampler_fallback_reason") for output in generator.last_generation_outputs
+    ] == [None, None]
+    assert [_decode_state(output)["full_vocab_logits_d2h"] for output in generator.last_generation_outputs] == [
+        False,
+        False,
+    ]
+    assert [_decode_state(output)["logits_d2h_bytes"] for output in generator.last_generation_outputs] == [0, 0]
+    assert [_decode_state(output)["execution_path"] for output in generator.last_generation_outputs] == [
+        "scheduler_native_packed_prefill_serial_native_sampler_decode",
+        "scheduler_native_packed_prefill_serial_native_sampler_decode",
+    ]
+    scheduler_chunks = generator.last_batch_generation["scheduler_token_chunks"]
+    first_decode_state = scheduler_chunks[0]["chunk"]["telemetry"]["decode_state"]
+    assert first_decode_state["sampler_mode"] == "gpu_sample"
+    assert first_decode_state["active_processors"] == ["logit_bias"]
+    assert first_decode_state["full_vocab_logits_d2h"] is False
+    assert first_decode_state["logits_d2h_bytes"] == 0
 
 
 def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:

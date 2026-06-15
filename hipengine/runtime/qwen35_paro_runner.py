@@ -1488,8 +1488,10 @@ class Qwen35ParoResidentSession:
         self.prefill_moe_scratch: Qwen35ParoGroupedMoeScratch | Qwen35ParoMoeScratch | None = None
         self._host_sampling_params: Any | None = None
         self._host_sampling_state: RowSamplingState | None = None
+        self._host_sampling_states_by_slot: dict[int, RowSamplingState] | None = None
         self._native_sampling_params: Any | None = None
         self._native_sampling_state: RowSamplingState | None = None
+        self._native_sampling_states_by_slot: dict[int, RowSamplingState] | None = None
         self._native_sampler_library: Any | None = None
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
@@ -1653,12 +1655,7 @@ class Qwen35ParoResidentSession:
                 self._set_slot_position(position, slot=slot)
                 hidden = self._run_layers(position=position, slot=slot, persist_aliases=False, stream=0)
                 if sample:
-                    slot_state = self._host_sampler_state_for_slot(slot)
-                    host_sampling_params = getattr(self, "_host_sampling_params", None)
-                    if host_sampling_params is not None and slot_state is not None:
-                        results.append(self._sample_from_hidden_host(hidden, host_sampling_params, slot_state))
-                    else:
-                        results.append(self._sample_from_hidden(hidden))
+                    results.append(self._sample_from_hidden_for_slot(hidden, slot))
                 else:
                     results.append(None)
             return tuple(results)
@@ -3157,12 +3154,7 @@ class Qwen35ParoResidentSession:
                 DType.FP16,
                 self.device,
             )
-            slot_state = self._host_sampler_state_for_slot(slot)
-            host_sampling_params = getattr(self, "_host_sampling_params", None)
-            if host_sampling_params is not None and slot_state is not None:
-                results.append(self._sample_from_hidden_host(final_hidden, host_sampling_params, slot_state))
-            else:
-                results.append(self._sample_from_hidden(final_hidden))
+            results.append(self._sample_from_hidden_for_slot(final_hidden, slot))
         return tuple(results)
 
     def _prefill_scratch_owner(self):
@@ -8465,12 +8457,14 @@ class Qwen35ParoResidentSession:
         self._host_sampling_states_by_slot = None
         self._native_sampling_params = None
         self._native_sampling_state = None
+        self._native_sampling_states_by_slot = None
 
     def configure_native_sampler(self, params: Any | None, state: RowSamplingState | None) -> None:
         """Configure the default-off native GPU sampler for c=1 samples."""
 
         self._native_sampling_params = params
         self._native_sampling_state = state
+        self._native_sampling_states_by_slot = None
         self._host_sampling_params = None
         self._host_sampling_state = None
         self._host_sampling_states_by_slot = None
@@ -8486,10 +8480,28 @@ class Qwen35ParoResidentSession:
         self._host_sampling_state = None
         self._native_sampling_params = None
         self._native_sampling_state = None
+        self._native_sampling_states_by_slot = None
         if params is None or states_by_slot is None:
             self._host_sampling_states_by_slot = None
         else:
             self._host_sampling_states_by_slot = {int(slot): state for slot, state in states_by_slot.items()}
+
+    def configure_native_sampler_rows(
+        self,
+        params: Any | None,
+        states_by_slot: Mapping[int, RowSamplingState] | None,
+    ) -> None:
+        """Configure per-slot native GPU sampler state for serial c>N decode."""
+
+        self._native_sampling_params = params
+        self._native_sampling_state = None
+        self._host_sampling_params = None
+        self._host_sampling_state = None
+        self._host_sampling_states_by_slot = None
+        if params is None or states_by_slot is None:
+            self._native_sampling_states_by_slot = None
+        else:
+            self._native_sampling_states_by_slot = {int(slot): state for slot, state in states_by_slot.items()}
 
     def _project_logits_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
         paro_rmsnorm_out_fp16(
@@ -8552,8 +8564,29 @@ class Qwen35ParoResidentSession:
         self.runtime.device_synchronize()
         return self._read_sample()
 
+    def _sample_from_hidden_for_slot(
+        self,
+        hidden: Tensor,
+        slot: int,
+    ) -> Qwen35ParoAutoregressiveStepResult:
+        native_state = self._native_sampler_state_for_slot(slot)
+        native_sampling_params = getattr(self, "_native_sampling_params", None)
+        if native_sampling_params is not None and native_state is not None:
+            return self._sample_from_hidden_native(hidden, native_sampling_params, native_state)
+        host_state = self._host_sampler_state_for_slot(slot)
+        host_sampling_params = getattr(self, "_host_sampling_params", None)
+        if host_sampling_params is not None and host_state is not None:
+            return self._sample_from_hidden_host(hidden, host_sampling_params, host_state)
+        return self._sample_from_hidden(hidden)
+
     def _host_sampler_state_for_slot(self, slot: int) -> RowSamplingState | None:
         states = getattr(self, "_host_sampling_states_by_slot", None)
+        if not states:
+            return None
+        return states.get(int(slot))
+
+    def _native_sampler_state_for_slot(self, slot: int) -> RowSamplingState | None:
+        states = getattr(self, "_native_sampling_states_by_slot", None)
         if not states:
             return None
         return states.get(int(slot))

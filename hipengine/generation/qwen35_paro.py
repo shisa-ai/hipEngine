@@ -779,16 +779,25 @@ class Qwen35ParoOneTokenGenerator:
         if admitted != request_ids:
             raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
         native_sampler_requested = _native_gpu_sampler_requested()
+        configure_native_rows = getattr(session, "configure_native_sampler_rows", None)
+        native_sampler_rows_available = native_sampler_requested and callable(configure_native_rows)
         sampler_block = scheduler.sampler_params_block(request_ids)
         sampler_plans = dict(
             zip(
                 request_ids,
-                sampler_block.sampler_plans(native_gpu_requested=native_sampler_requested),
+                sampler_block.sampler_plans(
+                    native_gpu_available=native_sampler_rows_available,
+                    native_gpu_requested=native_sampler_requested,
+                ),
                 strict=True,
             )
         )
         sampler_plan_metadata = sampler_block.sampler_plan_metadata(
+            native_gpu_available=native_sampler_rows_available,
             native_gpu_requested=native_sampler_requested
+        )
+        use_native_sampler_rows = native_sampler_rows_available and all(
+            plan.mode is SamplingMode.GPU_SAMPLE for plan in sampler_plans.values()
         )
 
         output_steps: dict[int, list[Qwen35ParoAutoregressiveStepResult]] = {request_id: [] for request_id in request_ids}
@@ -806,7 +815,12 @@ class Qwen35ParoOneTokenGenerator:
             block_size=getattr(session, "block_size", 256),
         )
         prefill_slab_shapes: list[dict[str, Any]] = []
-        configure_rows = getattr(session, "configure_host_sampler_rows", None)
+        if use_native_sampler_rows:
+            configure_rows = configure_native_rows
+            sampled_path = "scheduler_native_packed_prefill_serial_native_sampler_decode"
+        else:
+            configure_rows = getattr(session, "configure_host_sampler_rows", None)
+            sampled_path = "scheduler_native_packed_prefill_serial_host_sampler_decode"
         if not callable(configure_rows):
             raise NotImplementedError("c>N sampled PARO batches require per-slot host sampler state")
         try:
@@ -883,7 +897,10 @@ class Qwen35ParoOneTokenGenerator:
                     for request_id in request_ids_for_step
                 ]
                 slots_for_step = [scheduler.active_batch.slot_for(request_id) for request_id in request_ids_for_step]
-                configure_rows(request, _slot_sampler_state_clones(scheduler, request_ids_for_step, slots_for_step))
+                configure_rows(
+                    sampling_request,
+                    _slot_sampler_state_clones(scheduler, request_ids_for_step, slots_for_step),
+                )
                 raise_if_generation_deadline_expired(request)
                 results = session.step_batch_serial(
                     token_ids_for_step,
@@ -936,7 +953,7 @@ class Qwen35ParoOneTokenGenerator:
 
         batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=False)
         self.last_batch_generation = {
-            "path": "scheduler_native_packed_prefill_serial_host_sampler_decode",
+            "path": sampled_path,
             "batch_size": batch_size,
             "request_ids": list(request_ids),
             "prompt_lengths": [len(row) for row in prompt_rows],
@@ -946,6 +963,7 @@ class Qwen35ParoOneTokenGenerator:
             "serial_decode_fallback": serial_decode_fallback,
             "native_compact_prefill": bool(getattr(batch_execution, "native_compact_prefill", False)),
             "native_caware_decode": False,
+            "native_sampler_rows": use_native_sampler_rows,
             "throughput_claim_eligible": False,
             "sampler_plan_metadata": [dict(row) for row in sampler_plan_metadata],
         }

@@ -135,6 +135,51 @@ def test_native_sampler_route_falls_back_to_host_for_forced_tokens() -> None:
     assert calls == [(hidden, params, state)]
 
 
+def test_native_sampler_rows_route_by_slot_and_clear_host_state() -> None:
+    from hipengine.generation.sampling import RowSamplingState
+    from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
+
+    session = object.__new__(Qwen35ParoResidentSession)
+    params = _request_params(temperature=0.7)
+    hidden = SimpleNamespace(ptr=456)
+    native_state = RowSamplingState(prompt_tokens=(1,), generated_tokens=(4,), seed=9)
+    host_state = RowSamplingState(prompt_tokens=(2,), generated_tokens=(5,), seed=10)
+    calls: list[tuple[str, object, object | None, RowSamplingState | None]] = []
+
+    def fake_native_sample(self, hidden_arg, params_arg, state_arg):
+        calls.append(("native", hidden_arg, params_arg, state_arg))
+        return SimpleNamespace(token_id=4)
+
+    def fake_host_sample(self, hidden_arg, params_arg, state_arg):  # pragma: no cover - should be cleared
+        calls.append(("host", hidden_arg, params_arg, state_arg))
+        return SimpleNamespace(token_id=5)
+
+    def fake_argmax_sample(self, hidden_arg):
+        calls.append(("argmax", hidden_arg, None, None))
+        return SimpleNamespace(token_id=6)
+
+    session._sample_from_hidden_native = MethodType(fake_native_sample, session)
+    session._sample_from_hidden_host = MethodType(fake_host_sample, session)
+    session._sample_from_hidden = MethodType(fake_argmax_sample, session)
+    session.configure_host_sampler_rows(params, {3: host_state})
+    session.configure_native_sampler_rows(params, {3: native_state})
+
+    result = session._sample_from_hidden_for_slot(hidden, 3)
+    missing_slot_result = session._sample_from_hidden_for_slot(hidden, 4)
+    session.configure_native_sampler_rows(None, None)
+
+    assert result.token_id == 4
+    assert missing_slot_result.token_id == 6
+    assert session._native_sampling_params is None
+    assert session._native_sampling_states_by_slot is None
+    assert session._host_sampling_params is None
+    assert session._host_sampling_states_by_slot is None
+    assert calls == [
+        ("native", hidden, params, native_state),
+        ("argmax", hidden, None, None),
+    ]
+
+
 def _splitmix64(value: int) -> int:
     z = (value + _SPLITMIX_INC) & _MASK64
     z = ((z ^ (z >> 30)) * _SPLITMIX_MUL1) & _MASK64
@@ -357,7 +402,7 @@ def _request_params(**overrides):
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
 def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() -> None:
     from hipengine.core.dtype import DType
-    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.generation.sampling import RowSamplingState
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.sampling import build_sampler

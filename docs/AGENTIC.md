@@ -41,12 +41,14 @@ Already available or recently added:
   telemetry marks the full-vocab host readback with `full_vocab_logits_d2h=true`
   and per-token `logits_d2h_bytes`. Greedy-equivalent requests stay on the
   graph/argmax fast path.
-- A default-off PARO c=1 native GPU sampler route exists for supported sampled
-  requests via `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; it covers logit
-  bias/history-penalty processors, full-vocab temperature sampling, bounded
-  `top_k <= 64`, exact full-vocab `top_p`/`min_p`, selected-token logprobs, and
-  post-accept token stops. It is not performance-promoted and does not cover
-  c>N, GGUF, or `top_logprobs`.
+- A default-off PARO native GPU sampler route exists for supported sampled
+  requests via `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; it covers c=1 and
+  scheduler-owned c>N serial per-slot decode when every row is GPU-sampler
+  eligible. It supports logit bias/history-penalty processors, full-vocab
+  temperature sampling, bounded `top_k <= 64`, exact full-vocab `top_p`/`min_p`,
+  selected-token logprobs, and post-accept token stops. It is not
+  performance-promoted and does not cover true batched c>N sampling, GGUF, or
+  `top_logprobs`.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, suppress token ids,
   min-token/EOS policy, stop token ids, stop token sequences, `seed`, and
@@ -67,9 +69,9 @@ Already available or recently added:
   token index/id/text plus reason `backend_omitted_logprob`.
 - Tokenizable OpenAI `stop` strings lower to `stop_token_ids` or
   `stop_token_sequences`; PARO/GGUF host-sampled rows terminate on suffix match
-  while responses still use post-trimming for consistency. PARO c=1 native
-  sampling checks the same stop metadata after token selection; native c>N and
-  GGUF GPU paths still need parity.
+  while responses still use post-trimming for consistency. PARO c=1 and serial
+  per-slot c>N native sampling check the same stop metadata after token
+  selection; GGUF GPU sampling still needs parity.
 - Request deadlines are exposed as per-request `timeout_ms` and server default
   `--request-timeout-ms` / `HIPENGINE_REQUEST_TIMEOUT_MS`. Buffered requests
   return HTTP 408 with structured deadline finish details; live streams emit an
@@ -396,9 +398,11 @@ Current code reality:
 - Standalone GPU sampler-family kernels exist for logit bias, penalties,
   full-vocab temperature sampling, bounded `top_k <= 64`, and exact full-vocab
   `top_p`/`min_p`. Supported PARO c=1 sampled requests can opt into this route
-  with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; suppress-token ids,
-  min-token/EOS policy, c>N, GGUF, `top_logprobs`, and performance promotion
-  remain future work for the native route.
+  with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`, and supported PARO c>N sampled
+  batches can route each physical slot through the same native sampler state;
+  suppress-token ids, min-token/EOS policy, true batched c>N sampling, GGUF,
+  `top_logprobs`, and performance promotion remain future work for the native
+  route.
 
 Required pre-selection processors, in order:
 
@@ -1282,7 +1286,7 @@ Current code reality:
   execution path and native/serial fallback state. PARO scheduler-owned c>N
   token chunks now carry per-token planner metadata, fallback reason,
   host-logits D2H accounting, and execution flags for buffered server replay;
-  runtime-native live c>N forwarding, GGUF/native GPU parity, and
+  runtime-native live c>N forwarding, GGUF/native GPU sampler parity, and
   phase/logprob semantics for reasoning/tool/structured chunks still need
   lower-loop coverage before server streams can become fully
   backend-authoritative.
@@ -1292,10 +1296,11 @@ Current code reality:
   scheduler per-row blocks, planner metadata, fast-path blockers, capabilities,
   and MTP blocker lists. The native GPU sampler route falls back to host when
   either processor is active. PARO and GGUF c=1 sampled streaming now emit the
-  planner's processor/blocker fields and fallback reason on live chunks. Native
-  GPU, c>N/scheduler paths, dynamic thinking-budget processors beyond the host
-  sampled stream path, and grammar masks still need the same lower-loop stream
-  metadata before server streams can become fully backend-authoritative.
+  planner's processor/blocker fields and fallback reason on live chunks. True
+  runtime-native c>N/scheduler streams, GGUF/native GPU sampler paths, dynamic
+  thinking-budget processors beyond the host sampled stream path, and grammar
+  masks still need the same lower-loop stream metadata before server streams can
+  become fully backend-authoritative.
 
 Implement:
 
@@ -1377,21 +1382,23 @@ Current code reality:
   stop immediately on a stop token id while another continues until an
   overlapping multi-token stop sequence completes, with stop details preserved
   in final `FinishDetails` and decode telemetry.
-- Native c>N/GPU sampler parity and grammar reuse remain future work; host row
-  state already reuses this DFA for forced delimiter suffix repair.
+- PARO serial per-slot native c>N sampling consumes the same post-selection stop
+  metadata as c=1; true batched native c>N sampling, GGUF GPU sampling, and
+  grammar reuse remain future work. Host row state already reuses this DFA for
+  forced delimiter suffix repair.
 
 Implement:
 
 - keep server post-trimming for response consistency;
-- ensure native c>N/GPU sampler paths consume the same stop metadata before they
-  claim token-level stop parity.
+- keep true batched native c>N and GGUF GPU sampler paths on the same stop
+  metadata contract before they claim token-level stop parity.
 
 Exit gates:
 
 - one-token and overlapping multi-token stop fixtures pass for PARO and GGUF
   host paths;
-- native c>N/GPU paths either pass the same fixtures or report unsupported path
-  clearly;
+- true batched native c>N/GGUF GPU paths either pass the same fixtures or report
+  unsupported path clearly;
 - stop details include the matched token sequence.
 
 #### P1.4 Thinking budget policy
@@ -2142,9 +2149,11 @@ Current code reality:
   `last_batch_generation.scheduler_token_chunks` with per-token text,
   finish-details, decode-state telemetry, stop-suffix state, execution-path
   flags, and sampled logprob payloads when requested.
-- True batched sampled decode is still not native-promoted: PARO c>N sampled
-  batches use native packed prefill plus serial host-sampler decode, while GGUF
-  sampled requests stay on host sampling.
+- True batched sampled decode is still not native-promoted: env-enabled PARO
+  c>N sampled batches can use native packed prefill plus serial per-slot native
+  GPU sampling when every row is covered by the native sampler contract, but the
+  decode loop remains the serial layer bridge. Unsupported PARO c>N rows and
+  GGUF sampled requests stay on host sampling with explicit fallback metadata.
 
 #### P4.2 GPU sampler kernels
 
@@ -2157,12 +2166,14 @@ Current state:
 - supported PARO c=1 sampled requests can route through those kernels with
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`. PARO c=1 sampled telemetry reports
   `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` when that native
-  route actually runs. PARO/GGUF host-logits fallback paths report
+  route actually runs. Env-enabled PARO c>N sampled batches use the same
+  no-full-logits-readback metadata when every row is routed through serial
+  per-slot native sampler state. PARO/GGUF host-logits fallback paths report
   `full_vocab_logits_d2h=true` plus known per-token vector bytes, so server
   metadata can distinguish native sampling from host readback selection. PARO
-  c>N sampled batches and GGUF sampled requests still run through host sampling,
-  but when `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` requested native sampling, their
-  decode-state telemetry reports
+  c>N unsupported sampled rows and GGUF sampled requests still run through host
+  sampling, but when `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` requested native
+  sampling, their decode-state telemetry reports
   `sampler_fallback_reason="native_gpu_unsupported_request"` instead of the
   generic host fallback reason. The capabilities manifest now advertises the
   same current native-sampler blockers enforced by `supports_native_gpu_sampling`,
@@ -2172,8 +2183,8 @@ Current state:
   `processors` from `post_selection_controls` for stop token ids and
   multi-token stop sequences, which PARO c=1 native sampling checks after each
   selected token;
-- c>N/GGUF integration, `top_logprobs`, retained performance evidence, and
-  default-path promotion remain unimplemented.
+- true batched c>N/GGUF integration, `top_logprobs`, retained performance
+  evidence, and default-path promotion remain unimplemented.
 
 Exit gates:
 
@@ -2191,7 +2202,7 @@ Remaining implementation:
 
 - performance-oriented full-vocab nucleus selection without weakening
   retain-one and tie-break semantics;
-- c>N/GGUF native routing for unsupported native shapes.
+- true batched c>N/GGUF native routing for unsupported native shapes.
 
 Exit gates:
 
@@ -2226,15 +2237,16 @@ completion/chat responses keep the OpenAI-compatible score as `null` and add
 `backend_omitted_logprob`; echoed prompt prefixes use reason
 `prompt_logprob_unavailable`. `/v1/hipengine/capabilities` advertises the
 stable reason vocabulary under `features.logprobs.omission_reasons`. PARO c>N
-host-sampled final outputs preserve per-token selected logprob and top-logprob
-metadata from scheduler step results. Remaining work is true prompt-token
-logprobs, native c>N/GGUF GPU-path coverage, and broader performance
-promotion.
+host-sampled and serial native-sampled final outputs preserve per-token selected
+logprob metadata from scheduler step results; host-sampled rows also preserve
+top-logprob metadata. Remaining work is true prompt-token logprobs,
+`top_logprobs` on native GPU sampling, true batched native c>N/GGUF GPU-path
+coverage, and broader performance promotion.
 
 Implement:
 
-- native c>N/GGUF GPU live streaming `logprobs` / `top_logprobs` chunks once
-  those routes can provide token metadata incrementally;
+- true runtime-native c>N/GGUF GPU live streaming `logprobs` / `top_logprobs`
+  chunks once those routes can provide token metadata incrementally;
 - completion `echo+logprobs` prompt-token metadata with real prompt-token
   logprobs when the model/session can score prompt tokens;
 - native/GPU sampler logprob output when those paths are promoted.
@@ -2871,9 +2883,10 @@ golden harness traces are now implemented. Good next logical units, in order:
    c>N sampled batches record it in runtime diagnostics, including per-token
    scheduler chunk diagnostics that buffered completion and plain chat streams
    can expose for single-request batches. GGUF/native GPU sampler paths plus
-   chat reasoning-logprob c>N stream surfaces still need emitted chunk/final
-   metadata and logprob semantics to match host AR sampling everywhere; invalid
-   tool calls and structured validation failures still require full buffering.
+   chat reasoning-logprob and true live c>N stream surfaces still need emitted
+   chunk/final metadata and logprob semantics to match host AR sampling
+   everywhere; invalid tool calls and structured validation failures still
+   require full buffering.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
    limited to greedy-fast requests until the target verifier and commit path
    apply the same EOS finish, logit bias, penalties, suppressions, forced-token,
