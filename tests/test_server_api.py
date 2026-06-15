@@ -4198,7 +4198,7 @@ def test_completion_length_finish_with_stop_is_continuation_ineligible() -> None
         detailed_outputs=[
             GenerationOutput(
                 text="partial",
-                finish_details=FinishDetails(reason="length", length_limit=1),
+                finish_details=FinishDetails(reason="length", length_limit=1, continuation_eligible=True),
                 telemetry=GenerationTelemetry.from_decode_counts(
                     prompt_tokens=2,
                     generated_tokens=1,
@@ -4224,6 +4224,49 @@ def test_completion_length_finish_with_stop_is_continuation_ineligible() -> None
 
     assert response.status_code == 200
     choice = response.json()["choices"][0]
+    assert "continuation_id" not in choice
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=1,
+        continuation_eligible=False,
+    )
+    assert choice["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "greedy_fast",
+    }
+
+
+def test_completion_length_finish_honors_backend_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial",
+                finish_details=FinishDetails(reason="length", length_limit=1, continuation_eligible=False),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=1,
+                    sampler_mode="greedy_fast",
+                    continuation_eligible=True,
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "Say: ", "max_tokens": 1, "temperature": 0.0},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["text"] == "partial"
     assert "continuation_id" not in choice
     assert choice["finish_details"] == _stateless_finish_details(
         "length",
@@ -9787,6 +9830,50 @@ def test_chat_completion_length_finish_details_include_phase(
         assert "reasoning_content" not in choice["message"]
     else:
         assert choice["message"]["reasoning_content"] == reasoning_content
+
+
+def test_chat_length_finish_honors_backend_continuation_ineligible() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text="partial answer",
+                finish_details=FinishDetails(reason="length", length_limit=2, continuation_eligible=False),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=2,
+                    sampler_mode="greedy_fast",
+                    continuation_eligible=True,
+                ),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "continue"}]},
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert "continuation_id" not in choice
+    assert choice["finish_details"] == _stateless_finish_details(
+        "length",
+        length_limit=2,
+        phase="answer",
+        continuation_eligible=False,
+    )
+    assert choice["message"] == {"role": "assistant", "content": "partial answer"}
+    assert choice["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "greedy_fast",
+    }
 
 
 def test_chat_completion_thinking_budget_exhausted_maps_to_length_finish() -> None:

@@ -1584,9 +1584,12 @@ Current code reality:
   decode state, full tokenizer state, RNG state, or resident KV;
 - final choice telemetry mirrors stored-handle eligibility into
   `choices[].hipengine.decode_state.continuation_eligible` when backend
-  telemetry is present, including server-side overrides for ineligible
-  stop/`ignore_eos` length finishes, but live lower-loop decode states still do
-  not create or scope continuation handles themselves;
+  telemetry is present. Explicit backend `FinishDetails.continuation_eligible=false`
+  suppresses handle creation even when the server-side request shape would
+  otherwise be deterministic, while backend `true` is still downgraded when
+  server policy makes the request ineligible, such as stop/`ignore_eos` length
+  finishes. Live lower-loop decode states still do not create or scope
+  continuation handles themselves;
 - streaming, fresh prompt/messages payloads, logprobs, completion `echo`,
   `n != 1`, non-deterministic sampling/logit processors, `ignore_eos=true`,
   OpenAI `stop` controls, chat tools, explicit `response_format` overrides, and
@@ -2916,8 +2919,9 @@ golden harness traces are now implemented. Good next logical units, in order:
    logprob metadata when the held delta is mappable.
    Broader runtime-native live c>N parity for tool/structured/logprob streams,
    public invalid/unmappable tool-call chunk forwarding, unmappable
-   parser-final logprob spans, and real continuation eligibility still need
-   lower-loop work instead of relying on server post-parse inference.
+   parser-final logprob spans, and full lower-loop continuation handle creation
+   and scoping still need work instead of relying on server post-parse
+   inference.
    PARO/GGUF c=1 true streaming already emits greedy/sampled answer-token
    snapshots.
 2. **Native/scheduler controlled-decoding parity:** scheduler row blocks expose

@@ -93291,3 +93291,23 @@ call.
 
 Validation:
 - `python3 -m pytest tests/test_agentic_server_conformance.py -q -k 'continuation_resume_answer_shape'` -> `1 passed`.
+
+## 2026-06-15 - Backend continuation eligibility guard
+
+Tightened continuation eligibility merging between backend finish metadata and
+server policy. Completion/chat assembly now evaluates handle creation before
+marking length finishes ineligible, passes the backend-authored
+`FinishDetails.continuation_eligible` bit separately from server default
+response payloads, respects explicit backend `false` by not creating a handle,
+and still downgrades backend/telemetry `true` when server policy rejects the
+request shape. Added HTTP regressions for completion and chat responses so final
+`finish_details` and `choices[].hipengine.decode_state.continuation_eligible`
+match the effective server decision.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'continuation_resumes_buffered_length_finish_once or completion_length_finish_with_stop_is_continuation_ineligible or completion_length_finish_honors_backend_continuation_ineligible or chat_completion_length_finish_details_include_phase or chat_length_finish_honors_backend_continuation_ineligible'` -> `10 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'continuation'` -> `36 passed`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

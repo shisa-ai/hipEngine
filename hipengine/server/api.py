@@ -4508,8 +4508,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ),
             }
             _mark_structured_length_failure(request, structured_length_failure, choice["finish_details"])
-            _mark_continuation_unavailable(choice["finish_details"])
-            if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
+            if _continuation_can_create(
+                request,
+                finish_reason=finish_reason,
+                finish_details=choice["finish_details"],
+                backend_continuation_eligible=_backend_continuation_eligible(detail),
+            ):
                 base_prompt = prompt if continuation is None else continuation.prompts[index]
                 record = await store_continuation(
                     endpoint="completion",
@@ -4525,6 +4529,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     session_id=_session_id(request),
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
+            else:
+                _mark_continuation_unavailable(choice["finish_details"])
             _attach_choice_telemetry(choice, detail)
             if n > 1:
                 choice["request_id"] = _choice_request_id(response_id, index // n, index % n)
@@ -4738,8 +4744,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     choice["finish_details"]["cache_action"] = effective_cache_action
                 if request.logprobs:
                     choice["logprobs"] = _chat_visible_content_logprobs(detail, text)
-                _mark_continuation_unavailable(choice["finish_details"])
-                if _continuation_can_create(request, finish_reason=finish_reason, finish_details=choice["finish_details"]):
+                if _continuation_can_create(
+                    request,
+                    finish_reason=finish_reason,
+                    finish_details=choice["finish_details"],
+                    backend_continuation_eligible=_backend_continuation_eligible(detail),
+                ):
                     base_prompt = prompt if continuation is None else continuation.prompts[index]
                     record = await store_continuation(
                         endpoint="chat",
@@ -4755,6 +4765,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         session_id=_session_id(request),
                     )
                     _attach_continuation_metadata(choice, continuation_id=record.id)
+                else:
+                    _mark_continuation_unavailable(choice["finish_details"])
                 _attach_choice_telemetry(choice, detail)
                 if n > 1:
                     choice["request_id"] = _choice_request_id(response_id, 0, index)
@@ -8398,7 +8410,10 @@ def _continuation_can_create(
     *,
     finish_reason: str,
     finish_details: Mapping[str, Any],
+    backend_continuation_eligible: bool | None = None,
 ) -> bool:
+    if backend_continuation_eligible is False:
+        return False
     if str(finish_details.get("reason") or "") in (_SESSION_UNSAFE_VISIBLE_REASONS - {"length"}):
         return False
     if not _is_length_finish(finish_reason, finish_details):
@@ -8423,6 +8438,13 @@ def _continuation_can_create(
         if _thinking_budget_sampling_unsupported_param(request) is not None:
             return False
     return _continuation_sampling_is_deterministic(request)
+
+
+def _backend_continuation_eligible(detail: GenerationOutput | None) -> bool | None:
+    finish_details = None if detail is None else detail.finish_details
+    if finish_details is None:
+        return None
+    return finish_details.continuation_eligible
 
 
 def _thinking_budget_sampling_kwargs_present(request: ChatCompletionRequest) -> bool:
@@ -8472,7 +8494,7 @@ def _continuation_sampling_is_deterministic(request: CompletionRequest | ChatCom
 
 def _mark_continuation_unavailable(finish_details: dict[str, Any]) -> None:
     if _is_length_finish(str(finish_details.get("reason", "")), finish_details):
-        finish_details.setdefault("continuation_eligible", False)
+        finish_details["continuation_eligible"] = False
 
 
 def _mark_structured_length_phase(
