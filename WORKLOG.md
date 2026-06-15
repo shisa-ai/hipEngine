@@ -91893,3 +91893,23 @@ Validation:
 - `python3 -m py_compile scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> passed.
 - `python3 -m ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC live pi smoke availability
+
+Tried the new combined pi live smoke against the expected local endpoint and
+the earlier `epyc` endpoint after adding `--reasoning-smoke`; both refused the
+capabilities connection, so no live server/model validation was available in
+this session. The command to rerun when the server is up is:
+
+```bash
+python3 scripts/validate_pi_agent_models.py \
+  --config docs/examples/pi-agent/models.json \
+  --base-url http://127.0.0.1:8000/v1 \
+  --chat-smoke \
+  --reasoning-smoke \
+  --timeout 60
+```
+
+Validation attempts:
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json --base-url http://127.0.0.1:8000/v1 --chat-smoke --reasoning-smoke --timeout 60` -> failed before generation: connection refused on `/v1/hipengine/capabilities`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json --base-url http://epyc:8000/v1 --chat-smoke --reasoning-smoke --timeout 60` -> failed before generation: connection refused on `/v1/hipengine/capabilities`.
