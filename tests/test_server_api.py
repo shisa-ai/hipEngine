@@ -4085,6 +4085,12 @@ def test_completion_length_finish_with_stop_is_continuation_ineligible() -> None
             GenerationOutput(
                 text="partial",
                 finish_details=FinishDetails(reason="length", length_limit=1),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=1,
+                    sampler_mode="greedy_fast",
+                    continuation_eligible=True,
+                ),
             )
         ]
     )
@@ -4110,6 +4116,15 @@ def test_completion_length_finish_with_stop_is_continuation_ineligible() -> None
         length_limit=1,
         continuation_eligible=False,
     )
+    assert choice["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "greedy_fast",
+    }
 
 
 def test_completion_length_finish_with_ignore_eos_is_continuation_ineligible() -> None:
@@ -4118,6 +4133,12 @@ def test_completion_length_finish_with_ignore_eos_is_continuation_ineligible() -
             GenerationOutput(
                 text="partial",
                 finish_details=FinishDetails(reason="length", length_limit=1),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=1,
+                    sampler_mode="greedy_fast",
+                    continuation_eligible=True,
+                ),
             )
         ]
     )
@@ -4143,6 +4164,15 @@ def test_completion_length_finish_with_ignore_eos_is_continuation_ineligible() -
         length_limit=1,
         continuation_eligible=False,
     )
+    assert choice["hipengine"]["decode_state"] == {
+        "row_index": 0,
+        "step_index": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 1,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_mode": "greedy_fast",
+    }
 
 
 def test_completion_continuation_resume_rejects_explicit_stop_without_consuming_handle() -> None:

@@ -1565,8 +1565,9 @@ Current code reality:
   decode state, full tokenizer state, RNG state, or resident KV;
 - final choice telemetry mirrors stored-handle eligibility into
   `choices[].hipengine.decode_state.continuation_eligible` when backend
-  telemetry is present, but live lower-loop decode states still do not create or
-  scope continuation handles themselves;
+  telemetry is present, including server-side overrides for ineligible
+  stop/`ignore_eos` length finishes, but live lower-loop decode states still do
+  not create or scope continuation handles themselves;
 - streaming, fresh prompt/messages payloads, logprobs, completion `echo`,
   `n != 1`, non-deterministic sampling/logit processors, `ignore_eos=true`,
   OpenAI `stop` controls, chat tools, explicit `response_format` overrides, and

@@ -92997,3 +92997,17 @@ Validation:
 - `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Continuation eligibility decode-state regressions
+
+Tightened completion continuation telemetry coverage for ineligible length
+finishes. Stop-string and `ignore_eos=true` length stops now have backend
+telemetry in their fixtures and assert that server-authored continuation
+ineligibility overrides `choices[].hipengine.decode_state.continuation_eligible`
+to `false`, matching `finish_details`.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'completion_length_finish_with_stop_is_continuation_ineligible or completion_length_finish_with_ignore_eos_is_continuation_ineligible or completion_continuation_resumes_buffered_length_finish_once'` -> `3 passed`.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
