@@ -393,6 +393,43 @@ def test_b1_prompt_suite_default_sampling_fixtures_cover_b1_to_b4(
         suite.default_sampling_fixture(5)
 
 
+def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+
+    matrix = suite.build_b1_b4_prompt_suite_matrix(
+        model=tmp_path / "model.gguf",
+        prompts_file=_prompt_suite(tmp_path / "prompts-matrix.json"),
+        hipengine_token_inventory=_token_inventory(tmp_path / "hip-matrix.json"),
+        llamacpp_token_inventory=_token_inventory(tmp_path / "llama-matrix.json"),
+        prompt_limit=1,
+    )
+
+    assert matrix["kind"] == "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix"
+    assert matrix["status"] == "blocked"
+    assert matrix["budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["draft_max_values"] == [1, 2, 3, 4]
+    assert matrix["all_parity_prechecks_pass"] is True
+    assert matrix["all_budget_prechecks_pass"] is True
+    assert matrix["all_sampling_contract_prechecks_pass"] is True
+    assert matrix["all_exactness_gates_pass"] is True
+    assert matrix["blocker_codes_by_budget"] == {
+        "B1": ["native_gguf_mtp_runtime_missing"],
+        "B2": ["native_gguf_mtp_runtime_missing"],
+        "B3": ["native_gguf_mtp_runtime_missing"],
+        "B4": ["native_gguf_mtp_runtime_missing"],
+    }
+    assert [item["draft_budget_precheck"]["expected"] for item in matrix["artifacts"]] == [
+        {"budget": "B1", "draft_max": 1},
+        {"budget": "B2", "draft_max": 2},
+        {"budget": "B3", "draft_max": 3},
+        {"budget": "B4", "draft_max": 4},
+    ]
+    assert [item["hipengine_metrics_contract"]["draft_max"] for item in matrix["artifacts"]] == [1, 2, 3, 4]
+
+
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

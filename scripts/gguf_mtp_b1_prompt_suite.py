@@ -668,6 +668,55 @@ def build_b1_prompt_suite_artifact(
     }
 
 
+def build_b1_b4_prompt_suite_matrix(
+    *,
+    model: Path,
+    prompts_file: Path,
+    hipengine_token_inventory: Path,
+    llamacpp_token_inventory: Path,
+    oracle_fixture: Path = DEFAULT_ORACLE_FIXTURE,
+    llamacpp_trace_fixture: Path = DEFAULT_LLAMACPP_TRACE_FIXTURE,
+    prompt_limit: int | None = None,
+    backend: str = DEFAULT_BACKEND,
+) -> dict[str, Any]:
+    artifacts = [
+        build_b1_prompt_suite_artifact(
+            model=model,
+            prompts_file=prompts_file,
+            hipengine_token_inventory=hipengine_token_inventory,
+            llamacpp_token_inventory=llamacpp_token_inventory,
+            hipengine_sampling=default_sampling_fixture(draft_max),
+            llamacpp_sampling=default_sampling_fixture(draft_max),
+            oracle_fixture=oracle_fixture,
+            llamacpp_trace_fixture=llamacpp_trace_fixture,
+            prompt_limit=prompt_limit,
+            draft_max=draft_max,
+            backend=backend,
+        )
+        for draft_max in (1, 2, 3, 4)
+    ]
+    return {
+        "schema": 1,
+        "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
+        "mode": "preflight",
+        "status": "blocked" if any(item["status"] == "blocked" for item in artifacts) else "ready",
+        "model": str(model),
+        "backend": str(backend),
+        "budgets": [item["budget"] for item in artifacts],
+        "draft_max_values": [item["draft_max"] for item in artifacts],
+        "all_parity_prechecks_pass": all(item["parity_precheck"]["all_pass"] for item in artifacts),
+        "all_budget_prechecks_pass": all(item["draft_budget_precheck"]["passed"] for item in artifacts),
+        "all_sampling_contract_prechecks_pass": all(
+            item["draft_sampling_contract_precheck"]["passed"] for item in artifacts
+        ),
+        "all_exactness_gates_pass": all(item["execution"]["exactness_gate"] == "passed" for item in artifacts),
+        "blocker_codes_by_budget": {
+            item["budget"]: [blocker["code"] for blocker in item["blockers"]] for item in artifacts
+        },
+        "artifacts": artifacts,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -696,6 +745,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="{1,2,3,4}",
         help="requested GGUF MTP draft budget cap to preflight (default: 1)",
     )
+    parser.add_argument(
+        "--all-budgets",
+        action="store_true",
+        help="emit a B1-B4 preflight matrix using budget-matched default sampling fixtures",
+    )
     parser.add_argument("--out", type=Path, help="write JSON artifact to this path")
     parser.add_argument(
         "--fail-on-blocked",
@@ -704,20 +758,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    default_sampling = default_sampling_fixture(args.draft_max)
-    artifact = build_b1_prompt_suite_artifact(
-        model=args.model,
-        prompts_file=args.prompts_file,
-        hipengine_token_inventory=args.hipengine_token_inventory,
-        llamacpp_token_inventory=args.llamacpp_token_inventory,
-        hipengine_sampling=args.hipengine_sampling or default_sampling,
-        llamacpp_sampling=args.llamacpp_sampling or default_sampling,
-        oracle_fixture=args.oracle_fixture,
-        llamacpp_trace_fixture=args.llamacpp_trace_fixture,
-        prompt_limit=args.prompt_limit,
-        draft_max=args.draft_max,
-        backend=args.backend,
-    )
+    if args.all_budgets:
+        if args.hipengine_sampling or args.llamacpp_sampling:
+            parser.error("--all-budgets uses budget-matched default sampling fixtures; omit sampling overrides")
+        artifact = build_b1_b4_prompt_suite_matrix(
+            model=args.model,
+            prompts_file=args.prompts_file,
+            hipengine_token_inventory=args.hipengine_token_inventory,
+            llamacpp_token_inventory=args.llamacpp_token_inventory,
+            oracle_fixture=args.oracle_fixture,
+            llamacpp_trace_fixture=args.llamacpp_trace_fixture,
+            prompt_limit=args.prompt_limit,
+            backend=args.backend,
+        )
+    else:
+        default_sampling = default_sampling_fixture(args.draft_max)
+        artifact = build_b1_prompt_suite_artifact(
+            model=args.model,
+            prompts_file=args.prompts_file,
+            hipengine_token_inventory=args.hipengine_token_inventory,
+            llamacpp_token_inventory=args.llamacpp_token_inventory,
+            hipengine_sampling=args.hipengine_sampling or default_sampling,
+            llamacpp_sampling=args.llamacpp_sampling or default_sampling,
+            oracle_fixture=args.oracle_fixture,
+            llamacpp_trace_fixture=args.llamacpp_trace_fixture,
+            prompt_limit=args.prompt_limit,
+            draft_max=args.draft_max,
+            backend=args.backend,
+        )
     payload = json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
