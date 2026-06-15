@@ -68,11 +68,8 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
-    embedding_lookup_batch_bf16_i64,
     embedding_lookup_batch_fp16_i64,
-    embedding_lookup_batch_mapped_bf16_i64,
     embedding_lookup_batch_mapped_fp16_i64,
-    embedding_lookup_bf16_i64,
     embedding_lookup_fp16_i64,
     record_i64_scalar_indexed,
     set_decode_position_i64,
@@ -1657,8 +1654,9 @@ class Qwen35ParoResidentSession:
                 hidden = self._run_layers(position=position, slot=slot, persist_aliases=False, stream=0)
                 if sample:
                     slot_state = self._host_sampler_state_for_slot(slot)
-                    if self._host_sampling_params is not None and slot_state is not None:
-                        results.append(self._sample_from_hidden_host(hidden, self._host_sampling_params, slot_state))
+                    host_sampling_params = getattr(self, "_host_sampling_params", None)
+                    if host_sampling_params is not None and slot_state is not None:
+                        results.append(self._sample_from_hidden_host(hidden, host_sampling_params, slot_state))
                     else:
                         results.append(self._sample_from_hidden(hidden))
                 else:
@@ -2303,7 +2301,8 @@ class Qwen35ParoResidentSession:
                 "kv_storage_dtype": self.kv_storage_dtype.value,
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
-                "int8_prefill_oracle": self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
+                "int8_prefill_oracle": False,
+                "int8_prefill_attention": "streaming" if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             if not sample:
@@ -2553,12 +2552,13 @@ class Qwen35ParoResidentSession:
         return Tensor.from_handle(buffer.ptr + int(slot) * dtype.itemsize, (1,), dtype, self.device)
 
     def _resident_tensor_view_cache_enabled(self) -> bool:
-        return self._resident_tensor_view_cache_enabled_value
+        return bool(getattr(self, "_resident_tensor_view_cache_enabled_value", False))
 
     def _clear_resident_tensor_view_caches(self) -> None:
-        self._slot_linear_state_cache.clear()
-        self._slot_full_cache_cache.clear()
-        self._full_cache_all_slots_cache.clear()
+        for name in ("_slot_linear_state_cache", "_slot_full_cache_cache", "_full_cache_all_slots_cache"):
+            cache = getattr(self, name, None)
+            if cache is not None:
+                cache.clear()
 
     def _slot_linear_state(self, layer_id: int, slot: int) -> tuple[Tensor, Tensor]:
         self._check_slot(slot)
@@ -2761,21 +2761,6 @@ class Qwen35ParoResidentSession:
             scale_metadata=scale_metadata,
         )
         return append_spans, prefill_spans
-
-    def _prefill_int8_oracle_cache(self, layer_id: int, *, total_tokens: int) -> tuple[Tensor, Tensor]:
-        """Return temporary BF16 K/V cache used only for INT8 native prefill attention."""
-
-        blocks = max(1, (int(total_tokens) + self.block_size - 1) // self.block_size)
-        shape = (blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
-        # The BF16 oracle cache is needed only while processing the current
-        # full-attention layer. Reuse the same workspace slots across layers so
-        # long-context INT8 prefill does not retain one full BF16 shadow per
-        # layer before _restore_decode_scratch_after_prefill() releases the
-        # prefill workspace.
-        _ = layer_id
-        key = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_key", shape, DType.BF16)
-        value = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_value", shape, DType.BF16)
-        return key, value
 
     def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:
         cache_key = int(layer_id)
@@ -3033,11 +3018,10 @@ class Qwen35ParoResidentSession:
     def _prefill_use_aotriton_attention_resolved(self, tokens: int) -> bool:
         if not self._prefill_use_aotriton_attention(tokens):
             return False
-        # INT8-retained sessions still build a temporary BF16 oracle K/V cache
-        # during native prefill, so the BF16 AOTriton attention path is valid
-        # and avoids the shared-memory-limited native causal prefill kernel at
-        # long contexts. The BF16 oracle workspace is released before decode.
-        return self.kv_storage_dtype in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}
+        # AOTriton currently consumes BF16 K/V. INT8-retained sessions use the
+        # streaming INT8 prefill kernel directly and must not reintroduce the
+        # temporary BF16 oracle workspace just to satisfy AOTriton.
+        return self.kv_storage_dtype == DType.BF16
 
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
@@ -3174,8 +3158,9 @@ class Qwen35ParoResidentSession:
                 self.device,
             )
             slot_state = self._host_sampler_state_for_slot(slot)
-            if self._host_sampling_params is not None and slot_state is not None:
-                results.append(self._sample_from_hidden_host(final_hidden, self._host_sampling_params, slot_state))
+            host_sampling_params = getattr(self, "_host_sampling_params", None)
+            if host_sampling_params is not None and slot_state is not None:
+                results.append(self._sample_from_hidden_host(final_hidden, host_sampling_params, slot_state))
             else:
                 results.append(self._sample_from_hidden(final_hidden))
         return tuple(results)
@@ -3574,11 +3559,6 @@ class Qwen35ParoResidentSession:
                         aotriton_attention=use_aotriton_attention,
                     )
                     self._ensure_moe_prefill_scratch(None, tokens=full_chunk_rows)
-                    if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
-                        key, value = self._prefill_int8_oracle_cache(0, total_tokens=prompt_rows)
-                        int8_oracle_bytes = int(
-                            key.numel * key.dtype.itemsize + value.numel * value.dtype.itemsize
-                        )
                     capture_live_memory("full_prefill_scratch_live")
 
             peak_memory = None
@@ -4061,12 +4041,10 @@ class Qwen35ParoResidentSession:
                         stream,
                     )
             elif layer_type == "full_attention":
-                retained_key_cache, retained_value_cache = self._slot_full_cache(layer_id, 0)
+                key_cache, value_cache = self._slot_full_cache(layer_id, 0)
                 int8_retained = self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
-                if int8_retained:
-                    key_cache, value_cache = self._prefill_int8_oracle_cache(layer_id, total_tokens=tokens)
-                else:
-                    key_cache, value_cache = retained_key_cache, retained_value_cache
+                prefill_storage_dtype = DType.INT8_PER_TOKEN_HEAD if int8_retained else DType.BF16
+                prefill_scale_metadata = self._slot_full_scale_metadata(layer_id, 0) if int8_retained else None
                 chunk_size = self._full_attention_prefill_layer_chunk_size(tokens)
                 for start, end in self._chunk_ranges(tokens, chunk_size, min_chunk_size=2):
                     rows = end - start
@@ -4075,17 +4053,9 @@ class Qwen35ParoResidentSession:
                         rows,
                         start=start,
                         total_tokens=tokens,
-                        storage_dtype=DType.BF16,
+                        storage_dtype=prefill_storage_dtype,
+                        scale_metadata=prefill_scale_metadata,
                     )
-                    retained_append_spans = None
-                    if int8_retained:
-                        retained_append_spans, _ = self._prefill_full_attention_spans(
-                            rows,
-                            start=start,
-                            total_tokens=tokens,
-                            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-                            scale_metadata=self._slot_full_scale_metadata(layer_id, 0),
-                        )
                     positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
                     if use_aotriton_attention:
                         cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
@@ -4112,9 +4082,6 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_k=cu_seqlens_k,
                         aotriton_attention=use_aotriton_attention,
                         aotriton_kv_rows=end,
-                        retained_key_cache=retained_key_cache if int8_retained else None,
-                        retained_value_cache=retained_value_cache if int8_retained else None,
-                        retained_append_spans=retained_append_spans,
                         tokens=rows,
                         block_size=self.block_size,
                         library=self.libraries,
@@ -4971,7 +4938,6 @@ class Qwen35ParoResidentSession:
             else "native_batch"
         )
         row_chunk_batch_gemv_full_attention_output = False
-        row_chunk_auto_batch_gemv_full_attention_output = False
         row_chunk_native_full_attention_output = False
         full_attention_layer_copy_decode_path = (
             "per_row_layer_copy_fallback" if force_per_row_full_attention_layer_copy else "batch_copy"
@@ -5460,7 +5426,6 @@ class Qwen35ParoResidentSession:
                                     chunk_force_batch_gemv_output = True
                                     if chunk_rows == 2:
                                         layer_row_chunk_auto_batch_gemv_full_attention_output = True
-                                        row_chunk_auto_batch_gemv_full_attention_output = True
                                         chunk_records[-1]["full_attention_output_decode_path"] = "batch_gemv_auto_row_chunk"
                                     else:
                                         layer_row_chunk_batch_gemv_full_attention_output = True

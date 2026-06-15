@@ -1,6 +1,6 @@
 # OOM / 24GB Full-Context Memory Analysis
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 This is the living ledger for full-context OOM work on the 24GB-class GPU path
 (AMD Radeon Pro W7900 GPU1 in this workstation, exposed as `HIP_VISIBLE_DEVICES=1`).
@@ -27,15 +27,18 @@ actually serve production requests, or fail at startup with an actionable reason
     --host 0.0.0.0
   ```
 
-- The same run leaves only about **2.0 GiB free** on GPU1 after startup, and
-  only about **0.61 GiB free** at the live scratch-probe peak. This is viable but
-  tight; the probe now makes that risk explicit at startup.
+- The same run leaves about **2.0 GiB free** on GPU1 after startup. After the
+  #88 streaming INT8 prefill-attention path removed the BF16 oracle workspace,
+  the direct 262k scratch probe leaves **1.14 GiB free** at the live peak. This
+  is still tight, but no longer spends the prior 0.5 GiB BF16 oracle transient.
 - Streaming does **not** appear to add meaningful VRAM. It changes response and
   cancellation behavior, not retained device memory. The streamed hidden
   reasoning is emitted as separate `reasoning_content` chunks.
-- We recently found and fixed one clear MTP/DFlash regression: verifier trunk
+- We recently found and fixed two clear scratch regressions: verifier trunk
   buffers were accidentally sized to full prompt capacity, costing about
-  **0.98 GiB at 128k**. More scratch/regression accounting remains open.
+  **0.98 GiB at 128k**, and INT8 prefill attention kept a temporary BF16 oracle
+  cache, costing **0.5 GiB at 262k**. More scratch/regression accounting remains
+  open.
 - The current auto-context estimator accounts for KV and persistent context
   metadata, but most lazy scratch is represented only by a flat 512 MiB reserve.
   That reserve is probably too optimistic for a hard fail-fast server policy.
@@ -78,8 +81,9 @@ context with the production path and measured transient scratch peak."
    - 512-token chunks could pass but with effectively zero free memory;
    - 256-token chunks passed with about `0.61 GiB` free at peak;
    - the peak was `linear_prefill_scratch_live`, not full-attention scratch;
-   - the int8 BF16 prefill oracle remains the next large transient after linear
-     scratch.
+   - after linear scratch was compacted, the remaining INT8 BF16 prefill oracle
+     became the next large transient until #88 replaced it with streaming INT8
+     prefill attention.
 
 6. **Recovered model-max startup on the 24GB card.** The auto prefill policy now
    selects a conservative 256-token chunk profile for 24GB-class devices
@@ -88,10 +92,13 @@ context with the production path and measured transient scratch peak."
    this policy, `--max-context-tokens 262144 --kv-storage int8_per_token_head`
    reaches ready on GPU1.
 
-Current measured 262k/GPU1 state:
+Current measured 262k/GPU1 state after #88:
 
 ```text
-STARTUP_MEMORY: final_stage=guard final_free=2.01 GiB final_used=21.98 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=23.38 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=0.61 GiB total=23.98 GiB samples=7
+Direct scratch gate, context=262144, int8 KV:
+linear_chunk_rows=256 full_chunk_rows=256 tree_rows=1 tree_saved=0.533 GiB int8_oracle=0 GiB
+peak_stage=linear_prefill_scratch_live peak_used=22.846 GiB min_free=1.139 GiB scratch_probe_s=0.096
+artifact=benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json
 ```
 
 So the full 24GB use case is recovered, but it is still tight. This was not a
@@ -100,14 +107,13 @@ the existing 1024/4096 chunk profile. The 256-token profile is selected only for
 24GB-class, model-max-ish prompts where the faster profile cannot fit. That
 means broad speed regression is avoided, but near-max long-prompt prefill may be
 slower; we have not yet run a full long-prompt throughput benchmark to quantify
-that tradeoff. Startup timing itself stayed in the same class (`~27s` total,
-`scratch_probe_s~0.2s`) and the prior 262k profile failed before readiness, so
-there is no successful 24GB/262k baseline to compare against yet.
+that tradeoff. The latest direct scratch probe is still startup-class fast
+(`scratch_probe_s=0.096s` after the one-token warmup), but there is still no
+successful 24GB/262k long-prompt throughput baseline to compare against.
 
-The next optimization targets are to reduce linear prefill scratch, reduce or
-eliminate the temporary BF16 int8 prefill oracle, and compact persistent prefill
-metadata so 262k has a safer live-peak margin and can potentially return to
-larger/faster chunks.
+The next optimization targets are to reduce the remaining linear prefill scratch
+high-water phase and compact persistent prefill metadata so 262k has a safer
+live-peak margin and can potentially return to larger/faster chunks.
 
 ### Optimization gate protocol
 
@@ -150,10 +156,10 @@ Post-change GPU0 smoke results (W7900 48GB, not the final 24GB gate; one run,
 | 4096/8 | 2858.327 | 105.026 | 19.128 GiB | 18.226 GiB | `linear=moe=1024`, `full_query=4096`, `full_post=full_rope=1024` |
 | 262k scratch smoke | n/a | n/a | n/a | live used 24.186 GiB on GPU0 | 1024/4096 chunks, `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.5 GiB` |
 
-The 24GB/GPU1 exact direct scratch gate was rerun after GPU1 became free. It
-confirmed compact tree scratch is active (`tree_rows=1`, `tree_saved=0.533 GiB`)
-and moved the observed live peak from the linear scratch phase to the
-full-attention scratch/oracle phase:
+Before #88, the 24GB/GPU1 exact direct scratch gate confirmed compact tree
+scratch was active (`tree_rows=1`, `tree_saved=0.533 GiB`) and moved the
+observed live peak from the linear scratch phase to the full-attention
+scratch/oracle phase:
 
 ```text
 GPU1 direct scratch gate, context=262144, int8 KV:
@@ -162,21 +168,30 @@ peak_stage=full_prefill_scratch_live peak_used=23.320 GiB min_free=0.664 GiB scr
 artifact=/tmp/hipengine-gpu1-24gb-gate-20260614-200239/scratch-262k-gpu1.json
 ```
 
-This is only a modest net min-free improvement vs the prior `0.61 GiB` because
-full-attention scratch plus the BF16 int8 prefill oracle is now the high-water
-phase. That makes the BF16 oracle reduction the next memory target.
+That was only a modest net min-free improvement vs the prior `0.61 GiB` because
+full-attention scratch plus the BF16 int8 prefill oracle became the high-water
+phase.
 
-BF16 oracle reduction analysis: an allocation-only shrink is not safe for exact
-prefill. In chunked full-attention prefill, chunk `[start, end)` must attend over
-K/V rows `[0, end)`, so the final chunk of each full-attention layer needs the
-entire prompt's K/V image. The current BF16 oracle is already one reused
-per-layer workspace slot, rounded only to the KV block size. The existing
-`int8_per_token_head` HIP attention route is decode-shaped (single query row),
-while the current row-batched split-K route would require `[rows, heads,
-splits, head_dim]` partials; at 256 rows and 262k context that partial buffer
-would exceed the oracle by far. A real oracle removal therefore needs a new
-streaming/row-batched INT8 prefill-attention kernel that reads retained INT8 K/V
-and reduces without materializing huge per-row split partials.
+#88 removes that oracle with a streaming INT8 prefill-attention kernel. An
+allocation-only shrink was not safe for exact prefill: in chunked full-attention
+prefill, chunk `[start, end)` must attend over K/V rows `[0, end)`, so the final
+chunk of each full-attention layer needs the entire prompt's K/V image. The old
+BF16 oracle was already one reused per-layer workspace slot, rounded only to the
+KV block size. The existing `int8_per_token_head` HIP attention route was
+decode-shaped (single query row), while a row-batched split-K route would require
+`[rows, heads, splits, head_dim]` partials; at 256 rows and 262k context that
+partial buffer would exceed the oracle by far. The new path instead reads
+retained INT8 K/V plus per-token/head scales directly and performs an online
+softmax reduction without BF16 K/V materialization.
+
+Current #88 GPU1 direct scratch gate:
+
+```text
+GPU1 direct scratch gate, context=262144, int8 KV:
+linear_chunk_rows=256 full_chunk_rows=256 tree_rows=1 tree_saved=0.533 GiB int8_oracle=0 GiB
+peak_stage=linear_prefill_scratch_live peak_used=22.846 GiB min_free=1.139 GiB scratch_probe_s=0.096
+artifact=benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json
+```
 
 ## Current measurements
 
@@ -206,7 +221,7 @@ All runs used `HIP_VISIBLE_DEVICES=1`, model
 | 131,072 | pass in 0.171s | `full_prefill_scratch_live` | 21.395 GiB | 2.590 GiB | faster chunks `linear=1024`, `full=4096`; `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.250 GiB` |
 | 163,840 | pass in 0.200s | `full_prefill_scratch_live` | 22.057 GiB | 1.928 GiB | faster chunks `linear=1024`, `full=4096`; `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.312 GiB` |
 | 196,608 | pass in 0.220s | `full_prefill_scratch_live` | 22.746 GiB | 1.238 GiB | faster chunks `linear=1024`, `full=4096`; `tree_rows=1`, `tree_saved=2.139 GiB`, `int8_oracle=0.375 GiB` |
-| 262,144 | pass in 0.125s | `full_prefill_scratch_live` | 23.320 GiB | 0.664 GiB | low-memory/full-context auto chunks `linear=moe=full=256`; `tree_rows=1`, `tree_saved=0.533 GiB`, `int8_oracle=0.500 GiB` |
+| 262,144 | pass in 0.096s (#88, 2026-06-15) | `linear_prefill_scratch_live` | 22.846 GiB | 1.139 GiB | low-memory/full-context auto chunks `linear=moe=full=256`; `tree_rows=1`, `tree_saved=0.533 GiB`, `int8_oracle=0 GiB`; artifact [`2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`](../benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json) |
 
 Important implementation detail: the first raw warmup prompt is tiny, and the
 PARO session resolves prefill chunking based on the active prompt length. The
@@ -227,18 +242,19 @@ STARTUP_MEMORY: final_stage=guard final_free=4.17 GiB final_used=19.81 GiB peak_
 For full 262k on GPU1, the default 1024/4096 chunk profile still fails at
 `linear_attn.tree_recurrent_state`. A memory-constrained auto profile for
 24GB-class, model-max-ish contexts now selects 256-token chunks across
-linear/MoE/full-attention prefill. With that profile, real startup reaches ready:
+linear/MoE/full-attention prefill. With that profile, real startup reaches ready. The latest direct scratch gate
+for the same admitted context reports:
 
 ```text
-STARTUP_MEMORY: final_stage=guard final_free=2.01 GiB final_used=21.98 GiB peak_stage=scratch_probe:linear_prefill_scratch_live peak_used=23.38 GiB min_free_stage=scratch_probe:linear_prefill_scratch_live min_free=0.61 GiB total=23.98 GiB samples=7
+Direct scratch gate: peak_stage=linear_prefill_scratch_live peak_used=22.846 GiB min_free=1.139 GiB total=23.98 GiB
 ```
 
 Conclusion / launch guidance:
 
 - **Full 256Ki (`262144`) context is usable** on the 24GB GPU with
   `--kv-storage int8_per_token_head`, but it remains a tight full-context mode:
-  the current direct probe leaves only `0.664 GiB` free at the live
-  `full_prefill_scratch_live` peak.
+  the current direct probe leaves `1.139 GiB` free at the live
+  `linear_prefill_scratch_live` peak.
 - For short chat and 4K-prompt use cases that still want maximum context
   availability, the default/full-context launch is acceptable when startup passes
   the max-prompt scratch probe.
@@ -248,10 +264,9 @@ Conclusion / launch guidance:
 - **196608** is a middle ground but still fairly tight (`1.24 GiB` live-probe
   free) and should be treated as a diagnostic/advanced profile until more
   request-shape probes are recorded.
-- The next memory target is no longer simply linear tree scratch; the current
-  peak is full-attention scratch plus the temporary BF16 INT8 prefill oracle.
-  Replacing that oracle with a streaming/row-batched INT8 prefill-attention
-  kernel is task #88.
+- #88 removed the temporary BF16 INT8 prefill oracle. The next memory target is
+  again the linear prefill scratch high-water phase and any remaining persistent
+  prefill metadata that affects the 262k margin.
 
 ### Legacy exact full-context server startup
 

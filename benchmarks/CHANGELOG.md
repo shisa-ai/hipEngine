@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-15
+
+- [memory gate] Qwen3.6-35B-A3B PARO / w4_paro + INT8 KV / GPU1 262K direct scratch: `int8_oracle_bytes 536870912 -> 0` (-0.5 GiB), min-free `0.664 -> 1.139 GiB` (+71.5%), peak used `23.320 -> 22.846 GiB` (-2.0%), scratch probe `0.115 -> 0.096s` (-16.8%) due to #88 streaming INT8 prefill attention replacing the temporary BF16 oracle; `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`.
+
 ## 2026-06-14
 
 - [diagnostic refresh] Qwen3.6-35B-A3B README comparison / W7900 GPU0 exact rerun: prior top-level table PARO 512/4K/32K/128K prefill `2708.314/2871.122/2075.471/1054.427` and decode `114.724/105.468/91.922/60.216` -> new six-shape refresh `2729.701/2906.950/2879.578/2079.424/1559.096/1053.919` prefill and `115.227/102.927/105.253/91.965/77.666/60.349` decode; llama.cpp HIP/Vulkan and vLLM concurrency rerun on the same W7900/GPU0, with exact commands captured in `scripts/run_w7900_readme_refresh.sh`; `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json`.

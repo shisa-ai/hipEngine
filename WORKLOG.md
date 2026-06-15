@@ -92478,3 +92478,42 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - #88 streaming INT8 prefill attention
+
+Replaced the retained-KV INT8 full-attention prefill BF16 oracle path with a
+storage-aware streaming INT8 prefill-attention kernel. The new
+`paged_attn_prefill` registry path resolves INT8 spans to
+`qwen35_paged_full_attn_prefill_gqa_gate_int8_*_spans`, appends full-attention
+K/V directly into the retained INT8 cache, and runs online softmax over the
+INT8 cache plus per-token/head scales. INT8 sessions no longer allocate
+`prefill.int8_oracle_key/value`, no longer treat AOTriton BF16 attention as
+valid for INT8 retained prefill, and now report `int8_prefill_attention=streaming`
+with `int8_prefill_oracle=false`.
+
+GPU1 24GB-class direct scratch gate at context `262144` improved from the prior
+compact-tree baseline (`int8_oracle_bytes=536870912`, peak
+`full_prefill_scratch_live`, peak used `23.320 GiB`, min free `0.664 GiB`,
+probe `0.115s`) to the #88 streaming row (`int8_oracle_bytes=0`, peak
+`linear_prefill_scratch_live`, peak used `22.846 GiB`, min free `1.139 GiB`,
+probe `0.096s`). Retained artifact:
+`benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`.
+Updated `docs/OOM.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`
+with the exact TheRock/GPU1 scratch probe command and the memory-gate delta.
+This remains a memory/scratch gate, not a long-prompt throughput claim.
+
+Validation:
+- `python3 -m py_compile hipengine/dispatch/__init__.py hipengine/dispatch/kv.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_kv_dispatch.py tests/test_qwen35_decode_state.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_int8_prefill_attention_gpu.py` -> passed.
+- `python3 -m ruff check hipengine/dispatch/__init__.py hipengine/dispatch/kv.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_kv_dispatch.py tests/test_qwen35_decode_state.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_int8_prefill_attention_gpu.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_kv_dispatch.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q` -> `195 passed`.
+- `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-int8-prefill-gpu1-20260615-023751/hipcc-version.txt python3 -m pytest tests/test_qwen35_int8_prefill_attention_gpu.py -q` -> `1 passed`.
+- Cached `rocprofv3 --kernel-trace` smoke captured `qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel` with `DurationNs=10440` in `/tmp/hipengine-int8-prefill-rocprof/out/int8_prefill_kernel_trace.csv`.
+- `python3 -m json.tool benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json >/dev/null && git diff --check -- benchmarks/README.md benchmarks/CHANGELOG.md docs/OOM.md hipengine/dispatch/__init__.py hipengine/dispatch/kv.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py tests/test_kv_dispatch.py tests/test_qwen35_decode_state.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_int8_prefill_attention_gpu.py` -> clean.
+
+#88 follow-up: updated `docs/KERNELS.md` live catalog with the new
+`paged_attn_prefill` / `int8_per_token_head` streaming causal-GQA prefill row.
+Ran `python3 scripts/check_lineage.py --kind kernel --diff stat`; it reports the
+known nano-vllm-amd drift set (`qwen35_expert.hip`, `smoke.hip`,
+`paroquant_kernels.py`, `paroquant_fusedw4.py`) plus clean R1 entries, with no
+new lineage action required for this hipEngine-original INT8 prefill kernel.
+`git diff --check -- docs/KERNELS.md` -> clean.

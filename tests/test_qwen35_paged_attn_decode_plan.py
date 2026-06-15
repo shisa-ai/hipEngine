@@ -9,6 +9,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_spans,
+    qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
@@ -295,6 +296,24 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="paged_attn_prefill",
+            quant="w4_paro",
+            variant="bf16_gqa_gate_fp16_spans",
+        )
+        is qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_prefill",
+            quant="int8_per_token_head",
+            variant="per_token_head_gqa_gate_fp16_spans",
+        )
+        is qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="full_attn_prefill",
             quant="w4_paro",
             variant="qwen35_tree_gqa_gate_fp16",
@@ -462,4 +481,19 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
         qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans(
             0, 0, 0, int8_spans.scale_metadata.k_scale.ptr, int8_spans.scale_metadata.v_scale.ptr,
             0, 0, 0, 0, 0, int8_spans, 256, 1, 256, 16, 2, 256, 0, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="int8_per_token_head storage"):
+        qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans(
+            0, 0, 0, int8_spans.scale_metadata.k_scale.ptr, int8_spans.scale_metadata.v_scale.ptr,
+            0, 0, _spans(), 1, 2, 256, 2, 1, 8, 8, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="head_dim <= 256"):
+        qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans(
+            0, 0, 0, int8_spans.scale_metadata.k_scale.ptr, int8_spans.scale_metadata.v_scale.ptr,
+            0, 0, int8_spans, 1, 2, 256, 2, 1, 512, 512, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="k_scale_ptr"):
+        qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans(
+            0, 0, 0, int8_spans.scale_metadata.k_scale.ptr + 1, int8_spans.scale_metadata.v_scale.ptr,
+            0, 0, int8_spans, 1, 2, 256, 2, 1, 8, 8, 1, 1.0
         )

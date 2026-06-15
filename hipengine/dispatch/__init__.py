@@ -5,12 +5,16 @@ from hipengine.dispatch.fusion import BoundKernel, FusionPlanner, KernelPlanStep
 from hipengine.dispatch.kv import (
     KVKernelSelection,
     PagedAttnDecodeKind,
+    PagedAttnPrefillKind,
     PagedKVWriteKind,
     bind_paged_attn_decode,
+    bind_paged_attn_prefill,
     bind_paged_kv_write,
     plan_paged_attn_decode,
+    plan_paged_attn_prefill,
     plan_paged_kv_write,
     resolve_paged_attn_decode,
+    resolve_paged_attn_prefill,
     resolve_paged_kv_write,
 )
 from hipengine.dispatch.projection import (
@@ -42,6 +46,7 @@ __all__ = [
     "KVKernelSelection",
     "KernelPlanStep",
     "PagedAttnDecodeKind",
+    "PagedAttnPrefillKind",
     "PagedKVWriteKind",
     "ProjectionDispatchCandidate",
     "ProjectionDispatchDecision",
@@ -53,8 +58,10 @@ __all__ = [
     "WorkKind",
     "batch_sampler_equality_payload_blockers",
     "bind_paged_attn_decode",
+    "bind_paged_attn_prefill",
     "bind_paged_kv_write",
     "plan_paged_attn_decode",
+    "plan_paged_attn_prefill",
     "plan_paged_kv_write",
     "plan_projection_dispatch",
     "plan_projection_dispatch_from_artifact",
@@ -63,6 +70,7 @@ __all__ = [
     "projection_dispatch_evidence_payload_blockers",
     "plan_batch_sampler_dispatch",
     "resolve_paged_attn_decode",
+    "resolve_paged_attn_prefill",
     "resolve_paged_kv_write",
     "resolve_plan",
 ]

@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-14 (W7900/GPU0 README refresh reran hipEngine PARO/GGUF, llama.cpp HIP/Vulkan, and vLLM/llama.cpp concurrency with exact commands now encoded in `scripts/run_w7900_readme_refresh.sh` and documented below. Main sweep measured code commit `fbbc7bf8` under clean TheRock ROCm 7.13, `HIP version: 7.13.26162-1140233ffe`; PARO 5-run median prefill `2729.701 / 2906.950 / 2879.578 / 2079.424 / 1559.096 / 1053.919 tok/s`, decode `115.227 / 102.927 / 105.253 / 91.965 / 77.666 / 60.349 tok/s`, tracked peak `21.029 / 21.241 / 21.973 / 22.082 / 22.082 / 22.124 GiB` for `512/1K/4K/32K/64K/128K`; GGUF Q4_K_S prefill `2226.422 / 2528.347 / 2515.478 / 1871.997 / 1442.153 / 994.989 tok/s`, decode `108.173 / 97.357 / 98.516 / 86.287 / 73.734 / 58.023 tok/s`, tracked peak `25.108 GiB`. llama.cpp HIP/Vulkan Q4_K_M reruns used commits `e37abd6b5` / `263cc04a5`; concurrency diagnostic refreshed to hipEngine aggregate `115.36 / 115.35 / 160.74 / 190.15 tok/s` for c=1/2/4/8, llama.cpp Vulkan `105.76 / 157.38 / 75.29 / 25.15`, and vLLM OpenAI wall `20.04 / 38.42 / 73.28 / 116.56`. Previous MTP/DFlash update: 2026-06-13, 27B dense DFlash accepted 1.231x; 35B-A3B MTP B=1 current best is 1.023x prompt mean / 1.014x total-time, exact `9/9`; fixed B=1 remains current best.)
+Last updated: 2026-06-15 (#88 GPU1 24GB-class max-context memory gate retained: Qwen3.6-35B-A3B PARO `w4_paro` + `int8_per_token_head` KV direct 262,144-context scratch probe now uses streaming INT8 prefill attention, removing the prior 0.5 GiB BF16 oracle transient; min-free `0.664 -> 1.139 GiB`, peak used `23.320 -> 22.846 GiB`, scratch probe `0.115 -> 0.096s`, artifact `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`. Previous W7900/GPU0 README refresh: 2026-06-14 reran hipEngine PARO/GGUF, llama.cpp HIP/Vulkan, and vLLM/llama.cpp concurrency with exact commands encoded in `scripts/run_w7900_readme_refresh.sh` and documented below; main sweep measured code commit `fbbc7bf8` under clean TheRock ROCm 7.13, `HIP version: 7.13.26162-1140233ffe`.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -689,10 +689,77 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry and
 | Qwen3-0.6B | FP16 | nano-vllm / ROCm SDPA | 4K/4K | 30167.12 | 15.33 | 38.39 | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | Reference for host overhead to beat. |
 | Qwen3-0.6B | FP16 | mini-sglang / torch SDPA | 4K/4K | 20195.46 | 22.58 | 39.10 | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | Reference for host overhead to beat. |
 
+## GPU1 24GB max-context scratch gate (#88)
+
+The retained #88 memory gate is a scratch/headroom row, not a throughput row. It
+uses the same clean TheRock ROCm 7.13 GPU1 environment as the 24GB startup
+probes and exercises resident PARO `w4_paro` with `int8_per_token_head` KV at
+`max_sequence_length=262144`:
+
+```bash
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$("$PY" -m rocm_sdk path --root)
+RUN=/tmp/hipengine-int8-prefill-gpu1-$(date -u +%Y%m%d-%H%M%S)
+mkdir -p "$RUN"
+"$ROOT/bin/hipcc" --version > "$RUN/hipcc-version.txt"
+env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" SHELL="$SHELL" TERM="${TERM:-xterm}" \
+  PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+  LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE="$RUN/hipcc-version.txt" PYTHONPATH=. RUN_DIR="$RUN" \
+  "$PY" - <<'PY'
+import json, os, time
+from hipengine import LLM, SamplingParams
+
+model = "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+sampling = SamplingParams(
+    max_tokens=1,
+    kv_storage="int8_per_token_head",
+    kv_scale_dtype="fp16",
+    kv_scale_granularity="per_token_head",
+)
+llm = LLM(model, backend="hip_gfx1100", quant="w4_paro")
+t0 = time.perf_counter()
+prepared = llm.prepare(max_sequence_length=262144, sampling_params=sampling)
+t1 = time.perf_counter()
+llm.generate(("one two three four",), sampling)
+t2 = time.perf_counter()
+scratch = llm.prepare_request_scratch(
+    max_prompt_tokens=262143,
+    max_new_tokens=0,
+    sampling_params=sampling,
+)
+t3 = time.perf_counter()
+out = {
+    "prepared_context": prepared,
+    "prepare_s": t1 - t0,
+    "warmup_s": t2 - t1,
+    "scratch_probe_s": t3 - t2,
+    "scratch": scratch,
+}
+path = os.path.join(os.environ["RUN_DIR"], "scratch-262k-gpu1.json")
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(out, f, indent=2, sort_keys=True)
+print(path)
+PY
+```
+
+Current retained result: prior BF16-oracle gate `int8_oracle_bytes=536870912`,
+`peak_used=23.320 GiB`, `min_free=0.664 GiB`, `scratch_probe_s=0.115`; #88
+streaming INT8 prefill-attention gate `int8_oracle_bytes=0`,
+`peak_used=22.846 GiB`, `min_free=1.139 GiB`, `scratch_probe_s=0.096`. The
+new kernel was also correctness-smoked against a NumPy causal INT8 reference and
+seen in `rocprofv3 --kernel-trace` as
+`qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel` (`DurationNs=10440`). See
+[`2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`](results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json)
+and [`docs/OOM.md`](../docs/OOM.md).
+
 ## Smoke / non-throughput rows
 
 | Check | Backend | Command | Result | Artifact | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
+| GPU1 262K INT8 prefill streaming scratch gate (#88) | `hip_gfx1100` | See the exact TheRock/GPU1 Python heredoc in the preceding section; shape is `LLM(..., quant="w4_paro").prepare(max_sequence_length=262144)` + one-token warmup + `prepare_request_scratch(max_prompt_tokens=262143, max_new_tokens=0)` with `SamplingParams(kv_storage="int8_per_token_head")`. | Pass. BF16 INT8 prefill oracle removed: `int8_oracle_bytes 536870912 -> 0`; live peak moved from `full_prefill_scratch_live` to `linear_prefill_scratch_live`; min-free `0.664 -> 1.139 GiB`; peak used `23.320 -> 22.846 GiB`; scratch probe `0.115 -> 0.096s`. | [`2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`](results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json) | 2026-06-15 | Memory/scratch gate only, not a long-prompt throughput benchmark. Correctness: GPU NumPy reference smoke passed, focused host tests passed, and cached `rocprofv3 --kernel-trace` captured the INT8 prefill kernel (`DurationNs=10440`). |
 | MTP B=1 current post-dual profile refresh | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, quicksort D32 B=1 current defaults, `chain_attn_mode=decode_batched`, graph `off`, post proposer shared gate/up dual default. `scripts/mtp_verifier_rocprof.py --region verify_pass` and `--region proposer_all`. | Exact same-session AR with retained B=1 accepted trace. Verifier: `832.8` calls/pass, `9.380 ms/pass` kernel, `12.886 ms/pass` host marker; no material fill/copy bucket. Proposer-all: `40.0` calls/cycle, `1.509 ms/cycle` kernel, `1.759 ms/cycle` host marker; shared gate/up dual reduced dense-BF16 launches `7.5 -> 4.5/cycle` vs the pre-dual profile. | [`verify`](results/2026-06-13-hipengine-mtp-b1-current-postdual-verify-rocprof.json), [`proposer`](results/2026-06-13-hipengine-mtp-b1-current-postdual-proposer-all-rocprof.json) | 2026-06-13 | Diagnostic only, not a new speed row. Confirms proposer graph capture has only about `0.25 ms/cycle` host-only headroom and that the next code margin is still verifier reduced-DAG batching. |
 | E2E speculative vs AR (post-#107) | `hip_gfx1100` | W7900. MTP: smoke B=3 batched graph-auto quicksort D32. DFlash 35B: bench 4 prompts D32 gate 0.65 graph-auto. DFlash 27B: bench 4 prompts D64 gate 0.90 branch_copy graph-auto. | All exact. **35B-A3B MTP 0.67x** (72.6 vs 111.2 tok/s, C_B 3.57); **35B DFlash 0.30x** (drafter-bound); **27B-dense DFlash 1.164x** (38.9 vs 32.7 tok/s, per-prompt 0.94-1.42). 27B has no MTP head. | [`2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json`](results/2026-06-11-hipengine-e2e-mtp-dflash-vs-ar-27b-35b.json) | 2026-06-11 | Speculative beats AR only where AR is expensive (27B dense). 35B MTP break-even needs cycle 32.2->21.5 ms: proposer drafting + verify busy. |
 | MTP B=3 locked baseline/profile refresh | `hip_gfx1100` | W7900/gfx1100, Qwen3.6-35B-A3B-PARO packed MTP-BF16, quicksort 90-token prompt, D32, `scripts/mtp_chain_e2e_smoke.py --proposal-impl persistent_device --chain-attn-mode batched --graph-mode auto` plus `scripts/mtp_verifier_rocprof.py --graph-mode auto --steady-state-skip 2`. | Exact same-session AR. Fresh baseline `84.314` vs `111.769 tok/s` = `0.754x` (best locked row remains `0.758x`); accepted lengths unchanged. Profile slice: `11` verifier passes, `19.73 ms/pass` host, `15.33 ms/pass` kernel, `972` calls/pass; top families are native prefill attention, MoE gate/up dual GEMV, GDN decode, MoE down, and lm-head. | [`baseline`](results/2026-06-11-hipengine-mtp-b3-locked-baseline.json), [`rocprof`](results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json) | 2026-06-11 | P0 audit for the MTP break-even sprint. The first graph/capture cycle makes all-cycle `decode_seconds/cycle` `29.19 ms`; steady cycle markers after warmup are about `23.3 ms`. |

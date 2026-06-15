@@ -12,8 +12,10 @@ from hipengine.core.rocblas import rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import (
     PagedAttnDecodeKind,
+    PagedAttnPrefillKind,
     PagedKVWriteKind,
     resolve_paged_attn_decode,
+    resolve_paged_attn_prefill,
     resolve_paged_kv_write,
 )
 from hipengine.kernels.hip_gfx1100.attention import (
@@ -55,7 +57,6 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     silu_mul_dual_out_fp16,
     silu_mul_dual_rotate_out_bf16,
     silu_mul_dual_rotate_out_fp16,
-    silu_mul_separate_out_bf16,
     silu_mul_separate_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
@@ -3647,6 +3648,55 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def prefill_full_attention_int8_gqa_gate_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        if key_cache.dtype is not DType.INT8 or value_cache.dtype is not DType.INT8:
+            raise ValueError("INT8 paged attention prefill requires INT8 key/value cache tensors")
+        metadata = spans.scale_metadata
+        if metadata is None:
+            raise ValueError("INT8 paged attention prefill requires scale metadata")
+        gate_tensor = scratch.gate if gate is None else gate
+        prefill_fn = resolve_paged_attn_prefill(
+            backend=_PAGED_KV_REGISTRY_BACKEND,
+            spans=spans,
+            kind=PagedAttnPrefillKind.GQA_GATE_FP16,
+        )
+        prefill_fn(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            metadata.k_scale.ptr,
+            metadata.v_scale.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            spans,
+            rows,
+            spans.max_live_count,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def prefill_full_attention_gqa_gate_tree_fp16(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -5711,7 +5761,20 @@ class Qwen35ParoDecodeState:
 
         if tokens <= 1:
             raise ValueError("full-attention native prefill requires tokens > 1")
+        direct_int8 = (
+            append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            or prefill_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        )
         retained_int8 = retained_append_spans is not None
+        if direct_int8:
+            if append_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD or prefill_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+                raise ValueError("direct INT8 prefill requires INT8 append and attention spans")
+            if key_cache.dtype is not DType.INT8 or value_cache.dtype is not DType.INT8:
+                raise ValueError("direct INT8 prefill requires INT8 key/value cache tensors")
+            if append_spans.scale_metadata is None or prefill_spans.scale_metadata is None:
+                raise ValueError("direct INT8 prefill requires scale metadata")
+            if aotriton_attention:
+                raise ValueError("AOTriton prefill requires BF16 K/V; disable it for direct INT8 prefill")
         if retained_int8:
             if retained_key_cache is None or retained_value_cache is None:
                 raise ValueError("INT8 retained prefill append requires retained key/value cache tensors")
@@ -5773,16 +5836,28 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        self.append_full_attention_kv_fp16_batch(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=append_spans,
-            rows=tokens,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
+        if append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            self.append_full_attention_kv_int8_per_token_head_fp16_batch(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=append_spans,
+                rows=tokens,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            self.append_full_attention_kv_fp16_batch(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=append_spans,
+                rows=tokens,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         if retained_int8:
             self.append_full_attention_kv_int8_per_token_head_fp16_batch(
                 attention_scratch,
@@ -5830,17 +5905,30 @@ class Qwen35ParoDecodeState:
                 stream=stream,
             )
         else:
-            gated = self.prefill_full_attention_gqa_gate_fp16(
-                attention_scratch,
-                key_cache=key_cache,
-                value_cache=value_cache,
-                spans=prefill_spans,
-                rows=tokens,
-                gate=gate,
-                block_size=block_size,
-                library=library,
-                stream=stream,
-            )
+            if prefill_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+                gated = self.prefill_full_attention_int8_gqa_gate_fp16(
+                    attention_scratch,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    spans=prefill_spans,
+                    rows=tokens,
+                    gate=gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+            else:
+                gated = self.prefill_full_attention_gqa_gate_fp16(
+                    attention_scratch,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    spans=prefill_spans,
+                    rows=tokens,
+                    gate=gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
             attn_out = self.project_full_attention_o_fp16(
                 gated,
                 attention_scratch,

@@ -1,0 +1,418 @@
+{
+  "schema": "hipengine_benchmark_memory_gate_v1",
+  "date_utc": "2026-06-15T02:38:23Z",
+  "title": "GPU1 262K INT8 prefill streaming-attention scratch gate",
+  "task": "#88 streaming INT8 prefill attention for PARO",
+  "git_head_before_commit": "3b36de19",
+  "hardware": "GPU1 24GB-class gfx1100 path via HIP_VISIBLE_DEVICES=1",
+  "rocm": "TheRock ROCm 7.13, hipcc version captured in /tmp/hipengine-int8-prefill-gpu1-20260615-023751/hipcc-version.txt",
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "quant": "w4_paro",
+  "kv_storage": "int8_per_token_head",
+  "command": "HIP_VISIBLE_DEVICES=1 LLM(model, quant='w4_paro').prepare(max_sequence_length=262144, kv_storage=int8_per_token_head); LLM.generate(('one two three four',), max_tokens=1); LLM.prepare_request_scratch(max_prompt_tokens=262143, max_new_tokens=0)",
+  "environment": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-int8-prefill-gpu1-20260615-023751/hipcc-version.txt",
+    "PYTHONPATH": "/home/lhl/hipEngine"
+  },
+  "baseline": {
+    "source": "docs/OOM.md prior GPU1 direct scratch gate, artifact=/tmp/hipengine-gpu1-24gb-gate-20260614-200239/scratch-262k-gpu1.json",
+    "context_tokens": 262144,
+    "max_prompt_tokens": 262143,
+    "kv_storage": "int8_per_token_head",
+    "linear_prefill_chunk_rows": 256,
+    "full_prefill_chunk_rows": 256,
+    "linear_prefill_tree_state_rows": 1,
+    "linear_prefill_tree_state_saved_gib": 0.533,
+    "int8_oracle_bytes": 536870912,
+    "peak_stage": "full_prefill_scratch_live",
+    "peak_used_gib": 23.32,
+    "min_free_gib": 0.664,
+    "scratch_probe_s": 0.125
+  },
+  "result": {
+    "source": "/tmp/hipengine-int8-prefill-gpu1-20260615-023751/scratch-262k-gpu1.json",
+    "context_tokens": 262144,
+    "max_prompt_tokens": 262143,
+    "kv_storage": "int8_per_token_head",
+    "linear_prefill_chunk_rows": 256,
+    "full_prefill_chunk_rows": 256,
+    "linear_prefill_tree_state_rows": 1,
+    "linear_prefill_tree_state_saved_bytes": 572375040,
+    "linear_prefill_tree_state_saved_gib": 0.533066,
+    "int8_oracle_bytes": 0,
+    "peak_stage": "linear_prefill_scratch_live",
+    "peak_used_gib": 22.845703,
+    "min_free_gib": 1.138672,
+    "scratch_probe_s": 0.09571422915905714,
+    "warmup_s": 0.37796931294724345,
+    "prepared_context": 262144,
+    "live_memory_samples": [
+      {
+        "stage": "prefill_hidden_live",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      },
+      {
+        "stage": "after_full_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "linear_prefill_scratch_live",
+        "free_bytes": 1222639616,
+        "total_bytes": 25753026560,
+        "used_bytes": 24530386944,
+        "free_gib": 1.138672,
+        "used_gib": 22.845703
+      },
+      {
+        "stage": "after_linear_attention_workspace_release",
+        "free_bytes": 1312817152,
+        "total_bytes": 25753026560,
+        "used_bytes": 24440209408,
+        "free_gib": 1.222656,
+        "used_gib": 22.761719
+      },
+      {
+        "stage": "full_prefill_scratch_live",
+        "free_bytes": 1247805440,
+        "total_bytes": 25753026560,
+        "used_bytes": 24505221120,
+        "free_gib": 1.162109,
+        "used_gib": 22.822266
+      }
+    ],
+    "prefill_chunk_tuning": {
+      "enabled": true,
+      "applied": true,
+      "reason": "low_memory_full_context_24gb",
+      "max_sequence_length": 262143,
+      "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+      "memory_budget_gib": 13.191406250000002,
+      "estimated_peak_gib": 23.4,
+      "chunk_sizes": {
+        "linear": 256,
+        "moe": 256,
+        "full_attn_query": 256,
+        "full_attn_post": 256,
+        "full_attn_rope": 256
+      }
+    }
+  },
+  "delta": {
+    "int8_oracle_bytes": -536870912,
+    "int8_oracle_gib": -0.5,
+    "min_free_gib": 0.474672,
+    "peak_used_gib": -0.474297,
+    "scratch_probe_s": -0.029286
+  },
+  "correctness_and_gates": {
+    "gpu_numpy_reference": "HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest tests/test_qwen35_int8_prefill_attention_gpu.py -q -> 1 passed",
+    "host_tests": "python3 -m pytest tests/test_kv_dispatch.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q -> 195 passed",
+    "ruff": "python3 -m ruff check touched files -> All checks passed",
+    "py_compile": "python3 -m py_compile touched Python files -> passed",
+    "rocprof_kernel_trace": {
+      "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel<float>(float const*, signed char const*, signed char const*, float const*, float const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+      "agent_id": "Agent 1",
+      "queue_id": "1",
+      "start_timestamp": 1798623666008062,
+      "end_timestamp": 1798623666018502,
+      "duration_ns": 10440,
+      "csv": "/tmp/hipengine-int8-prefill-rocprof/out/int8_prefill_kernel_trace.csv"
+    }
+  },
+  "notes": [
+    "The prior 262K GPU1 peak was full_prefill_scratch_live because the BF16 INT8 prefill oracle was still live.",
+    "The new peak moves back to linear_prefill_scratch_live; full_prefill_scratch_live is 22.822266 GiB used / 1.162109 GiB free in this run.",
+    "This is a memory/scratch gate, not a throughput benchmark row."
+  ]
+}
