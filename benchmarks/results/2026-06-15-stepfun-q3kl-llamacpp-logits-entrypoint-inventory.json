@@ -126,14 +126,14 @@
     "artifact_kind": "stepfun_llamacpp_logits_plan",
     "exists": true,
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
-    "sha256": "2c4108a0ae312b7fc470a2d839afa56cf31707052d5cc822d4514155b942f789",
+    "sha256": "ee41d4255a0a925ced3ec7ebccad561734ac3e8547778174b11ad015025ca764",
     "status": "blocked"
   },
   "preflight_artifact": {
     "artifact_kind": "stepfun_llamacpp_logits_preflight",
     "exists": true,
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
-    "sha256": "eaaf29a248a3dcfd44c700798b24b3d4e003a0da9d935b6cac2f8572a9e44299",
+    "sha256": "a7402255a0b009dbe9aefa0f44150f00b86d23da8f518a332f0ccdf4670b762a",
     "status": "blocked"
   },
   "ready": true,

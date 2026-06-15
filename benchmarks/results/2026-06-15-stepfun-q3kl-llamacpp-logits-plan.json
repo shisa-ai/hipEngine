@@ -67,11 +67,11 @@
           "path": "scripts/stepfun_oracle_token_mismatch.py",
           "present_symbols": [
             {
-              "line": 167,
+              "line": 259,
               "symbol": "main"
             },
             {
-              "line": 115,
+              "line": 142,
               "symbol": "build_oracle_token_mismatch_summary"
             }
           ],
@@ -88,11 +88,11 @@
           "path": "scripts/stepfun_oracle_rank_check.py",
           "present_symbols": [
             {
-              "line": 236,
+              "line": 313,
               "symbol": "main"
             },
             {
-              "line": 132,
+              "line": 158,
               "symbol": "build_oracle_rank_check"
             }
           ],
@@ -169,11 +169,11 @@
               "path": "scripts/stepfun_oracle_token_mismatch.py",
               "present_symbols": [
                 {
-                  "line": 167,
+                  "line": 259,
                   "symbol": "main"
                 },
                 {
-                  "line": 115,
+                  "line": 142,
                   "symbol": "build_oracle_token_mismatch_summary"
                 }
               ],
@@ -190,11 +190,11 @@
               "path": "scripts/stepfun_oracle_rank_check.py",
               "present_symbols": [
                 {
-                  "line": 236,
+                  "line": 313,
                   "symbol": "main"
                 },
                 {
-                  "line": 132,
+                  "line": 158,
                   "symbol": "build_oracle_rank_check"
                 }
               ],
@@ -258,19 +258,19 @@
                   "symbol": "StepFunLayerPrefixLogitsProbe"
                 },
                 {
-                  "line": 1683,
+                  "line": 1833,
                   "symbol": "StepFunResidentSession.embed_chat_prompt_bf16"
                 },
                 {
-                  "line": 1761,
+                  "line": 1911,
                   "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
                 },
                 {
-                  "line": 2159,
+                  "line": 2309,
                   "symbol": "StepFunResidentSession.layer_prefill_probe_bf16"
                 },
                 {
-                  "line": 2250,
+                  "line": 2400,
                   "symbol": "StepFunResidentSession.final_logits_probe_bf16"
                 }
               ],
@@ -348,19 +348,19 @@
                   "symbol": "StepFunLayerPrefixLogitsProbe"
                 },
                 {
-                  "line": 1683,
+                  "line": 1833,
                   "symbol": "StepFunResidentSession.embed_chat_prompt_bf16"
                 },
                 {
-                  "line": 1761,
+                  "line": 1911,
                   "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
                 },
                 {
-                  "line": 2159,
+                  "line": 2309,
                   "symbol": "StepFunResidentSession.layer_prefill_probe_bf16"
                 },
                 {
-                  "line": 2250,
+                  "line": 2400,
                   "symbol": "StepFunResidentSession.final_logits_probe_bf16"
                 }
               ],
@@ -399,11 +399,11 @@
               "path": "scripts/stepfun_oracle_blocker_diagnosis.py",
               "present_symbols": [
                 {
-                  "line": 281,
+                  "line": 352,
                   "symbol": "main"
                 },
                 {
-                  "line": 138,
+                  "line": 164,
                   "symbol": "build_oracle_blocker_diagnosis"
                 }
               ],
@@ -420,11 +420,11 @@
               "path": "scripts/stepfun_oracle_evidence_consistency_check.py",
               "present_symbols": [
                 {
-                  "line": 418,
+                  "line": 487,
                   "symbol": "main"
                 },
                 {
-                  "line": 200,
+                  "line": 226,
                   "symbol": "build_oracle_evidence_consistency_check"
                 }
               ],
@@ -441,11 +441,11 @@
               "path": "scripts/stepfun_oracle_next_action_manifest.py",
               "present_symbols": [
                 {
-                  "line": 338,
+                  "line": 407,
                   "symbol": "main"
                 },
                 {
-                  "line": 174,
+                  "line": 200,
                   "symbol": "build_oracle_next_action_manifest"
                 }
               ],
@@ -492,11 +492,11 @@
               "path": "scripts/stepfun_oracle_blocker_diagnosis.py",
               "present_symbols": [
                 {
-                  "line": 281,
+                  "line": 352,
                   "symbol": "main"
                 },
                 {
-                  "line": 138,
+                  "line": 164,
                   "symbol": "build_oracle_blocker_diagnosis"
                 }
               ],
@@ -513,11 +513,11 @@
               "path": "scripts/stepfun_oracle_evidence_consistency_check.py",
               "present_symbols": [
                 {
-                  "line": 418,
+                  "line": 487,
                   "symbol": "main"
                 },
                 {
-                  "line": 200,
+                  "line": 226,
                   "symbol": "build_oracle_evidence_consistency_check"
                 }
               ],
@@ -534,11 +534,11 @@
               "path": "scripts/stepfun_oracle_next_action_manifest.py",
               "present_symbols": [
                 {
-                  "line": 338,
+                  "line": 407,
                   "symbol": "main"
                 },
                 {
-                  "line": 174,
+                  "line": 200,
                   "symbol": "build_oracle_next_action_manifest"
                 }
               ],
@@ -575,7 +575,7 @@
   "preflight_artifact": {
     "artifact_kind": "stepfun_llamacpp_logits_preflight",
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
-    "sha256": "35eb339492f93fbf78b1962239e737f0d721a48bb176d20ae6f9c1cb9cb8d94f",
+    "sha256": "a7402255a0b009dbe9aefa0f44150f00b86d23da8f518a332f0ccdf4670b762a",
     "status": "blocked"
   },
   "ready": false,
@@ -588,7 +588,7 @@
   "source_map_artifact": {
     "artifact_kind": "stepfun_oracle_source_map",
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json",
-    "sha256": "9cf5f0695b08023679c849dff379d066c4a9a11d6f38d92d967c6de49de253d3",
+    "sha256": "4281c10888cfe29e9b5b1c436e9aac19ffe47145776cc31a2c0458ac8cc8db09",
     "status": "mapped"
   },
   "status": "blocked",

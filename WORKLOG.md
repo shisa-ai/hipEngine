@@ -42782,3 +42782,89 @@ python3 scripts/stepfun_oracle_evidence_consistency_check.py --sha-only
 ```
 
 Results: targeted oracle blocker-diagnosis tests passed (`5` tests); blocker-diagnosis verifier status returns `"match"`, verifier failures `[]`, verifier digest `432687e11cf2ea71fd88ebcde452e89db7f34c957ffdd0f51b489277334f9c76`; status/final-blocker/handoff verification returned `"match"`; blocker diagnosis status remains `"blocked"`; ruled-out causes still show prompt-token drift, host top-token text label drift, and expected-token text tokenization drift ruled out; active findings still show generated-text mismatch, generated token absent from host top tokens, and HIP oracle timeout; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `4ad025fd43e4a48e4727c029ba57bc66bb1d1d5a98e464885c24c2ced075811a`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are blocker diagnosis `44ed5dcb1bf7dd144fae4223cb6555372ef652e7f5cd1315df2ffea2903898d9`, evidence consistency `a65e3d6df48c26f434495e6818488b239cdeb00cf00ac6dbe84ab235880d8a8c`, oracle next-action `0d01e67a58eede0164956ddda6dfbd4194ab395c0c1722da6b1aedb785c050f0`, remaining-blockers rollup `2a65a3ca73b620405dd7701175630021a37f1d28b09c959658835124a8d72d37`, correctness-status `99abfac688b78273e12bc3cd52d071b3205c8d6b714d03cad4ff9c157c4d4af2`, final-blocker `3cd02c170dcdb5f30987f4c4c2ee4cee12f7de2498fce2c8168a836b570aef1a`, handoff `6a64c1278e9a32a60f50f6367b545b3ac0b0a93197019e8e59eabcb6dc147b4d`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed.
+
+## 2026-06-15 - StepFun oracle source-map drift verifier
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 540. Added an explicit verifier for the retained oracle source-map artifact. `scripts/stepfun_oracle_source_map.py --verify-source-map` now rebuilds the host prompt-logit, llama.cpp oracle-runner, and oracle blocker-handoff owner map from current in-tree symbols plus retained artifact metadata and compares it with `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json`, with compact status/failure/digest modes for handoff polling. This only guards the source-map handoff used by llama.cpp logits/backend parity planning; it does not resolve `generated_text_matches_target`, satisfy oracle parity, wire KV decode, or make performance/e2e claims.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json` remains `status=mapped`, `ready=true`, with entry keys `host_prompt_logit_smoke`, `llamacpp_oracle_runner`, and `oracle_blocker_handoff`; file SHA is `80dc4f09cb133f8f695e2efd5ea735841686aa392b0d9dc1617f3c386647082b` and stable payload SHA is `4281c10888cfe29e9b5b1c436e9aac19ffe47145776cc31a2c0458ac8cc8db09`. `--verify-source-map --verification-status-only` returns `"match"`, `--verification-failures-only` returns `[]`, and verifier payload digest is `405256c5a08d1fde675f073fd0ae9954982ba5d253d8e869f81852bc669ea5d9`. Refreshed downstream logits handoff artifacts that embed the source-map/preflight/plan hashes: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json` remains `status=blocked` with payload SHA `a7402255a0b009dbe9aefa0f44150f00b86d23da8f518a332f0ccdf4670b762a`; `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json` remains `status=blocked` with payload SHA `ee41d4255a0a925ced3ec7ebccad561734ac3e8547778174b11ad015025ca764`; `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json` remains `status=ready` with payload SHA `bf0cf0df9e15323dd1feff8cf4c20a98b87822046641b94d79b1146d0f1f9748`; and `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json` remains `status=blocked` with payload SHA `925b75498650b21e83e9de4c2443b918b4b3b53e1b1f77a2daf1d965e933ae06`. Helper readiness verification still returns `"match"`. Refreshed remaining-blockers/status/final-blocker/handoff artifacts after the docs verifier note; remaining-blockers rollup stays blocked with payload SHA `70fe0c1a05e219170c82557e7a96e8769ade19fb1d689ccf4bf7d24fa6304fb6`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_source_map.py tests/test_stepfun_oracle_source_map.py
+python3 -m pytest -q tests/test_stepfun_oracle_source_map.py
+python3 scripts/stepfun_oracle_source_map.py --default-output --pretty
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-status-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-failures-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-sha-only
+python3 scripts/stepfun_oracle_source_map.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_preflight.py --status-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_plan.py --status-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --status-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_patch_plan.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_patch_dry_run.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json || true
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_oracle_source_map.py --status-only
+python3 scripts/stepfun_oracle_source_map.py --missing-symbols-only
+python3 scripts/stepfun_oracle_source_map.py --entry-keys-only
+python3 scripts/stepfun_oracle_source_map.py --sha-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-status-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-failures-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-sha-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --status-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --status-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --status-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --status-only
+python3 scripts/stepfun_llamacpp_logits_helper_contract.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_helper_readiness.py --verify-readiness --verification-status-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --verify-rollup --verification-status-only
+git diff --check
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+grep -R "^import torch\|from torch\|if backend ==\|if quant ==" -n scripts/stepfun_oracle_source_map.py tests/test_stepfun_oracle_source_map.py || true
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-helper-contract.json benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --status-only || true
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-status-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-failures-only
+python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --entries-sha-only
+python3 scripts/stepfun_final_blocker_manifest.py --sha-only
+python3 - <<'PY'
+from pathlib import Path
+import re
+print('NO_VERIFY artifact scripts:')
+for p in sorted(Path('scripts').glob('stepfun_*.py')):
+    s=p.read_text()
+    has_output='DEFAULT_OUTPUT' in s or '--default-output' in s
+    opts=sorted(set(re.findall(r'--verify-[a-z-]+', s)))
+    if has_output and not opts:
+        print(p.name)
+PY
+```
+
+Results: targeted oracle source-map tests passed (`6` tests); source-map verifier status returns `"match"`, verifier failures `[]`, verifier digest `405256c5a08d1fde675f073fd0ae9954982ba5d253d8e869f81852bc669ea5d9`; source-map status remains `"mapped"`, missing symbols `[]`, and entry keys remain `host_prompt_logit_smoke`, `llamacpp_oracle_runner`, `oracle_blocker_handoff`; refreshed preflight/plan/inventory/helper-contract artifacts retain their prior blocker/ready statuses; helper readiness and remaining-blockers verification returned `"match"`; status/final-blocker/handoff verification returned `"match"`; final manifest entries SHA `d845e550f865939c91ad6ae39895203d6a4b63fc90fea37da33c59b3d1a38657`, manifest SHA `035457653062b23cc4521911ed05f0126b28b5fe6924cc6186aacba62201eb2d`; P0-P12 open/partial count remains `2`; full StepFun guard passed; file SHAs are source-map `80dc4f09cb133f8f695e2efd5ea735841686aa392b0d9dc1617f3c386647082b`, preflight `51dea6cf123f97f1fa8ab38821cd65fc0a806ca5cff1fcc97124aaf43a15088e`, plan `c40df6a6130f4d86617447665e191e7100c9c904d7780f3038d94524ec3c11c1`, entrypoint inventory `337541debb028dcfa9099680800fb2087bb595033249e2f43fe23dd4154633ae`, helper contract `b9ec7de96c8b3d5fc764eae52931d83e7dd292c677017f3b002f1ecb7f7c3a58`, remaining-blockers rollup `86215e8b35c054cd45affcc54fb9255ee37a8c8c296081655d3b55e7759488d3`, correctness-status `6a826cc2e24656310fb69f3f818dbe88c0fe3ee79ff93bfe017d299e3e792f38`, final-blocker `59d8e6fafa5ef490d1694e883432fa08d8035ae9a50678df5f29278541b4c578`, handoff `97e21029bc9726dc8c6649418675ec6de3be12252439ddeb20f8c5a38967c87b`; handoff status remains `blocked_verified`; next-action oracle evidence gap remains `generated_text_matches_target`; touched scripts/tests have no torch import and no backend/quant dispatch special-casing; `git diff --check` passed; remaining artifact scripts without verify options are the llama.cpp logits entrypoint/contract/patch-plan/patch-dry-run/plan/preflight/probe scripts.

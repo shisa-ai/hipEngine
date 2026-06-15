@@ -953,7 +953,8 @@ reporting.
   is the drift check for that diagnosis/consistency/logit-margin handoff. `scripts/stepfun_oracle_source_map.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-source-map.json`, mapping the
   in-tree owners for host prompt logits, llama.cpp oracle execution, and blocker handoff before
-  that investigation. `scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty`
+  that investigation; `python3 scripts/stepfun_oracle_source_map.py --verify-source-map --verification-status-only`
+  is the drift check for that in-tree symbol/artifact-owner map. `scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json`, currently
   `status=blocked`, because the built `llama-debug` logits-dump entrypoint (`--save-logits`,
   `--logits-output-dir`) does not expose a special-token parsing flag for the retained prompt. `scripts/stepfun_llamacpp_logits_probe.py --prompt-token-source retained-input-ids --execute --default-output --pretty`

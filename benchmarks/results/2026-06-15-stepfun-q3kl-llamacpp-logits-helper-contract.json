@@ -45,7 +45,7 @@
     ],
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
     "ready": false,
-    "sha256": "35eb339492f93fbf78b1962239e737f0d721a48bb176d20ae6f9c1cb9cb8d94f",
+    "sha256": "a7402255a0b009dbe9aefa0f44150f00b86d23da8f518a332f0ccdf4670b762a",
     "status": "blocked"
   },
   "probe_artifact": {
