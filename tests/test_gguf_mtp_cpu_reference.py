@@ -7,10 +7,12 @@ from hipengine.kernels.cpu_reference import (
     qwen35_gguf_mtp_attention_sublayer,
     qwen35_gguf_mtp_boundary_logits,
     qwen35_gguf_mtp_eh_proj,
+    qwen35_gguf_mtp_ffn_sublayer,
     qwen35_gguf_mtp_moe_routing,
     qwen35_gguf_mtp_shared_head_logits,
 )
 from hipengine.kernels.registry import resolve
+from hipengine.quant.gguf import GGMLQuantizationType
 
 
 def _rmsnorm(x: np.ndarray, weight: np.ndarray, eps: float = 1.0e-6) -> np.ndarray:
@@ -296,6 +298,98 @@ def test_qwen35_gguf_mtp_moe_routing_validates_shapes() -> None:
         qwen35_gguf_mtp_moe_routing(hidden, router, experts_used=5)
 
 
+def test_qwen35_gguf_mtp_ffn_sublayer_applies_norm_routing_shared_expert_and_residual() -> None:
+    hidden = np.asarray([[0.25, -0.5]], dtype=np.float32)
+    norm = np.asarray([1.5, 0.5], dtype=np.float32)
+    router = np.asarray(
+        [
+            [2.0, 0.0],
+            [0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    gate_q = np.asarray(
+        [
+            [[1.0, 0.0], [0.0, 1.0]],
+            [[0.5, 0.0], [0.0, 0.5]],
+        ],
+        dtype=np.float32,
+    )
+    up_q = np.asarray(
+        [
+            [[0.25, 0.0], [0.0, 0.25]],
+            [[1.0, 0.0], [0.0, 1.0]],
+        ],
+        dtype=np.float32,
+    )
+    down_q = np.asarray(
+        [
+            [[1.0, 0.0], [0.0, 1.0]],
+            [[2.0, 0.0], [0.0, 2.0]],
+        ],
+        dtype=np.float32,
+    )
+    shared_gate_logit = np.asarray([0.75, -0.25], dtype=np.float32)
+    shared_gate_q = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    shared_up_q = np.asarray([[0.5, 0.0], [0.0, 0.5]], dtype=np.float32)
+    shared_down_q = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+
+    out = qwen35_gguf_mtp_ffn_sublayer(
+        hidden,
+        norm,
+        router,
+        gate_q,
+        up_q,
+        down_q,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        shared_gate_logit,
+        shared_gate_q,
+        shared_up_q,
+        shared_down_q,
+        GGMLQuantizationType.F32,
+        experts_used=1,
+        expert_weights_scale=1.0,
+    )
+
+    normed = _rmsnorm(hidden, norm)
+    logits = np.matmul(normed, router.T).astype(np.float32)
+    expert = int(np.argmax(logits[0]))
+    gate = np.matmul(normed, gate_q[expert].T)
+    up = np.matmul(normed, up_q[expert].T)
+    selected = np.matmul((gate / (1.0 + np.exp(-gate))) * up, down_q[expert].T)
+    shared_gate = np.matmul(normed, shared_gate_q.T)
+    shared_up = np.matmul(normed, shared_up_q.T)
+    shared_out = np.matmul((shared_gate / (1.0 + np.exp(-shared_gate))) * shared_up, shared_down_q.T)
+    shared_scale = 1.0 / (1.0 + np.exp(-np.matmul(normed, shared_gate_logit)))
+    expected = hidden + selected + shared_scale[:, None] * shared_out
+    np.testing.assert_allclose(out, expected.astype(np.float32), rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_ffn_sublayer_validates_norm_shape() -> None:
+    hidden = np.ones((1, 2), dtype=np.float32)
+    weight = np.ones((1, 2, 2), dtype=np.float32)
+    with pytest.raises(ValueError, match="attn_post_norm_weight must have shape"):
+        qwen35_gguf_mtp_ffn_sublayer(
+            hidden,
+            np.ones((3,), dtype=np.float32),
+            np.ones((1, 2), dtype=np.float32),
+            weight,
+            weight,
+            weight,
+            GGMLQuantizationType.F32,
+            GGMLQuantizationType.F32,
+            GGMLQuantizationType.F32,
+            np.ones((2,), dtype=np.float32),
+            np.eye(2, dtype=np.float32),
+            np.eye(2, dtype=np.float32),
+            np.eye(2, dtype=np.float32),
+            GGMLQuantizationType.F32,
+            experts_used=1,
+        )
+
+
 def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     eh_proj = resolve(
         backend="cpu_reference",
@@ -327,9 +421,16 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
         quant="gguf_f32",
         variant="qwen35_softmax_topk",
     )
+    ffn = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_ffn",
+        quant="gguf_moe",
+        variant="qwen35_shared",
+    )
 
     assert eh_proj is qwen35_gguf_mtp_eh_proj
     assert shared_head is qwen35_gguf_mtp_shared_head_logits
     assert boundary_logits is qwen35_gguf_mtp_boundary_logits
     assert attention is qwen35_gguf_mtp_attention_sublayer
     assert moe_routing is qwen35_gguf_mtp_moe_routing
+    assert ffn is qwen35_gguf_mtp_ffn_sublayer

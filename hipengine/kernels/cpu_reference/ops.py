@@ -502,6 +502,68 @@ def gguf_moe_ffn_block(
     return (res + selected_out + gate * shared_out).astype(np.float32)
 
 
+def qwen35_gguf_mtp_ffn_sublayer(
+    hidden: ArrayLike,
+    attn_post_norm_weight: ArrayLike,
+    router_weight: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    shared_gate_logit_weight: ArrayLike,
+    shared_gate_qweight: ArrayLike,
+    shared_up_qweight: ArrayLike,
+    shared_down_qweight: ArrayLike,
+    shared_qtype: GGMLQuantizationType,
+    *,
+    experts_used: int,
+    expert_weights_scale: float = 1.0,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for the Qwen35 GGUF MTP post-attention FFN sublayer.
+
+    llama.cpp saves the post-attention residual, applies ``attn_post_norm``,
+    routes with ``ffn_gate_inp`` using softmax top-k, runs the selected MoE FFN,
+    adds the gated shared expert when present, and finally adds the saved
+    residual.  This helper covers the common shared-expert Qwen35 path by
+    composing :func:`qwen35_gguf_mtp_moe_routing` with
+    :func:`gguf_moe_ffn_block`.
+    """
+
+    x = np.asarray(hidden, dtype=np.float32)
+    norm_weight = np.asarray(attn_post_norm_weight, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    if norm_weight.shape != (x.shape[1],):
+        raise ValueError("attn_post_norm_weight must have shape [hidden]")
+    normed = rmsnorm(x, norm_weight, eps=eps)
+    selected_experts, routing_weights = qwen35_gguf_mtp_moe_routing(
+        normed,
+        router_weight,
+        experts_used=experts_used,
+        expert_weights_scale=expert_weights_scale,
+    )
+    return gguf_moe_ffn_block(
+        normed,
+        x,
+        selected_experts,
+        routing_weights,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        gate_qtype,
+        up_qtype,
+        down_qtype,
+        shared_gate_logit_weight,
+        shared_gate_qweight,
+        shared_up_qweight,
+        shared_down_qweight,
+        shared_qtype,
+    )
+
+
 def gguf_q4_k_moe_selected_ffn(
     x: ArrayLike,
     selected_experts: ArrayLike,
@@ -1306,6 +1368,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "qwen35_gguf_mtp_boundary_logits": qwen35_gguf_mtp_boundary_logits,
         "qwen35_gguf_mtp_attention_sublayer": qwen35_gguf_mtp_attention_sublayer,
         "qwen35_gguf_mtp_moe_routing": qwen35_gguf_mtp_moe_routing,
+        "qwen35_gguf_mtp_ffn_sublayer": qwen35_gguf_mtp_ffn_sublayer,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1353,6 +1416,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "mtp_nextn_moe_routing", "gguf_f32", "qwen35_softmax_topk"),
         qwen35_gguf_mtp_moe_routing,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_ffn", "gguf_moe", "qwen35_shared"),
+        qwen35_gguf_mtp_ffn_sublayer,
         replace=replace,
     )
     register(

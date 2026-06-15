@@ -93584,3 +93584,50 @@ Validation:
 - Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
   registry key, no backend/quant branches, no runtime KV/dispatch path changes,
   and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference FFN sublayer oracle
+
+Implemented `mtp-gguf` multiloop iteration 23: a torch-free CPU-reference helper
+for the Qwen35 GGUF MTP post-attention FFN sublayer.
+
+Scope note:
+- This is a CPU-reference scaffold for the common Qwen35 shared-expert FFN path.
+  It does not alter runtime dispatch, GPU kernels, or KV paths.
+- It composes the existing selected/shared GGUF FFN oracle with the MTP-specific
+  `attn_post_norm` and softmax top-k router semantics pinned in iteration 22.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '671,717p'; nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/llama-graph.cpp | sed -n '1491,1611p'`
+- Confirmed order:
+  - Save `ffn_residual = cur`.
+  - Apply RMSNorm with `layer.attn_post_norm`.
+  - Run `build_moe_ffn(...)` with softmax top-k routing and
+    `hparams.expert_weights_scale`.
+  - If present, compute shared expert FFN and gate it with
+    `sigmoid(ffn_gate_inp_shexp(cur))`.
+  - Add selected MoE output + shared expert output, then add the saved residual.
+
+Changes:
+- Added `qwen35_gguf_mtp_ffn_sublayer(...)` in
+  `hipengine/kernels/cpu_reference/ops.py`.
+  - Applies `attn_post_norm`.
+  - Calls `qwen35_gguf_mtp_moe_routing(...)`.
+  - Reuses `gguf_moe_ffn_block(...)` for selected-expert FFN, gated shared
+    expert, and residual add.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_ffn", "gguf_moe", "qwen35_shared")`.
+- Extended `tests/test_gguf_mtp_cpu_reference.py` with a compact F32 fixture for
+  norm/routing/shared-expert/residual behavior, norm-shape validation, and
+  registry assertion.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `13` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py`,
+  `hipengine/kernels/cpu_reference/__init__.py`, and the updated test file.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free NumPy CPU-reference helper, four-axis
+  registry key, no backend/quant branches, no runtime KV/dispatch path changes,
+  and no performance claims.
