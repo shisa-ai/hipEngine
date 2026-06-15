@@ -3,7 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hipengine.kernels.cpu_reference import qwen35_gguf_mtp_eh_proj
+from hipengine.kernels.cpu_reference import (
+    qwen35_gguf_mtp_eh_proj,
+    qwen35_gguf_mtp_shared_head_logits,
+)
 from hipengine.kernels.registry import resolve
 
 
@@ -73,12 +76,51 @@ def test_qwen35_gguf_mtp_eh_proj_validates_shapes() -> None:
         qwen35_gguf_mtp_eh_proj(hidden, embedding, weight, norm, np.ones((3,), dtype=np.float32))
 
 
-def test_qwen35_gguf_mtp_eh_proj_is_registered() -> None:
-    fn = resolve(
+def test_qwen35_gguf_mtp_shared_head_logits_applies_norm_then_head() -> None:
+    hidden = np.asarray([[3.0, 4.0]], dtype=np.float32)
+    norm = np.asarray([10.0, 20.0], dtype=np.float32)
+    head = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    logits = qwen35_gguf_mtp_shared_head_logits(hidden, norm, head)
+
+    expected_norm = _rmsnorm(hidden, norm)
+    expected = np.matmul(expected_norm, head.T).astype(np.float32)
+    np.testing.assert_allclose(logits, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_shared_head_logits_validates_shapes() -> None:
+    hidden = np.asarray([[1.0, 2.0]], dtype=np.float32)
+    norm = np.ones((2,), dtype=np.float32)
+    head = np.ones((3, 2), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="nextn_hidden must have shape"):
+        qwen35_gguf_mtp_shared_head_logits(hidden[0], norm, head)
+    with pytest.raises(ValueError, match="shared_head_norm_weight must have shape"):
+        qwen35_gguf_mtp_shared_head_logits(hidden, np.ones((3,), dtype=np.float32), head)
+    with pytest.raises(ValueError, match="shared_head_weight must have shape"):
+        qwen35_gguf_mtp_shared_head_logits(hidden, norm, np.ones((3, 3), dtype=np.float32))
+
+
+def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
+    eh_proj = resolve(
         backend="cpu_reference",
         layer="mtp_nextn_eh_proj",
         quant="gguf_f32",
         variant="qwen35",
     )
+    shared_head = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_shared_head",
+        quant="gguf_f32",
+        variant="qwen35",
+    )
 
-    assert fn is qwen35_gguf_mtp_eh_proj
+    assert eh_proj is qwen35_gguf_mtp_eh_proj
+    assert shared_head is qwen35_gguf_mtp_shared_head_logits

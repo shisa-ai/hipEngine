@@ -87,6 +87,34 @@ def qwen35_gguf_mtp_eh_proj(
     return np.matmul(fused, weight.T).astype(np.float32)
 
 
+def qwen35_gguf_mtp_shared_head_logits(
+    nextn_hidden: ArrayLike,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for Qwen35 GGUF NextN shared-head logits.
+
+    llama.cpp applies ``nextn.shared_head_norm`` when present, otherwise the
+    target ``output_norm``, exposes that row as ``h_nextn``, then applies
+    ``nextn.shared_head_head`` when present, otherwise the target LM head.
+    """
+
+    hidden = np.asarray(nextn_hidden, dtype=np.float32)
+    norm_weight = np.asarray(shared_head_norm_weight, dtype=np.float32)
+    head_weight = np.asarray(shared_head_weight, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("nextn_hidden must have shape [rows, hidden]")
+    rows, hidden_size = hidden.shape
+    if norm_weight.shape != (hidden_size,):
+        raise ValueError("shared_head_norm_weight must have shape [hidden]")
+    if head_weight.ndim != 2 or head_weight.shape[1] != hidden_size:
+        raise ValueError("shared_head_weight must have shape [vocab, hidden]")
+    del rows
+    normed = rmsnorm(hidden, norm_weight, eps=eps)
+    return np.matmul(normed, head_weight.T).astype(np.float32)
+
+
 def gguf_quant_gemv(
     x: ArrayLike,
     qweight: ArrayLike,
@@ -1093,6 +1121,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "linear": linear,
         "qkv_proj": qkv_proj,
         "qwen35_gguf_mtp_eh_proj": qwen35_gguf_mtp_eh_proj,
+        "qwen35_gguf_mtp_shared_head_logits": qwen35_gguf_mtp_shared_head_logits,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1120,6 +1149,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "mtp_nextn_eh_proj", "gguf_f32", "qwen35"),
         qwen35_gguf_mtp_eh_proj,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_shared_head", "gguf_f32", "qwen35"),
+        qwen35_gguf_mtp_shared_head_logits,
         replace=replace,
     )
     register(

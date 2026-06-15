@@ -93407,3 +93407,40 @@ Validation:
 - Prompt verifier passed: torch-free CPU reference correction only, no backend /
   quant dispatch branches, no attention/KV/runtime behavior changes, no GPU
   NextN execution, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference shared-head oracle
+
+Implemented `mtp-gguf` multiloop iteration 19: a torch-free CPU-reference oracle
+for the final GGUF MTP shared-head logits stage.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '719,735p'`
+- Relevant order:
+  - `head_norm_w = layer.nextn.shared_head_norm ? layer.nextn.shared_head_norm : model.output_norm`
+  - `cur = build_norm(cur, head_norm_w, ...)`
+  - `res->t_h_nextn = cur`
+  - `head_w = layer.nextn.shared_head_head ? layer.nextn.shared_head_head : model.output`
+  - `cur = build_lora_mm(head_w, cur, ...)`
+
+Changes:
+- Added `qwen35_gguf_mtp_shared_head_logits(nextn_hidden, shared_head_norm_weight, shared_head_weight)` in `hipengine/kernels/cpu_reference/ops.py`.
+  - Validates `[rows, hidden]`, `[hidden]`, and `[vocab, hidden]` shapes.
+  - Applies RMSNorm to the NextN hidden row and then the LM head projection.
+  - Models the same fallback point as the real GGUF tensor map: shared-head norm
+    may be `nextn.shared_head_norm` or target `output_norm`; head may be
+    `nextn.shared_head_head` or target `output`.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_shared_head", "gguf_f32", "qwen35")`.
+- Extended `tests/test_gguf_mtp_cpu_reference.py` for shared-head logits,
+  validation, and registry resolution.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `6` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py` and
+  `hipengine/kernels/cpu_reference/__init__.py`.
+- Prompt verifier passed: torch-free CPU reference helper only, no backend/quant
+  dispatch branches, no attention/KV/runtime path changes, no full NextN
+  execution, and no performance claims.
