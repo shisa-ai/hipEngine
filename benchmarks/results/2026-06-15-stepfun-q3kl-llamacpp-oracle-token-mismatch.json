@@ -1,0 +1,142 @@
+{
+  "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+  "artifact_sha256": "69c4e284610aca73a270b0532ddca8dd3fd2efc723d9244eb29aa44a792ee1bc",
+  "evidence_checks_sha256": "7997863a9afc42586f22a53967c4a33415a28073ed2f86bcfb089c80a2885418",
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "generated_text": "The\n\n",
+  "generated_text_len": 5,
+  "missing_evidence": [
+    "generated_text_matches_target"
+  ],
+  "missing_evidence_count": 1,
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "llama_cpp_oracle_success_artifact_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "Oracle validation checks only the retained llama.cpp one-token artifact; KV-backed decode and benchmark gates remain separate."
+  },
+  "oracle_blocker_kind": null,
+  "oracle_returncode": 0,
+  "oracle_status": "executed",
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "prompt_artifact_sha256": "53708fad5fc4ca27e2baf0366e8c97456ac9f499fdc9293af52f5da56e663deb",
+  "ready": false,
+  "schema_version": 1,
+  "status": "failed",
+  "step35_supported": null,
+  "text_matches_expected_exact": false,
+  "text_matches_expected_stripped": false,
+  "tokenization_diagnostic": {
+    "conclusion": "generated_text tokenization does not match expected_next_token_id",
+    "expected_next_token_id": 369,
+    "expected_next_token_text": " |",
+    "expected_next_token_text_single_token_matches_expected_id": true,
+    "expected_next_token_text_token_count": 1,
+    "expected_next_token_text_token_ids": [
+      369
+    ],
+    "generated_first_token_id": 671,
+    "generated_first_token_matches_expected_id": false,
+    "generated_text": "The\n\n",
+    "generated_text_stripped_single_token_matches_expected_id": false,
+    "generated_text_stripped_token_count": 1,
+    "generated_text_stripped_token_ids": [
+      671
+    ],
+    "generated_text_token_count": 2,
+    "generated_text_token_ids": [
+      671,
+      271
+    ],
+    "llama_tokenize": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+    "mode": "llama-tokenize --no-bos",
+    "model": "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "records": {
+      "expected_next_token_text": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "expected-next-token-text",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[369]\nTotal number of tokens: 1\n",
+        "stdout_len": 32,
+        "text": " |",
+        "text_len": 2,
+        "token_count": 1,
+        "token_ids": [
+          369
+        ]
+      },
+      "generated_text": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "generated-text",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[671, 271]\nTotal number of tokens: 2\n",
+        "stdout_len": 37,
+        "text": "The\n\n",
+        "text_len": 5,
+        "token_count": 2,
+        "token_ids": [
+          671,
+          271
+        ]
+      },
+      "generated_text_stripped": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize",
+          "--model",
+          "/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+          "--file",
+          "<tempfile>",
+          "--ids",
+          "--show-count",
+          "--no-bos",
+          "--log-disable"
+        ],
+        "label": "generated-text-stripped",
+        "returncode": 0,
+        "status": "passed",
+        "stderr": "",
+        "stderr_len": 0,
+        "stdout": "[671]\nTotal number of tokens: 1\n",
+        "stdout_len": 32,
+        "text": "The",
+        "text_len": 3,
+        "token_count": 1,
+        "token_ids": [
+          671
+        ]
+      }
+    },
+    "schema_version": 1,
+    "status": "completed"
+  }
+}

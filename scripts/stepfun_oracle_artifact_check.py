@@ -11,9 +11,11 @@ e2e readiness, and performance/throughput claims remain separate gates.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -86,6 +88,30 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_LOGIT_ATOL,
         help="Absolute tolerance for expected top-token logit metadata.",
+    )
+    parser.add_argument(
+        "--llama-tokenize",
+        type=Path,
+        default=None,
+        help=(
+            "Optional llama.cpp llama-tokenize binary used to attach no-BOS token IDs "
+            "for generated_text and expected_next_token_text as diagnostic evidence."
+        ),
+    )
+    parser.add_argument(
+        "--tokenizer-model",
+        type=Path,
+        default=None,
+        help=(
+            "GGUF model to pass to --llama-tokenize. Defaults to the model recorded "
+            "in the oracle artifact."
+        ),
+    )
+    parser.add_argument(
+        "--tokenizer-timeout-s",
+        type=float,
+        default=60.0,
+        help="Per-text timeout for optional llama-tokenize diagnostics.",
     )
     parser.add_argument(
         "--output",
@@ -191,6 +217,182 @@ def _observed_oracle(oracle: dict[str, object]) -> dict[str, object]:
         "step35_supported": oracle.get("step35_supported"),
         "timeout_termination": oracle.get("timeout_termination"),
         "artifact_sha256": status_mod._stable_json_sha256(oracle),
+    }
+
+
+def _parse_llama_tokenize_output(stdout: str) -> tuple[list[int], int | None]:
+    token_ids: list[int] | None = None
+    token_count: int | None = None
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            parsed = ast.literal_eval(line)
+            if not isinstance(parsed, list) or any(
+                isinstance(item, bool) or not isinstance(item, int) for item in parsed
+            ):
+                raise ValueError(f"unexpected llama-tokenize token id list: {line!r}")
+            token_ids = list(parsed)
+        elif line.startswith("Total number of tokens:"):
+            token_count = int(line.rsplit(":", 1)[1].strip())
+    if token_ids is None:
+        raise ValueError("llama-tokenize output did not contain an --ids list")
+    return token_ids, token_count
+
+
+def _tokenize_text_with_llamacpp(
+    *,
+    text: str,
+    label: str,
+    llama_tokenize: Path,
+    model: Path,
+    timeout_s: float,
+) -> dict[str, object]:
+    if timeout_s <= 0 or not math.isfinite(timeout_s):
+        raise ValueError("--tokenizer-timeout-s must be a finite positive number")
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            prefix=f"stepfun-{label}-",
+            suffix=".txt",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(text)
+        command = [
+            str(llama_tokenize),
+            "--model",
+            str(model),
+            "--file",
+            str(tmp_path),
+            "--ids",
+            "--show-count",
+            "--no-bos",
+            "--log-disable",
+        ]
+        recorded_command = ["<tempfile>" if arg == str(tmp_path) else arg for arg in command]
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+        record: dict[str, object] = {
+            "label": label,
+            "text": text,
+            "text_len": len(text),
+            "command": recorded_command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "stdout_len": len(completed.stdout),
+            "stderr_len": len(completed.stderr),
+        }
+        if completed.returncode == 0:
+            token_ids, token_count = _parse_llama_tokenize_output(completed.stdout)
+            record.update(
+                {
+                    "status": "passed",
+                    "token_ids": token_ids,
+                    "token_count": token_count if token_count is not None else len(token_ids),
+                }
+            )
+        else:
+            record["status"] = "failed"
+        return record
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
+def _tokenization_diagnostic(
+    *,
+    observed: dict[str, object],
+    expected: dict[str, object],
+    llama_tokenize: Path | None,
+    tokenizer_model: Path | None,
+    tokenizer_timeout_s: float,
+) -> dict[str, object] | None:
+    if llama_tokenize is None:
+        return None
+    model_value = tokenizer_model or observed.get("model")
+    if model_value in (None, ""):
+        raise ValueError("--tokenizer-model is required when the oracle artifact has no model")
+    model = Path(str(model_value))
+    generated_text = str(observed.get("generated_text") or "")
+    expected_text = str(expected.get("next_token_text") or "")
+    records = {
+        "generated_text": _tokenize_text_with_llamacpp(
+            text=generated_text,
+            label="generated-text",
+            llama_tokenize=llama_tokenize,
+            model=model,
+            timeout_s=tokenizer_timeout_s,
+        ),
+        "generated_text_stripped": _tokenize_text_with_llamacpp(
+            text=generated_text.strip(),
+            label="generated-text-stripped",
+            llama_tokenize=llama_tokenize,
+            model=model,
+            timeout_s=tokenizer_timeout_s,
+        ),
+        "expected_next_token_text": _tokenize_text_with_llamacpp(
+            text=expected_text,
+            label="expected-next-token-text",
+            llama_tokenize=llama_tokenize,
+            model=model,
+            timeout_s=tokenizer_timeout_s,
+        ),
+    }
+
+    generated_ids = records["generated_text"].get("token_ids")
+    stripped_ids = records["generated_text_stripped"].get("token_ids")
+    expected_ids = records["expected_next_token_text"].get("token_ids")
+    expected_id = expected.get("next_token_id")
+    expected_id_list = [expected_id] if isinstance(expected_id, int) else None
+    generated_first_token_id = (
+        generated_ids[0] if isinstance(generated_ids, list) and generated_ids else None
+    )
+    status = (
+        "completed"
+        if all(record.get("status") == "passed" for record in records.values())
+        else "failed"
+    )
+    return {
+        "schema_version": 1,
+        "status": status,
+        "mode": "llama-tokenize --no-bos",
+        "llama_tokenize": str(llama_tokenize),
+        "model": str(model),
+        "expected_next_token_id": expected_id,
+        "expected_next_token_text": expected_text,
+        "generated_text": generated_text,
+        "generated_text_token_ids": generated_ids,
+        "generated_text_token_count": records["generated_text"].get("token_count"),
+        "generated_first_token_id": generated_first_token_id,
+        "generated_first_token_matches_expected_id": generated_first_token_id == expected_id,
+        "generated_text_stripped_token_ids": stripped_ids,
+        "generated_text_stripped_token_count": records["generated_text_stripped"].get(
+            "token_count"
+        ),
+        "generated_text_stripped_single_token_matches_expected_id": (
+            stripped_ids == expected_id_list
+        ),
+        "expected_next_token_text_token_ids": expected_ids,
+        "expected_next_token_text_token_count": records["expected_next_token_text"].get(
+            "token_count"
+        ),
+        "expected_next_token_text_single_token_matches_expected_id": (
+            expected_ids == expected_id_list
+        ),
+        "records": records,
+        "conclusion": (
+            "generated_text tokenization does not match expected_next_token_id"
+            if generated_first_token_id != expected_id or stripped_ids != expected_id_list
+            else "generated_text tokenization matches expected_next_token_id"
+        ),
     }
 
 
@@ -359,6 +561,9 @@ def build_oracle_check_report(
     *,
     prompt_artifact: Path = status_mod.DEFAULT_PROMPT_ARTIFACT,
     logit_atol: float = DEFAULT_LOGIT_ATOL,
+    llama_tokenize: Path | None = None,
+    tokenizer_model: Path | None = None,
+    tokenizer_timeout_s: float = 60.0,
 ) -> dict[str, object]:
     """Return a mechanical validation report for a llama.cpp oracle artifact."""
 
@@ -368,6 +573,13 @@ def build_oracle_check_report(
     prompt_payload = _load_json_object(prompt_artifact)
     expected = _expected_target(prompt_payload)
     observed = _observed_oracle(oracle_payload)
+    tokenization_diagnostic = _tokenization_diagnostic(
+        observed=observed,
+        expected=expected,
+        llama_tokenize=llama_tokenize,
+        tokenizer_model=tokenizer_model,
+        tokenizer_timeout_s=tokenizer_timeout_s,
+    )
     evidence_checks = _build_evidence_checks(
         observed=observed,
         expected=expected,
@@ -396,6 +608,7 @@ def build_oracle_check_report(
         "generated_text_len": observed["generated_text_len"],
         "text_matches_expected_exact": observed["text_matches_expected_exact"],
         "text_matches_expected_stripped": observed["text_matches_expected_stripped"],
+        "tokenization_diagnostic": tokenization_diagnostic,
         "missing_evidence": missing_evidence,
         "missing_evidence_count": len(missing_evidence),
         "evidence_checks_sha256": status_mod._stable_json_sha256(evidence_checks),
@@ -418,6 +631,7 @@ def build_oracle_check_report(
         "oracle_summary_sha256": status_mod._stable_json_sha256(summary),
         "expected_target": expected,
         "observed_oracle": observed,
+        "tokenization_diagnostic": tokenization_diagnostic,
         "evidence_checks": evidence_checks,
         "evidence_checks_sha256": status_mod._stable_json_sha256(evidence_checks),
         "readiness_impact": {
@@ -441,6 +655,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.artifact,
         prompt_artifact=args.prompt_artifact,
         logit_atol=args.logit_atol,
+        llama_tokenize=args.llama_tokenize,
+        tokenizer_model=args.tokenizer_model,
+        tokenizer_timeout_s=args.tokenizer_timeout_s,
     )
     if args.status_only:
         payload: object = report["status"]

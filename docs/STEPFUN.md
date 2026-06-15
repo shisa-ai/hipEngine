@@ -869,8 +869,14 @@ reporting.
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-tokenization-parity.json`,
   confirms `llama-tokenize --no-bos` produces the same 23 input IDs as the
   host-composed prompt artifact, while default llama.cpp BOS insertion produces
-  a 24-token double-BOS sequence; the current oracle blocker is therefore
-  downstream of prompt tokenization/BOS handling. Historical
+  a 24-token double-BOS sequence. A token-level mismatch artifact,
+  `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json`,
+  runs `scripts/stepfun_oracle_artifact_check.py --llama-tokenize` and records
+  that the expected text tokenizes to `[369]` while the llama.cpp stdout
+  tokenizes to `[671, 271]` (`"The\n\n"`) and stripped stdout tokenizes to
+  `[671]` (`"The"`). The current oracle blocker is therefore downstream of
+  prompt tokenization/BOS handling and is now narrowed to an actual generated
+  token mismatch (`671` vs expected `369`). Historical
   CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
   outer-supervisor timeout remain documented by git history and the separate
   wrapper-timeout source artifact. The oracle helper now also traps `SIGTERM`/`SIGINT` from

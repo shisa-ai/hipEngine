@@ -40473,3 +40473,61 @@ git diff --check
 ```
 
 Results: tokenization parity artifact SHA `a74c9132c29c9fa131ea5ab638a2be87c2a7fa962194cad624ca4d7cd9f12b20`; refreshed correctness-status SHA `f929d188b5c1a51947c59e051a9d4aa42ea518cc80cbac9f51914fb05eda120d`; final-blocker SHA `9f9f9ff56cfe04e4fe05916739bb5a915245806715e1e23aa6b7d317fc9d6158`; handoff SHA `5c89fc9ac4b6da99314af860598cbed4dbd4094f6d9a98ea21e012d17f36df3f`; status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; full StepFun guard passed (`376` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L oracle mismatch: generated token id pinned
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 474. Added optional `--llama-tokenize` diagnostics to `scripts/stepfun_oracle_artifact_check.py` so a failed llama.cpp oracle artifact can carry no-BOS token IDs for the generated stdout, stripped generated stdout, and expected next-token text without changing the default pass/fail evidence contract. Added unit coverage in `tests/test_stepfun_oracle_artifact_check.py` and retained a compact diagnostic artifact at `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json`.
+
+Diagnostic command:
+
+```bash
+python3 scripts/stepfun_oracle_artifact_check.py \
+  --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json \
+  --summary-only \
+  --llama-tokenize /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize \
+  --tokenizer-model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf \
+  --output benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json \
+  --pretty
+```
+
+Result: the oracle checker still fails only `generated_text_matches_target`, but the diagnostic now pins the mismatch at token level. Expected text ` |` tokenizes to `[369]`; llama.cpp stdout `The\n\n` tokenizes to `[671, 271]`; stripped stdout `The` tokenizes to `[671]`. The remaining oracle blocker is therefore a real generated-token mismatch (`671` vs expected `369`), not a prompt-tokenization/BOS mismatch. No oracle/e2e/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_oracle_artifact_check.py tests/test_stepfun_oracle_artifact_check.py
+python3 -m pytest -q tests/test_stepfun_oracle_artifact_check.py
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted oracle checker tests passed (`4` tests); refreshed status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; token-mismatch artifact SHA `d12555c25716c97e7b1d63562f4b1e0d3d898b6b0389db9e949bf584e84598b3`; correctness-status SHA `e6e8eefb02ed018125644a2067dfbe5d64ca7102a0c6b8d029771bd1ceb4c210`; final-blocker SHA `240fab3b9ccd7f4399527cbda4620c4bdbebde737fec7c8864e3f447ae999335`; handoff SHA `35f4b4256834713c09f5377d0ea7a575150a1c1841197637d01cf183f1f3e1e6`; full StepFun guard passed (`377` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L oracle token diagnostic: stable artifact payload
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 475. Stabilized the optional `--llama-tokenize` diagnostic in `scripts/stepfun_oracle_artifact_check.py` by redacting transient tokenizer tempfile paths from the recorded command arrays (`<tempfile>` placeholder). This keeps the retained token-level mismatch artifact reproducible across reruns while preserving the actual command shape and token evidence.
+
+Validation:
+
+```bash
+python3 scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --summary-only --llama-tokenize /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize --tokenizer-model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --output benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json --pretty
+python3 scripts/stepfun_oracle_artifact_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --summary-only --llama-tokenize /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize --tokenizer-model /models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --output benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json --pretty
+sha256sum benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-token-mismatch.json
+python3 -m compileall -q scripts/stepfun_oracle_artifact_check.py tests/test_stepfun_oracle_artifact_check.py
+python3 -m pytest -q tests/test_stepfun_oracle_artifact_check.py
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: two consecutive token-mismatch artifact refreshes produced the same SHA `d12555c25716c97e7b1d63562f4b1e0d3d898b6b0389db9e949bf584e84598b3`; targeted oracle checker tests passed (`4` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; full StepFun guard passed (`377` tests with expected skips plus CPU-reference fixture checks); `git diff --check` passed. No oracle/e2e/performance claim is made.
