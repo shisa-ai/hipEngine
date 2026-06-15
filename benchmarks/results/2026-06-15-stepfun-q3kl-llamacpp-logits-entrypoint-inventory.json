@@ -6,16 +6,16 @@
     "kv_backed_decode",
     "e2e_inference"
   ],
-  "blocked_reason": "llama-debug target is available but the logits-dump binary has not been built",
+  "blocked_reason": "llama.cpp logits entrypoint inventory is incomplete",
   "build_dir": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release",
-  "build_readiness_status": "ready_to_build",
+  "build_readiness_status": "built",
   "build_ready_without_source_changes": true,
   "build_target_records": [
     {
-      "binary_built": false,
+      "binary_built": true,
       "binary_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
       "build_command": "cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug",
-      "next_action": "Run `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug` and refresh this inventory",
+      "next_action": null,
       "target": "llama-debug",
       "target_available": true
     },
@@ -28,7 +28,7 @@
       "target_available": true
     }
   ],
-  "built_binary_count": 4,
+  "built_binary_count": 5,
   "built_binary_records": [
     {
       "executable": true,
@@ -66,13 +66,40 @@
       "help_returncode": 0,
       "help_status": "executed",
       "logit_bias_only": false,
+      "logits_dump_markers": [
+        "--save-logits",
+        "--logits-output-dir"
+      ],
+      "name": "llama-debug",
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug"
+    },
+    {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "logit_bias_only": false,
       "logits_dump_markers": [],
       "name": "llama-tokenize",
       "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-tokenize"
     }
   ],
-  "built_logits_dump_binaries": [],
-  "built_logits_dump_binary_present": false,
+  "built_logits_dump_binaries": [
+    {
+      "executable": true,
+      "exists": true,
+      "help_returncode": 0,
+      "help_status": "executed",
+      "logit_bias_only": false,
+      "logits_dump_markers": [
+        "--save-logits",
+        "--logits-output-dir"
+      ],
+      "name": "llama-debug",
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug"
+    }
+  ],
+  "built_logits_dump_binary_present": true,
   "date": "2026-06-15",
   "help_markers_checked": [
     "--save-logits",
@@ -86,11 +113,8 @@
     "--top-logprobs"
   ],
   "llama_cpp_root": "/home/lhl/llama.cpp/llama.cpp-vulkan",
-  "missing_evidence": [
-    "built_llamacpp_logits_dump_binary_present",
-    "llama_debug_binary_built"
-  ],
-  "next_action": "Run `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug`, then refresh this inventory and the llama.cpp logits preflight",
+  "missing_evidence": [],
+  "next_action": "capture same-prompt llama.cpp logits with the built logits entrypoint",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,
     "kv_backed_decode_claim_allowed": false,
@@ -102,26 +126,26 @@
     "artifact_kind": "stepfun_llamacpp_logits_plan",
     "exists": true,
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json",
-    "sha256": "34faf59520ea125e4a6c52018858ba7baf6f23d91bee09e5001a4d12ac852a1b",
+    "sha256": "d858d32e453e6cdde9458bf0f93598598ca46873ac8ead632fcfeb2185bfc325",
     "status": "blocked"
   },
   "preflight_artifact": {
     "artifact_kind": "stepfun_llamacpp_logits_preflight",
     "exists": true,
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
-    "sha256": "82c5ad55ab685614a543fe2d602fa07f544371ab522362d95e88873c27d5ec67",
+    "sha256": "feb12c5e0fa4bc37493c468e7b637b6284b1e21007636ef2b18f4a6a35f48aa9",
     "status": "blocked"
   },
-  "ready": false,
+  "ready": true,
   "schema_version": 1,
   "source_candidate_count": 4,
   "source_candidates": [
     {
       "all_markers_present": true,
-      "candidate_kind": "source_only_or_api",
+      "candidate_kind": "ready_built_binary",
       "exists": true,
       "expected_binary": "llama-debug",
-      "expected_binary_built": false,
+      "expected_binary_built": true,
       "markers_checked": [
         "params.save_logits",
         "llama_get_logits_ith",
@@ -203,10 +227,10 @@
   "source_logits_candidates": [
     {
       "all_markers_present": true,
-      "candidate_kind": "source_only_or_api",
+      "candidate_kind": "ready_built_binary",
       "exists": true,
       "expected_binary": "llama-debug",
-      "expected_binary_built": false,
+      "expected_binary_built": true,
       "markers_checked": [
         "params.save_logits",
         "llama_get_logits_ith",
@@ -284,7 +308,7 @@
       "role": "minimal generation example showing batch.logits on the prompt tail"
     }
   ],
-  "status": "blocked",
+  "status": "ready",
   "target_help": {
     "available_targets": [
       "Continuous",

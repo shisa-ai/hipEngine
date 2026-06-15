@@ -191,6 +191,45 @@ def test_stepfun_llamacpp_logits_plan_describes_pending_capture_work(tmp_path: P
     }
 
 
+def test_stepfun_llamacpp_logits_plan_marks_entrypoint_step_completed_when_only_logits_artifact_missing(
+    tmp_path: Path,
+) -> None:
+    preflight, source_map, manifest = _write_inputs(
+        tmp_path,
+        missing=["llama_cpp_same_prompt_logits_artifact_present"],
+    )
+    payload = json.loads(preflight.read_text())
+    payload["llama_cli_probe"] = {
+        "path": "/tmp/llama-debug",
+        "exists": True,
+        "executable": True,
+        "obvious_logits_dump_flag_present": True,
+        "matched_logits_dump_markers": ["--save-logits", "--logits-output-dir"],
+    }
+    _write_json(preflight, payload)
+
+    report = build_llamacpp_logits_plan(
+        preflight_artifact=preflight,
+        source_map_artifact=source_map,
+        next_action_manifest=manifest,
+    )
+
+    assert report["status"] == "blocked"
+    assert report["implementation_ready"] is True
+    assert report["missing_evidence"] == ["llama_cpp_same_prompt_logits_artifact_present"]
+    assert report["llama_cli"] == "/tmp/llama-debug"
+    assert [step["status"] for step in report["implementation_steps"]] == [
+        "completed",
+        "pending",
+        "pending",
+        "pending",
+    ]
+    assert report["implementation_steps"][0]["notes"] == [
+        "current preflight found a llama.cpp probe binary with logits dump flags",
+        "do not use --logit-bias as a substitute for logits capture",
+    ]
+
+
 def test_stepfun_llamacpp_logits_plan_requires_only_expected_missing_evidence(
     tmp_path: Path,
 ) -> None:

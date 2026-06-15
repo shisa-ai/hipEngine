@@ -130,7 +130,12 @@ def _missing_only_expected_logits_evidence(missing: object) -> bool:
         "llama_cpp_same_prompt_logits_artifact_present",
         "llama_cpp_logits_dump_entrypoint_identified",
     }
-    return isinstance(missing, list) and set(missing) == expected
+    return (
+        isinstance(missing, list)
+        and bool(missing)
+        and set(missing).issubset(expected)
+        and "llama_cpp_same_prompt_logits_artifact_present" in set(missing)
+    )
 
 
 def build_llamacpp_logits_plan(
@@ -161,22 +166,31 @@ def build_llamacpp_logits_plan(
     )
     llama_probe = preflight.get("llama_cli_probe")
     llama_cli = llama_probe.get("path") if isinstance(llama_probe, dict) else None
+    missing_set = set(missing_evidence) if isinstance(missing_evidence, list) else set()
+    entrypoint_ready = "llama_cpp_logits_dump_entrypoint_identified" not in missing_set
     prompt_entry = _source_entry(source_map, "host_prompt_logit_smoke")
     oracle_entry = _source_entry(source_map, "llamacpp_oracle_runner")
     handoff_entry = _source_entry(source_map, "oracle_blocker_handoff")
     steps = [
         {
             "key": "identify_or_add_logits_dump_entrypoint",
-            "status": "pending",
+            "status": "completed" if entrypoint_ready else "pending",
             "owner_sources": oracle_entry.get("sources"),
             "acceptance": [
                 "a llama.cpp command or helper can emit same-prompt logits/top-k for the retained StepFun prompt",
                 "scripts/stepfun_llamacpp_logits_preflight.py no longer reports llama_cpp_logits_dump_entrypoint_identified",
             ],
-            "notes": [
-                "current preflight found llama-cli executable but no obvious logits dump flag",
-                "do not use --logit-bias as a substitute for logits capture",
-            ],
+            "notes": (
+                [
+                    "current preflight found a llama.cpp probe binary with logits dump flags",
+                    "do not use --logit-bias as a substitute for logits capture",
+                ]
+                if entrypoint_ready
+                else [
+                    "current preflight found llama-cli executable but no obvious logits dump flag",
+                    "do not use --logit-bias as a substitute for logits capture",
+                ]
+            ),
         },
         {
             "key": "capture_same_prompt_llamacpp_logits",

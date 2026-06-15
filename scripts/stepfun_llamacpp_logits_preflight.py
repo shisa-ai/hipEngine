@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -35,11 +36,12 @@ DEFAULT_LLAMA_LOGITS_ARTIFACT = Path(
     "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json"
 )
 DEFAULT_LLAMA_CLI = Path(
-    "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-cli"
+    "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug"
 )
 DEFAULT_ARTIFACT_DATE = "2026-06-15"
 LOGITS_DUMP_HELP_MARKERS = (
-    "--logits",
+    "--save-logits",
+    "--logits-output-dir",
     "--logits-file",
     "--dump-logits",
     "--logprobs",
@@ -77,13 +79,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--llama-cli",
         type=Path,
         default=DEFAULT_LLAMA_CLI,
-        help="llama.cpp CLI candidate to inspect for logits-probe capability.",
+        help="llama.cpp binary candidate to inspect for logits-probe capability.",
     )
     parser.add_argument(
         "--help-timeout-s",
         type=float,
         default=10.0,
-        help="Timeout for inspecting llama-cli --help.",
+        help="Timeout for inspecting the llama.cpp probe binary --help.",
     )
     parser.add_argument(
         "--artifact-date",
@@ -152,6 +154,10 @@ def _is_executable(path: Path) -> bool:
     return bool(mode & stat.S_IXUSR) or os.access(path, os.X_OK)
 
 
+def _marker_in_help(text: str, marker: str) -> bool:
+    return re.search(rf"(?<!\S){re.escape(marker)}(?![\w-])", text) is not None
+
+
 def _help_info(llama_cli: Path, timeout_s: float) -> dict[str, object]:
     info: dict[str, object] = {
         "path": str(llama_cli),
@@ -183,7 +189,7 @@ def _help_info(llama_cli: Path, timeout_s: float) -> dict[str, object]:
         info["help_error"] = str(exc)
         return info
     text = (completed.stdout or "") + (completed.stderr or "")
-    matched = [marker for marker in LOGITS_DUMP_HELP_MARKERS if marker in text]
+    matched = [marker for marker in LOGITS_DUMP_HELP_MARKERS if _marker_in_help(text, marker)]
     info.update(
         {
             "help_status": "executed",
@@ -291,12 +297,17 @@ def build_llamacpp_logits_preflight(
             ),
         ],
         "blocked_reason": (
-            "same-prompt llama.cpp logits artifact and/or logits dump entrypoint is missing"
+            "same-prompt llama.cpp logits artifact is missing"
+            if missing_evidence == ["llama_cpp_same_prompt_logits_artifact_present"]
+            else "same-prompt llama.cpp logits artifact and/or logits dump entrypoint is missing"
             if not ready
             else "same-prompt llama.cpp logits preflight is ready"
         ),
         "next_action": (
-            "identify or add a llama.cpp logits dump entrypoint for the retained StepFun prompt, "
+            "retain same-prompt logits from llama-debug using --save-logits, then compare expected "
+            "token 369 with generated token 671"
+            if help_record.get("obvious_logits_dump_flag_present") is True
+            else "identify or add a llama.cpp logits dump entrypoint for the retained StepFun prompt, "
             "then retain same-prompt logits before comparing expected token 369 with generated token 671"
         ),
         "blocked_gates": ["oracle_parity", "kv_backed_decode", "e2e_inference"],

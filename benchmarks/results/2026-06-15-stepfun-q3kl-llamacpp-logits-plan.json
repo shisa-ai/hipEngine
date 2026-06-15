@@ -21,7 +21,7 @@
       ],
       "key": "identify_or_add_logits_dump_entrypoint",
       "notes": [
-        "current preflight found llama-cli executable but no obvious logits dump flag",
+        "current preflight found a llama.cpp probe binary with logits dump flags",
         "do not use --logit-bias as a substitute for logits capture"
       ],
       "owner_sources": [
@@ -99,7 +99,7 @@
           "role": "Compares llama.cpp generated token with retained host top-token IDs."
         }
       ],
-      "status": "pending"
+      "status": "completed"
     },
     {
       "acceptance": [
@@ -550,10 +550,9 @@
       "status": "pending"
     }
   ],
-  "llama_cli": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-cli",
+  "llama_cli": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug",
   "missing_evidence": [
-    "llama_cpp_same_prompt_logits_artifact_present",
-    "llama_cpp_logits_dump_entrypoint_identified"
+    "llama_cpp_same_prompt_logits_artifact_present"
   ],
   "next_action_manifest": {
     "artifact_kind": "stepfun_oracle_next_action_manifest",
@@ -571,7 +570,7 @@
   "preflight_artifact": {
     "artifact_kind": "stepfun_llamacpp_logits_preflight",
     "path": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json",
-    "sha256": "82c5ad55ab685614a543fe2d602fa07f544371ab522362d95e88873c27d5ec67",
+    "sha256": "feb12c5e0fa4bc37493c468e7b637b6284b1e21007636ef2b18f4a6a35f48aa9",
     "status": "blocked"
   },
   "ready": false,

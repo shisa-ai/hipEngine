@@ -41241,3 +41241,41 @@ python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-j
 ```
 
 Results: targeted inventory/rollup tests passed (`8` tests); artifact verification returned `"match"`; compact outputs were `"ready_to_build"`, `"blocked"`, and `false`; remaining-blockers stable payload SHA is `317a33411e63ba29186ce4cc95098df055dbc1f0d7ad0e18d53946e446b79ef4`; remaining-blockers file SHA is `2b2f938a49ce0f496fbd4e6bd4df7b168111caf2f51266fa94f54bf00fa9ba08`; correctness-status file SHA is `88f3986988b4679a6934b9fe6984ef3408eda5e513dda8104baecbd160f6e8b3`; final-blocker file SHA is `2ffca35d89c2ade13052a39064ddc460b0ccd4fbf1168c6b8457bd666b23585e`; handoff file SHA is `3acd2d0f9a4107d2ba79435edf88a46d3ae5ae57085dc4a295b7de9878eb2b80`; P0-P12 open/partial count remains `2`; blocked gates remain `oracle_parity|kv_backed_decode|e2e_inference`; full StepFun guard passed and ended with `STEP_GUARD_PASS`; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp logits entrypoint built
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 502. Built the local Vulkan llama.cpp logits dump entrypoint with:
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug -j 8
+```
+
+`/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug --help` now exposes `--save-logits` and `--logits-output-dir`. Updated `scripts/stepfun_llamacpp_logits_preflight.py` to probe the built `llama-debug` entrypoint by default with exact logits-dump marker matching, and updated `scripts/stepfun_llamacpp_logits_plan.py` so the entrypoint step is marked completed when only the same-prompt logits artifact is missing. Refreshed tests, `docs/STEPFUN.md`, the logits preflight/plan/inventory artifacts, remaining-blockers rollup, correctness status, final-blocker manifest, and handoff check.
+
+Retained evidence: `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json` reports `status=ready`, `build_readiness_status=built`, and `built_logits_dump_binary_present=true`. `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-preflight.json` remains `status=blocked` with missing evidence reduced to `llama_cpp_same_prompt_logits_artifact_present`. `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-plan.json` remains `implementation_ready=true` and now marks implementation-step statuses as `completed,pending,pending,pending`. This narrows the oracle blocker to capturing and comparing same-prompt llama.cpp logits; the canonical oracle gap remains `generated_text_matches_target`, and no oracle/KV/e2e/performance claim is made.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_preflight.py scripts/stepfun_llamacpp_logits_plan.py scripts/stepfun_llamacpp_logits_entrypoint_inventory.py tests/test_stepfun_llamacpp_logits_preflight.py tests/test_stepfun_llamacpp_logits_plan.py tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_preflight.py tests/test_stepfun_llamacpp_logits_plan.py tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_preflight.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_plan.py --default-output --pretty
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_preflight.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_plan.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --docs-open-partial-count-only
+python3 scripts/stepfun_correctness_status.py --blocked-gates-joined-only
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+```
+
+Results: targeted logits preflight/plan/inventory/rollup tests passed (`19` tests); status/manifest/handoff verification returned `"match"`; preflight stable payload SHA `feb12c5e0fa4bc37493c468e7b637b6284b1e21007636ef2b18f4a6a35f48aa9`, file SHA `48a6636ff8877e9f0cc3236b9d1b0f813eb7f485d0afd98f9ae14ae9cab5ce09`; plan stable payload SHA `d858d32e453e6cdde9458bf0f93598598ca46873ac8ead632fcfeb2185bfc325`, file SHA `5ed18abe5978cb883e9a8e7d9fd4d97eeb6dc7cc54154bb801d711ee7b01c966`; inventory stable payload SHA `97dec170ee59c5d34b73703b0a4d0ac5d27f77f2bb3a26070f40881f01d6dac6`, file SHA `ab25c6c7db94becea0e10a0aa6ae7de7cef18aa7b372f6eece04d9c9155aae12`; remaining-blockers stable payload SHA `384b52ef7c3517b2a7ab4032dce8056226f7f41047bb0fc16fdc1dd8b916c76c`, file SHA `9904a40795689f67e0ccc30319413e2e879e16a6e71391a429ee159ea4908001`; correctness-status file SHA `a29f7afe854c193ce8647006f280e24edb27659ee73d9db589b3bd79ea512a1b`; final-blocker file SHA `a32435e9c5b3321ecb89732f223415a42b9622b72211eb8c82a39cc8ed94709d`; handoff file SHA `2a740c21496a4c7544424d151f99ed94b2e980534dd9bc2d60be0abda23dc9bf`; P0-P12 open/partial count remains `2`; blocked gates remain `oracle_parity|kv_backed_decode|e2e_inference`; full StepFun guard passed and ended with `STEP_GUARD_PASS`; `git diff --check` passed.

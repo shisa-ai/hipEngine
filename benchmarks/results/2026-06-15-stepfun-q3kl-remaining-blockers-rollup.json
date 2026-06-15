@@ -264,9 +264,9 @@
   ],
   "schema_version": 1,
   "source_artifact_sha256": {
-    "kv_blocker_status": "ca0992023a04290943cf4f90801659f3bc612df4d3f06ed470a9363d98817149",
+    "kv_blocker_status": "c578199461640376fdfd0b8db4bc1407e1ce3bb5f8a9b6a97e74bbdf80b11ddd",
     "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
-    "status": "23c883ffadce0f603c4a22a21a444ca632171d467d02055a6ed8e4d3d2bf9866"
+    "status": "ca4a3cdedec12a2fcb9fd7ca4344395b3ff58b097cf44bbfacedd5da3eb81329"
   },
   "status": "blocked"
 }

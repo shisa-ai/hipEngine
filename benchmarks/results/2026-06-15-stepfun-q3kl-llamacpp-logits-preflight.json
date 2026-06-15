@@ -5,9 +5,9 @@
     "kv_backed_decode",
     "e2e_inference"
   ],
-  "blocked_reason": "same-prompt llama.cpp logits artifact and/or logits dump entrypoint is missing",
+  "blocked_reason": "same-prompt llama.cpp logits artifact is missing",
   "candidate_probe_commands": [
-    "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900 --pretty",
+    "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 900 --pretty",
     "after a concrete logits dump entrypoint is identified, retain same-prompt llama.cpp logits as benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-probe.json and compare token 369 vs 671"
   ],
   "date": "2026-06-15",
@@ -20,7 +20,8 @@
     "executable": true,
     "exists": true,
     "help_markers_checked": [
-      "--logits",
+      "--save-logits",
+      "--logits-output-dir",
       "--logits-file",
       "--dump-logits",
       "--logprobs",
@@ -29,15 +30,17 @@
     "help_mentions_logit_bias": true,
     "help_returncode": 0,
     "help_status": "executed",
-    "matched_logits_dump_markers": [],
-    "obvious_logits_dump_flag_present": false,
-    "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-cli"
+    "matched_logits_dump_markers": [
+      "--save-logits",
+      "--logits-output-dir"
+    ],
+    "obvious_logits_dump_flag_present": true,
+    "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug"
   },
   "missing_evidence": [
-    "llama_cpp_same_prompt_logits_artifact_present",
-    "llama_cpp_logits_dump_entrypoint_identified"
+    "llama_cpp_same_prompt_logits_artifact_present"
   ],
-  "next_action": "identify or add a llama.cpp logits dump entrypoint for the retained StepFun prompt, then retain same-prompt logits before comparing expected token 369 with generated token 671",
+  "next_action": "retain same-prompt logits from llama-debug using --save-logits, then compare expected token 369 with generated token 671",
   "next_action_kind": "llamacpp_same_prompt_logits_probe",
   "no_claim_policy": {
     "e2e_inference_claim_allowed": false,

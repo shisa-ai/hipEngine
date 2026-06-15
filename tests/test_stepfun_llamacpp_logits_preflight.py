@@ -141,7 +141,7 @@ def test_stepfun_llamacpp_logits_preflight_can_be_ready_when_artifact_and_entryp
     tmp_path: Path,
 ) -> None:
     manifest, source_map, margin, fake_cli, logits_artifact = _write_inputs(
-        tmp_path, help_text="--logits-file PATH --logit-bias TOKEN"
+        tmp_path, help_text="--save-logits --logits-output-dir PATH --logit-bias TOKEN"
     )
     _write_json(
         logits_artifact,
@@ -164,8 +164,37 @@ def test_stepfun_llamacpp_logits_preflight_can_be_ready_when_artifact_and_entryp
     assert report["ready"] is True
     assert report["expected_llama_logits_artifact"]["exists"] is True
     assert report["llama_cli_probe"]["obvious_logits_dump_flag_present"] is True
-    assert report["llama_cli_probe"]["matched_logits_dump_markers"] == ["--logits", "--logits-file"]
+    assert report["llama_cli_probe"]["matched_logits_dump_markers"] == [
+        "--save-logits",
+        "--logits-output-dir",
+    ]
     assert report["missing_evidence"] == []
+
+
+def test_stepfun_llamacpp_logits_preflight_reports_only_missing_artifact_when_debug_entrypoint_exists(
+    tmp_path: Path,
+) -> None:
+    manifest, source_map, margin, fake_cli, logits_artifact = _write_inputs(
+        tmp_path, help_text="--save-logits --logits-output-dir PATH --logit-bias TOKEN"
+    )
+
+    report = build_llamacpp_logits_preflight(
+        next_action_manifest=manifest,
+        source_map_artifact=source_map,
+        host_logit_margin_artifact=margin,
+        llama_logits_artifact=logits_artifact,
+        llama_cli=fake_cli,
+    )
+
+    assert report["status"] == "blocked"
+    assert report["ready"] is False
+    assert report["llama_cli_probe"]["obvious_logits_dump_flag_present"] is True
+    assert report["missing_evidence"] == ["llama_cpp_same_prompt_logits_artifact_present"]
+    assert report["blocked_reason"] == "same-prompt llama.cpp logits artifact is missing"
+    assert report["next_action"] == (
+        "retain same-prompt logits from llama-debug using --save-logits, then compare expected "
+        "token 369 with generated token 671"
+    )
 
 
 def test_stepfun_llamacpp_logits_preflight_reports_failed_prerequisite(tmp_path: Path) -> None:
