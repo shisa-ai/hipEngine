@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -2123,7 +2124,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "includes_transcript": True,
             },
             "resident_state_reuse": False,
-            "messages": [dict(message) for message in record.messages],
+            "messages": [_chat_session_message_copy(message) for message in record.messages],
         }
 
     def restore_chat_session_from_snapshot(session_id: str, snapshot: Mapping[str, Any]) -> _ChatSessionRecord:
@@ -2448,7 +2449,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             record = chat_sessions.get(session_id)
             if record is None:
                 return ()
-            return tuple(dict(message) for message in record.messages)
+            return tuple(_chat_session_message_copy(message) for message in record.messages)
 
     async def commit_chat_session(
         request: ChatCompletionRequest,
@@ -3794,7 +3795,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             now = time.time()
             forked = _ChatSessionRecord(
                 id=target_id,
-                messages=tuple(dict(message) for message in source.messages),
+                messages=tuple(_chat_session_message_copy(message) for message in source.messages),
                 created=now,
                 updated=now,
             )
@@ -3838,7 +3839,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 now = time.time()
                 record = _ChatSessionRecord(
                     id=session_id,
-                    messages=tuple(dict(message) for message in record.messages[:target_count]),
+                    messages=tuple(
+                        _chat_session_message_copy(message) for message in record.messages[:target_count]
+                    ),
                     created=record.created,
                     updated=now,
                 )
@@ -7989,19 +7992,25 @@ def _chat_message_to_session_dict(message: ChatMessage | Mapping[str, Any]) -> d
         payload = message.model_dump(exclude_none=True)
     else:
         payload = message.dict(exclude_none=True)
-    return {str(key): value for key, value in payload.items() if value is not None}
+    return _chat_session_message_copy(
+        {str(key): value for key, value in payload.items() if value is not None}
+    )
 
 
 def _assistant_visible_session_message(message: Mapping[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {"role": "assistant"}
     if "content" in message:
-        payload["content"] = message.get("content")
+        payload["content"] = deepcopy(message.get("content"))
     else:
         payload["content"] = ""
     tool_calls = message.get("tool_calls")
     if tool_calls:
-        payload["tool_calls"] = list(tool_calls)
+        payload["tool_calls"] = deepcopy(tool_calls)
     return payload
+
+
+def _chat_session_message_copy(message: Mapping[str, Any]) -> dict[str, Any]:
+    return deepcopy(dict(message))
 
 
 def _chat_session_snapshot_messages(value: Any) -> tuple[dict[str, Any], ...]:

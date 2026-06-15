@@ -2394,7 +2394,11 @@ Current code reality:
   and every `role: "tool"` result must reference a prior unconsumed assistant
   tool-call id. Once an assistant tool call is pending, only tool-result
   messages may follow until the pending ids are consumed, though transcripts may
-  still end with pending calls for the next session-backed request.
+  still end with pending calls for the next session-backed request. App-local
+  session forks, rollbacks, prefix replay, visible-message commits, and snapshot
+  exports deep-copy JSON-like transcript messages so nested assistant
+  `tool_calls` / content parts are not shared between session records,
+  branches, or exported payloads.
 
 Exit gates:
 

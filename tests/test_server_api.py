@@ -35,6 +35,7 @@ from hipengine.server.api import (
     _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
     _TOOL_RESULT_VALIDATION_FAILURE_REASONS,
     _await_with_request_control,
+    _chat_session_message_copy,
     _coerce_generation_output,
     _GenerationBatcher,
     _request_control,
@@ -1933,6 +1934,30 @@ def test_session_metadata_list_and_delete_are_authenticated() -> None:
     assert listed_after_delete.json()["sessions"] == []
 
 
+def test_chat_session_message_copy_deep_copies_nested_tool_calls() -> None:
+    message = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "read", "arguments": '{"path":"README.md"}'},
+            }
+        ],
+    }
+
+    copied = _chat_session_message_copy(message)
+
+    assert copied == message
+    assert copied is not message
+    assert copied["tool_calls"] is not message["tool_calls"]
+    assert copied["tool_calls"][0] is not message["tool_calls"][0]
+    assert copied["tool_calls"][0]["function"] is not message["tool_calls"][0]["function"]
+    copied["tool_calls"][0]["function"]["arguments"] = '{"path":"MUTATED.md"}'
+    assert message["tool_calls"][0]["function"]["arguments"] == '{"path":"README.md"}'
+
+
 def test_chat_session_fork_branches_visible_transcript_without_cross_contamination() -> None:
     fake = SequentialFakeLLM(["base answer", "left answer", "right answer"])
     app = create_app(
@@ -2015,6 +2040,51 @@ def test_chat_session_fork_branches_visible_transcript_without_cross_contaminati
     assert counts == {"sess_root": 4, "sess_branch": 4}
     assert "base prompt" not in json.dumps(body)
     assert "base answer" not in json.dumps(body)
+
+
+def test_chat_session_fork_deep_copies_nested_tool_calls() -> None:
+    fake = SequentialFakeLLM(
+        ['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    created = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read it"}],
+            "tools": tools,
+            "session": {"id": "sess_tool_root", "commit": "append_visible_only"},
+            "max_tokens": 4,
+        },
+    )
+    forked = client.post(
+        "/v1/hipengine/sessions/sess_tool_root/fork",
+        json={"id": "sess_tool_branch"},
+    )
+
+    assert created.status_code == 200
+    assert forked.status_code == 200
+    root_call = app.state.hipengine_chat_sessions["sess_tool_root"].messages[1]["tool_calls"][0]
+    branch_call = app.state.hipengine_chat_sessions["sess_tool_branch"].messages[1]["tool_calls"][0]
+    assert branch_call is not root_call
+    assert branch_call["function"] is not root_call["function"]
+
+    branch_call["function"]["arguments"] = '{"path":"BRANCH.md"}'
+
+    assert root_call["function"]["arguments"] == '{"path":"README.md"}'
+    assert branch_call["function"]["arguments"] == '{"path":"BRANCH.md"}'
 
 
 def test_chat_session_fork_rejects_existing_target_and_session_cap() -> None:
@@ -2175,6 +2245,69 @@ def test_chat_session_rollback_trims_visible_transcript_for_next_turn() -> None:
     assert listed.json()["sessions"][0]["message_count"] == 2
     assert "base prompt" not in json.dumps(listed.json())
     assert "base answer" not in json.dumps(listed.json())
+
+
+def test_chat_session_rollback_deep_copies_retained_tool_calls() -> None:
+    fake = SequentialFakeLLM(
+        [
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+            "done",
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read it"}],
+            "tools": tools,
+            "session": {"id": "sess_tool_rollback", "commit": "append_visible_only"},
+            "max_tokens": 4,
+        },
+    )
+    assert first.status_code == 200
+    tool_call_id = first.json()["choices"][0]["message"]["tool_calls"][0]["id"]
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "tool", "tool_call_id": tool_call_id, "content": "file text"}],
+            "tools": tools,
+            "session": {"id": "sess_tool_rollback", "commit": "append_visible_only"},
+            "max_tokens": 4,
+        },
+    )
+    previous = app.state.hipengine_chat_sessions["sess_tool_rollback"]
+    rollback = client.post(
+        "/v1/hipengine/sessions/sess_tool_rollback/rollback",
+        json={"message_count": 2},
+    )
+
+    assert second.status_code == 200
+    assert rollback.status_code == 200
+    assert rollback.json()["rolled_back"] is True
+    rolled_back = app.state.hipengine_chat_sessions["sess_tool_rollback"]
+    previous_call = previous.messages[1]["tool_calls"][0]
+    rolled_back_call = rolled_back.messages[1]["tool_calls"][0]
+    assert rolled_back_call is not previous_call
+    assert rolled_back_call["function"] is not previous_call["function"]
+
+    rolled_back_call["function"]["arguments"] = '{"path":"ROLLED.md"}'
+
+    assert previous_call["function"]["arguments"] == '{"path":"README.md"}'
+    assert rolled_back_call["function"]["arguments"] == '{"path":"ROLLED.md"}'
 
 
 def test_chat_session_rollback_rejects_missing_and_out_of_range() -> None:
@@ -4673,18 +4806,19 @@ def test_chat_session_visible_only_commits_tool_calls_without_reasoning() -> Non
             "session": {"id": "sess_tool", "commit": "append_visible_only"},
         },
     )
+    assert first.status_code == 200
+    tool_call_id = first.json()["choices"][0]["message"]["tool_calls"][0]["id"]
     second = client.post(
         "/v1/chat/completions",
         json={
             "model": "fake-model",
-            "messages": [{"role": "tool", "tool_call_id": "call_1", "content": "file text"}],
+            "messages": [{"role": "tool", "tool_call_id": tool_call_id, "content": "file text"}],
             "tools": tools,
             "max_tokens": 4,
             "session": {"id": "sess_tool", "commit": "append_none"},
         },
     )
 
-    assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["choices"][0]["finish_reason"] == "tool_calls"
     prompt = fake.calls[1][0][0]

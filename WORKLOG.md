@@ -92430,3 +92430,22 @@ Validation:
 - `uv run ruff check scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> `All checks passed!`.
 - `git diff --check -- scripts/validate_pi_agent_models.py tests/test_local_agent_config.py` -> clean.
 - `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.
+
+## 2026-06-15 - AGENTIC chat session deep-copy boundaries
+
+Hardened app-local chat transcript cloning so forks, rollbacks, prefix replay,
+snapshot export, request-message commits, and visible assistant-message commits
+deep-copy JSON-like transcript payloads instead of sharing nested structures.
+This pins branch independence down to nested assistant `tool_calls` and content
+parts, preventing later in-process mutations of one session record or retained
+rollback record from aliasing another. Updated docs/API and docs/AGENTIC with
+the implemented transcript-copy contract.
+
+Validation:
+- `uv run pytest tests/test_server_api.py -q -k 'chat_session_message_copy or fork_deep_copies_nested_tool_calls or rollback_deep_copies_retained_tool_calls or chat_session_fork_branches or chat_session_rollback_trims or chat_session_snapshot_export_restore'` -> passed.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> passed.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'chat_session or tool_transcript or prior_assistant_tool_call_shape or role_specific_tool_fields'` -> passed.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

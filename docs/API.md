@@ -749,8 +749,10 @@ app-local transcript session and returns `deleted: true` or `false`.
 Authenticated `POST /v1/hipengine/sessions/{session_id}/fork` with body
 `{"id":"new_session_id"}` clones the source app-local transcript into the target
 session id. The fork preserves visible transcript messages as of the request and
-then the two sessions diverge independently on later commits. It rejects missing
-source sessions, empty or existing target ids, same-id forks, and configured
+then the two sessions diverge independently on later commits. Nested
+JSON-compatible transcript data, including assistant `tool_calls`, is copied so
+branches do not share mutable tool-call objects. It rejects missing source
+sessions, empty or existing target ids, same-id forks, and configured
 chat-session cap overflow. Cap rejections use `engine_busy`, `Retry-After`, and
 matched `error.hipengine.routing` metadata with
 `overload_source: "chat_session_cap"`. Forks are transcript-only:
@@ -761,7 +763,9 @@ Authenticated `POST /v1/hipengine/sessions/{session_id}/rollback` with body
 message count. It rejects missing source sessions and counts larger than the
 current transcript. Responses include previous and retained message counts but
 do not include transcript content. Rollbacks are transcript-only:
-`resident_state_reuse=false`, no resident KV state is rewound.
+`resident_state_reuse=false`, no resident KV state is rewound. Retained
+messages are copied before the rollback record is installed, so nested tool-call
+state from the pre-rollback record is not shared.
 
 Authenticated `GET /v1/hipengine/sessions/{session_id}/snapshot` exports a
 versioned `hipengine.chat_session_snapshot.v1` snapshot for that app-local
@@ -769,7 +773,8 @@ transcript session. Unlike the metadata list, this response intentionally
 includes the visible transcript messages so a client can save it. The snapshot
 records served model id, backend, quant, tokenizer compatibility metadata,
 storage, timestamps, and `resident_state_reuse=false`; it does not include
-resident KV, tokenizer state, or decode/sampling state. Authenticated
+resident KV, tokenizer state, or decode/sampling state. Exported transcript
+messages are deep copies of the app-local session messages. Authenticated
 `POST /v1/hipengine/sessions/{session_id}/snapshot` restores the snapshot into
 the same session id after validating schema, model id, backend, quant, storage,
 tokenizer metadata when the model is loaded, message shape, text content parts,
