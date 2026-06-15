@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.kernels.registry import KernelKey, is_registered  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.loading.qwen35_gguf import (  # noqa: E402
     build_qwen35_gguf_mtp_draft_tensor_plans,
@@ -38,6 +39,7 @@ from scripts.gguf_prompt_token_inventory import load_prompt_suite  # noqa: E402
 
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+DEFAULT_BACKEND = "hip_gfx1100"
 DEFAULT_PROMPTS = Path("benchmarks/fixtures/llamacpp_mtp_bench_prompts.json")
 DEFAULT_HIPENGINE_TOKENS = Path(
     "benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json"
@@ -51,6 +53,74 @@ DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_
 
 class B1PromptSuitePreflightError(RuntimeError):
     """Raised when the B1 harness cannot build a preflight artifact."""
+
+
+def _kernel_key_payload(key: KernelKey) -> list[str]:
+    return [key.backend, key.layer, key.quant, key.variant]
+
+
+def _build_runtime_kernel_precheck(*, backend: str, draft_topk: dict[str, Any]) -> dict[str, Any]:
+    draft_topk_kernel = draft_topk.get("kernel")
+    if not isinstance(draft_topk_kernel, list | tuple) or len(draft_topk_kernel) != 4:
+        raise B1PromptSuitePreflightError("draft_topk.kernel must be a four-axis registry key")
+    checks: list[dict[str, Any]] = []
+
+    def add_check(
+        name: str,
+        key: KernelKey,
+        *,
+        required_for: str,
+        missing_is_blocker: bool,
+    ) -> None:
+        registered = is_registered(key)
+        checks.append(
+            {
+                "name": name,
+                "key": _kernel_key_payload(key),
+                "registered": registered,
+                "required_for": required_for,
+                "missing_is_blocker": missing_is_blocker,
+            }
+        )
+
+    add_check(
+        "cpu_nextn_oracle",
+        KernelKey("cpu_reference", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"),
+        required_for="exactness",
+        missing_is_blocker=True,
+    )
+    add_check(
+        "draft_topk_fallback_oracle",
+        KernelKey(*(str(part) for part in draft_topk_kernel)),
+        required_for="exactness",
+        missing_is_blocker=True,
+    )
+    add_check(
+        "native_nextn_runtime",
+        KernelKey(backend, "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"),
+        required_for="native_runtime",
+        missing_is_blocker=False,
+    )
+    add_check(
+        "native_draft_topk_device",
+        KernelKey(backend, "mtp_draft_topk", "w4_gguf", "topk_device"),
+        required_for="optimization",
+        missing_is_blocker=False,
+    )
+
+    missing_exactness = [item for item in checks if item["missing_is_blocker"] and not item["registered"]]
+    missing_native = [item for item in checks if item["required_for"] == "native_runtime" and not item["registered"]]
+    missing_optimization = [item for item in checks if item["required_for"] == "optimization" and not item["registered"]]
+    return {
+        "backend": backend,
+        "exactness_oracles_ready": not missing_exactness,
+        "native_runtime_kernels_ready": not missing_native,
+        "optimization_kernels_ready": not missing_optimization,
+        "missing_exactness_oracle_keys": [item["key"] for item in missing_exactness],
+        "missing_native_runtime_keys": [item["key"] for item in missing_native],
+        "missing_optimization_keys": [item["key"] for item in missing_optimization],
+        "checks": checks,
+    }
 
 
 def _sampling_draft_budget(settings: dict[str, Any]) -> dict[str, Any]:
@@ -239,11 +309,15 @@ def build_b1_prompt_suite_artifact(
     llamacpp_trace_fixture: Path = DEFAULT_LLAMACPP_TRACE_FIXTURE,
     prompt_limit: int | None = None,
     draft_max: int = 1,
+    backend: str = DEFAULT_BACKEND,
 ) -> dict[str, Any]:
     requested_draft_max = int(draft_max)
     if requested_draft_max < 1 or requested_draft_max > 4:
         raise B1PromptSuitePreflightError("draft_max must be in 1..4 for B1-B4 preflight")
     requested_budget = f"B{requested_draft_max}"
+    target = str(backend)
+    if not target:
+        raise B1PromptSuitePreflightError("backend must be non-empty")
 
     prompts_payload = load_prompt_suite(prompts_file)
     prompts = list(prompts_payload.get("prompts", []))
@@ -283,6 +357,10 @@ def build_b1_prompt_suite_artifact(
         llamacpp_sampling=llamacpp_sampling_settings,
         draft_topk=draft_topk_contract,
     )
+    runtime_kernel_precheck = _build_runtime_kernel_precheck(
+        backend=target,
+        draft_topk=draft_topk_contract,
+    )
     oracle_gate = run_oracle_gate(oracle_fixture)
     llamacpp_trace_oracle = _validate_llamacpp_trace_oracle(
         llamacpp_trace_fixture,
@@ -316,6 +394,14 @@ def build_b1_prompt_suite_artifact(
                 "mismatches": draft_sampling_contract_precheck["mismatches"],
             }
         )
+    if not runtime_kernel_precheck["exactness_oracles_ready"]:
+        blockers.append(
+            {
+                "code": "runtime_kernel_precheck_failed",
+                "detail": "required GGUF MTP CPU-reference oracle registry keys must be present before metrics are comparable",
+                "missing_exactness_oracle_keys": runtime_kernel_precheck["missing_exactness_oracle_keys"],
+            }
+        )
     if not oracle_gate["passed"]:
         blockers.append(
             {
@@ -339,6 +425,7 @@ def build_b1_prompt_suite_artifact(
         parity["all_pass"]
         and draft_budget_precheck["passed"]
         and draft_sampling_contract_precheck["passed"]
+        and runtime_kernel_precheck["exactness_oracles_ready"]
         and oracle_gate["passed"]
         and llamacpp_trace_oracle["passed"]
     ):
@@ -347,8 +434,10 @@ def build_b1_prompt_suite_artifact(
                 "code": "native_gguf_mtp_runtime_missing",
                 "detail": (
                     "Native GGUF MTP draft execution is not implemented yet; this harness "
-                    "stops after metadata/token/sampling preflight instead of reporting metrics."
+                    "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
                 ),
+                "missing_native_runtime_keys": runtime_kernel_precheck["missing_native_runtime_keys"],
+                "missing_optimization_keys": runtime_kernel_precheck["missing_optimization_keys"],
             }
         )
 
@@ -358,6 +447,7 @@ def build_b1_prompt_suite_artifact(
         "mode": "preflight",
         "status": "blocked" if blockers else "ready",
         "model": str(model),
+        "backend": target,
         "model_metadata": {
             "architecture": model_info.architecture,
             "file_type_name": model_info.file_type_name,
@@ -384,6 +474,7 @@ def build_b1_prompt_suite_artifact(
         "parity_precheck": parity,
         "draft_budget_precheck": draft_budget_precheck,
         "draft_sampling_contract_precheck": draft_sampling_contract_precheck,
+        "runtime_kernel_precheck": runtime_kernel_precheck,
         "oracle_gate": oracle_gate,
         "llamacpp_trace_oracle": llamacpp_trace_oracle,
         "execution": {
@@ -399,6 +490,7 @@ def build_b1_prompt_suite_artifact(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--backend", default=DEFAULT_BACKEND)
     parser.add_argument("--prompts-file", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--hipengine-token-inventory", type=Path, default=DEFAULT_HIPENGINE_TOKENS)
     parser.add_argument("--llamacpp-token-inventory", type=Path, default=DEFAULT_LLAMACPP_TOKENS)
@@ -434,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         llamacpp_trace_fixture=args.llamacpp_trace_fixture,
         prompt_limit=args.prompt_limit,
         draft_max=args.draft_max,
+        backend=args.backend,
     )
     payload = json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     if args.out:

@@ -195,6 +195,7 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["kind"] == "hipengine_gguf_mtp_b1_prompt_suite"
     assert artifact["mode"] == "preflight"
     assert artifact["status"] == "blocked"
+    assert artifact["backend"] == "hip_gfx1100"
     assert artifact["budget"] == "B1"
     assert artifact["draft_max"] == 1
     assert artifact["prompt_names"] == ["p0", "p1"]
@@ -252,6 +253,17 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         },
         "mismatches": [],
     }
+    assert artifact["runtime_kernel_precheck"]["backend"] == "hip_gfx1100"
+    assert artifact["runtime_kernel_precheck"]["exactness_oracles_ready"] is True
+    assert artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"] is False
+    assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is False
+    assert artifact["runtime_kernel_precheck"]["missing_exactness_oracle_keys"] == []
+    assert artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"] == [
+        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+    ]
+    assert artifact["runtime_kernel_precheck"]["missing_optimization_keys"] == [
+        ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+    ]
     assert artifact["oracle_gate"]["passed"] is True
     assert artifact["llamacpp_trace_oracle"]["passed"] is True
     assert artifact["llamacpp_trace_oracle"]["selected_token_ids"] == [8068, 271]
@@ -267,8 +279,14 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             "code": "native_gguf_mtp_runtime_missing",
             "detail": (
                 "Native GGUF MTP draft execution is not implemented yet; this harness "
-                "stops after metadata/token/sampling preflight instead of reporting metrics."
+                "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
             ),
+            "missing_native_runtime_keys": [
+                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+            ],
+            "missing_optimization_keys": [
+                ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+            ],
         }
     ]
 
@@ -293,8 +311,14 @@ def test_b1_prompt_suite_preflight_can_request_b4_when_sampling_matches(
             "code": "native_gguf_mtp_runtime_missing",
             "detail": (
                 "Native GGUF MTP draft execution is not implemented yet; this harness "
-                "stops after metadata/token/sampling preflight instead of reporting metrics."
+                "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
             ),
+            "missing_native_runtime_keys": [
+                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+            ],
+            "missing_optimization_keys": [
+                ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+            ],
         }
     ]
 

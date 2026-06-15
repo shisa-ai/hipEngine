@@ -95963,3 +95963,53 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. The oracle artifact
   explicitly carries KVLiveSpans-shaped append/decode kwargs for future MTP
   attention/KV-write execution.
+
+## 2026-06-15 - MTP-GGUF runtime kernel precheck
+
+Implemented `mtp-gguf` multiloop iteration 73: added an exact four-axis runtime
+kernel precheck to the GGUF MTP B1/B1-B4 preflight artifact.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- The precheck reports exact registry keys instead of trying fallback resolution,
+  so it can distinguish registered CPU-reference oracles from missing native
+  runtime/optimization keys.
+
+Changes:
+- Added `--backend` (default `hip_gfx1100`) and `runtime_kernel_precheck` to
+  `scripts/gguf_mtp_b1_prompt_suite.py`.
+- The artifact now records exact status for:
+  - CPU NextN oracle: `cpu_reference/mtp_nextn_layer/w4_gguf/qwen35_dense_logits`.
+  - CPU draft top-k fallback oracle from the MTP draft plan:
+    `cpu_reference/mtp_draft_topk/w4_gguf/full_vocab_d2h`.
+  - Native runtime key:
+    `<backend>/mtp_nextn_layer/w4_gguf/qwen35_dense_logits`.
+  - Native optimization key:
+    `<backend>/mtp_draft_topk/w4_gguf/topk_device`.
+- The `native_gguf_mtp_runtime_missing` blocker now includes
+  `missing_native_runtime_keys` and `missing_optimization_keys` for the requested
+  backend.
+- Updated tests for the new precheck fields and blocker payloads.
+- Updated `docs/MTP-gguf.md` to document the registry precheck and that
+  `topk_device` remains reported as open.
+
+Validation:
+- Focused B1 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `10` passed.
+- Real local B1 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --out <tmp>` ->
+  `suite blocked backend hip_gfx1100 exactness True native False missing_native [['hip_gfx1100', 'mtp_nextn_layer', 'w4_gguf', 'qwen35_dense_logits']] blocker native_gguf_mtp_runtime_missing`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Registry precheck uses exact `KernelKey` lookups and reports missing
+  native keys without dispatching through backend/quant conditionals.

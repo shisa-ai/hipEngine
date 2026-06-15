@@ -657,9 +657,11 @@ Deliverables:
   token/sampling parity, enforces that the requested `--draft-max` B1-B4 budget
   and the llama.cpp draft sampler contract (`top_k=10`, greedy top-1 from top-k)
   match both engines' sampling fixtures, embeds the MTP draft tensor/call specs
-  (including KVLiveSpans dynamic inputs), runs the CPU-reference oracle exactness
-  gate plus the captured llama.cpp draft-trace oracle summary, and emits a
-  blocked artifact until native GGUF MTP draft execution is implemented.
+  (including KVLiveSpans dynamic inputs), records an exact four-axis
+  `runtime_kernel_precheck` for required CPU-reference oracles and missing native
+  runtime/optimization keys, runs the CPU-reference oracle exactness gate plus
+  the captured llama.cpp draft-trace oracle summary, and emits a blocked artifact
+  until native GGUF MTP draft execution is implemented.
 - Run matched prompt/token suite against:
   - hipEngine GGUF AR;
   - hipEngine GGUF MTP B1-B4;
@@ -850,8 +852,9 @@ is now answered by the M1 required/optional table.)
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
-      specs, CPU-reference oracle gate output, and captured llama.cpp draft-trace
-      oracle provenance; B1 runtime execution remains in the next backlog row.
+      specs, exact runtime-kernel registry precheck, CPU-reference oracle gate
+      output, and captured llama.cpp draft-trace oracle provenance; B1 runtime
+      execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the
@@ -870,7 +873,8 @@ is now answered by the M1 required/optional table.)
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
       `full_vocab_d2h` fallback/oracle is registered and advertised in MTP
       draft tensor plans/call specs with the llama.cpp parity contract
-      (`top_k=10`, greedy top-1); backend `topk_device` remains open.
+      (`top_k=10`, greedy top-1); backend `topk_device` remains open and is now
+      reported by the preflight `runtime_kernel_precheck`.
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 
