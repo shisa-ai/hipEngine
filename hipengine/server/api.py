@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mappin
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -167,6 +168,9 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "type",
         "enum",
         "const",
+        "$ref",
+        "$defs",
+        "definitions",
         "allOf",
         "anyOf",
         "oneOf",
@@ -875,6 +879,9 @@ def _tool_schema_subset() -> list[str]:
         "type",
         "enum",
         "const",
+        "references.local_ref",
+        "references.$defs",
+        "references.definitions",
         "composition.allOf",
         "composition.anyOf",
         "composition.oneOf",
@@ -9646,12 +9653,127 @@ def _unparseable_tool_call_blocks(text: str) -> tuple[str, ...]:
     return tuple(malformed)
 
 
-def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tuple[str, str] | None:
+def _json_schema_pointer_token(raw_token: str) -> tuple[str | None, str | None]:
+    token: list[str] = []
+    index = 0
+    while index < len(raw_token):
+        char = raw_token[index]
+        if char != "~":
+            token.append(char)
+            index += 1
+            continue
+        if index + 1 >= len(raw_token) or raw_token[index + 1] not in {"0", "1"}:
+            return None, f"invalid JSON Pointer escape in {raw_token!r}"
+        token.append("~" if raw_token[index + 1] == "0" else "/")
+        index += 2
+    return "".join(token), None
+
+
+def _json_schema_resolve_local_ref(
+    root: Mapping[str, Any],
+    ref: str,
+    *,
+    root_path: str,
+) -> tuple[Mapping[str, Any] | None, str, tuple[str, ...], str | None]:
+    text = ref.strip()
+    if not text:
+        return None, root_path, (), "$ref must be a non-empty string"
+    if not text.startswith("#"):
+        return None, root_path, (), "only local JSON schema $ref values are supported"
+    fragment = unquote(text[1:])
+    if fragment == "":
+        return root, root_path, (), None
+    if not fragment.startswith("/"):
+        return None, root_path, (), "$ref must be # or a JSON Pointer starting with #/"
+
+    current: Any = root
+    current_path = root_path
+    tokens: list[str] = []
+    for raw_token in fragment[1:].split("/"):
+        token, error = _json_schema_pointer_token(raw_token)
+        if error is not None or token is None:
+            return None, current_path, tuple(tokens), error
+        tokens.append(token)
+        if isinstance(current, Mapping):
+            if token not in current:
+                return None, current_path, tuple(tokens), f"$ref target {text!r} does not exist"
+            current = current[token]
+            current_path = f"{current_path}.{token}"
+        elif isinstance(current, Sequence) and not isinstance(current, (str, bytes)):
+            if not token.isdecimal():
+                return None, current_path, tuple(tokens), f"$ref target {text!r} does not exist"
+            item_index = int(token)
+            if item_index >= len(current):
+                return None, current_path, tuple(tokens), f"$ref target {text!r} does not exist"
+            current = current[item_index]
+            current_path = f"{current_path}[{item_index}]"
+        else:
+            return None, current_path, tuple(tokens), f"$ref target {text!r} does not exist"
+    if not isinstance(current, Mapping):
+        return None, current_path, tuple(tokens), "$ref target must be a schema object"
+    return current, current_path, tuple(tokens), None
+
+
+def _validate_json_schema_subset(
+    schema: Mapping[str, Any],
+    *,
+    path: str,
+    root: Mapping[str, Any] | None = None,
+    root_path: str | None = None,
+    ref_stack: tuple[tuple[str, ...], ...] = (),
+) -> tuple[str, str] | None:
+    root_schema = schema if root is None else root
+    root_param = path if root_path is None else root_path
     for raw_key in schema:
         key = str(raw_key)
         if key not in _JSON_SCHEMA_SUPPORTED_KEYS:
             param = f"{path}.{key}"
             return (param, f"{param} is not supported by hipEngine JSON schema subset")
+
+    for key in ("$defs", "definitions"):
+        definitions = schema.get(key)
+        if definitions is None:
+            continue
+        if not isinstance(definitions, Mapping):
+            return (f"{path}.{key}", f"{path}.{key} must be an object")
+        for raw_name, subschema in definitions.items():
+            definition_path = f"{path}.{key}.{raw_name}"
+            if not isinstance(raw_name, str):
+                return (f"{path}.{key}", f"{path}.{key} keys must be strings")
+            if not isinstance(subschema, Mapping):
+                return (definition_path, f"{definition_path} must be an object")
+            error = _validate_json_schema_subset(
+                subschema,
+                path=definition_path,
+                root=root_schema,
+                root_path=root_param,
+                ref_stack=ref_stack,
+            )
+            if error is not None:
+                return error
+
+    ref = schema.get("$ref")
+    if "$ref" in schema:
+        if not isinstance(ref, str):
+            return (f"{path}.$ref", f"{path}.$ref must be a string")
+        target, target_path, pointer, error_message = _json_schema_resolve_local_ref(
+            root_schema,
+            ref,
+            root_path=root_param,
+        )
+        if error_message is not None or target is None:
+            return (f"{path}.$ref", f"{path}.$ref {error_message}")
+        if pointer in ref_stack:
+            return (f"{path}.$ref", f"{path}.$ref cycle is not supported")
+        error = _validate_json_schema_subset(
+            target,
+            path=target_path,
+            root=root_schema,
+            root_path=root_param,
+            ref_stack=(*ref_stack, pointer),
+        )
+        if error is not None:
+            return error
 
     expected = schema.get("type")
     if expected is not None:
@@ -9679,7 +9801,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             subschema_path = f"{path}.{key}[{index}]"
             if not isinstance(subschema, Mapping):
                 return (subschema_path, f"{subschema_path} must be an object")
-            error = _validate_json_schema_subset(subschema, path=subschema_path)
+            error = _validate_json_schema_subset(
+                subschema,
+                path=subschema_path,
+                root=root_schema,
+                root_path=root_param,
+                ref_stack=ref_stack,
+            )
             if error is not None:
                 return error
 
@@ -9687,7 +9815,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     if "not" in schema:
         if not isinstance(not_schema, Mapping):
             return (f"{path}.not", f"{path}.not must be an object")
-        error = _validate_json_schema_subset(not_schema, path=f"{path}.not")
+        error = _validate_json_schema_subset(
+            not_schema,
+            path=f"{path}.not",
+            root=root_schema,
+            root_path=root_param,
+            ref_stack=ref_stack,
+        )
         if error is not None:
             return error
 
@@ -9697,7 +9831,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             continue
         if not isinstance(conditional_schema, Mapping):
             return (f"{path}.{key}", f"{path}.{key} must be an object")
-        error = _validate_json_schema_subset(conditional_schema, path=f"{path}.{key}")
+        error = _validate_json_schema_subset(
+            conditional_schema,
+            path=f"{path}.{key}",
+            root=root_schema,
+            root_path=root_param,
+            ref_stack=ref_stack,
+        )
         if error is not None:
             return error
 
@@ -9709,7 +9849,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             property_path = f"{path}.properties.{raw_key}"
             if not isinstance(subschema, Mapping):
                 return (property_path, f"{property_path} must be an object")
-            error = _validate_json_schema_subset(subschema, path=property_path)
+            error = _validate_json_schema_subset(
+                subschema,
+                path=property_path,
+                root=root_schema,
+                root_path=root_param,
+                ref_stack=ref_stack,
+            )
             if error is not None:
                 return error
 
@@ -9727,7 +9873,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
                 return (pattern_path, f"{pattern_path} must be a valid regular expression: {exc}")
             if not isinstance(subschema, Mapping):
                 return (pattern_path, f"{pattern_path} must be an object")
-            error = _validate_json_schema_subset(subschema, path=pattern_path)
+            error = _validate_json_schema_subset(
+                subschema,
+                path=pattern_path,
+                root=root_schema,
+                root_path=root_param,
+                ref_stack=ref_stack,
+            )
             if error is not None:
                 return error
 
@@ -9735,7 +9887,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     if property_names is not None:
         if not isinstance(property_names, Mapping):
             return (f"{path}.propertyNames", f"{path}.propertyNames must be an object")
-        error = _validate_json_schema_subset(property_names, path=f"{path}.propertyNames")
+        error = _validate_json_schema_subset(
+            property_names,
+            path=f"{path}.propertyNames",
+            root=root_schema,
+            root_path=root_param,
+            ref_stack=ref_stack,
+        )
         if error is not None:
             return error
 
@@ -9769,7 +9927,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
                 return (f"{path}.dependentSchemas", f"{path}.dependentSchemas keys must be strings")
             if not isinstance(subschema, Mapping):
                 return (dependency_path, f"{dependency_path} must be an object")
-            error = _validate_json_schema_subset(subschema, path=dependency_path)
+            error = _validate_json_schema_subset(
+                subschema,
+                path=dependency_path,
+                root=root_schema,
+                root_path=root_param,
+                ref_stack=ref_stack,
+            )
             if error is not None:
                 return error
 
@@ -9781,6 +9945,9 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             error = _validate_json_schema_subset(
                 additional_properties,
                 path=f"{path}.additionalProperties",
+                root=root_schema,
+                root_path=root_param,
+                ref_stack=ref_stack,
             )
             if error is not None:
                 return error
@@ -9794,7 +9961,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     if items is not None:
         if not isinstance(items, Mapping):
             return (f"{path}.items", f"{path}.items must be an object")
-        error = _validate_json_schema_subset(items, path=f"{path}.items")
+        error = _validate_json_schema_subset(
+            items,
+            path=f"{path}.items",
+            root=root_schema,
+            root_path=root_param,
+            ref_stack=ref_stack,
+        )
         if error is not None:
             return error
 
@@ -9802,7 +9975,13 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     if contains is not None:
         if not isinstance(contains, Mapping):
             return (f"{path}.contains", f"{path}.contains must be an object")
-        error = _validate_json_schema_subset(contains, path=f"{path}.contains")
+        error = _validate_json_schema_subset(
+            contains,
+            path=f"{path}.contains",
+            root=root_schema,
+            root_path=root_param,
+            ref_stack=ref_stack,
+        )
         if error is not None:
             return error
 
@@ -9836,7 +10015,35 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
     return None
 
 
-def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> str | None:
+def _validate_json_schema_value(
+    value: Any,
+    schema: Mapping[str, Any],
+    *,
+    path: str,
+    root: Mapping[str, Any] | None = None,
+    ref_stack: tuple[tuple[str, ...], ...] = (),
+) -> str | None:
+    root_schema = schema if root is None else root
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        target, _, pointer, error_message = _json_schema_resolve_local_ref(
+            root_schema,
+            ref,
+            root_path="$",
+        )
+        if error_message is not None or target is None:
+            return f"{path} has invalid schema reference"
+        if pointer in ref_stack:
+            return f"{path} has cyclic schema reference"
+        error = _validate_json_schema_value(
+            value,
+            target,
+            path=path,
+            root=root_schema,
+            ref_stack=(*ref_stack, pointer),
+        )
+        if error is not None:
+            return error
     enum = schema.get("enum")
     if (
         isinstance(enum, Sequence)
@@ -9854,14 +10061,30 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
         for subschema in all_of:
             if not isinstance(subschema, Mapping):
                 continue
-            error = _validate_json_schema_value(value, subschema, path=path)
+            error = _validate_json_schema_value(
+                value,
+                subschema,
+                path=path,
+                root=root_schema,
+                ref_stack=ref_stack,
+            )
             if error is not None:
                 return error
     any_of = schema.get("anyOf")
     if isinstance(any_of, Sequence) and not isinstance(any_of, (str, bytes)):
         matches = 0
         for subschema in any_of:
-            if isinstance(subschema, Mapping) and _validate_json_schema_value(value, subschema, path=path) is None:
+            if (
+                isinstance(subschema, Mapping)
+                and _validate_json_schema_value(
+                    value,
+                    subschema,
+                    path=path,
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
+                is None
+            ):
                 matches += 1
                 break
         if matches == 0:
@@ -9871,19 +10094,54 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
         matches = sum(
             1
             for subschema in one_of
-            if isinstance(subschema, Mapping) and _validate_json_schema_value(value, subschema, path=path) is None
+            if isinstance(subschema, Mapping)
+            and _validate_json_schema_value(
+                value,
+                subschema,
+                path=path,
+                root=root_schema,
+                ref_stack=ref_stack,
+            )
+            is None
         )
         if matches != 1:
             return f"{path} must match exactly one allowed schema"
     not_schema = schema.get("not")
-    if isinstance(not_schema, Mapping) and _validate_json_schema_value(value, not_schema, path=path) is None:
+    if (
+        isinstance(not_schema, Mapping)
+        and _validate_json_schema_value(
+            value,
+            not_schema,
+            path=path,
+            root=root_schema,
+            ref_stack=ref_stack,
+        )
+        is None
+    ):
         return f"{path} matches a disallowed schema"
     if_schema = schema.get("if")
     if isinstance(if_schema, Mapping):
-        branch_key = "then" if _validate_json_schema_value(value, if_schema, path=path) is None else "else"
+        branch_key = (
+            "then"
+            if _validate_json_schema_value(
+                value,
+                if_schema,
+                path=path,
+                root=root_schema,
+                ref_stack=ref_stack,
+            )
+            is None
+            else "else"
+        )
         branch_schema = schema.get(branch_key)
         if isinstance(branch_schema, Mapping):
-            error = _validate_json_schema_value(value, branch_schema, path=path)
+            error = _validate_json_schema_value(
+                value,
+                branch_schema,
+                path=path,
+                root=root_schema,
+                ref_stack=ref_stack,
+            )
             if error is not None:
                 return error
     schema_type = _primary_json_schema_type(expected, value)
@@ -9905,7 +10163,13 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
         if isinstance(property_names, Mapping):
             for raw_key in value:
                 key = str(raw_key)
-                error = _validate_json_schema_value(key, property_names, path=f"{path}.{key}")
+                error = _validate_json_schema_value(
+                    key,
+                    property_names,
+                    path=f"{path}.{key}",
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
                 if error is not None:
                     return f"{path}.{key} property name is invalid"
         dependent_required = schema.get("dependentRequired")
@@ -9922,14 +10186,26 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
             for raw_key, subschema in dependent_schemas.items():
                 if not isinstance(raw_key, str) or raw_key not in value or not isinstance(subschema, Mapping):
                     continue
-                error = _validate_json_schema_value(value, subschema, path=path)
+                error = _validate_json_schema_value(
+                    value,
+                    subschema,
+                    path=path,
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
                 if error is not None:
                     return error
         properties = schema.get("properties")
         property_map = properties if isinstance(properties, Mapping) else {}
         for key, subschema in property_map.items():
             if key in value and isinstance(key, str) and isinstance(subschema, Mapping):
-                error = _validate_json_schema_value(value[key], subschema, path=f"{path}.{key}")
+                error = _validate_json_schema_value(
+                    value[key],
+                    subschema,
+                    path=f"{path}.{key}",
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
                 if error is not None:
                     return error
         pattern_properties = schema.get("patternProperties")
@@ -9947,7 +10223,13 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
                 if not matches:
                     continue
                 matched_by_pattern.add(key)
-                error = _validate_json_schema_value(item, subschema, path=f"{path}.{key}")
+                error = _validate_json_schema_value(
+                    item,
+                    subschema,
+                    path=f"{path}.{key}",
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
                 if error is not None:
                     return error
         additional_properties = schema.get("additionalProperties")
@@ -9972,6 +10254,8 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
                     value[raw_key],
                     additional_properties,
                     path=f"{path}.{key}",
+                    root=root_schema,
+                    ref_stack=ref_stack,
                 )
                 if error is not None:
                     return error
@@ -9989,7 +10273,16 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
         contains = schema.get("contains")
         if isinstance(contains, Mapping):
             match_count = sum(
-                1 for item in value if _validate_json_schema_value(item, contains, path=path) is None
+                1
+                for item in value
+                if _validate_json_schema_value(
+                    item,
+                    contains,
+                    path=path,
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
+                is None
             )
             min_contains = _schema_nonnegative_int(schema.get("minContains"))
             min_contains = 1 if min_contains is None else min_contains
@@ -10001,7 +10294,13 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
         items = schema.get("items")
         if isinstance(items, Mapping):
             for index, item in enumerate(value):
-                error = _validate_json_schema_value(item, items, path=f"{path}[{index}]")
+                error = _validate_json_schema_value(
+                    item,
+                    items,
+                    path=f"{path}[{index}]",
+                    root=root_schema,
+                    ref_stack=ref_stack,
+                )
                 if error is not None:
                     return error
     elif schema_type == "string":

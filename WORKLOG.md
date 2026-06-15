@@ -92128,3 +92128,21 @@ Validation:
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> passed.
+
+## 2026-06-15 - AGENTIC JSON schema local refs
+
+Strict tool schemas, structured outputs, and guided JSON schema validation now
+support local JSON Schema `$ref` targets through `$defs` or `definitions`.
+Request validation rejects remote, unresolved, non-object, and cyclic refs
+before generation; the capability manifest advertises the local reference
+subset, and result validation applies referenced schema constraints after
+generation/tool parsing.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_local_refs tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_local_refs tests/test_server_api.py::test_completions_response_format_rejects_unsupported_schema_keywords tests/test_server_api.py::test_chat_completion_strict_tool_schema_rejects_unsupported_keywords tests/test_server_api.py::test_completions_response_format_rejects_invalid_schema_refs -q` -> `9 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> passed.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.

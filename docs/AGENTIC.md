@@ -1552,12 +1552,13 @@ Current state:
   a specific function, when any tool function declares `"strict": true`, or when
   `parallel_tool_calls` is explicitly supplied. It validates selected tool
   names, malformed tool-call blocks, and a minimal function `parameters` JSON
-  schema subset: scalar types, `enum`, `const`, conditionals with `if` /
-  `then` / `else`, object `properties` / `patternProperties` /
-  `propertyNames` / `required` / `dependentRequired` / `dependentSchemas` /
-  `additionalProperties=false` or a supported subschema / `minProperties` /
-  `maxProperties`, array `items` / `contains` / `minItems` / `maxItems` /
-  `minContains` / `maxContains` / `uniqueItems`,
+  schema subset: scalar types, `enum`, `const`, local `$ref` into `$defs` or
+  `definitions`, conditionals with `if` / `then` / `else`, object
+  `properties` / `patternProperties` / `propertyNames` / `required` /
+  `dependentRequired` / `dependentSchemas` / `additionalProperties=false` or a
+  supported subschema / `minProperties` / `maxProperties`, array `items` /
+  `contains` / `minItems` / `maxItems` / `minContains` / `maxContains` /
+  `uniqueItems`,
   string `minLength` / `maxLength` / `pattern`, and numeric min/max /
   `multipleOf` bounds. `enum`, `const`, and
   array `uniqueItems` use JSON-typed value equality after generation, so
@@ -1695,10 +1696,11 @@ Current code reality:
   blocks, required/extra arguments, scalar types, `enum`, `const`, nested
   objects, object property-count bounds, object-valued additional-property
   schemas, pattern-property schemas, property-name schemas, dependent-required
-  properties, dependent schemas, arrays, array length/contains bounds, string
-  length bounds/patterns, JSON-typed `enum`/`const`/array uniqueness, numeric
-  bounds/multiples, schema composition with `allOf` / `anyOf` / `oneOf` /
-  `not`, and conditionals with `if` / `then` / `else`;
+  properties, dependent schemas, local `$ref` through `$defs` / `definitions`,
+  arrays, array length/contains bounds, string length bounds/patterns,
+  JSON-typed `enum`/`const`/array uniqueness, numeric bounds/multiples, schema
+  composition with `allOf` / `anyOf` / `oneOf` / `not`, and conditionals with
+  `if` / `then` / `else`;
 - strict schemas reject unsupported validation keywords before generation rather
   than silently ignoring constraints;
 - decode-time schema constraints and retry/repair remain future grammar work.
