@@ -94483,3 +94483,40 @@ Validation:
 - Prompt verifier passed: metadata-only CLI error handling, no torch import, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF call spec CLI docs
+
+Implemented `mtp-gguf` multiloop iteration 41: documented the metadata-only GGUF
+MTP CPU call-spec CLI in `docs/MTP-gguf.md`.
+
+Scope note:
+- Documentation-only. No runtime generation, GPU kernels, KV paths, or loader
+  behavior changed.
+- The doc explicitly preserves the future M4 requirement that runtime MTP
+  attention/KV-write work must use the KVLiveSpans paged-KV ABI; the CLI is
+  metadata/header-only.
+
+Changes:
+- Added an M3 `CPU Call-Spec Bridge` subsection documenting:
+  - command example:
+    `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --require-mtp --layer 40 --indent 2`;
+  - expected local JSON shape: one `layer_id: 40` call spec;
+  - CPU-reference kernel key `['cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits']`;
+  - direct tensor examples (`wq_weight -> blk.40.attn_q.weight`,
+    `shared_head_weight -> output.weight`);
+  - qtype args (`Q4_K/Q4_K/Q5_K/Q8_0`);
+  - dynamic harness inputs (`hidden_seed`, gathered `token_embedding` rows,
+    optional dense CPU K/V caches, positions/context counts, RoPE tables);
+  - `--layer` and `--require-mtp` fail-fast behavior.
+- Updated stale M3 RED-first wording that still claimed no CPU-reference NextN
+  helper existed.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Real GGUF call-spec smoke passed with the documented command shape.
+- `grep` confirmed the new section exists and the stale `none exists today` text
+  is gone.
+- `git diff --check -- docs/MTP-gguf.md` passed.
+- Prompt verifier passed: docs-only change, no torch import, no backend/quant
+  branches, no runtime generation/GPU/KV path changes, no performance claims.

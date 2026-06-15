@@ -472,10 +472,40 @@ Deliverables:
   hand-written branch.
 - **RED-first:** commit a failing fixed `(token, hidden)` fixture + expected
   top-k before implementation (math change — guilty until proven correct,
-  CLAUDE.md). Add a numpy `cpu_reference` NextN forward in
-  `kernels/cpu_reference/ops.py` (none exists today — `grep nextn` returns 0)
-  registered under `(cpu_reference, nextn, …)`, implementing the forward above;
-  ship a fixture as the offline oracle.
+  CLAUDE.md). Keep the numpy `cpu_reference` NextN forward in
+  `kernels/cpu_reference/ops.py` registered through the four-axis registry,
+  implementing the forward above; ship a fixture as the offline oracle.
+
+#### CPU Call-Spec Bridge
+
+Use the metadata-only call-spec dumper to hand future parity harnesses the
+validated GGUF tensor names, qtypes, scalar kwargs, and runtime inputs for the
+`cpu_reference` NextN oracle without materializing weights:
+
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py \
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --require-mtp --layer 40 --indent 2
+```
+
+Expected local shape:
+
+- one `mtp_draft_call_specs[]` entry for `layer_id: 40`;
+- `cpu_reference_kernel == ["cpu_reference", "mtp_nextn_layer", "gguf_moe",
+  "qwen35_dense_logits"]`;
+- direct tensor args include `wq_weight -> blk.40.attn_q.weight` and
+  `shared_head_weight -> output.weight`;
+- qtype args resolve to `gate_qtype=Q4_K`, `up_qtype=Q4_K`,
+  `down_qtype=Q5_K`, `shared_qtype=Q8_0`;
+- dynamic inputs document the harness-provided values: fp32 `hidden_seed`,
+  gathered `token_embedding` rows, optional dense CPU `key_cache`/`value_cache`,
+  positions/context counts, and paired RoPE cos/sin tables.
+
+The CLI reads GGUF metadata/tensor headers only. It does **not** load tensor
+payloads, run kernels, allocate runtime KV, or bypass the future M4 KVLiveSpans
+attention/KV-write requirement. Use `--layer` for exact block selection;
+`--require-mtp` makes non-MTP files or over-filtered selections fail fast instead
+of emitting an empty spec list.
 
 Acceptance:
 
