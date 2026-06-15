@@ -124,6 +124,29 @@ def test_qwen35_gguf_mtp_shared_head_logits_validates_shapes() -> None:
         qwen35_gguf_mtp_shared_head_logits(hidden, norm, np.ones((3, 3), dtype=np.float32))
 
 
+def _simple_mtp_attention_fixture() -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    hidden = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    attn_norm = np.ones((2,), dtype=np.float32)
+    q_norm = np.ones((2,), dtype=np.float32)
+    k_norm = np.ones((2,), dtype=np.float32)
+    wq = np.zeros((4, 2), dtype=np.float32)
+    wq[0, 0] = 1.0
+    wq[1, 1] = 1.0
+    wk = np.zeros((2, 2), dtype=np.float32)
+    wv = np.eye(2, dtype=np.float32)
+    wo = np.eye(2, dtype=np.float32)
+    return hidden, attn_norm, q_norm, k_norm, wq, wk, wv, wo
+
+
 def test_qwen35_gguf_mtp_boundary_logits_composes_pinned_boundary_stages() -> None:
     hidden = np.asarray([[3.0, 4.0]], dtype=np.float32)
     embedding = np.asarray([[1.0, 2.0]], dtype=np.float32)
@@ -259,6 +282,97 @@ def test_qwen35_gguf_mtp_attention_sublayer_supports_gguf_head_width_greater_tha
     gated = (attn * (1.0 / (1.0 + np.exp(-gate)))).reshape(1, 6)
     expected = hidden + np.matmul(gated, wo.T)
     np.testing.assert_allclose(out, expected.astype(np.float32), rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_attention_sublayer_accepts_kvlivespans_paged_cache() -> None:
+    hidden, attn_norm, q_norm, k_norm, wq, wk, wv, wo = _simple_mtp_attention_fixture()
+    dense_key = np.asarray([[[1.0, 0.0]], [[0.0, 1.0]]], dtype=np.float32)
+    dense_value = np.asarray([[[2.0, 0.0]], [[0.0, 4.0]]], dtype=np.float32)
+    paged_key = dense_key.reshape(1, 2, 1, 2)
+    paged_value = dense_value.reshape(1, 2, 1, 2)
+
+    dense = qwen35_gguf_mtp_attention_sublayer(
+        hidden,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        num_heads=1,
+        num_kv_heads=1,
+        key_cache=dense_key,
+        value_cache=dense_value,
+        positions=np.asarray([1], dtype=np.int64),
+        context_counts=np.asarray([2], dtype=np.int64),
+    )
+    paged = qwen35_gguf_mtp_attention_sublayer(
+        hidden,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        num_heads=1,
+        num_kv_heads=1,
+        key_cache=paged_key,
+        value_cache=paged_value,
+        kv_base_offsets=np.asarray([[0]], dtype=np.int32),
+        kv_live_counts=np.asarray([2], dtype=np.int64),
+        kv_token_positions=np.asarray([1], dtype=np.int64),
+        block_size=2,
+    )
+
+    np.testing.assert_allclose(paged, dense, rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_gguf_mtp_attention_sublayer_kvlivespans_evict_mask_skips_slots() -> None:
+    hidden, attn_norm, q_norm, k_norm, wq, wk, wv, wo = _simple_mtp_attention_fixture()
+    dense_key = np.asarray([[[0.0, 1.0]]], dtype=np.float32)
+    dense_value = np.asarray([[[0.0, 4.0]]], dtype=np.float32)
+    paged_key = np.asarray([[[[1.0, 0.0]], [[0.0, 1.0]]]], dtype=np.float32)
+    paged_value = np.asarray([[[[2.0, 0.0]], [[0.0, 4.0]]]], dtype=np.float32)
+
+    expected = qwen35_gguf_mtp_attention_sublayer(
+        hidden,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        num_heads=1,
+        num_kv_heads=1,
+        key_cache=dense_key,
+        value_cache=dense_value,
+        positions=np.asarray([0], dtype=np.int64),
+        context_counts=np.asarray([1], dtype=np.int64),
+    )
+    masked = qwen35_gguf_mtp_attention_sublayer(
+        hidden,
+        attn_norm,
+        wq,
+        wk,
+        wv,
+        wo,
+        q_norm,
+        k_norm,
+        num_heads=1,
+        num_kv_heads=1,
+        key_cache=paged_key,
+        value_cache=paged_value,
+        kv_base_offsets=np.asarray([[0]], dtype=np.int32),
+        kv_live_counts=np.asarray([2], dtype=np.int64),
+        kv_token_positions=np.asarray([1], dtype=np.int64),
+        kv_evict_mask=np.asarray([[True, False]], dtype=np.bool_),
+        block_size=2,
+    )
+
+    np.testing.assert_allclose(masked, expected, rtol=1.0e-6, atol=1.0e-6)
 
 
 def test_qwen35_gguf_mtp_attention_sublayer_validates_shapes() -> None:

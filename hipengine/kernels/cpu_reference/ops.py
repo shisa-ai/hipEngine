@@ -167,6 +167,11 @@ def qwen35_gguf_mtp_attention_sublayer(
     context_counts: ArrayLike | None = None,
     key_cache: ArrayLike | None = None,
     value_cache: ArrayLike | None = None,
+    kv_base_offsets: ArrayLike | None = None,
+    kv_live_counts: ArrayLike | None = None,
+    kv_token_positions: ArrayLike | None = None,
+    kv_evict_mask: ArrayLike | None = None,
+    block_size: int | None = None,
     rope_cos: ArrayLike | None = None,
     rope_sin: ArrayLike | None = None,
     rotary_dim: int | None = None,
@@ -183,8 +188,11 @@ def qwen35_gguf_mtp_attention_sublayer(
     Q/K and V head widths from the GGUF norm/projection tensor shapes.
 
     This helper is a CPU oracle for that sublayer only.  Runtime MTP attention
-    still must use the KVLiveSpans paged-KV ABI; passing ``key_cache``/
-    ``value_cache`` here models the already-materialized dense CPU cache.
+    still must use the KVLiveSpans paged-KV ABI. Dense ``key_cache``/
+    ``value_cache`` arguments model an already-materialized CPU cache, while the
+    ``kv_base_offsets``/``kv_live_counts``/``kv_token_positions``/
+    ``kv_evict_mask`` arguments provide a NumPy-only KVLiveSpans-shaped paged
+    cache oracle for draft-runtime bring-up.
     """
 
     x = np.asarray(hidden, dtype=np.float32)
@@ -243,16 +251,6 @@ def qwen35_gguf_mtp_attention_sublayer(
         query = rotate(query, rope_cos, rope_sin, rotary_dim=rotary_dim)
         key_cur = rotate(key_cur, rope_cos, rope_sin, rotary_dim=rotary_dim)
 
-    key_dense = key_cur if key_cache is None else np.asarray(key_cache, dtype=np.float32)
-    value_dense = value_cur if value_cache is None else np.asarray(value_cache, dtype=np.float32)
-    if key_dense.ndim != 3 or value_dense.ndim != 3:
-        raise ValueError("key_cache and value_cache must have shape [cache_tokens, num_kv_heads, head_dim]")
-    if key_dense.shape[:2] != value_dense.shape[:2]:
-        raise ValueError("key_cache and value_cache must have matching cache_tokens and num_kv_heads")
-    if key_dense.shape[1:] != (kv_heads, qk_head_dim):
-        raise ValueError("key_cache shape must match num_kv_heads and qk_head_dim")
-    if value_dense.shape[1:] != (kv_heads, value_head_dim):
-        raise ValueError("value_cache shape must match num_kv_heads and value_head_dim")
     pos = np.arange(tokens, dtype=np.int64) if positions is None else np.asarray(positions, dtype=np.int64)
     if pos.shape != (tokens,):
         raise ValueError("positions must have shape [tokens]")
@@ -260,7 +258,36 @@ def qwen35_gguf_mtp_attention_sublayer(
     if ctx.shape != (tokens,):
         raise ValueError("context_counts must have shape [tokens]")
 
-    attn = _dense_causal_gqa_attention(query, key_dense, value_dense, pos, ctx, scale=scale)
+    if kv_base_offsets is None:
+        if any(item is not None for item in (kv_live_counts, kv_token_positions, kv_evict_mask)):
+            raise ValueError("kv_base_offsets is required when passing KVLiveSpans fields")
+        key_dense = key_cur if key_cache is None else np.asarray(key_cache, dtype=np.float32)
+        value_dense = value_cur if value_cache is None else np.asarray(value_cache, dtype=np.float32)
+        if key_dense.ndim != 3 or value_dense.ndim != 3:
+            raise ValueError("key_cache and value_cache must have shape [cache_tokens, num_kv_heads, head_dim]")
+        if key_dense.shape[:2] != value_dense.shape[:2]:
+            raise ValueError("key_cache and value_cache must have matching cache_tokens and num_kv_heads")
+        if key_dense.shape[1:] != (kv_heads, qk_head_dim):
+            raise ValueError("key_cache shape must match num_kv_heads and qk_head_dim")
+        if value_dense.shape[1:] != (kv_heads, value_head_dim):
+            raise ValueError("value_cache shape must match num_kv_heads and value_head_dim")
+        attn = _dense_causal_gqa_attention(query, key_dense, value_dense, pos, ctx, scale=scale)
+    else:
+        if key_cache is None or value_cache is None:
+            raise ValueError("paged KVLiveSpans attention requires key_cache and value_cache")
+        if kv_live_counts is None:
+            raise ValueError("kv_live_counts is required with kv_base_offsets")
+        attn = _kv_live_spans_gqa_attention(
+            query,
+            np.asarray(key_cache, dtype=np.float32),
+            np.asarray(value_cache, dtype=np.float32),
+            base_offsets=kv_base_offsets,
+            live_counts=kv_live_counts,
+            token_positions=pos if kv_token_positions is None else kv_token_positions,
+            evict_mask=kv_evict_mask,
+            block_size=block_size,
+            scale=scale,
+        )
     gated = (attn * _sigmoid(gate)).reshape(tokens, heads * value_head_dim)
     return (x + linear(gated, wo)).astype(np.float32)
 
@@ -1753,6 +1780,109 @@ def _dense_causal_gqa_attention(
             kv_head = q_head // kv_group
             keys = key_cache[visible_positions, kv_head, :]
             values = value_cache[visible_positions, kv_head, :]
+            weights = _softmax(np.matmul(keys, query[row, q_head]) * scale_value, axis=0)
+            out[row, q_head] = np.matmul(weights, values)
+    return out
+
+
+def _kv_live_spans_gqa_attention(
+    query: np.ndarray,
+    key_cache: np.ndarray,
+    value_cache: np.ndarray,
+    *,
+    base_offsets: ArrayLike,
+    live_counts: ArrayLike,
+    token_positions: ArrayLike,
+    evict_mask: ArrayLike | None,
+    block_size: int | None,
+    scale: float | None,
+) -> np.ndarray:
+    if query.ndim != 3:
+        raise ValueError("query must have shape [tokens, num_heads, qk_head_dim]")
+    tokens, heads, qk_head_dim = query.shape
+    if key_cache.ndim != 4 or value_cache.ndim != 4:
+        raise ValueError("paged key_cache and value_cache must have shape [blocks, block, num_kv_heads, head_dim]")
+    if key_cache.shape[:3] != value_cache.shape[:3]:
+        raise ValueError("paged key_cache and value_cache must match through num_kv_heads")
+    block = key_cache.shape[1] if block_size is None else int(block_size)
+    if block <= 0:
+        raise ValueError("block_size must be positive")
+    if key_cache.shape[1] != block or value_cache.shape[1] != block:
+        raise ValueError("block_size must match paged key/value cache shape")
+    kv_heads = key_cache.shape[2]
+    key_dim = key_cache.shape[3]
+    value_head_dim = value_cache.shape[3]
+    if key_dim != qk_head_dim:
+        raise ValueError("query qk_head_dim must match key_cache head_dim")
+    if heads % kv_heads != 0:
+        raise ValueError("num_heads must be divisible by num_kv_heads")
+
+    counts = np.asarray(live_counts, dtype=np.int64).reshape(-1)
+    positions = np.asarray(token_positions, dtype=np.int64).reshape(-1)
+    if counts.shape != (tokens,):
+        raise ValueError("kv_live_counts must have shape [tokens]")
+    if positions.shape != (tokens,):
+        raise ValueError("kv_token_positions must have shape [tokens]")
+    tables = _normalize_block_tables(base_offsets, rows=tokens)
+    assert tables is not None
+    mask = None
+    if evict_mask is not None:
+        mask = np.asarray(evict_mask, dtype=np.bool_)
+        if mask.ndim == 1:
+            if tokens != 1:
+                raise ValueError("1D kv_evict_mask is only valid for one query row")
+            mask = mask[None, :]
+        if mask.ndim != 2 or mask.shape[0] != tokens:
+            raise ValueError("kv_evict_mask must have shape [tokens, max_live_count]")
+
+    scale_value = (qk_head_dim ** -0.5) if scale is None else float(scale)
+    kv_group = heads // kv_heads
+    out = np.empty((tokens, heads, value_head_dim), dtype=np.float32)
+    for row in range(tokens):
+        live_count = int(counts[row])
+        position = int(positions[row])
+        if live_count <= 0:
+            raise ValueError("kv_live_counts must be positive")
+        if position < 0:
+            raise ValueError("kv_token_positions must be non-negative")
+        row_mask = None if mask is None else mask[row]
+        visible_slots = [
+            slot
+            for slot in range(live_count)
+            if slot <= position and not (row_mask is not None and slot < row_mask.shape[0] and bool(row_mask[slot]))
+        ]
+        if not visible_slots:
+            raise ValueError("KVLiveSpans mask left no visible cache positions")
+        for q_head in range(heads):
+            kv_head = q_head // kv_group
+            keys = np.stack(
+                [
+                    _cache_row(
+                        key_cache,
+                        slot,
+                        kv_head,
+                        dense_cache=False,
+                        block_size=block,
+                        block_table=tables[row],
+                    )
+                    for slot in visible_slots
+                ],
+                axis=0,
+            )
+            values = np.stack(
+                [
+                    _cache_row(
+                        value_cache,
+                        slot,
+                        kv_head,
+                        dense_cache=False,
+                        block_size=block,
+                        block_table=tables[row],
+                    )
+                    for slot in visible_slots
+                ],
+                axis=0,
+            )
             weights = _softmax(np.matmul(keys, query[row, q_head]) * scale_value, axis=0)
             out[row, q_head] = np.matmul(weights, values)
     return out

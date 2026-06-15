@@ -95086,3 +95086,48 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, or attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF CPU KVLiveSpans attention oracle
+
+Implemented `mtp-gguf` multiloop iteration 54: extended the Qwen35 GGUF MTP
+CPU-reference attention sublayer with a KVLiveSpans-shaped paged-cache oracle.
+
+Scope note:
+- CPU oracle/test/docs only. No hipEngine runtime generation, GGUF tensor loading,
+  MTP draft execution, sampling implementation, GPU kernel, or performance path
+  changed.
+- No separate RED run was kept because the implementation and narrow tests were
+  developed as one small CPU-reference oracle extension; validation below proves
+  dense vs KVLiveSpans-shaped paged-cache equivalence and evict-mask behavior.
+
+Changes:
+- `qwen35_gguf_mtp_attention_sublayer()` now retains the existing dense cache
+  path and adds a NumPy-only KVLiveSpans-shaped paged path using
+  `kv_base_offsets`, `kv_live_counts`, `kv_token_positions`, optional
+  `kv_evict_mask`, and `block_size`.
+- Added a private `_kv_live_spans_gqa_attention()` CPU helper that resolves
+  fixed-page block tables through the same logical slot mapping as paged KV and
+  applies evict masks before causal GQA attention.
+- Added tests proving:
+  - paged KVLiveSpans-shaped cache output matches the dense cache fallback;
+  - `kv_evict_mask` skips evicted logical slots and matches an equivalent dense
+    one-token cache.
+- Updated `docs/MTP-gguf.md` M3/backlog text: CPU-reference coverage now includes
+  both dense and KVLiveSpans-shaped paged-cache attention, while HIP/runtime
+  `w4_gguf` registration remains open.
+
+Validation:
+- CPU-reference MTP tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `18` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/kernels/cpu_reference/ops.py tests/test_gguf_mtp_cpu_reference.py` and
+  `git diff --check -- hipengine/kernels/cpu_reference/ops.py tests/test_gguf_mtp_cpu_reference.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: CPU-reference oracle/test/docs only; no torch import;
+  no runtime backend/quant dispatch branch; no hipEngine generation, MTP
+  execution, sampling implementation, GPU kernel, or performance claim; the new
+  attention path explicitly uses the KVLiveSpans-shaped `(base_offsets,
+  live_counts, token_positions, evict_mask)` ABI for future M4/HIP work.
