@@ -32,7 +32,8 @@ DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json"
 )
 DEFAULT_LLAMA_CPP_ROOT = Path("/home/lhl/llama.cpp/llama.cpp-vulkan")
-DEFAULT_LLAMA_BIN_DIR = DEFAULT_LLAMA_CPP_ROOT / "build-vulkan-release/bin"
+DEFAULT_LLAMA_BUILD_DIR = DEFAULT_LLAMA_CPP_ROOT / "build-vulkan-release"
+DEFAULT_LLAMA_BIN_DIR = DEFAULT_LLAMA_BUILD_DIR / "bin"
 DEFAULT_ARTIFACT_DATE = "2026-06-15"
 LOGITS_DUMP_HELP_MARKERS = (
     "--save-logits",
@@ -45,6 +46,7 @@ LOGITS_DUMP_HELP_MARKERS = (
     "--logprobs",
     "--top-logprobs",
 )
+BUILD_TARGET_CANDIDATES = ("llama-debug", "llama-batched")
 SOURCE_CANDIDATES = (
     {
         "path": "examples/debug/debug.cpp",
@@ -82,10 +84,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Local llama.cpp source checkout to scan read-only.",
     )
     parser.add_argument(
+        "--build-dir",
+        type=Path,
+        default=DEFAULT_LLAMA_BUILD_DIR,
+        help="Local llama.cpp CMake build directory to inspect for build targets.",
+    )
+    parser.add_argument(
         "--bin-dir",
         type=Path,
         default=DEFAULT_LLAMA_BIN_DIR,
         help="Local llama.cpp build binary directory to inspect.",
+    )
+    parser.add_argument(
+        "--cmake",
+        default="cmake",
+        help="cmake executable used for `cmake --build BUILD --target help` inspection.",
     )
     parser.add_argument(
         "--preflight-artifact",
@@ -104,6 +117,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=5.0,
         help="Per-binary timeout for --help inspection.",
+    )
+    parser.add_argument(
+        "--target-help-timeout-s",
+        type=float,
+        default=10.0,
+        help="Timeout for inspecting available CMake build targets.",
     )
     parser.add_argument(
         "--artifact-date",
@@ -135,6 +154,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--source-candidates-only",
         action="store_true",
         help="Emit only source candidate records.",
+    )
+    parser.add_argument(
+        "--build-readiness-only",
+        action="store_true",
+        help="Emit only the build-readiness status for the preferred logits entrypoint.",
     )
     parser.add_argument(
         "--sha-only",
@@ -230,6 +254,94 @@ def _iter_binaries(bin_dir: Path) -> list[Path]:
     )
 
 
+def _parse_cmake_help_targets(text: str) -> list[str]:
+    targets: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("..."):
+            line = line[3:].strip()
+        if re.fullmatch(r"[A-Za-z0-9_.+-]+", line):
+            targets.append(line)
+    return sorted(set(targets))
+
+
+def _cmake_build_target_help(
+    *,
+    build_dir: Path,
+    cmake: str,
+    timeout_s: float,
+) -> dict[str, object]:
+    command = [cmake, "--build", str(build_dir), "--target", "help"]
+    record: dict[str, object] = {
+        "build_dir": str(build_dir),
+        "cmake": cmake,
+        "command": command,
+        "build_dir_exists": build_dir.exists(),
+        "status": "not_run",
+        "returncode": None,
+        "available_targets": [],
+        "error": None,
+    }
+    if not build_dir.exists():
+        record["status"] = "build_dir_missing"
+        return record
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        record["status"] = "timeout"
+        return record
+    except OSError as exc:
+        record["status"] = f"error:{type(exc).__name__}"
+        record["error"] = str(exc)
+        return record
+    text = (completed.stdout or "") + (completed.stderr or "")
+    record.update(
+        {
+            "status": "executed",
+            "returncode": completed.returncode,
+            "available_targets": _parse_cmake_help_targets(text),
+        }
+    )
+    return record
+
+
+def _target_build_records(
+    *,
+    target_help: dict[str, object],
+    build_dir: Path,
+    bin_dir: Path,
+    targets: Sequence[str] = BUILD_TARGET_CANDIDATES,
+) -> list[dict[str, object]]:
+    available = target_help.get("available_targets")
+    available_targets = set(available if isinstance(available, list) else [])
+    records: list[dict[str, object]] = []
+    for target in targets:
+        binary = bin_dir / target
+        target_available = target in available_targets
+        binary_built = binary.exists() and _is_executable(binary)
+        records.append(
+            {
+                "target": target,
+                "target_available": target_available,
+                "binary_path": str(binary),
+                "binary_built": binary_built,
+                "build_command": f"cmake --build {build_dir} --target {target}",
+                "next_action": (
+                    f"Run `cmake --build {build_dir} --target {target}` and refresh this inventory"
+                    if target_available and not binary_built
+                    else None
+                ),
+            }
+        )
+    return records
+
+
 def _source_candidate(root: Path, candidate: dict[str, object], bin_dir: Path) -> dict[str, object]:
     rel_path = str(candidate["path"])
     path = root / rel_path
@@ -258,10 +370,13 @@ def _source_candidate(root: Path, candidate: dict[str, object], bin_dir: Path) -
 def build_llamacpp_logits_entrypoint_inventory(
     *,
     llama_cpp_root: Path = DEFAULT_LLAMA_CPP_ROOT,
+    build_dir: Path = DEFAULT_LLAMA_BUILD_DIR,
     bin_dir: Path = DEFAULT_LLAMA_BIN_DIR,
     preflight_artifact: Path = preflight_mod.DEFAULT_OUTPUT,
     plan_artifact: Path = plan_mod.DEFAULT_OUTPUT,
+    cmake: str = "cmake",
     help_timeout_s: float = 5.0,
+    target_help_timeout_s: float = 10.0,
     artifact_date: str = DEFAULT_ARTIFACT_DATE,
 ) -> dict[str, object]:
     """Return the llama.cpp logits entrypoint inventory."""
@@ -275,6 +390,16 @@ def build_llamacpp_logits_entrypoint_inventory(
     source_candidates = [
         _source_candidate(llama_cpp_root, candidate, bin_dir) for candidate in SOURCE_CANDIDATES
     ]
+    target_help = _cmake_build_target_help(
+        build_dir=build_dir,
+        cmake=cmake,
+        timeout_s=target_help_timeout_s,
+    )
+    target_records = _target_build_records(
+        target_help=target_help,
+        build_dir=build_dir,
+        bin_dir=bin_dir,
+    )
     source_logits_candidates = [
         record for record in source_candidates if record.get("all_markers_present") is True
     ]
@@ -289,6 +414,17 @@ def build_llamacpp_logits_entrypoint_inventory(
         missing_evidence.append("llamacpp_source_logits_api_candidate_present")
     if debug_candidate.get("expected_binary_built") is not True:
         missing_evidence.append("llama_debug_binary_built")
+    target_by_name = {str(record.get("target")): record for record in target_records}
+    debug_target = target_by_name.get("llama-debug", {})
+    if debug_target.get("target_available") is not True:
+        missing_evidence.append("llama_debug_build_target_available")
+    build_readiness_status = (
+        "built"
+        if debug_target.get("binary_built") is True
+        else "ready_to_build"
+        if debug_target.get("target_available") is True
+        else "blocked"
+    )
     return {
         "schema_version": 1,
         "artifact_kind": "stepfun_llamacpp_logits_entrypoint_inventory",
@@ -296,6 +432,7 @@ def build_llamacpp_logits_entrypoint_inventory(
         "status": "blocked" if missing_evidence else "ready",
         "ready": not missing_evidence,
         "llama_cpp_root": str(llama_cpp_root),
+        "build_dir": str(build_dir),
         "bin_dir": str(bin_dir),
         "preflight_artifact": _artifact_ref(preflight_artifact),
         "plan_artifact": _artifact_ref(plan_artifact),
@@ -304,17 +441,30 @@ def build_llamacpp_logits_entrypoint_inventory(
         "built_binary_records": binary_records,
         "built_logits_dump_binary_present": bool(binaries_with_logits_dump),
         "built_logits_dump_binaries": binaries_with_logits_dump,
+        "target_help": target_help,
+        "build_target_records": target_records,
+        "build_readiness_status": build_readiness_status,
+        "build_ready_without_source_changes": build_readiness_status in {"ready_to_build", "built"},
         "source_candidate_count": len(source_candidates),
         "source_candidates": source_candidates,
         "source_logits_candidate_count": len(source_logits_candidates),
         "source_logits_candidates": source_logits_candidates,
         "missing_evidence": missing_evidence,
         "next_action": (
-            "build or add a llama.cpp logits-dump entrypoint, preferably from examples/debug/debug.cpp "
-            "or a minimal helper using llama_get_logits_ith, then refresh the logits preflight"
+            f"Run `cmake --build {build_dir} --target llama-debug`, then refresh this inventory "
+            "and the llama.cpp logits preflight"
+            if build_readiness_status == "ready_to_build"
+            else "capture same-prompt llama.cpp logits with the built logits entrypoint"
+            if build_readiness_status == "built"
+            else (
+                "add or expose a llama.cpp logits-dump entrypoint, preferably from "
+                "examples/debug/debug.cpp or a minimal helper using llama_get_logits_ith"
+            )
         ),
         "blocked_reason": (
-            "source-level logits APIs/examples exist but no ready built logits-dump binary is present"
+            "llama-debug target is available but the logits-dump binary has not been built"
+            if build_readiness_status == "ready_to_build"
+            else "source-level logits APIs/examples exist but no ready built logits-dump binary is present"
             if source_logits_candidates and not binaries_with_logits_dump
             else "llama.cpp logits entrypoint inventory is incomplete"
         ),
@@ -338,10 +488,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("Use either --output or --default-output, not both")
     report = build_llamacpp_logits_entrypoint_inventory(
         llama_cpp_root=args.llama_cpp_root,
+        build_dir=args.build_dir,
         bin_dir=args.bin_dir,
         preflight_artifact=args.preflight_artifact,
         plan_artifact=args.plan_artifact,
+        cmake=args.cmake,
         help_timeout_s=args.help_timeout_s,
+        target_help_timeout_s=args.target_help_timeout_s,
         artifact_date=args.artifact_date,
     )
     if args.status_only:
@@ -350,6 +503,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = report["built_logits_dump_binary_present"]
     elif args.source_candidates_only:
         payload = report["source_logits_candidates"]
+    elif args.build_readiness_only:
+        payload = report["build_readiness_status"]
     elif args.sha_only:
         payload = status_mod._stable_json_sha256(report)
     else:

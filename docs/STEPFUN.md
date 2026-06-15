@@ -936,8 +936,9 @@ reporting.
   host vs llama.cpp logits, and refresh the oracle handoff. `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json`,
   showing source-level candidates (`examples/debug/debug.cpp`, `include/llama.h`, `examples/batched/batched.cpp`)
-  exist but no ready built logits-dump binary is present. The remaining mismatch is therefore not explained by prompt-token drift or
-  host top-token text-label drift.
+  exist and the local Vulkan CMake build exposes `llama-debug`, but no ready built logits-dump binary is present yet
+  (`build_readiness_status=ready_to_build`; next command: `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug`).
+  The remaining mismatch is therefore not explained by prompt-token drift or host top-token text-label drift.
   The two remaining P0-P12 blockers and their generator commands are also
   consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in
   `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`.

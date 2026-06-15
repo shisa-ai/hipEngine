@@ -41210,3 +41210,34 @@ git diff --check
 ```
 
 Results: targeted logits-entrypoint-inventory/rollup tests passed (`8` tests); compact outputs were `"blocked"`, `false`, and the four source-level candidate records; status/manifest/handoff verification returned `"match"`; remaining-blockers stable payload SHA `82cb00da04201a82021f96c1f891da705117f8abe0950afbae84edea2aa522b3`; remaining-blockers file SHA `45dfe773cb84ee6b0a34ca4a4d2b2aca4550d5dd2e225395680cacbc58f589dc`; correctness-status file SHA `b8baad7f33efd15ec9978ddc728b95dde0a2d240ffd6292e232242468e5ccb3b`; final-blocker file SHA `f7dfde20b15a9c34c8b1b3719498695799ab0a321f53475d4cf44094b964bade`; handoff file SHA `8d1ee25d9c7e0d56d4ffdaa3a7a52be7d1cfbf58c7bde06fa76e5f39d2c5f36e`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun llama.cpp logits target build readiness
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 501. Extended `scripts/stepfun_llamacpp_logits_entrypoint_inventory.py` / `tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py` so the retained inventory inspects the local llama.cpp Vulkan CMake build (`cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target help`) in addition to built binaries and source markers. Refreshed `docs/STEPFUN.md` plus status/final-blocker/handoff and remaining-blocker artifacts.
+
+The refreshed retained artifact `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-logits-entrypoint-inventory.json` still reports `status=blocked` and `built_logits_dump_binary_present=false`, but now records `build_readiness_status=ready_to_build` and `build_ready_without_source_changes=true`: `llama-debug` is an available local CMake target, its expected binary `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release/bin/llama-debug` is not built, and the exact next command is `cmake --build /home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release --target llama-debug`. The remaining oracle gap is unchanged (`generated_text_matches_target`); no oracle/KV/e2e/performance claim is made. Stable inventory payload SHA is `deca925b4039fca5e35db16bf5daada1b3a821a53554f328a6a0311d2568e44a`; inventory file SHA is `f953f55393a49871336ca82b249d465a112c646dc0ebeca4d61b91be5d591342`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_llamacpp_logits_entrypoint_inventory.py tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py
+python3 -m pytest -q tests/test_stepfun_llamacpp_logits_entrypoint_inventory.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --sha-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --build-readiness-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --status-only
+python3 scripts/stepfun_llamacpp_logits_entrypoint_inventory.py --built-logits-binary-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_correctness_status.py --docs-open-partial-count-only
+python3 scripts/stepfun_correctness_status.py --blocked-gates-joined-only
+python3 scripts/stepfun_validator_status.py --next-action-oracle-evidence-gaps-joined-only
+```
+
+Results: targeted inventory/rollup tests passed (`8` tests); artifact verification returned `"match"`; compact outputs were `"ready_to_build"`, `"blocked"`, and `false`; remaining-blockers stable payload SHA is `317a33411e63ba29186ce4cc95098df055dbc1f0d7ad0e18d53946e446b79ef4`; remaining-blockers file SHA is `2b2f938a49ce0f496fbd4e6bd4df7b168111caf2f51266fa94f54bf00fa9ba08`; correctness-status file SHA is `88f3986988b4679a6934b9fe6984ef3408eda5e513dda8104baecbd160f6e8b3`; final-blocker file SHA is `2ffca35d89c2ade13052a39064ddc460b0ccd4fbf1168c6b8457bd666b23585e`; handoff file SHA is `3acd2d0f9a4107d2ba79435edf88a46d3ae5ae57085dc4a295b7de9878eb2b80`; P0-P12 open/partial count remains `2`; blocked gates remain `oracle_parity|kv_backed_decode|e2e_inference`; full StepFun guard passed and ended with `STEP_GUARD_PASS`; `git diff --check` passed.
