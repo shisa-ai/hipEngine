@@ -153,6 +153,13 @@ Initial focused lanes from evidence:
 
 No-hold notes:
 
+- **G-P4 linear/MoE chunk=2048 rejected (2026-06-15).** Raising the default
+  auto-tuned linear/MoE prefill chunks from `1024` to `2048` preserved generated
+  IDs and memory and improved prefill (`512/128` `1647.390 -> 1661.258 tok/s`,
+  `4K/128` `1855.806 -> 1859.452 tok/s`), but regressed both retained decode
+  medians (`127.012 -> 126.874 tok/s`, `115.805 -> 115.670 tok/s`). Keep the
+  mid-context linear/MoE chunks at `1024` until a shape-specific policy can
+  protect decode.
 - **G-D3 selected SiLU maxThreads=128 rejected (2026-06-15).** Matching
   `q4_k_t16_selected_dual_silu_direct_gemv_kernel` launch bounds to its actual
   128-thread launch (`256,1 -> 128,1`) preserved generated IDs and memory, but

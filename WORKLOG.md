@@ -93617,3 +93617,16 @@ Validation and outcome:
 - Result: `512/128` median prefill/decode `1632.346653 / 126.931561 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1856.577738 / 115.630963 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Decision: no-hold/reverted. It preserved IDs and memory, but regressed both gate decode medians versus the retained selected-down lb2 row (`127.011979 -> 126.931561 tok/s`, `115.804576 -> 115.630963 tok/s`); keep Q6_K T16 GEMV decode at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-P4 linear/MoE chunk=2048 no-hold
+
+Tried increasing the auto-tuned mid-context linear/MoE prefill chunks in
+`hipengine/runtime/prefill.py` from `1024` to `2048`, leaving the full-attention
+query chunk at `4096`. The code change was reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence; print(resolve_prefill_config_for_sequence(PrefillConfig(), max_sequence_length=4352, total_memory_bytes=25753026560))"` -> resolved `linear=2048`, `moe=2048`, `full_attn_query=4096`, `full_attn_post=1024`, `full_attn_rope=1024` with the same `13.191406 GiB` budget metadata.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-chunk2048.json`.
+- Result: `512/128` median prefill/decode `1661.258076 / 126.873746 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1859.452178 / 115.670240 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved IDs and memory and improved prefill versus the retained selected-down lb2 row (`1647.389814 -> 1661.258076 tok/s`, `1855.806476 -> 1859.452178 tok/s`), but regressed both decode medians (`127.011979 -> 126.873746 tok/s`, `115.804576 -> 115.670240 tok/s`); keep mid-context linear/MoE chunks at `1024`.
