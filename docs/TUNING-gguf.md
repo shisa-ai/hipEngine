@@ -97,13 +97,14 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1644.664` | `126.993` | `21.335 GiB` | `21.952 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `1851.330` | `115.703` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1647.390` | `127.012` | `21.335 GiB` | `21.952 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `1855.806` | `115.805` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `115.703 tok/s` after
-G-D3 relaxed the selected Q4_K T16 dual+SiLU GEMV launch-bound default from `2`
-to `1` on top of the retained G-P1 selected-WMMA prefill launch-bound change.
+multiloop metric is the minimum gate decode rate, currently `115.805 tok/s` after
+G-D3 relaxed the selected single-output T16 GEMV launch-bound default from `4` to
+`2` on top of the retained selected dual+SiLU and selected-WMMA launch-bound
+changes.
 
 ## Active GPU1 profile findings
 
@@ -130,8 +131,13 @@ Retained notes:
   `__launch_bounds__(256, 2)` to `__launch_bounds__(256, 1)` preserved gate IDs,
   kept tracked peak at `21.335 GiB`, and moved the GPU1 gate medians to
   `1644.664 / 126.993 tok/s` (`512/128`) and `1851.330 / 115.703 tok/s`
-  (`4K/128`). Final promotion still needs the `128K/128` memory/throughput
-  check.
+  (`4K/128`).
+- **G-D3 selected down GEMV launch-bound retained (2026-06-15).** Relaxing
+  `qk_t16_selected_direct_gemv_kernel` from `__launch_bounds__(128, 4)` to
+  `__launch_bounds__(128, 2)` preserved gate IDs, kept tracked peak at
+  `21.335 GiB`, and moved the GPU1 gate medians to `1647.390 / 127.012 tok/s`
+  (`512/128`) and `1855.806 / 115.805 tok/s` (`4K/128`). Final promotion still
+  needs the `128K/128` memory/throughput check.
 
 Initial focused lanes from evidence:
 

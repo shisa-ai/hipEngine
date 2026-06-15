@@ -93545,3 +93545,20 @@ Validation and outcome:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-silu-gemv-lb1-gate.json`.
 - Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.
+
+## 2026-06-15 - GGUF G-D3 selected down GEMV launch-bound retained
+
+Changed `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip` so
+`qk_t16_selected_direct_gemv_kernel` uses `__launch_bounds__(128, 2)` instead of
+`__launch_bounds__(128, 4)`. This targets the selected single-output T16 GEMV
+selected-down decode path without changing accumulation order, dispatch keys, or
+residency.
+
+Validation and outcome:
+- Prebuilt cached object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-affadca24e7d00cc/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-down-lb2.json`.
+- Result: `512/128` median prefill/decode `1647.389814 / 127.011979 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.806476 / 115.804576 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Compared to the retained selected-SiLU lb1 baseline, min-gate decode moved `115.703013 -> 115.804576 tok/s` (`+0.09%`); `512/128` decode moved `126.992572 -> 127.011979 tok/s` (`+0.02%`).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-down-lb2-gate.json`.
+- Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.
