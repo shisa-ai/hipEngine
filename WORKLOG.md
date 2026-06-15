@@ -92882,3 +92882,36 @@ Validation:
 - Prompt verifier passed: metadata-only change, no torch hot-path import, no
   backend/quant dispatch branches, no attention/KV path changes, no math/kernel
   execution, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF prompt token inventory scaffold
+
+Implemented the next `mtp-gguf` multiloop M0 parity scaffold: a standalone
+`gguf_prompt_token_inventory.py` helper that records hipEngine GGUF raw prompt
+IDs, hashes, and roundtrip status. This is deliberately not a llama.cpp parity
+claim yet; it makes hipEngine's side of Parity Precondition (a) durable so a
+future llama.cpp token trace can be compared by exact token ID arrays.
+
+Changes:
+- Added `scripts/gguf_prompt_token_inventory.py`.
+  - Loads a GGUF tokenizer through `GGUFReader` + `Qwen35GGUFTokenizer`.
+  - Supports the D32 prompt fixture, prompt selection, `--limit`, and raw prompt
+    rendering.
+  - Emits `token_ids`, `token_ids_sha256`, text hashes, token counts,
+    roundtrip status, tokenizer metadata, and an explicit warning that llama.cpp
+    token IDs still must be compared before cross-engine acceptance metrics.
+- Added a unit test in `tests/test_qwen35_gguf_tokenizer.py` covering the
+  inventory payload for a known raw prompt fixture.
+
+Real GGUF smoke:
+- Command: `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_prompt_token_inventory.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json --limit 2 --out /tmp/mtp-gguf-prompt-token-inventory.json`
+- Result: emitted `hipengine_gguf_prompt_token_inventory` for two prompts;
+  `code_python` token count `21`, `code_cpp` token count `31`, both
+  `roundtrip_ok=True`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `12` selected tests (`6` pass, `6` skip).
+- `py_compile` passed for the new script.
+- Prompt verifier passed: tokenizer/oracle scaffold only, no torch hot-path
+  import, no backend/quant dispatch branches, no attention/KV/runtime generation
+  path changes, no NextN math, and no performance claims.

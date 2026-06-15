@@ -7,6 +7,11 @@ import pytest
 
 from hipengine.loading.gguf import GGUFReader
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+from scripts.gguf_prompt_token_inventory import (
+    build_prompt_token_inventory,
+    select_prompts,
+    sha256_token_ids,
+)
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -49,6 +54,37 @@ def test_qwen35_gguf_tokenizer_round_trips_common_ascii_prompts() -> None:
     ]
     for text in examples:
         assert tokenizer.decode(tokenizer.encode(text)) == text
+
+
+def test_gguf_prompt_token_inventory_records_raw_token_ids() -> None:
+    tokenizer = _tokenizer()
+    suite = {
+        "schema": 1,
+        "prompts": [
+            {"name": "answer", "prompt": "The answer is"},
+            {"name": "skip", "prompt": "not selected"},
+        ],
+    }
+
+    prompts = select_prompts(suite, names_csv="answer")
+    inventory = build_prompt_token_inventory(
+        tokenizer=tokenizer,
+        prompts=prompts,
+        model=MODEL,
+        prompts_file="synthetic-prompts.json",
+        tokenizer_model="gpt2",
+        tokenizer_pre="qwen35",
+    )
+
+    assert inventory["kind"] == "hipengine_gguf_prompt_token_inventory"
+    assert inventory["prompt_render"] == "raw"
+    assert inventory["tokenization"] == "hipengine.gguf.qwen35.byte_bpe_approx"
+    assert inventory["warning"].startswith("This records hipEngine GGUF tokenizer output only")
+    row = inventory["prompts"][0]
+    assert row["name"] == "answer"
+    assert row["token_ids"] == [760, 4087, 369]
+    assert row["token_ids_sha256"] == sha256_token_ids([760, 4087, 369])
+    assert row["roundtrip_ok"]
 
 
 def test_qwen35_gguf_tokenizer_decodes_special_tokens() -> None:
