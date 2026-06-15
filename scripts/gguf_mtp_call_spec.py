@@ -25,11 +25,16 @@ class MissingMTPDraftLayerError(ValueError):
     """Raised when an explicit layer filter does not match a draft layer."""
 
 
+class MissingMTPDraftSpecError(ValueError):
+    """Raised when MTP draft call specs are required but absent."""
+
+
 def summarize(
     path: str | Path,
     *,
     strict: bool = True,
     layers: Collection[int] | None = None,
+    require_mtp: bool = False,
 ) -> dict[str, Any]:
     reader = GGUFReader(path)
     plans = build_qwen35_gguf_mtp_draft_tensor_plans(reader.info, strict=strict)
@@ -47,6 +52,10 @@ def summarize(
                 f"not found; available layer(s): {available}"
             )
         plans = tuple(plan for plan in plans if plan.layer_id in layer_filter)
+    if require_mtp and not plans:
+        raise MissingMTPDraftSpecError(
+            f"{reader.info.path}: no MTP draft call specs found"
+        )
     return {
         "path": str(reader.info.path),
         "architecture": reader.info.architecture,
@@ -74,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         help="only include the selected MTP draft layer id; repeat for multiple layers",
     )
+    parser.add_argument(
+        "--require-mtp",
+        action="store_true",
+        help="return an error if a GGUF has no MTP draft call specs after filtering",
+    )
     parser.add_argument("--indent", type=int, default=2, help="JSON indentation level")
     args = parser.parse_args(argv)
 
@@ -82,9 +96,14 @@ def main(argv: list[str] | None = None) -> int:
         for raw_path in args.paths:
             for path in discover_gguf_files(raw_path):
                 summaries.append(
-                    summarize(path, strict=not args.non_strict, layers=args.layers)
+                    summarize(
+                        path,
+                        strict=not args.non_strict,
+                        layers=args.layers,
+                        require_mtp=args.require_mtp,
+                    )
                 )
-    except MissingMTPDraftLayerError as exc:
+    except (MissingMTPDraftLayerError, MissingMTPDraftSpecError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     json.dump(summaries, sys.stdout, indent=args.indent, sort_keys=True)

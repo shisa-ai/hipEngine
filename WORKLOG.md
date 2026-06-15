@@ -94437,3 +94437,49 @@ Validation:
 - Prompt verifier passed: metadata-only CLI error handling, no torch import, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF call spec CLI require-MTP guard
+
+Implemented `mtp-gguf` multiloop iteration 40: added an opt-in `--require-mtp`
+fail-fast guard to the metadata-only GGUF MTP call-spec CLI.
+
+Scope note:
+- This is metadata CLI error handling only. It reads GGUF headers only and does
+  not materialize weights, alter runtime generation, dispatch GPU kernels, or
+  change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI.
+
+Changes:
+- Added `MissingMTPDraftSpecError`.
+- `summarize(..., require_mtp=True)` now raises when no MTP draft plans remain
+  after optional filtering.
+- Added CLI flag `--require-mtp`.
+- `main(...)` catches both missing-layer and missing-MTP errors, prints a concise
+  `error: ...` to stderr, and returns status `2`.
+- Extended `tests/test_gguf_mtp_call_spec_cli.py` for:
+  - `--require-mtp` propagation;
+  - strict default still passing `require_mtp=False`;
+  - `main(...)` missing-MTP error reporting;
+  - `summarize(..., require_mtp=True)` missing-MTP rejection.
+
+Evidence:
+- Real GGUF require-MTP smoke passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --require-mtp --layer 40 --indent 0 > /tmp/gguf_mtp_require_layer.json`
+  parsed successfully with:
+  - `spec_count 1`
+  - `layer_id 40`
+  - kernel `['cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits']`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- CLI unit tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_call_spec_cli.py` -> `7` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for the CLI and updated CLI test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: metadata-only CLI error handling, no torch import, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
