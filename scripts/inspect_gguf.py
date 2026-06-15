@@ -24,6 +24,13 @@ from hipengine.loading.qwen35_gguf import (
 from hipengine.quant.gguf import dequantization_supported, dequantize_gguf_data
 
 
+_MTP_OPTIONAL_NEXTN_SLOTS = {
+    "nextn.embed_tokens": ("nextn.embed_tokens.weight", "token_embedding"),
+    "nextn.shared_head_head": ("nextn.shared_head_head.weight", "lm_head"),
+    "nextn.shared_head_norm": ("nextn.shared_head_norm.weight", "output_norm"),
+}
+
+
 def _counter_bytes(counter: Counter[str]) -> dict[str, int]:
     return {key: int(counter[key]) for key in sorted(counter)}
 
@@ -90,6 +97,7 @@ def _qwen35_mtp_inventory(reader: GGUFReader) -> dict[str, Any]:
                 "required_missing": list(block.missing_required_tensor_names),
                 "optional_missing": list(block.missing_optional_tensor_names),
                 "optional_fallback_tensor_names": dict(block.optional_fallback_tensor_names),
+                "nextn_optional_status": _nextn_optional_status(info, block),
                 "unexpected_tensor_names": list(block.unexpected_tensor_names),
                 "tensors": [
                     {
@@ -106,6 +114,43 @@ def _qwen35_mtp_inventory(reader: GGUFReader) -> dict[str, Any]:
             for block in blocks
         ],
     }
+
+
+def _nextn_optional_status(info: Any, block: Any) -> dict[str, dict[str, Any]]:
+    tensors = {tensor.name: tensor for tensor in info.tensors}
+    status: dict[str, dict[str, Any]] = {}
+    for slot, (suffix, fallback_slot) in _MTP_OPTIONAL_NEXTN_SLOTS.items():
+        tensor_name = f"blk.{block.layer_id}.{suffix}"
+        tensor = tensors.get(tensor_name)
+        if tensor is not None:
+            status[slot] = {
+                "status": "present",
+                "tensor_name": tensor.name,
+                "shape": list(tensor.shape),
+                "type": tensor.ggml_type_name,
+                "nbytes": tensor.nbytes,
+                "fallback_slot": None,
+                "fallback_tensor_name": None,
+            }
+            continue
+        fallback_tensor_name = block.optional_fallback_tensor_names.get(slot)
+        fallback_tensor = tensors.get(fallback_tensor_name) if fallback_tensor_name else None
+        item: dict[str, Any] = {
+            "status": "fallback" if fallback_tensor_name else "missing",
+            "tensor_name": None,
+            "fallback_slot": fallback_slot,
+            "fallback_tensor_name": fallback_tensor_name,
+        }
+        if fallback_tensor is not None:
+            item.update(
+                {
+                    "fallback_shape": list(fallback_tensor.shape),
+                    "fallback_type": fallback_tensor.ggml_type_name,
+                    "fallback_nbytes": fallback_tensor.nbytes,
+                }
+            )
+        status[slot] = item
+    return status
 
 
 def _dequant_smoke(reader: GGUFReader, *, smoke_rows: int) -> list[dict[str, Any]]:
@@ -181,6 +226,16 @@ def _print_text(summary: dict[str, Any]) -> None:
                 f"optional_missing={block['optional_missing']} "
                 f"fallbacks={block['optional_fallback_tensor_names']}"
             )
+            optional_status = "; ".join(
+                f"{slot}={item['status']}"
+                + (
+                    f":{item['tensor_name']}"
+                    if item.get("tensor_name")
+                    else f":{item.get('fallback_tensor_name')}"
+                )
+                for slot, item in block["nextn_optional_status"].items()
+            )
+            print(f"      nextn_optional_status={optional_status}")
     if "dequant_smoke" in summary:
         for smoke in summary["dequant_smoke"]:
             print(

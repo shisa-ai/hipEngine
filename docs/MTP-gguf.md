@@ -332,11 +332,11 @@ Deliverables:
   - all `blk.N.nextn.*` tensor names, shapes, quant types, and byte sizes;
   - the full trailing MTP block tensors (attn/ffn/norm), not just `nextn.*`;
   - presence/fallback status for NextN embed/head tensors.
-  - **Note:** `scripts/inspect_gguf.py` today reports only `tensor_count` and
-    `first_tensors[:12]` with no block/nextn/shape awareness
-    (`inspect_gguf.py:53-62`), so a dedicated new script (or a real extension) is
-    required; do not assume the existing script suffices.
-- Create a compact fixture for the local MTP GGUF inventory.
+  - **Current status:** `scripts/inspect_gguf.py --json` now reports the
+    metadata-only `qwen35_mtp_inventory` block, including per-tensor shape/qtype
+    rows and explicit optional NextN present/fallback status.
+- Create a compact fixture for the local MTP GGUF inventory. Current fixture:
+  `benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`.
 - **Capture a llama.cpp draft logits/top-k trace for at least one short D32
   prompt (required, promoted from backlog).** This is one of the two M3 parity
   oracles; M3 blocks on having it or the `cpu_reference` NextN forward.
@@ -719,8 +719,9 @@ is now answered by the M1 required/optional table.)
 
 ## Initial Backlog
 
-- [ ] Add a GGUF MTP inventory fixture for the Unsloth `UD-Q4_K_M` MTP file
-      (full 20-tensor trailing block, 4 `nextn.*`).
+- [x] Add a GGUF MTP inventory fixture for the Unsloth `UD-Q4_K_M` MTP file
+      (full 20-tensor trailing block, 4 `nextn.*`):
+      `benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`.
 - [ ] **Capture a llama.cpp draft logits/top-k trace for one short prompt
       (required M0 oracle, not "if possible").**
 - [ ] Capture llama.cpp D32 prompt token-id arrays (Parity Precondition (a)).

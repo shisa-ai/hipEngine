@@ -94562,3 +94562,53 @@ Validation:
   backend/quant dispatch branches, no runtime generation/GPU/KV path changes, no
   performance claims, and future MTP attention/KV work remains documented as
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF inventory fixture and optional status
+
+Implemented `mtp-gguf` multiloop iteration 43: closed the M0 inventory fixture
+bookkeeping gap for the integrated GGUF NextN block.
+
+Scope note:
+- Metadata/header inspection only. No runtime generation, GPU kernels, MTP
+  execution, sampling, attention, or KV paths changed.
+- Runtime MTP attention/KV-write work remains gated on the KVLiveSpans ABI.
+
+Changes:
+- Extended `scripts/inspect_gguf.py` `qwen35_mtp_inventory` output with explicit
+  `nextn_optional_status` entries for:
+  - `nextn.embed_tokens` -> present vs target `token_embedding` fallback;
+  - `nextn.shared_head_head` -> present vs target `lm_head` fallback;
+  - `nextn.shared_head_norm` -> present vs target `output_norm` fallback.
+- Text output now prints the same optional NextN present/fallback status.
+- Added compact local fixture
+  `benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`, generated
+  from the MTP-bearing Unsloth `UD-Q4_K_M` GGUF header. It records the expected
+  `41` declared blocks, `40` AR blocks, ignored block `[40]`, the full
+  20-tensor trailing block, 4 `nextn.*` tensors, and local qtypes
+  (`eh_proj`/attn/shared expert Q8_0, routed gate/up Q4_K, down Q5_K,
+  `ffn_gate_inp` BF16, NextN norms F32).
+- Added `tests/test_inspect_gguf.py` coverage for synthetic inventory output and
+  the committed fixture contract.
+- Updated `docs/MTP-gguf.md` M0/backlog text to reference the implemented
+  inspect output and fixture.
+
+Validation:
+- Inspect tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_inspect_gguf.py` -> `2` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/inspect_gguf.py tests/test_inspect_gguf.py` and
+  `git diff --check -- scripts/inspect_gguf.py tests/test_inspect_gguf.py docs/MTP-gguf.md benchmarks/fixtures/qwen36_35b_a3b_ud_q4_k_m_mtp_inventory.json`.
+- Real GGUF fixture consistency smoke passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python - <<'PY' ... summarize(GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf')) ... PY` -> `fixture_match 41 20`.
+- Real text inspect smoke showed:
+  `qwen35_mtp declared_blocks=41 ar_blocks=40 ignored_block_ids=[40]` and
+  `nextn_optional_status=nextn.embed_tokens=fallback:token_embd.weight; nextn.shared_head_head=fallback:output.weight; nextn.shared_head_norm=present:blk.40.nextn.shared_head_norm.weight`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Forbidden-pattern checks found no `import torch` in the changed script/test and
+  no new backend/quant dispatch branch; existing inspect-only dequant smoke type
+  checks are not runtime dispatch.
+- Prompt verifier passed: metadata-only inventory/fixture change, no torch hot
+  path import, no runtime backend/quant dispatch branches, no GPU/kernel/KV path
+  changes, no performance claims, and MTP runtime work remains documented as
+  KVLiveSpans-gated.
