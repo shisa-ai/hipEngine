@@ -2816,9 +2816,11 @@ Current code reality:
   route metadata.
 - Overload routing is covered for current admission caps: generation queue cap
   and app-local chat-session cap errors carry matched route metadata plus an
-  overload source. Unsupported grammar requests fail through their own stable
-  pre-generation errors. They are not capability-routed across alternate models
-  yet because multi-model routing does not exist.
+  overload source. Unsupported grammar/guidance fields fail before generation
+  with stable unsupported-parameter errors plus matched route metadata
+  (`reason="unsupported_grammar"`, the rejected field, and
+  `unsupported_capability="grammar"`). They are not capability-routed across
+  alternate models yet because multi-model routing does not exist.
 
 #### P6.3 Tensor parallelism / multi-GPU plan
 

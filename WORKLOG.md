@@ -93311,3 +93311,19 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Unsupported grammar route metadata
+
+Matched single-model requests that include unsupported grammar/guidance fields
+now fail before generation with the existing OpenAI-compatible
+`unsupported_parameter` error plus `error.hipengine.routing` metadata. The route
+metadata uses `reason="unsupported_grammar"` and records the rejected field and
+`unsupported_capability="grammar"`, satisfying the current single-model P6.2
+routing fixture without adding multi-model fallback behavior.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'known_unsupported_agentic_fields or capabilities_advertised_unsupported_fields_are_rejected_before_generation or server_rejects_wrong_model_and_unsupported_options or models_endpoint or capabilities_endpoint_reports_manifest_and_auth'` -> `12 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.

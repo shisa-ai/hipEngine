@@ -15842,6 +15842,19 @@ def test_server_rejects_known_unsupported_agentic_fields(endpoint, payload, para
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "unsupported_parameter"
     assert response.json()["error"]["param"] == param
+    if param in {"grammar", "guided_grammar", "guided_decoding_backend"}:
+        assert response.json()["error"]["hipengine"] == {
+            "code": "unsupported_parameter",
+            "status_code": 400,
+            "retryable": False,
+            "routing": {
+                **_routing_metadata(),
+                "matched": True,
+                "reason": "unsupported_grammar",
+                "unsupported_field": param,
+                "unsupported_capability": "grammar",
+            },
+        }
     assert fake.calls == []
 
 
@@ -15875,6 +15888,18 @@ def test_capabilities_advertised_unsupported_fields_are_rejected_before_generati
             assert response.status_code == 400
             assert response.json()["error"]["code"] == "unsupported_parameter"
             assert response.json()["error"]["param"] == field
+            assert response.json()["error"]["hipengine"] == {
+                "code": "unsupported_parameter",
+                "status_code": 400,
+                "retryable": False,
+                "routing": {
+                    **_routing_metadata(),
+                    "matched": True,
+                    "reason": "unsupported_grammar",
+                    "unsupported_field": field,
+                    "unsupported_capability": "grammar",
+                },
+            }
 
     assert fake.calls == []
 

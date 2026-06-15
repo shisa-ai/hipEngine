@@ -185,6 +185,12 @@ Admission rejections such as generation queue cap or chat-session cap failures
 use `engine_busy`; when they occur after the served model has matched, the
 payload includes `error.hipengine.routing` with `matched: true`,
 `reason: "engine_busy"`, and an `overload_source`.
+Unsupported grammar/guidance fields (`grammar`, `guided_grammar`, and
+`guided_decoding_backend`) are rejected before generation with
+`unsupported_parameter`; after the served model has matched, the payload includes
+`error.hipengine.routing` with `matched: true`,
+`reason: "unsupported_grammar"`, the rejected `unsupported_field`, and
+`unsupported_capability: "grammar"`.
 
 ### Streaming usage and hipEngine metadata
 
@@ -655,8 +661,9 @@ reports the supported unified-diff format, accepted fence labels, allowed
 Grammar-constrained decoding is not currently supported. The capabilities
 manifest reports `features.grammars.enabled=false`, lists true grammar fields
 such as `grammar`, `guided_grammar`, and `guided_decoding_backend` under
-unsupported fields, and reports `guided_json` / `guided_regex` /
-`guided_choice` / `guided_patch` / `guided_diff` under
+unsupported fields, rejects those fields before generation with matched routing
+metadata, and reports `guided_json` / `guided_regex` / `guided_choice` /
+`guided_patch` / `guided_diff` under
 `features.grammars.result_validation_only`.
 
 ### Thinking / no-think controls

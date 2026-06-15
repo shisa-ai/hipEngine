@@ -3243,7 +3243,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         fit_context_extra: Mapping[str, Any] | None = None,
     ) -> _GeneratedBatch:
         try:
-            _validate_generation_request(config, request)
+            _validate_generation_request(
+                config,
+                request,
+                engine=getattr(app.state, "hipengine_llm", None),
+                route_unsupported_grammar=True,
+            )
             async with session_lock:
                 engine = get_llm()
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
@@ -3416,7 +3421,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         full_text: list[str] = []
         last_stream_chunk: GenerationStreamChunk | None = None
         try:
-            _validate_generation_request(config, request)
+            _validate_generation_request(
+                config,
+                request,
+                engine=getattr(app.state, "hipengine_llm", None),
+                route_unsupported_grammar=True,
+            )
 
             async def prepare_stream() -> tuple[Any, SamplingParams]:
                 async with session_lock:
@@ -4442,7 +4452,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
-        _validate_generation_request(config, request)
+        _validate_generation_request(
+            config,
+            request,
+            engine=getattr(app.state, "hipengine_llm", None),
+            route_unsupported_grammar=True,
+        )
         _validate_continuation_resume_request(request)
         continuation = await pop_continuation(
             request,
@@ -4599,7 +4614,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
-        _validate_generation_request(config, request)
+        _validate_generation_request(
+            config,
+            request,
+            engine=getattr(app.state, "hipengine_llm", None),
+            route_unsupported_grammar=True,
+        )
         _validate_continuation_resume_request(request)
         admitted_session_id = await reserve_chat_session_if_needed(request)
         try:
@@ -5326,7 +5346,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
 
         try:
-            _validate_generation_request(config, request)
+            _validate_generation_request(
+                config,
+                request,
+                engine=getattr(app.state, "hipengine_llm", None),
+                route_unsupported_grammar=True,
+            )
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             _log_stream_failure(
@@ -7727,16 +7752,39 @@ def _deadline_detail_from_outputs(details: Sequence[GenerationOutput]) -> Finish
     return None
 
 
-def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
+def _validate_generation_request(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None = None,
+    route_unsupported_grammar: bool = False,
+) -> None:
     _request_n(request)
     extra_keys = _request_extra_keys(request)
     if extra_keys:
         param = sorted(extra_keys)[0]
+        extra = None
+        if route_unsupported_grammar and param in _UNSUPPORTED_GRAMMAR_FIELDS:
+            extra = {
+                "hipengine": {
+                    "routing": _routing_rejection_metadata(
+                        config,
+                        requested_model=request.model,
+                        reason="unsupported_grammar",
+                        engine=engine,
+                        details={
+                            "unsupported_field": param,
+                            "unsupported_capability": "grammar",
+                        },
+                    )
+                }
+            }
         raise OpenAIHTTPError(
             400,
             f"unsupported request parameter {param!r}",
             code="unsupported_parameter",
             param=param,
+            extra=extra,
         )
     _validate_session_request(request)
     unsupported_param = _unsupported_agentic_request_param(request)
