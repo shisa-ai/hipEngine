@@ -664,10 +664,10 @@ GGUF-MTP prompt runner lands. Required fields in artifacts:
 - backend/quant/layout flags;
 - exact command.
 
-Note: `qwen35_gguf_bench.py` today emits neither a GGUF tensor inventory hash nor
-an exact-command/argv capture, and hardcodes `backend='hip_gfx1100'` even for
-gfx1151 runs. Treat the inventory-hash + argv-capture as a required small
-extension to the script (or relax the Required-fields list until added).
+Note: `qwen35_gguf_bench.py` now emits a GGUF tensor-inventory hash plus
+exact command/argv capture for AR control artifacts. It still hardcodes
+`backend='hip_gfx1100'` even for gfx1151 runs, so record the actual hardware in
+WORKLOG/artifact context until backend detection is added.
 
 ### hipEngine GGUF MTP Rows
 

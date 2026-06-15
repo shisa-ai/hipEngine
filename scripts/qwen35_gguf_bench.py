@@ -17,12 +17,14 @@ rows.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shlex
 import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -32,6 +34,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.loading.gguf import GGUFModelInfo, scan_gguf
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -171,6 +174,9 @@ def main() -> int:
         raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
+    argv_payload = _exact_command_payload(sys.argv)
+    gguf_info = scan_gguf(args.model)
+    gguf_inventory = _gguf_tensor_inventory_summary(gguf_info)
     if args.force_bulk_prefill:
         use_bulk_prefill = True
     elif args.no_bulk_prefill:
@@ -264,6 +270,10 @@ def main() -> int:
         "model": str(args.model),
         "quant": args.quant,
         "backend": "hip_gfx1100",
+        "argv": argv_payload["argv"],
+        "command": argv_payload["command"],
+        "gguf": gguf_inventory,
+        "gguf_tensor_inventory_hash": gguf_inventory["tensor_inventory_hash"],
         "mode": _mode_name(
             graph_replay_decode=args.graph_replay_decode,
             use_bulk_prefill=use_bulk_prefill,
@@ -331,6 +341,68 @@ def main() -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text + "\n")
     return 0
+
+
+def _exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
+    argv_strings = [str(item) for item in argv]
+    return {"argv": argv_strings, "command": shlex.join(argv_strings)}
+
+
+def _gguf_tensor_inventory_summary(info: GGUFModelInfo) -> dict[str, Any]:
+    return {
+        "path": str(info.path),
+        "version": int(info.version),
+        "alignment": int(info.alignment),
+        "architecture": info.architecture,
+        "file_type": info.file_type,
+        "file_type_name": info.file_type_name,
+        "tensor_count": int(info.tensor_count),
+        "total_tensor_nbytes": int(info.total_tensor_nbytes),
+        "tensor_data_offset": int(info.tensor_data_offset),
+        "tensor_inventory_hash_algorithm": "sha256",
+        "tensor_inventory_hash": _gguf_tensor_inventory_hash(info),
+    }
+
+
+def _gguf_tensor_inventory_hash(info: GGUFModelInfo) -> str:
+    digest = hashlib.sha256()
+    _hash_fields(
+        digest,
+        (
+            "hipengine.gguf_tensor_inventory.v1",
+            str(int(info.version)),
+            str(int(info.alignment)),
+            str(int(info.tensor_data_offset)),
+            str(int(info.tensor_count)),
+            str(int(info.total_tensor_nbytes)),
+        ),
+    )
+    for tensor in info.tensors:
+        _hash_fields(
+            digest,
+            (
+                tensor.name,
+                ",".join(str(int(dim)) for dim in tensor.shape),
+                ",".join(str(int(dim)) for dim in tensor.ggml_shape),
+                str(int(tensor.ggml_type)),
+                tensor.ggml_type_name,
+                str(int(tensor.n_elements)),
+                str(int(tensor.nbytes)),
+                str(int(tensor.offset)),
+                str(int(tensor.data_offset)),
+                ",".join(str(int(dim)) for dim in tensor.byte_shape),
+            ),
+        )
+    return digest.hexdigest()
+
+
+def _hash_fields(digest: Any, fields: Sequence[str]) -> None:
+    for field in fields:
+        encoded = field.encode("utf-8")
+        digest.update(str(len(encoded)).encode("ascii"))
+        digest.update(b":")
+        digest.update(encoded)
+    digest.update(b";")
 
 
 def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:

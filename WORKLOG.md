@@ -94520,3 +94520,45 @@ Validation:
 - `git diff --check -- docs/MTP-gguf.md` passed.
 - Prompt verifier passed: docs-only change, no torch import, no backend/quant
   branches, no runtime generation/GPU/KV path changes, no performance claims.
+
+## 2026-06-15 - MTP-GGUF AR artifact inventory capture
+
+Implemented `mtp-gguf` multiloop iteration 42: made the GGUF AR benchmark
+artifact self-identifying for the M2 control row.
+
+Scope note:
+- Metadata/artifact bookkeeping only. No runtime generation, GPU kernels, KV
+  paths, sampling, or MTP execution changed.
+- The existing `backend='hip_gfx1100'` label remains unchanged; docs now call out
+  that gfx1151 artifacts must record actual hardware separately until backend
+  detection is added.
+
+Changes:
+- `scripts/qwen35_gguf_bench.py` now records exact `argv` and shell-escaped
+  `command` in its JSON output.
+- The script scans the GGUF header once before benchmarking and emits:
+  - `gguf.tensor_inventory_hash_algorithm='sha256'`;
+  - `gguf.tensor_inventory_hash` and top-level `gguf_tensor_inventory_hash`;
+  - model path, GGUF version/alignment, architecture/file type, tensor count,
+    total tensor bytes, and tensor data offset.
+- Added unit tests for exact command capture, stable/sensitive inventory hashing,
+  and required AR baseline summary fields.
+- Updated `docs/MTP-gguf.md` to remove the stale note that argv/hash capture was
+  still missing.
+
+Validation:
+- New metadata tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_bench_metadata.py` -> `3` passed.
+- `py_compile` and diff whitespace check passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/qwen35_gguf_bench.py tests/test_qwen35_gguf_bench_metadata.py && git diff --check -- scripts/qwen35_gguf_bench.py docs/MTP-gguf.md tests/test_qwen35_gguf_bench_metadata.py`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- Real MTP-bearing GGUF metadata smoke passed:
+  tensor_count `753`, total_tensor_nbytes `22652396032`, sha256 inventory hash
+  `bd93ba3d97e753cf2992c93c01677f1254d7ef330ffe8329017e9bf92912d64e`.
+- Forbidden-pattern grep found no `import torch` or backend/quant dispatch
+  branches in the changed script/test.
+- Prompt verifier passed: artifact metadata-only change, no torch import, no
+  backend/quant dispatch branches, no runtime generation/GPU/KV path changes, no
+  performance claims, and future MTP attention/KV work remains documented as
+  KVLiveSpans-gated.
