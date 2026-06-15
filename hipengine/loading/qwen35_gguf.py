@@ -69,6 +69,18 @@ _FULL_LAYER_SLOTS = {
     "attn_k_norm": "attn_k_norm.weight",
 }
 
+_MTP_NEXTN_REQUIRED_SLOTS = {
+    "nextn.eh_proj": "nextn.eh_proj.weight",
+    "nextn.enorm": "nextn.enorm.weight",
+    "nextn.hnorm": "nextn.hnorm.weight",
+}
+
+_MTP_NEXTN_OPTIONAL_FALLBACK_SLOTS = {
+    "nextn.embed_tokens": ("nextn.embed_tokens.weight", "token_embedding"),
+    "nextn.shared_head_head": ("nextn.shared_head_head.weight", "lm_head"),
+    "nextn.shared_head_norm": ("nextn.shared_head_norm.weight", "output_norm"),
+}
+
 
 @dataclass(frozen=True)
 class Qwen35GGUFConfig:
@@ -140,6 +152,30 @@ class Qwen35GGUFMappingValidation:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFMTPBlockInventory:
+    """Read-only inventory for a trailing GGUF MTP/NextN block.
+
+    This descriptor is intentionally metadata-only.  It makes the currently
+    AR-ignored trailing block visible for MTP-GGUF planning/tests without
+    materializing weights or changing AR execution.
+    """
+
+    layer_id: int
+    tensor_names: tuple[str, ...]
+    nextn_tensor_names: tuple[str, ...]
+    required_tensor_names: tuple[str, ...]
+    missing_required_tensor_names: tuple[str, ...]
+    optional_tensor_names: tuple[str, ...]
+    missing_optional_tensor_names: tuple[str, ...]
+    optional_fallback_tensor_names: Mapping[str, str]
+    unexpected_tensor_names: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        return not self.missing_required_tensor_names
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFLayerMap:
     """Canonical tensor slots for one Qwen3.5 GGUF layer."""
 
@@ -168,6 +204,7 @@ class Qwen35GGUFModelMap:
     root_tensors: Mapping[str, GGUFTensorInfo]
     layers: tuple[Qwen35GGUFLayerMap, ...]
     validation: Qwen35GGUFMappingValidation
+    mtp_blocks: tuple[Qwen35GGUFMTPBlockInventory, ...] = ()
 
     def root(self, slot: str) -> GGUFTensorInfo:
         try:
@@ -293,7 +330,51 @@ def build_qwen35_gguf_tensor_map(info: GGUFModelInfo, *, strict: bool = True) ->
         root_tensors=root_tensors,
         layers=layers,
         validation=validation,
+        mtp_blocks=qwen35_gguf_mtp_block_inventories(info),
     )
+
+
+def qwen35_gguf_mtp_block_inventories(info: GGUFModelInfo) -> tuple[Qwen35GGUFMTPBlockInventory, ...]:
+    """Return metadata-only inventories for trailing GGUF MTP/NextN blocks."""
+
+    config = qwen35_gguf_config_from_metadata(info)
+    actual_names = {tensor.name for tensor in info.tensors}
+    root_slots = _root_slots_for_config(config)
+    inventories: list[Qwen35GGUFMTPBlockInventory] = []
+    for layer_id in config.ignored_block_ids:
+        prefix = f"blk.{layer_id}."
+        block_names = tuple(sorted(name for name in actual_names if name.startswith(prefix)))
+        required = set(_mtp_required_tensor_names(config, layer_id))
+        optional = {
+            f"{prefix}{suffix}": (slot, root_slots[fallback_slot])
+            for slot, (suffix, fallback_slot) in _MTP_NEXTN_OPTIONAL_FALLBACK_SLOTS.items()
+        }
+        optional_names = set(optional)
+        optional_present = tuple(sorted(optional_names & actual_names))
+        optional_missing = tuple(sorted(optional_names - actual_names))
+        optional_fallbacks = MappingProxyType(
+            {
+                slot: fallback_name
+                for full_name in optional_missing
+                for slot, fallback_name in (optional[full_name],)
+            }
+        )
+        inventories.append(
+            Qwen35GGUFMTPBlockInventory(
+                layer_id=layer_id,
+                tensor_names=block_names,
+                nextn_tensor_names=tuple(
+                    sorted(name for name in block_names if name.startswith(f"{prefix}nextn."))
+                ),
+                required_tensor_names=tuple(sorted(required)),
+                missing_required_tensor_names=tuple(sorted(required - actual_names)),
+                optional_tensor_names=optional_present,
+                missing_optional_tensor_names=optional_missing,
+                optional_fallback_tensor_names=optional_fallbacks,
+                unexpected_tensor_names=tuple(sorted(set(block_names) - required - optional_names)),
+            )
+        )
+    return tuple(inventories)
 
 
 def _build_layer_map(
@@ -467,6 +548,14 @@ def _shape_errors(config: Qwen35GGUFConfig, actual: Mapping[str, GGUFTensorInfo]
     return errors
 
 
+def _mtp_required_tensor_names(config: Qwen35GGUFConfig, layer_id: int) -> tuple[str, ...]:
+    names = list(_layer_required_tensor_names(config, layer_id, FULL_ATTENTION))
+    names.extend(
+        f"blk.{layer_id}.{suffix}" for suffix in _MTP_NEXTN_REQUIRED_SLOTS.values()
+    )
+    return tuple(dict.fromkeys(names))
+
+
 def _linear_qkv_width(config: Qwen35GGUFConfig) -> int:
     return 2 * config.ssm_group_count * config.ssm_state_size + config.ssm_inner_size
 
@@ -483,10 +572,12 @@ __all__ = [
     "LINEAR_ATTENTION",
     "Qwen35GGUFConfig",
     "Qwen35GGUFLayerMap",
+    "Qwen35GGUFMTPBlockInventory",
     "Qwen35GGUFMappingValidation",
     "Qwen35GGUFModelMap",
     "build_qwen35_gguf_tensor_map",
     "qwen35_gguf_config_from_metadata",
+    "qwen35_gguf_mtp_block_inventories",
     "required_qwen35_gguf_tensor_names",
     "validate_qwen35_gguf_tensor_map",
 ]

@@ -8,6 +8,7 @@ from hipengine.loading.qwen35_gguf import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
     build_qwen35_gguf_tensor_map,
+    qwen35_gguf_mtp_block_inventories,
     required_qwen35_gguf_tensor_names,
     validate_qwen35_gguf_tensor_map,
 )
@@ -30,9 +31,46 @@ def test_qwen35moe_gguf_map_ignores_trailing_mtp_nextn_block() -> None:
     assert len(model_map.layers) == 2
     assert not any(name.startswith("blk.2.") for name in model_map.tensor_names)
     assert set(required_qwen35_gguf_tensor_names(model_map.config)) == set(model_map.tensor_names)
+    assert len(model_map.mtp_blocks) == 1
+    assert model_map.mtp_blocks[0].layer_id == 2
 
 
-def _synthetic_qwen35moe_mtp_info() -> GGUFModelInfo:
+def test_qwen35moe_gguf_mtp_inventory_reports_required_optional_and_fallbacks() -> None:
+    info = _synthetic_qwen35moe_mtp_info()
+
+    (block,) = qwen35_gguf_mtp_block_inventories(info)
+
+    assert block.passed
+    assert block.layer_id == 2
+    assert len(block.tensor_names) == 20
+    assert len(block.nextn_tensor_names) == 4
+    assert block.missing_required_tensor_names == ()
+    assert block.optional_tensor_names == ("blk.2.nextn.shared_head_norm.weight",)
+    assert block.missing_optional_tensor_names == (
+        "blk.2.nextn.embed_tokens.weight",
+        "blk.2.nextn.shared_head_head.weight",
+    )
+    assert dict(block.optional_fallback_tensor_names) == {
+        "nextn.embed_tokens": "token_embd.weight",
+        "nextn.shared_head_head": "output.weight",
+    }
+    assert block.unexpected_tensor_names == ()
+
+
+def test_qwen35moe_gguf_mtp_inventory_detects_missing_required_nextn() -> None:
+    info = _synthetic_qwen35moe_mtp_info(
+        drop_tensors={"blk.2.nextn.hnorm.weight"},
+    )
+
+    (block,) = qwen35_gguf_mtp_block_inventories(info)
+
+    assert not block.passed
+    assert block.missing_required_tensor_names == ("blk.2.nextn.hnorm.weight",)
+
+
+def _synthetic_qwen35moe_mtp_info(
+    *, drop_tensors: set[str] | None = None,
+) -> GGUFModelInfo:
     metadata = {
         "general.architecture": "qwen35moe",
         "qwen35moe.block_count": 3,
@@ -80,12 +118,14 @@ def _synthetic_qwen35moe_mtp_info() -> GGUFModelInfo:
     tensors.extend(_full_attention_tensors(2))
     tensors.extend(
         [
-            _tensor("blk.2.nextn.eh_proj.weight", (8, 8)),
+            _tensor("blk.2.nextn.eh_proj.weight", (8, 16)),
             _tensor("blk.2.nextn.enorm.weight", (8,)),
             _tensor("blk.2.nextn.hnorm.weight", (8,)),
             _tensor("blk.2.nextn.shared_head_norm.weight", (8,)),
         ]
     )
+    if drop_tensors:
+        tensors = [tensor for tensor in tensors if tensor.name not in drop_tensors]
     return GGUFModelInfo(
         path=Path("synthetic-qwen35moe-mtp.gguf"),
         version=3,

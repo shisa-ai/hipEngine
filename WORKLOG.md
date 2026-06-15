@@ -92849,3 +92849,36 @@ Verified referenced symbols/files exist: `tests/test_qwen35_gguf_mtp_mapping.py`
 Validation for this doc-only unit:
 - Re-read `docs/MTP-gguf.md` end-to-end after writing; cross-checked each
   authoritative claim against the cited source file:line.
+
+## 2026-06-15 - MTP-GGUF inventory descriptor
+
+Implemented the first `mtp-gguf` multiloop M0/M1 scaffolding change: a
+metadata-only `Qwen35GGUFMTPBlockInventory` for trailing GGUF MTP/NextN blocks.
+This does not materialize weights or change AR execution; it makes the currently
+ignored `blk.N.nextn.*` block explicit for inventory/oracle work.
+
+Changes:
+- Added required/optional NextN tensor tables in `hipengine/loading/qwen35_gguf.py`.
+- Added `qwen35_gguf_mtp_block_inventories(info)` and attached the resulting
+  `mtp_blocks` tuple to `Qwen35GGUFModelMap`.
+- Extended `scripts/inspect_gguf.py` to emit `qwen35_mtp_inventory` with declared
+  block count, AR executable block count, ignored block ids, full trailing block
+  tensor names/shapes/types/bytes, missing required tensors, missing optional
+  tensors, and target fallback tensor names.
+- Extended `tests/test_qwen35_gguf_mtp_mapping.py` to cover the descriptor,
+  optional fallbacks, and missing required NextN detection.
+
+Real GGUF smoke:
+- Command: `/home/lhl/miniforge3/envs/therock/bin/python scripts/inspect_gguf.py --json /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf >/tmp/mtp-gguf-inspect.json`
+- Result: declared/ar blocks `41/40`, ignored block `[40]`, MTP block `40` has
+  `20` tensors and `4` `nextn.*` tensors, `required_missing=[]`, and optional
+  missing tensors `blk.40.nextn.embed_tokens.weight` plus
+  `blk.40.nextn.shared_head_head.weight` falling back to `token_embd.weight` and
+  `output.weight`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `11` selected tests passed (`6` pass, `5` skip).
+- Prompt verifier passed: metadata-only change, no torch hot-path import, no
+  backend/quant dispatch branches, no attention/KV path changes, no math/kernel
+  execution, and no performance claims.
