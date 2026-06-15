@@ -94016,3 +94016,16 @@ PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_prefill-f45276cf22bd6a03/
 - Result: `512/128` median prefill/decode `1621.517799 / 127.188882 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.688664 / 115.764465 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
 - Decision: no-hold/reverted. The fused path preserved IDs, memory, and focused bit-exact dual-vs-single tests, and improved `512/128` decode (`127.011979 -> 127.188882 tok/s`), but regressed retained prefill (`512/128` `1647.389814 -> 1621.517799 tok/s`, `4K/128` `1855.806476 -> 1850.688664 tok/s`) plus the retained `4K/128` decode gate (`115.804576 -> 115.764465 tok/s`). Keep Q8_0 T16 rows>1 gate/up prefill on the existing singleton WMMA path unless a tile/codegen profile proves a fused variant avoids the prefill loss.
+
+## 2026-06-16 - GGUF clean retained gate refresh after Q8T16 dual no-hold
+
+After reverting and documenting the Q8T16 dual WMMA prefill no-hold, reran the
+standard GPU1 Q4_K_S gate on the clean retained default path so the loop state
+matches the code that remains checked in.
+
+Validation and outcome:
+- Worktree: `git status -sb` -> clean on `gguf-tuning`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-clean-retained.json`.
+- Result: `512/128` median prefill/decode `1641.504355 / 127.254321 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.480116 / 115.799902 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: clean retained sanity only; no code change. The retained selected-down lb2 path remains the default and still matches the expected generated-token gate and memory envelope.
