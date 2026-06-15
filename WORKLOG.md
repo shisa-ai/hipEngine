@@ -95818,3 +95818,50 @@ Validation:
   key; no generation integration, native MTP execution, GPU kernel, attention/KV
   runtime path, or performance claim; future MTP attention/KV-write execution
   remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF metadata KVLiveSpans plan
+
+Implemented `mtp-gguf` multiloop iteration 70: added a metadata-only KVLiveSpans
+plan bridge for GGUF MTP draft batches.
+
+Scope note:
+- Context/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This describes the future single-NextN-layer append/decode span ABI that the
+  native MTP KV owner must materialize, without allocating tensors yet.
+
+Changes:
+- Added `Qwen35GGUFMTPKVLiveSpansPlan` in `hipengine/speculative/gguf_mtp.py`.
+  It records uniform-mode `base_offsets`, append/decode `live_counts`,
+  `token_positions`, optional `evict_mask`, `block_size`, and storage dtype.
+- Added `Qwen35GGUFMTPContext.build_kvlivespans_plan(...)` for turning a B1-B4
+  draft batch into metadata-only append/decode spans for the own single-NextN KV
+  cache.
+- Added `cpu_reference_kwargs(role="append"|"decode")` to expose the same shaped
+  fields used by the CPU-reference NextN oracle (`kv_base_offsets`,
+  `kv_live_counts`, `kv_token_positions`, `kv_evict_mask`, `block_size`).
+- Added tests for the generated span plan and ABI validation failures.
+- Updated `docs/MTP-gguf.md` to note that the context now covers a metadata-only
+  KVLiveSpans plan while runtime allocation/registration remains open.
+
+Validation:
+- Focused context/CPU-reference/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` -> `36` passed.
+- KVLiveSpans plan smoke passed:
+  constructed a 2-row draft batch at positions `[6, 7]` with `block_size=4` ->
+  `base_offsets [[0, 1], [0, 1]]`, append live counts `[6, 7]`, decode live
+  counts `[7, 8]`, token positions `[6, 7]`, and decode CPU-reference kwargs
+  with the same KVLiveSpans-shaped fields.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: context/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. The new metadata plan explicitly carries the KVLiveSpans-shaped fields
+  required for future MTP attention/KV-write execution.

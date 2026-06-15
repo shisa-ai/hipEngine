@@ -11,6 +11,7 @@ from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPDraftBatch,
     Qwen35GGUFMTPDraftProposal,
     Qwen35GGUFMTPDraftRow,
+    Qwen35GGUFMTPKVLiveSpansPlan,
     Qwen35GGUFMTPSeedRow,
 )
 
@@ -166,6 +167,66 @@ def test_gguf_mtp_context_builds_multi_depth_draft_batch_from_seed_rows() -> Non
     assert [row.position for row in batch.rows] == [6, 7, 8]
     assert [row.parent_token_id for row in batch.rows] == [10, 11, 12]
     assert [row.parent_position for row in batch.rows] == [5, 6, 7]
+
+
+def test_gguf_mtp_context_builds_metadata_only_kvlivespans_plan_for_draft_batch() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=11, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=4, token_ids=(101, 102), seed_rows=seeds)
+
+    plan = context.build_kvlivespans_plan(batch, block_size=4)
+
+    assert isinstance(plan, Qwen35GGUFMTPKVLiveSpansPlan)
+    assert plan.as_dict() == {
+        "spans_mode": "uniform",
+        "storage_dtype": "bf16",
+        "rows": 2,
+        "block_size": 4,
+        "logical_blocks": 2,
+        "base_offsets": [[0, 1], [0, 1]],
+        "append_live_counts": [6, 7],
+        "decode_live_counts": [7, 8],
+        "token_positions": [6, 7],
+        "evict_mask": None,
+    }
+    assert plan.cpu_reference_kwargs(role="append") == {
+        "kv_base_offsets": [[0, 1], [0, 1]],
+        "kv_live_counts": [6, 7],
+        "kv_token_positions": [6, 7],
+        "kv_evict_mask": None,
+        "block_size": 4,
+    }
+    assert plan.cpu_reference_kwargs(role="decode") == {
+        "kv_base_offsets": [[0, 1], [0, 1]],
+        "kv_live_counts": [7, 8],
+        "kv_token_positions": [6, 7],
+        "kv_evict_mask": None,
+        "block_size": 4,
+    }
+
+
+def test_gguf_mtp_kvlivespans_plan_validates_abi_fields() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))
+    batch = context.build_b1_draft_batch(request_id=0, token_id=20)
+
+    with pytest.raises(ValueError, match="block_size"):
+        context.build_kvlivespans_plan(batch, block_size=0)
+    with pytest.raises(ValueError, match="base_offsets"):
+        Qwen35GGUFMTPKVLiveSpansPlan(
+            rows=1,
+            block_size=4,
+            logical_blocks=2,
+            base_offsets=((0,),),
+            append_live_counts=(6,),
+            decode_live_counts=(7,),
+            token_positions=(6,),
+        )
+    with pytest.raises(ValueError, match="role"):
+        context.build_kvlivespans_plan(batch).cpu_reference_kwargs(role="prefill")
 
 
 def test_gguf_mtp_context_requires_explicit_seed_rows_for_multi_depth_batch() -> None:

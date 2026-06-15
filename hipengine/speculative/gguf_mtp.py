@@ -212,6 +212,125 @@ class Qwen35GGUFMTPDraftBatch:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPKVLiveSpansPlan:
+    """Metadata-only KVLiveSpans ABI plan for GGUF MTP draft rows.
+
+    This does not allocate device tensors. It records the exact append/decode
+    live-count arrays and dense block-table shape that the future MTP KV owner
+    must materialize for the single-NextN-layer cache.
+    """
+
+    rows: int
+    block_size: int
+    logical_blocks: int
+    base_offsets: tuple[tuple[int, ...], ...]
+    append_live_counts: tuple[int, ...]
+    decode_live_counts: tuple[int, ...]
+    token_positions: tuple[int, ...]
+    evict_mask: tuple[tuple[bool, ...], ...] | None = None
+    spans_mode: str = "uniform"
+    storage_dtype: str = "bf16"
+
+    @classmethod
+    def from_draft_batch(
+        cls,
+        batch: Qwen35GGUFMTPDraftBatch,
+        *,
+        block_size: int = 256,
+        storage_dtype: str = "bf16",
+    ) -> "Qwen35GGUFMTPKVLiveSpansPlan":
+        block = int(block_size)
+        if block <= 0:
+            raise ValueError("block_size must be positive")
+        positions = tuple(row.position for row in batch.rows)
+        max_decode_live_count = max(position + 1 for position in positions)
+        logical_blocks = max(1, (max_decode_live_count + block - 1) // block)
+        base_offsets = tuple(tuple(range(logical_blocks)) for _ in positions)
+        return cls(
+            rows=len(positions),
+            block_size=block,
+            logical_blocks=logical_blocks,
+            base_offsets=base_offsets,
+            append_live_counts=positions,
+            decode_live_counts=tuple(position + 1 for position in positions),
+            token_positions=positions,
+            storage_dtype=str(storage_dtype),
+        )
+
+    def __post_init__(self) -> None:
+        if self.rows <= 0:
+            raise ValueError("rows must be positive")
+        if self.block_size <= 0:
+            raise ValueError("block_size must be positive")
+        if self.logical_blocks <= 0:
+            raise ValueError("logical_blocks must be positive")
+        if self.spans_mode != "uniform":
+            raise ValueError("GGUF MTP KV spans must use uniform mode")
+        if not self.storage_dtype:
+            raise ValueError("storage_dtype must be non-empty")
+        if len(self.base_offsets) != self.rows:
+            raise ValueError("base_offsets rows must match rows")
+        for row in self.base_offsets:
+            if len(row) != self.logical_blocks:
+                raise ValueError("each base_offsets row must match logical_blocks")
+            if any(offset < 0 for offset in row):
+                raise ValueError("base_offsets must be non-negative")
+        for name, values in (
+            ("append_live_counts", self.append_live_counts),
+            ("decode_live_counts", self.decode_live_counts),
+            ("token_positions", self.token_positions),
+        ):
+            if len(values) != self.rows:
+                raise ValueError(f"{name} length must match rows")
+            if any(value < 0 for value in values):
+                raise ValueError(f"{name} values must be non-negative")
+        if any(
+            decode < append
+            for append, decode in zip(self.append_live_counts, self.decode_live_counts, strict=True)
+        ):
+            raise ValueError("decode_live_counts must be >= append_live_counts")
+        if self.evict_mask is not None:
+            if len(self.evict_mask) != self.rows:
+                raise ValueError("evict_mask rows must match rows")
+            for row in self.evict_mask:
+                if len(row) != max(self.decode_live_counts):
+                    raise ValueError("evict_mask width must match max decode live count")
+
+    def cpu_reference_kwargs(self, *, role: str = "decode") -> dict[str, object]:
+        if role == "append":
+            live_counts = self.append_live_counts
+        elif role == "decode":
+            live_counts = self.decode_live_counts
+        else:
+            raise ValueError("role must be append or decode")
+        return {
+            "kv_base_offsets": [list(row) for row in self.base_offsets],
+            "kv_live_counts": list(live_counts),
+            "kv_token_positions": list(self.token_positions),
+            "kv_evict_mask": None
+            if self.evict_mask is None
+            else [[bool(value) for value in row] for row in self.evict_mask],
+            "block_size": self.block_size,
+        }
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "spans_mode": self.spans_mode,
+            "storage_dtype": self.storage_dtype,
+            "rows": self.rows,
+            "block_size": self.block_size,
+            "logical_blocks": self.logical_blocks,
+            "base_offsets": [list(row) for row in self.base_offsets],
+            "append_live_counts": list(self.append_live_counts),
+            "decode_live_counts": list(self.decode_live_counts),
+            "token_positions": list(self.token_positions),
+            "evict_mask": None
+            if self.evict_mask is None
+            else [[bool(value) for value in row] for row in self.evict_mask],
+        }
+
+
 @dataclass(slots=True)
 class Qwen35GGUFMTPContext:
     """Target-attached GGUF MTP state shell.
@@ -331,6 +450,19 @@ class Qwen35GGUFMTPContext:
             top_k_logits=top_k_logits,
             topk_kernel=topk_kernel,
             selected_index=selected_index,
+        )
+
+    def build_kvlivespans_plan(
+        self,
+        batch: Qwen35GGUFMTPDraftBatch,
+        *,
+        block_size: int = 256,
+        storage_dtype: str = "bf16",
+    ) -> Qwen35GGUFMTPKVLiveSpansPlan:
+        return Qwen35GGUFMTPKVLiveSpansPlan.from_draft_batch(
+            batch,
+            block_size=block_size,
+            storage_dtype=storage_dtype,
         )
 
     def build_draft_batch(
