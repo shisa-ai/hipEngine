@@ -6313,8 +6313,15 @@ def render_chat_prompt(
         if role == "tool":
             rendered.append(f"<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>")
             continue
-        if role == "assistant" and tool_calls:
-            tool_call_text = "\n".join(_render_tool_call_for_prompt(item) for item in tool_calls)
+        normalized_tool_calls: list[dict[str, Any]] = []
+        if role == "assistant" and tool_calls is not None:
+            normalized_tool_calls = _chat_message_tool_calls(
+                tool_calls,
+                message_index=index,
+                context="chat message",
+            )
+        if role == "assistant" and normalized_tool_calls:
+            tool_call_text = "\n".join(_render_tool_call_for_prompt(item) for item in normalized_tool_calls)
             content = "\n".join(part for part in (content, tool_call_text) if part)
         rendered.append(f"<|im_start|>{role}\n{content}<|im_end|>")
     rendered.append(_assistant_prefix_for_thinking(thinking))
@@ -6368,6 +6375,31 @@ def _validate_chat_message_tool_fields(
             code="invalid_request",
             param=f"{param_prefix}.tool_call_id",
         )
+
+
+def _chat_message_tool_calls(
+    value: Any,
+    *,
+    message_index: int,
+    context: str,
+) -> list[dict[str, Any]]:
+    param = f"messages[{message_index}].tool_calls"
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise OpenAIHTTPError(
+            400,
+            f"{context} {param} must be an array",
+            code="invalid_request",
+            param=param,
+        )
+    return [
+        _chat_message_tool_call(
+            call,
+            message_index=message_index,
+            tool_index=tool_index,
+            context=context,
+        )
+        for tool_index, call in enumerate(value)
+    ]
 
 
 def _validate_model(config: ServerConfig, requested: str | None, *, engine: Any | None = None) -> None:
@@ -7928,18 +7960,11 @@ def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
         if key in value:
             payload[key] = _chat_session_snapshot_string(value.get(key), param=f"messages[{index}].{key}")
     if "tool_calls" in value:
-        tool_calls = value.get("tool_calls")
-        if not isinstance(tool_calls, Sequence) or isinstance(tool_calls, (str, bytes)):
-            raise OpenAIHTTPError(
-                400,
-                f"session snapshot messages[{index}].tool_calls must be an array",
-                code="invalid_request",
-                param=f"messages[{index}].tool_calls",
-            )
-        payload["tool_calls"] = [
-            _chat_session_snapshot_tool_call(call, message_index=index, tool_index=tool_index)
-            for tool_index, call in enumerate(tool_calls)
-        ]
+        payload["tool_calls"] = _chat_message_tool_calls(
+            value.get("tool_calls"),
+            message_index=index,
+            context="session snapshot",
+        )
     return payload
 
 
@@ -7998,12 +8023,18 @@ def _chat_session_snapshot_content(value: Any, *, message_index: int) -> str | l
     return parts
 
 
-def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_index: int) -> dict[str, Any]:
+def _chat_message_tool_call(
+    value: Any,
+    *,
+    message_index: int,
+    tool_index: int,
+    context: str,
+) -> dict[str, Any]:
     param = f"messages[{message_index}].tool_calls[{tool_index}]"
     if not isinstance(value, Mapping):
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {param} must be an object",
+            f"{context} {param} must be an object",
             code="invalid_request",
             param=param,
         )
@@ -8012,7 +8043,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if extra:
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {param}.{extra[0]} is not supported",
+            f"{context} {param}.{extra[0]} is not supported",
             code="invalid_request",
             param=f"{param}.{extra[0]}",
         )
@@ -8020,7 +8051,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if not isinstance(call_id, str) or not call_id.strip():
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {param}.id must be a non-empty string",
+            f"{context} {param}.id must be a non-empty string",
             code="invalid_request",
             param=f"{param}.id",
         )
@@ -8028,7 +8059,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if call_type != "function":
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {param}.type must be 'function'",
+            f"{context} {param}.type must be 'function'",
             code="invalid_request",
             param=f"{param}.type",
         )
@@ -8037,7 +8068,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if not isinstance(function, Mapping):
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {function_param} must be an object",
+            f"{context} {function_param} must be an object",
             code="invalid_request",
             param=function_param,
         )
@@ -8046,7 +8077,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if function_extra:
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {function_param}.{function_extra[0]} is not supported",
+            f"{context} {function_param}.{function_extra[0]} is not supported",
             code="invalid_request",
             param=f"{function_param}.{function_extra[0]}",
         )
@@ -8054,7 +8085,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if not isinstance(name, str) or not name.strip():
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {function_param}.name must be a non-empty string",
+            f"{context} {function_param}.name must be a non-empty string",
             code="invalid_request",
             param=f"{function_param}.name",
         )
@@ -8062,7 +8093,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     if not isinstance(arguments, str):
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {function_param}.arguments must be a string",
+            f"{context} {function_param}.arguments must be a string",
             code="invalid_request",
             param=f"{function_param}.arguments",
         )
@@ -8071,7 +8102,7 @@ def _chat_session_snapshot_tool_call(value: Any, *, message_index: int, tool_ind
     except Exception as exc:
         raise OpenAIHTTPError(
             400,
-            f"session snapshot {function_param}.arguments must be valid JSON",
+            f"{context} {function_param}.arguments must be valid JSON",
             code="invalid_request",
             param=f"{function_param}.arguments",
         ) from exc

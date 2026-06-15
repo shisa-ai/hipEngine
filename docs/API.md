@@ -415,7 +415,10 @@ messages are also replayed into the prompt as `<tool_call>` and
 `<tool_response>` blocks so multi-turn tool loops can continue. Request message
 shapes are role-specific: `tool_calls` is accepted only on assistant messages,
 and `tool_call_id` is required for tool messages and rejected on non-tool
-messages.
+messages. Incoming assistant `tool_calls`, including restored chat-session
+snapshots, must use OpenAI-style function-call objects with non-empty `id` and
+`function.name`, `type: "function"`, no unexpected nested keys, and a JSON-string
+`function.arguments` value.
 Inconsistent request shapes fail before generation: `tool_choice="required"`
 or a specific function choice requires at least one `tools` entry, and a
 specific function choice must use a valid object shape and name a declared

@@ -92246,6 +92246,25 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
 
+## 2026-06-15 - AGENTIC live prior tool-call shape validation
+
+Reused the snapshot nested tool-call validator for live
+`/v1/chat/completions` prior assistant messages before prompt rendering. Prior
+assistant `tool_calls` now require OpenAI-style function-call objects with a
+non-empty id/name, `type="function"`, no unexpected nested keys, and JSON-string
+`function.arguments`; malformed objects fail before generation instead of being
+rendered into `<tool_call>` markup. Updated `docs/API.md` and
+`docs/AGENTIC.md` to keep the server contract/test inventory aligned.
+
+Validation:
+- `uv run pytest tests/test_server_api.py::test_chat_completion_rejects_invalid_prior_assistant_tool_call_shape_before_generation tests/test_server_api.py::test_chat_session_snapshot_restore_rejects_corrupted_tool_call_shape -q` -> `17 passed`.
+- `uv run pytest tests/test_server_api.py -q -k 'tool_call_shape or invalid_prior_assistant_tool_call_shape or chat_completion_renders_messages_to_prompt or token_diagnostics_use_session_prefix_for_chat'` -> `19 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `10 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
 ## 2026-06-15 - AGENTIC chat tool-field placement
 
 Tightened chat message protocol validation for live chat requests and restored

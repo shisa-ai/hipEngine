@@ -2381,7 +2381,9 @@ Current code reality:
   Qwen `<think>` output is split into OpenAI-compatible `message.reasoning_content`.
 - Existing server fake-session tests and the P5.3 golden trace harness cover
   parsed Qwen tool calls in non-streaming and streaming responses, including
-  multi-turn tool loops and raw-markup rejection.
+  multi-turn tool loops, raw-markup rejection, and identical nested assistant
+  `tool_calls` validation for live prior messages and restored snapshots before
+  prompt rendering.
 
 Exit gates:
 
@@ -2434,8 +2436,9 @@ Current code reality:
 - `tests/test_agentic_server_conformance.py` adds a compact client-pattern
   matrix for the FastAPI `/v1/chat/completions` surface: strict
   reasoning-plus-tool responses, prior assistant tool-call/tool-result replay
-  rendering exactly once, reasoning-only final-answer responses, reasoning plus
-  structured JSON responses, `enable_thinking=false` pre-close rendering,
+  rendering exactly once, live and snapshot prior-assistant tool-call shape
+  rejection before generation, reasoning-only final-answer responses, reasoning
+  plus structured JSON responses, `enable_thinking=false` pre-close rendering,
   duplicated-start tool-call recovery, malformed tool JSON fail-closed behavior,
   streamed malformed tool JSON fail-closed behavior,
   `session.commit="append_none"` finish metadata, app-local `session.id`

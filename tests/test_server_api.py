@@ -7808,6 +7808,67 @@ def test_chat_completion_rejects_invalid_role_specific_tool_fields_before_genera
     assert fake.calls == []
 
 
+@pytest.mark.parametrize(
+    ("corruption", "param"),
+    [
+        ("extra_key", "messages[0].tool_calls[0].unexpected"),
+        ("missing_id", "messages[0].tool_calls[0].id"),
+        ("wrong_type", "messages[0].tool_calls[0].type"),
+        ("missing_function", "messages[0].tool_calls[0].function"),
+        ("function_extra_key", "messages[0].tool_calls[0].function.unexpected"),
+        ("empty_name", "messages[0].tool_calls[0].function.name"),
+        ("non_string_arguments", "messages[0].tool_calls[0].function.arguments"),
+        ("invalid_json_arguments", "messages[0].tool_calls[0].function.arguments"),
+    ],
+)
+def test_chat_completion_rejects_invalid_prior_assistant_tool_call_shape_before_generation(
+    corruption: str,
+    param: str,
+) -> None:
+    tool_call: dict[str, Any] = {
+        "id": "call_1",
+        "type": "function",
+        "function": {"name": "read", "arguments": '{"path":"README.md"}'},
+    }
+    if corruption == "extra_key":
+        tool_call["unexpected"] = True
+    elif corruption == "missing_id":
+        del tool_call["id"]
+    elif corruption == "wrong_type":
+        tool_call["type"] = "custom"
+    elif corruption == "missing_function":
+        del tool_call["function"]
+    elif corruption == "function_extra_key":
+        tool_call["function"]["unexpected"] = True
+    elif corruption == "empty_name":
+        tool_call["function"]["name"] = ""
+    elif corruption == "non_string_arguments":
+        tool_call["function"]["arguments"] = {"path": "README.md"}
+    elif corruption == "invalid_json_arguments":
+        tool_call["function"]["arguments"] = '{"path":'
+    else:
+        raise AssertionError(f"unhandled corruption case: {corruption}")
+
+    fake = FakeLLM(outputs=["should not generate"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "assistant", "content": "", "tool_calls": [tool_call]}],
+            "max_tokens": 4,
+        },
+    )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["param"] == param
+    assert fake.calls == []
+
+
 def test_chat_completion_exposes_backend_generation_telemetry() -> None:
     fake = DetailedGenerateFakeLLM(
         detailed_outputs=[
