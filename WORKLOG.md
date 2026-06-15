@@ -94353,3 +94353,45 @@ Validation:
 - Prompt verifier passed: torch-free loader metadata bridge only, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF call spec CLI layer filter
+
+Implemented `mtp-gguf` multiloop iteration 38: added a metadata-only `--layer`
+filter to the GGUF MTP CPU call-spec CLI.
+
+Scope note:
+- This is CLI metadata filtering only. It does not materialize weights, alter
+  runtime generation, dispatch GPU kernels, or change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI.
+
+Changes:
+- Added repeatable `--layer <id>` to `scripts/gguf_mtp_call_spec.py`.
+- Threaded selected layer IDs into `summarize(..., layers=...)`.
+- Filtered validated MTP draft tensor plans by `plan.layer_id` before JSON
+  serialization.
+- Extended `tests/test_gguf_mtp_call_spec_cli.py` for:
+  - `--layer` propagation through `main(...)`;
+  - strict default still passing `layers=None`;
+  - direct `summarize(..., layers={...})` filtering behavior.
+
+Evidence:
+- Real GGUF smoke passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --layer 40 --indent 0 > /tmp/gguf_mtp_call_spec_layer.json`
+  parsed successfully with:
+  - `spec_count 1`
+  - `layer_id 40`
+  - kernel `['cpu_reference', 'mtp_nextn_layer', 'gguf_moe', 'qwen35_dense_logits']`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- CLI unit tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_call_spec_cli.py` -> `3` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for the CLI and updated CLI test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: metadata-only CLI filter, no torch import, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
