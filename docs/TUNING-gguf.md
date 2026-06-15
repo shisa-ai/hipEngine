@@ -158,6 +158,13 @@ No-hold notes:
   memory and the `4K/128` generated ID, but changed the `512/128` final token
   (`220 -> 318`) and dropped short-prefill throughput (`1647.390 ->
   1516.829 tok/s`). Keep the GGUF AOTriton prefill threshold default at `512`.
+- **G-P2 Q8 T16 prefill launch-bound=4 rejected (2026-06-15).** Relaxing
+  `gguf_q8_0_t16_prefill_wmma_kernel` from `__launch_bounds__(32, 8)` to
+  `__launch_bounds__(32, 4)` preserved generated IDs and memory and improved
+  prefill (`512/128` `1647.390 -> 1655.202 tok/s`, `4K/128` `1855.806 ->
+  1859.871 tok/s`), but regressed both retained decode medians (`127.012 ->
+  126.995 tok/s`, `115.805 -> 115.610 tok/s`). Keep Q8_0 T16 prefill WMMA at
+  `32,8` until a shape policy can protect decode.
 - **G-P4 chunk-min=8192 rejected (2026-06-15).** Raising the
   auto-chunk minimum from `1025` to `8192` disabled chunking for the 4K gate and
   preserved generated IDs, but raised tracked peak (`21.335 -> 21.416 GiB`),
