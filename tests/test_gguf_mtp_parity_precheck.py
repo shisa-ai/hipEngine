@@ -1,0 +1,199 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from scripts.gguf_mtp_parity_precheck import (
+    build_parity_precheck,
+    compare_sampling_settings,
+    load_sampling_settings,
+    stable_json_sha256,
+)
+
+
+def _inventory(*, token_ids: list[int] | None = None, name: str = "p0") -> dict[str, object]:
+    tokens = [1, 2, 3] if token_ids is None else token_ids
+    return {
+        "schema": 1,
+        "kind": "hipengine_gguf_prompt_token_inventory",
+        "prompts": [
+            {
+                "name": name,
+                "token_ids": tokens,
+                "token_ids_sha256": "synthetic",
+                "rendered_sha256": "prompt-hash",
+            }
+        ],
+    }
+
+
+def test_sampling_settings_compare_requires_both_when_requested() -> None:
+    comparison = compare_sampling_settings(None, None, require_sampling=True)
+
+    assert comparison["checked"] is False
+    assert comparison["passed"] is False
+    assert comparison["reason"] == "sampling settings were not provided"
+
+    one_sided = compare_sampling_settings({"target": {"temperature": 0}}, None)
+
+    assert one_sided["checked"] is True
+    assert one_sided["passed"] is False
+    assert one_sided["mismatches"] == [
+        {"path": "<root>", "hipengine": "present", "llamacpp": "missing"}
+    ]
+
+
+def test_sampling_settings_compare_reports_nested_mismatches_and_hashes() -> None:
+    hipengine = {
+        "target": {"temperature": 0.0, "seed": 123},
+        "draft": {"top_k": 10, "selection": "greedy_top1_from_topk"},
+    }
+    llamacpp = {
+        "target": {"temperature": 0.0, "seed": 123},
+        "draft": {"top_k": 8, "selection": "greedy_top1_from_topk"},
+        "server": "llama.cpp",
+    }
+
+    comparison = compare_sampling_settings(hipengine, llamacpp)
+
+    assert comparison["checked"] is True
+    assert comparison["passed"] is False
+    assert comparison["hipengine_sampling_sha256"] == stable_json_sha256(hipengine)
+    assert comparison["llamacpp_sampling_sha256"] == stable_json_sha256(llamacpp)
+    assert comparison["mismatches"] == [
+        {"path": "draft.top_k", "hipengine": 10, "llamacpp": 8},
+        {"path": "server", "hipengine": None, "llamacpp": "llama.cpp"},
+    ]
+
+
+def test_parity_precheck_passes_matching_token_ids_and_sampling() -> None:
+    sampling = {
+        "target": {"temperature": 0.0, "seed": 1234},
+        "draft": {"top_k": 10, "selection": "greedy_top1_from_topk"},
+    }
+
+    precheck = build_parity_precheck(
+        hipengine_token_inventory=_inventory(),
+        llamacpp_token_inventory=_inventory(),
+        hipengine_sampling=sampling,
+        llamacpp_sampling=dict(sampling),
+        require_sampling=True,
+    )
+
+    assert precheck["kind"] == "gguf_mtp_parity_precheck"
+    assert precheck["all_pass"] is True
+    assert precheck["token_ids"]["all_match"] is True
+    assert precheck["sampling"]["passed"] is True
+
+
+def test_parity_precheck_fails_token_or_sampling_mismatch() -> None:
+    precheck = build_parity_precheck(
+        hipengine_token_inventory=_inventory(token_ids=[1, 2, 3]),
+        llamacpp_token_inventory=_inventory(token_ids=[1, 7, 3]),
+        hipengine_sampling={"target": {"temperature": 0.0}},
+        llamacpp_sampling={"target": {"temperature": 0.25}},
+        require_sampling=True,
+        context_tokens=1,
+    )
+
+    assert precheck["all_pass"] is False
+    assert precheck["token_ids"]["mismatches"][0]["first_mismatch_index"] == 1
+    assert precheck["sampling"]["mismatches"] == [
+        {"path": "target.temperature", "hipengine": 0.0, "llamacpp": 0.25}
+    ]
+
+
+def test_load_sampling_settings_accepts_wrapped_or_plain_sampling(tmp_path: Path) -> None:
+    wrapped = tmp_path / "wrapped.json"
+    plain = tmp_path / "plain.json"
+    wrapped.write_text(json.dumps({"schema": 1, "sampling": {"target": {"temperature": 0.0}}}))
+    plain.write_text(json.dumps({"target": {"temperature": 0.0}}))
+
+    assert load_sampling_settings(wrapped) == {"target": {"temperature": 0.0}}
+    assert load_sampling_settings(plain) == {"target": {"temperature": 0.0}}
+
+
+def test_parity_precheck_cli_fails_on_mismatch_when_requested(tmp_path: Path) -> None:
+    hip = tmp_path / "hip.json"
+    llama = tmp_path / "llama.json"
+    sampling = tmp_path / "sampling.json"
+    out = tmp_path / "precheck.json"
+    hip.write_text(json.dumps(_inventory(token_ids=[1, 2, 3])))
+    llama.write_text(json.dumps(_inventory(token_ids=[1, 7, 3])))
+    sampling.write_text(json.dumps({"target": {"temperature": 0.0}}))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/gguf_mtp_parity_precheck.py",
+            "--hipengine-token-inventory",
+            str(hip),
+            "--llamacpp-token-inventory",
+            str(llama),
+            "--hipengine-sampling",
+            str(sampling),
+            "--llamacpp-sampling",
+            str(sampling),
+            "--require-sampling",
+            "--fail-on-mismatch",
+            "--out",
+            str(out),
+        ],
+        cwd=Path.cwd(),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(out.read_text())
+    assert payload["all_pass"] is False
+    assert payload["sampling"]["passed"] is True
+    assert payload["token_ids"]["mismatches"]
+
+
+def test_parity_precheck_cli_passes_matching_committed_hipengine_fixture(tmp_path: Path) -> None:
+    hip_fixture = Path("benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json")
+    sampling = tmp_path / "sampling.json"
+    out = tmp_path / "precheck.json"
+    sampling.write_text(
+        json.dumps(
+            {
+                "target": {"temperature": 0.0, "seed": 1234},
+                "draft": {"top_k": 10, "selection": "greedy_top1_from_topk"},
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/gguf_mtp_parity_precheck.py",
+            "--hipengine-token-inventory",
+            str(hip_fixture),
+            "--llamacpp-token-inventory",
+            str(hip_fixture),
+            "--hipengine-sampling",
+            str(sampling),
+            "--llamacpp-sampling",
+            str(sampling),
+            "--require-sampling",
+            "--fail-on-mismatch",
+            "--out",
+            str(out),
+        ],
+        cwd=Path.cwd(),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(out.read_text())
+    assert payload["all_pass"] is True
+    assert payload["token_ids"]["compared_prompts"] == 9
+    assert payload["sampling"]["passed"] is True

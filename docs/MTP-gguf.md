@@ -319,6 +319,11 @@ defeats the parity goal:
 - **(c) Numeric gate.** `KL <= 0.05` AND top-1 agreement `>= 90%` vs
   `kernels/cpu_reference/` on fixture inputs (the standard CLAUDE.md kernel gate).
 
+Current status: `scripts/gguf_mtp_parity_precheck.py` wraps the token-id
+inventory comparison and optional exact sampling-settings comparison into a
+single fail-fast JSON gate. Real llama.cpp token/sampling artifacts still need to
+be captured before M5 metrics are compared.
+
 ## Implementation Milestones
 
 ### M0 — Inventory and Oracles
@@ -772,7 +777,9 @@ is now answered by the M1 required/optional table.)
       `KernelKey(backend, layer, quant='w4_gguf', variant)`.
 - [ ] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag).
-- [ ] Gate Parity Preconditions (token-id + sampling parity) before comparison.
+- [ ] Gate Parity Preconditions (token-id + sampling parity) before comparison;
+      `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate, but
+      real llama.cpp token/sampling artifacts are still required.
 - [ ] Run B1 exactness and accepted/output parity against llama.cpp B1.
 - [ ] Extend to B2-B4 after B1 is exact.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping

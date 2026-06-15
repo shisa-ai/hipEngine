@@ -94827,3 +94827,48 @@ Validation:
 - Prompt verifier passed: fixture/test/docs only; no torch import; no
   backend/quant dispatch branch; no runtime attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF parity precheck gate
+
+Implemented `mtp-gguf` multiloop iteration 49: added a reusable fail-fast parity
+precheck for M5 so accepted/output metrics cannot be compared before token-id and
+sampling-setting parity are proven.
+
+Scope note:
+- Script/test/docs only. No runtime generation, GGUF loading semantics, MTP draft
+  execution, sampling implementation, GPU kernel, attention/KV path, or
+  performance path changed.
+- This is a precondition gate, not a llama.cpp artifact capture. The plan still
+  requires real llama.cpp token/sampling artifacts before M5 comparisons.
+
+Changes:
+- Added executable `scripts/gguf_mtp_parity_precheck.py`, which wraps exact prompt
+  token inventory comparison and optional exact sampling-settings comparison into
+  one JSON result with `all_pass` and `--fail-on-mismatch` semantics.
+- The sampling comparator accepts either a plain sampling JSON object or a larger
+  artifact with a `sampling` object, reports nested mismatch paths, and records
+  stable JSON SHA256s for both settings objects.
+- Added `tests/test_gguf_mtp_parity_precheck.py` coverage for missing one-sided
+  sampling settings, nested sampling mismatches, token mismatch propagation,
+  CLI failure behavior, and a CLI pass using the committed hipEngine D32 token
+  fixture as both sides.
+- Updated `docs/MTP-gguf.md` Parity Preconditions/current backlog to cite the new
+  gate while keeping real llama.cpp token/sampling artifact capture open.
+
+Validation:
+- Parity precheck tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_parity_precheck.py` -> `7` passed.
+- CLI smoke using the committed D32 token fixture on both sides and identical
+  sampling settings passed:
+  `scripts/gguf_mtp_parity_precheck.py --hipengine-token-inventory benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --llamacpp-token-inventory benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --hipengine-sampling <tmp> --llamacpp-sampling <tmp> --require-sampling --fail-on-mismatch --out <tmp>` -> `precheck True prompts 9 sampling True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_parity_precheck.py tests/test_gguf_mtp_parity_precheck.py` and
+  `git diff --check -- scripts/gguf_mtp_parity_precheck.py tests/test_gguf_mtp_parity_precheck.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: precondition script/test/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, or attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.
