@@ -941,7 +941,8 @@ reporting.
   `scripts/stepfun_oracle_blocker_diagnosis.py --default-output --pretty` retains
   `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-blocker-diagnosis.json`, consolidating
   that prompt/top-token/expected-token text drift is ruled out while `generated_text_matches_target`
-  remains unresolved. `scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty`
+  remains unresolved; `python3 scripts/stepfun_oracle_blocker_diagnosis.py --verify-diagnosis --verification-status-only`
+  is the drift check for that ruled-out-cause and active-finding diagnosis. `scripts/stepfun_oracle_evidence_consistency_check.py --default-output --pretty`
   retains `benchmarks/results/2026-06-15-stepfun-q3kl-oracle-evidence-consistency-check.json`,
   currently `status=match`; `python3 scripts/stepfun_oracle_evidence_consistency_check.py --verify-consistency --verification-status-only`
   is the drift check to catch stale or contradictory oracle evidence before the next

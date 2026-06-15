@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.stepfun_oracle_blocker_diagnosis import build_oracle_blocker_diagnosis, main
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
+from scripts.stepfun_oracle_blocker_diagnosis import (
+    build_oracle_blocker_diagnosis,
+    main,
+    verify_oracle_blocker_diagnosis,
+)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -278,3 +286,99 @@ def test_stepfun_oracle_blocker_diagnosis_cli_compact_modes(tmp_path: Path) -> N
     assert len(json.loads(output.read_text())) == 3
     assert main([*base_args, "--next-action-only", "--output", str(output)]) == 0
     assert json.loads(output.read_text()).startswith("investigate logits/backend parity")
+
+
+def test_stepfun_oracle_blocker_diagnosis_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    backend_matrix, token_mismatch, rank_check, top_roundtrip, prompt_roundtrip = (
+        _write_inputs(tmp_path)
+    )
+    artifact = tmp_path / "diagnosis.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--backend-matrix-artifact",
+        str(backend_matrix),
+        "--token-mismatch-artifact",
+        str(token_mismatch),
+        "--rank-check-artifact",
+        str(rank_check),
+        "--top-token-roundtrip-artifact",
+        str(top_roundtrip),
+        "--prompt-token-roundtrip-artifact",
+        str(prompt_roundtrip),
+        "--artifact-date",
+        "2030-01-18",
+    ]
+    current = build_oracle_blocker_diagnosis(
+        backend_matrix_artifact=backend_matrix,
+        token_mismatch_artifact=token_mismatch,
+        rank_check_artifact=rank_check,
+        top_token_roundtrip_artifact=top_roundtrip,
+        prompt_token_roundtrip_artifact=prompt_roundtrip,
+        artifact_date="2030-01-18",
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_oracle_blocker_diagnosis(
+        artifact,
+        current_report=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "blocked"
+    assert verification["current_status"] == "blocked"
+    assert verification["persisted_ruled_out_cause_count"] == 3
+    assert verification["current_ruled_out_cause_count"] == 3
+    assert verification["persisted_active_blocker_count"] == 3
+    assert verification["current_active_blocker_count"] == 3
+    assert verification["persisted_next_action"] == current["next_action"]
+    assert verification["current_next_action"] == current["next_action"]
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-diagnosis",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["active_blocker_count"] = 2
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_oracle_blocker_diagnosis(
+        artifact,
+        current_report=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "oracle_blocker_diagnosis_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-diagnosis",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == (
+        "oracle_blocker_diagnosis_drift"
+    )
