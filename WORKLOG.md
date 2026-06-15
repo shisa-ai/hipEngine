@@ -95031,3 +95031,58 @@ Validation:
   runtime backend/quant dispatch branch; no hipEngine generation, MTP execution,
   sampling implementation, GPU kernel, or attention/KV path change; future MTP
   attention/KV-write work remains KVLiveSpans-gated; no performance claim.
+
+## 2026-06-15 - MTP-GGUF Qwen3.5 tokenizer parity
+
+Implemented `mtp-gguf` multiloop iteration 53: resolved the D32 token-id parity
+blocker by porting the llama.cpp Qwen3.5 pre-tokenizer semantics into the
+hipEngine torch-free GGUF tokenizer.
+
+Scope note:
+- Tokenizer/test/fixture/docs only. No runtime generation, GGUF tensor loading,
+  MTP draft execution, sampling implementation, GPU kernel, attention/KV path, or
+  performance path changed.
+- Source lineage for the pre-tokenizer behavior: llama.cpp `src/unicode.cpp`
+  `unicode_regex_split_custom_qwen35` at `6e9007ae6`.
+
+Changes:
+- Replaced the previous regex approximation in `hipengine/tokenization/gguf.py`
+  with a torch-free Qwen3.5 splitter that mirrors llama.cpp's
+  `LLAMA_VOCAB_PRE_TYPE_QWEN35` behavior for:
+  - optional punctuation/space prefix before letter runs (e.g. `-th`, `(x`);
+  - single-digit `\p{N}` splits;
+  - punctuation runs with trailing CR/LF;
+  - newline whitespace chunks such as `\n\n`.
+- Regenerated `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+  It now matches the committed llama.cpp HIP `/tokenize` D32 fixture on all 9
+  prompts. Counts/hash prefixes now match llama.cpp: code_python 20
+  `df5cfe8fb2ea`, code_cpp 30 `b7674a2fc241`, explain_concept 17
+  `2883b59eb337`, summarize 52 `151456ec3da2`, qa_factual 14
+  `f6a560f94186`, translation 15 `cc5ea118187c`, creative_short 11
+  `eacdaaaf5cdc`, stepwise_math 50 `4be6b5e9415c`, long_code_review 721
+  `cd84a137f572`.
+- Added/updated tokenizer and parity tests so the committed hipEngine fixture is
+  regenerated from the local MTP GGUF and compared against the llama.cpp fixture,
+  and the real fixture precheck with B1 sampling now passes.
+- Updated `docs/MTP-gguf.md` parity status/backlog: token-id + B1 sampling parity
+  preconditions have fixture coverage; remaining M5 gates are numeric exactness
+  and actual GGUF MTP execution.
+
+Validation:
+- Focused tokenizer/parity tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_prompt_token_inventory_compare.py tests/test_gguf_mtp_parity_precheck.py` -> `25` selected tests (`20` pass, `5` skip).
+- HipEngine D32 fixture regeneration was byte-identical:
+  `scripts/gguf_prompt_token_inventory.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts-file benchmarks/fixtures/llamacpp_mtp_bench_prompts.json --out <tmp>` then `cmp` -> `fixture_reproducible`.
+- Real fixture precheck with B1 sampling now passes:
+  `scripts/gguf_mtp_parity_precheck.py --hipengine-token-inventory benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --llamacpp-token-inventory benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json --hipengine-sampling benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json --llamacpp-sampling benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json --require-sampling --fail-on-mismatch --out <tmp>` -> `precheck True token_match True sampling_pass True matched 9`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/tokenization/gguf.py tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_prompt_token_inventory_compare.py tests/test_gguf_mtp_parity_precheck.py` and
+  `git diff --check -- hipengine/tokenization/gguf.py tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_prompt_token_inventory_compare.py tests/test_gguf_mtp_parity_precheck.py docs/MTP-gguf.md benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: tokenizer parity change only; no torch import; no
+  runtime backend/quant dispatch branch; no generation, MTP execution, sampling
+  implementation, GPU kernel, or attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.

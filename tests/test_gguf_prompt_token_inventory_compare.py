@@ -129,15 +129,15 @@ def test_committed_hipengine_d32_prompt_token_fixture_is_self_consistent() -> No
     suite = load_prompt_suite(D32_PROMPTS)
     expected_names = [str(prompt["name"]) for prompt in suite["prompts"]]
     expected_counts = {
-        "code_python": 21,
-        "code_cpp": 31,
+        "code_python": 20,
+        "code_cpp": 30,
         "explain_concept": 17,
         "summarize": 52,
         "qa_factual": 14,
         "translation": 15,
-        "creative_short": 12,
-        "stepwise_math": 52,
-        "long_code_review": 766,
+        "creative_short": 11,
+        "stepwise_math": 50,
+        "long_code_review": 721,
     }
 
     assert fixture["schema"] == 1
@@ -197,7 +197,7 @@ def test_committed_llamacpp_d32_prompt_token_fixture_is_self_consistent() -> Non
         assert row["token_pieces"]
 
 
-def test_committed_d32_prompt_token_fixtures_record_current_tokenizer_mismatch() -> None:
+def test_committed_d32_prompt_token_fixtures_match_llamacpp_token_ids() -> None:
     hipengine = json.loads(HIPENGINE_D32_TOKEN_FIXTURE.read_text())
     llamacpp = json.loads(LLAMACPP_HIP_D32_TOKEN_FIXTURE.read_text())
 
@@ -209,27 +209,19 @@ def test_committed_d32_prompt_token_fixtures_record_current_tokenizer_mismatch()
         context_tokens=1,
     )
 
-    assert comparison["all_match"] is False
+    assert comparison["all_match"] is True
     assert comparison["compared_prompts"] == 9
     assert comparison["matched_prompts"] == [
+        "code_cpp",
+        "code_python",
+        "creative_short",
         "explain_concept",
+        "long_code_review",
         "qa_factual",
+        "stepwise_math",
         "summarize",
         "translation",
     ]
     assert comparison["missing_in_left"] == []
     assert comparison["missing_in_right"] == []
-    mismatches = {row["name"]: row for row in comparison["mismatches"]}
-    assert set(mismatches) == {
-        "code_cpp",
-        "code_python",
-        "creative_short",
-        "long_code_review",
-        "stepwise_math",
-    }
-    assert mismatches["code_python"]["left_token_count"] == 21
-    assert mismatches["code_python"]["right_token_count"] == 20
-    assert mismatches["code_python"]["first_mismatch_index"] == 8
-    assert mismatches["creative_short"]["first_mismatch_index"] == 3
-    assert mismatches["long_code_review"]["left_token_count"] == 766
-    assert mismatches["long_code_review"]["right_token_count"] == 721
+    assert comparison["mismatches"] == []

@@ -209,20 +209,20 @@ def test_parity_precheck_cli_fails_on_mismatch_when_requested(tmp_path: Path) ->
     assert payload["token_ids"]["mismatches"]
 
 
-def test_parity_precheck_fails_committed_hipengine_vs_llamacpp_token_fixtures() -> None:
+def test_parity_precheck_passes_committed_hipengine_vs_llamacpp_token_fixtures() -> None:
     precheck = build_parity_precheck(
         hipengine_token_inventory=json.loads(HIPENGINE_D32_TOKEN_FIXTURE.read_text()),
         llamacpp_token_inventory=json.loads(LLAMACPP_HIP_D32_TOKEN_FIXTURE.read_text()),
     )
 
-    assert precheck["all_pass"] is False
-    assert precheck["token_ids"]["all_match"] is False
-    assert len(precheck["token_ids"]["mismatches"]) == 5
+    assert precheck["all_pass"] is True
+    assert precheck["token_ids"]["all_match"] is True
+    assert precheck["token_ids"]["mismatches"] == []
     assert precheck["sampling"]["checked"] is False
     assert precheck["sampling"]["passed"] is True
 
 
-def test_parity_precheck_with_committed_b1_sampling_still_fails_real_token_mismatch() -> None:
+def test_parity_precheck_with_committed_b1_sampling_passes_real_token_fixtures() -> None:
     sampling = load_sampling_settings(B1_SAMPLING_FIXTURE)
 
     precheck = build_parity_precheck(
@@ -233,9 +233,9 @@ def test_parity_precheck_with_committed_b1_sampling_still_fails_real_token_misma
         require_sampling=True,
     )
 
-    assert precheck["all_pass"] is False
-    assert precheck["token_ids"]["all_match"] is False
-    assert len(precheck["token_ids"]["mismatches"]) == 5
+    assert precheck["all_pass"] is True
+    assert precheck["token_ids"]["all_match"] is True
+    assert precheck["token_ids"]["mismatches"] == []
     assert precheck["sampling"]["checked"] is True
     assert precheck["sampling"]["passed"] is True
     assert precheck["sampling"]["mismatches"] == []

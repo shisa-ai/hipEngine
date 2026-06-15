@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
 from hipengine.loading.gguf import GGUFModelInfo
 
-# GPT-2/Qwen byte-level pre-tokenizer approximation.  It intentionally avoids
-# optional dependencies while matching the ASCII fixture and common text paths.
-_PRETOKEN_RE = re.compile(
-    r"'s|'t|'re|'ve|'m|'ll|'d| ?[A-Za-z]+| ?[0-9]+| ?[^\sA-Za-z0-9]+|\s+(?!\S)|\s+"
-)
+# Torch-free Qwen3.5 byte-level pre-tokenizer.  This mirrors llama.cpp's
+# LLAMA_VOCAB_PRE_TYPE_QWEN35 splitter for Python str code points; bytes are
+# still mapped through the GPT-2 byte encoder before BPE merges.
 
 
 def bytes_to_unicode() -> dict[int, str]:
@@ -130,7 +128,139 @@ class Qwen35GGUFTokenizer:
 
 
 def _pretokenize_qwen35(text: str) -> list[str]:
-    return [match.group(0) for match in _PRETOKEN_RE.finditer(text)]
+    chunks: list[str] = []
+    start = 0
+    end = len(text)
+
+    def char(pos: int) -> str | None:
+        return text[pos] if 0 <= pos < end else None
+
+    pos = 0
+    while pos < end:
+        token_start = pos
+        current = char(pos)
+        assert current is not None
+
+        # regex: (?i:'s|'t|'re|'ve|'m|'ll|'d)
+        if current == "'" and pos + 1 < end:
+            tail2 = text[pos + 1 : pos + 3].lower()
+            if text[pos + 1].lower() in {"s", "t", "m", "d"}:
+                pos += 2
+                chunks.append(text[token_start:pos])
+                start = pos
+                continue
+            if tail2 in {"re", "ve", "ll"}:
+                pos += 3
+                chunks.append(text[token_start:pos])
+                start = pos
+                continue
+
+        # regex: [^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+
+        if current not in {"\r", "\n"} and not _is_number(current):
+            next_char = char(pos + 1)
+            if (
+                _is_letter(current)
+                or _is_mark(current)
+                or _is_mark(next_char)
+                or _is_letter(next_char)
+            ):
+                pos += 1
+                while _is_letter(char(pos)) or _is_mark(char(pos)):
+                    pos += 1
+                chunks.append(text[token_start:pos])
+                start = pos
+                continue
+
+        # regex: \p{N}
+        if _is_number(current):
+            pos += 1
+            chunks.append(text[token_start:pos])
+            start = pos
+            continue
+
+        # regex: <space>?[^\s\p{L}\p{M}\p{N}]+[\r\n]*
+        flags_char = char(pos + 1) if current == " " else current
+        if (
+            flags_char is not None
+            and not _is_whitespace(flags_char)
+            and not _is_letter(flags_char)
+            and not _is_mark(flags_char)
+            and not _is_number(flags_char)
+        ):
+            if current == " ":
+                pos += 1
+            while True:
+                flags_char = char(pos)
+                if (
+                    flags_char is None
+                    or _is_whitespace(flags_char)
+                    or _is_letter(flags_char)
+                    or _is_mark(flags_char)
+                    or _is_number(flags_char)
+                ):
+                    break
+                pos += 1
+            while char(pos) in {"\r", "\n"}:
+                pos += 1
+            chunks.append(text[token_start:pos])
+            start = pos
+            continue
+
+        num_whitespaces = 0
+        last_end_r_or_n = 0
+        while _is_whitespace(char(pos + num_whitespaces)):
+            cpt = char(pos + num_whitespaces)
+            if cpt in {"\r", "\n"}:
+                last_end_r_or_n = pos + num_whitespaces + 1
+            num_whitespaces += 1
+
+        # regex: \s*[\r\n]+
+        if last_end_r_or_n > 0:
+            pos = last_end_r_or_n
+            chunks.append(text[token_start:pos])
+            start = pos
+            continue
+
+        # regex: \s+(?!\S)
+        if num_whitespaces > 1 and char(pos + num_whitespaces) is not None:
+            pos += num_whitespaces - 1
+            chunks.append(text[token_start:pos])
+            start = pos
+            continue
+
+        # regex: \s+
+        if num_whitespaces > 0:
+            pos += num_whitespaces
+            chunks.append(text[token_start:pos])
+            start = pos
+            continue
+
+        pos += 1
+        chunks.append(text[token_start:pos])
+        start = pos
+
+    assert start == end
+    return chunks
+
+
+def _category(char: str | None) -> str:
+    return "" if char is None else unicodedata.category(char)
+
+
+def _is_letter(char: str | None) -> bool:
+    return _category(char).startswith("L")
+
+
+def _is_mark(char: str | None) -> bool:
+    return _category(char).startswith("M")
+
+
+def _is_number(char: str | None) -> bool:
+    return _category(char).startswith("N")
+
+
+def _is_whitespace(char: str | None) -> bool:
+    return False if char is None else char.isspace()
 
 
 def _decode_byte_pieces(pieces: Sequence[str], byte_decoder: Mapping[str, int]) -> str:

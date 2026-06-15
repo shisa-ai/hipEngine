@@ -324,12 +324,11 @@ inventory comparison and optional exact sampling-settings comparison into a
 single fail-fast JSON gate. The llama.cpp HIP `/tokenize` D32 artifact is
 captured at
 `benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`,
-and currently fails parity against the hipEngine tokenizer fixture on 5/9
-prompts (matched: explain_concept, qa_factual, summarize, translation). The B1
-deterministic sampling/request artifact is committed at
-`benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json`, so the active
-M5 blocker is token-id parity (plus the later numeric gate) rather than B1
-sampling-setting drift.
+and the hipEngine fixture now matches it on all 9 D32 prompts after porting the
+Qwen3.5 pre-tokenizer semantics. The B1 deterministic sampling/request artifact
+is committed at `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json`,
+so Parity Preconditions (a) and (b) have fixture coverage; M5 still also requires
+the numeric KL/top-1 gate and actual GGUF MTP execution.
 
 ## Implementation Milestones
 
@@ -357,9 +356,9 @@ Deliverables:
   `benchmarks/fixtures/hipengine_gguf_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`
   and
   `benchmarks/fixtures/llamacpp_hip_prompt_tokens_qwen36_35b_a3b_ud_q4_k_m_d32.json`.
-  The current comparison is a useful blocker: 4/9 prompts match exactly and 5/9
-  diverge at tokenization, so M5 accepted/output comparisons must not proceed
-  until the tokenizer identity issue is fixed or explicitly scoped.
+  The committed fixtures now match exactly on all 9 prompts and are covered by
+  regression tests; re-run `scripts/gguf_mtp_parity_precheck.py` before any M5
+  accepted/output comparison.
 
 Acceptance:
 
@@ -797,11 +796,11 @@ is now answered by the M1 required/optional table.)
       `KernelKey(backend, layer, quant='w4_gguf', variant)`.
 - [ ] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag).
-- [ ] Gate Parity Preconditions (token-id + sampling parity) before comparison;
-      `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate and
+- [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
+      `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the
-      B1 deterministic sampling settings, but the real token fixtures currently
-      fail parity on 5/9 D32 prompts.
+      B1 deterministic sampling settings, and the committed hipEngine/llama.cpp
+      D32 token fixtures match on all 9 prompts.
 - [ ] Run B1 exactness and accepted/output parity against llama.cpp B1.
 - [ ] Extend to B2-B4 after B1 is exact.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
