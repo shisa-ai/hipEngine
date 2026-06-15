@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.stepfun_correctness_status import (
+    SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+    _stable_json_sha256,
+)
 from scripts.stepfun_oracle_token_mismatch import (
     build_oracle_token_mismatch_summary,
     main,
+    verify_oracle_token_mismatch_summary,
 )
 from test_stepfun_oracle_artifact_check import (  # type: ignore[import-not-found]
     _oracle_artifact,
@@ -142,3 +147,89 @@ def test_stepfun_oracle_token_mismatch_cli_token_ids_only(tmp_path: Path) -> Non
         "generated_first_token_matches_expected_id": False,
         "conclusion": "generated_text tokenization does not match expected_next_token_id",
     }
+
+
+def test_stepfun_oracle_token_mismatch_verifies_persisted_artifact(
+    tmp_path: Path,
+) -> None:
+    prompt, oracle, model, fake_tokenize = _write_mismatch_inputs(tmp_path)
+    artifact = tmp_path / "token-mismatch.json"
+    output = tmp_path / "verify.json"
+    base_args = [
+        "--artifact",
+        str(oracle),
+        "--prompt-artifact",
+        str(prompt),
+        "--llama-tokenize",
+        str(fake_tokenize),
+        "--tokenizer-model",
+        str(model),
+    ]
+    current = build_oracle_token_mismatch_summary(
+        artifact=oracle,
+        prompt_artifact=prompt,
+        llama_tokenize=fake_tokenize,
+        tokenizer_model=model,
+    )
+    artifact.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+
+    verification = verify_oracle_token_mismatch_summary(
+        artifact,
+        current_summary=current,
+    )
+    assert verification["status"] == "match"
+    assert verification["all_match"] is True
+    assert verification["verification_failures"] == []
+    assert verification["persisted_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["current_artifact_sha256"] == _stable_json_sha256(current)
+    assert verification["persisted_status"] == "failed"
+    assert verification["current_status"] == "failed"
+    assert verification["persisted_expected_next_token_id"] == 369
+    assert verification["current_expected_next_token_id"] == 369
+    assert verification["persisted_generated_first_token_id"] == 671
+    assert verification["current_generated_first_token_id"] == 671
+    assert verification["persisted_generated_first_token_matches_expected_id"] is False
+    assert verification["current_generated_first_token_matches_expected_id"] is False
+
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-token-mismatch",
+                str(artifact),
+                "--verification-status-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text()) == "match"
+
+    drifted = dict(current)
+    drifted["ready"] = True
+    artifact.write_text(json.dumps(drifted, indent=2, sort_keys=True) + "\n")
+    mismatch = verify_oracle_token_mismatch_summary(
+        artifact,
+        current_summary=current,
+    )
+    assert mismatch["status"] == "mismatch"
+    assert mismatch["all_match"] is False
+    assert mismatch["verification_failure_count"] == 1
+    assert mismatch["verification_failures"][0]["name"] == (
+        "oracle_token_mismatch_drift"
+    )
+    assert (
+        main(
+            [
+                *base_args,
+                "--verify-token-mismatch",
+                str(artifact),
+                "--verification-failures-only",
+                "--output",
+                str(output),
+            ]
+        )
+        == SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
+    assert json.loads(output.read_text())[0]["name"] == "oracle_token_mismatch_drift"

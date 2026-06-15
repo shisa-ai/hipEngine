@@ -10,6 +10,7 @@ readiness, e2e readiness, or any performance claim.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -109,6 +110,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the stable SHA-256 digest of the compact summary payload.",
     )
+    parser.add_argument(
+        "--verify-token-mismatch",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_OUTPUT,
+        default=None,
+        help=(
+            "Compare a persisted oracle token-mismatch artifact with current "
+            f"oracle/prompt/tokenizer metadata. If no path is supplied, uses {DEFAULT_OUTPUT}."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help="With --verify-token-mismatch, emit only match/mismatch status.",
+    )
+    parser.add_argument(
+        "--verification-failures-only",
+        action="store_true",
+        help="With --verify-token-mismatch, emit only verification failures.",
+    )
+    parser.add_argument(
+        "--verification-sha-only",
+        action="store_true",
+        help="With --verify-token-mismatch, emit only the stable verification digest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -164,6 +191,71 @@ def _token_id_payload(summary: dict[str, object]) -> dict[str, object]:
     }
 
 
+def verify_oracle_token_mismatch_summary(
+    token_mismatch_artifact: Path,
+    *,
+    current_summary: dict[str, object],
+) -> dict[str, object]:
+    """Compare a persisted token-mismatch artifact with current metadata."""
+
+    persisted = json.loads(token_mismatch_artifact.read_text())
+    persisted_sha256 = status_mod._stable_json_sha256(persisted)
+    current_sha256 = status_mod._stable_json_sha256(current_summary)
+    failures: list[dict[str, object]] = []
+    if persisted != current_summary:
+        failures.append(
+            {
+                "name": "oracle_token_mismatch_drift",
+                "expected_sha256": current_sha256,
+                "actual_sha256": persisted_sha256,
+                "evidence": (
+                    "Persisted oracle token-mismatch artifact differs from current "
+                    "oracle/prompt/tokenizer metadata."
+                ),
+            }
+        )
+    all_match = not failures
+    persisted_diag = (
+        persisted.get("tokenization_diagnostic")
+        if isinstance(persisted, dict)
+        else None
+    )
+    persisted_diag = persisted_diag if isinstance(persisted_diag, dict) else {}
+    current_diag = current_summary.get("tokenization_diagnostic")
+    current_diag = current_diag if isinstance(current_diag, dict) else {}
+    return {
+        "schema_version": 1,
+        "artifact_path": str(token_mismatch_artifact),
+        "status": "match" if all_match else "mismatch",
+        "all_match": all_match,
+        "persisted_artifact_sha256": persisted_sha256,
+        "current_artifact_sha256": current_sha256,
+        "verification_failures": failures,
+        "verification_failures_sha256": status_mod._stable_json_sha256(failures),
+        "verification_failure_count": len(failures),
+        "persisted_status": (
+            persisted.get("status") if isinstance(persisted, dict) else None
+        ),
+        "current_status": current_summary.get("status"),
+        "persisted_expected_next_token_id": persisted_diag.get(
+            "expected_next_token_id"
+        ),
+        "current_expected_next_token_id": current_diag.get("expected_next_token_id"),
+        "persisted_generated_first_token_id": persisted_diag.get(
+            "generated_first_token_id"
+        ),
+        "current_generated_first_token_id": current_diag.get(
+            "generated_first_token_id"
+        ),
+        "persisted_generated_first_token_matches_expected_id": persisted_diag.get(
+            "generated_first_token_matches_expected_id"
+        ),
+        "current_generated_first_token_matches_expected_id": current_diag.get(
+            "generated_first_token_matches_expected_id"
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.default_output and args.output is not None:
@@ -176,6 +268,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         tokenizer_timeout_s=args.tokenizer_timeout_s,
         logit_atol=args.logit_atol,
     )
+    if args.verify_token_mismatch is not None:
+        verification = verify_oracle_token_mismatch_summary(
+            args.verify_token_mismatch,
+            current_summary=summary,
+        )
+        if args.verification_status_only:
+            payload: object = verification["status"]
+        elif args.verification_failures_only:
+            payload = verification["verification_failures"]
+        elif args.verification_sha_only:
+            payload = status_mod._stable_json_sha256(verification)
+        else:
+            payload = verification
+        output = DEFAULT_OUTPUT if args.default_output else args.output
+        status_mod._emit_json(payload, pretty=args.pretty, output=output)
+        return (
+            0
+            if verification["all_match"] is True
+            else status_mod.SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+        )
     if args.status_only:
         payload: object = summary["status"]
     elif args.missing_evidence_only:
