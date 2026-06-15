@@ -1,0 +1,224 @@
+{
+  "artifact_kind": "stepfun_remaining_blockers_rollup",
+  "date": "2026-06-15",
+  "generator_commands": {
+    "final_blocker_refresh": "python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json",
+    "handoff_refresh": "python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json",
+    "kv_blocker_status": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
+    "oracle_backend_matrix": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
+    "oracle_token_mismatch": "python3 scripts/stepfun_oracle_token_mismatch.py --default-output --pretty",
+    "status_refresh": "python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
+  },
+  "no_claim_policy": {
+    "e2e_inference_claim_allowed": false,
+    "kv_backed_decode_claim_allowed": false,
+    "oracle_parity_claim_allowed": false,
+    "performance_claim_allowed": false,
+    "reason": "This rollup links retained blocker evidence and generator commands; it does not satisfy oracle parity or run KV-backed decode."
+  },
+  "p0_p12_open_partial": {
+    "count": 2,
+    "first_item": {
+      "line": 510,
+      "state": "partial",
+      "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
+    },
+    "items": [
+      {
+        "line": 510,
+        "state": "partial",
+        "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
+      },
+      {
+        "line": 850,
+        "state": "partial",
+        "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
+      }
+    ],
+    "last_item": {
+      "line": 850,
+      "state": "partial",
+      "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
+    },
+    "state_counts": {
+      "open": 0,
+      "partial": 2
+    }
+  },
+  "readiness": {
+    "blocked_gates": [
+      "oracle_parity",
+      "kv_backed_decode",
+      "e2e_inference"
+    ],
+    "blocker_kinds": [
+      "oracle_parity_blocked",
+      "kv_backed_decode_not_wired"
+    ],
+    "e2e_inference_ready": false,
+    "kv_backed_decode_ready": false,
+    "kv_decode_dispatch_ready": true,
+    "oracle_parity": false,
+    "status": "blocked"
+  },
+  "remaining_blocker_count": 2,
+  "remaining_blockers": [
+    {
+      "backend_outcomes": [
+        {
+          "backend": "vulkan",
+          "outcome": "executed_token_mismatch"
+        },
+        {
+          "backend": "hip",
+          "outcome": "timeout"
+        }
+      ],
+      "blocked_reason": "canonical Vulkan oracle executes but generated token does not match the host-composed target; HIP comparison oracle times out before generation",
+      "blocker_kind": "oracle_parity_blocked",
+      "canonical_backend": "vulkan",
+      "generator_command": "python3 scripts/stepfun_oracle_backend_matrix.py --default-output --pretty",
+      "generator_command_kind": "oracle_backend_matrix",
+      "oracle_parity_ready": false,
+      "primary_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json",
+      "readiness_gate": "oracle_parity",
+      "status": "blocked"
+    },
+    {
+      "blocked_count": 2,
+      "blocker_kind": "kv_backed_decode_not_wired",
+      "generator_command": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
+      "generator_command_kind": "kv_blocker_status",
+      "kv_backed_decode_ready": false,
+      "kv_decode_dispatch_ready": true,
+      "missing_artifact_paths": [
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+      ],
+      "primary_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json",
+      "readiness_gate": "kv_backed_decode",
+      "runtime_wiring_symbol_validation": {
+        "all_symbols_present": true,
+        "file": "hipengine/runtime/stepfun_gguf_runner.py",
+        "missing_execution_owner": {
+          "class_present": true,
+          "owner": "StepFunResidentSession",
+          "present": true
+        },
+        "missing_symbols": [],
+        "schema_version": 1,
+        "source": "ast_symbol_validation",
+        "symbol_count": 8,
+        "symbols": [
+          {
+            "class_name": "StepFunShortContextDecodePlanner",
+            "class_present": true,
+            "method_name": "plan_kv_decode_chat",
+            "method_present": true,
+            "present": true,
+            "role": "planner_entrypoint",
+            "symbol": "StepFunShortContextDecodePlanner.plan_kv_decode_chat"
+          },
+          {
+            "class_name": "StepFunTextDecodeResourcePlan",
+            "class_present": true,
+            "method_name": "kv_decode_launch_schedule",
+            "method_present": true,
+            "present": true,
+            "role": "resource_plan_entrypoint",
+            "symbol": "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule"
+          },
+          {
+            "class_name": "StepFunKVDecodeRunPlan",
+            "class_present": true,
+            "method_name": "upload_decode_inputs",
+            "method_present": true,
+            "present": true,
+            "role": "device_input_entrypoint",
+            "symbol": "StepFunKVDecodeRunPlan.upload_decode_inputs"
+          },
+          {
+            "class_name": "StepFunKVDecodeRunPlan",
+            "class_present": true,
+            "method_name": "decode_input_upload_plan",
+            "method_present": true,
+            "present": true,
+            "role": "device_input_entrypoint",
+            "symbol": "StepFunKVDecodeRunPlan.decode_input_upload_plan"
+          },
+          {
+            "class_name": "StepFunKVDecodeRunPlan",
+            "class_present": true,
+            "method_name": "streaming_decode_loop_blueprint",
+            "method_present": true,
+            "present": true,
+            "role": "metadata_only_trace_entrypoint",
+            "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint"
+          },
+          {
+            "class_name": "StepFunKVDecodeRunPlan",
+            "class_present": true,
+            "method_name": "streaming_decode_launch_trace",
+            "method_present": true,
+            "present": true,
+            "role": "metadata_only_trace_entrypoint",
+            "symbol": "StepFunKVDecodeRunPlan.streaming_decode_launch_trace"
+          },
+          {
+            "class_name": "StepFunKVDecodeRunPlan",
+            "class_present": true,
+            "method_name": "streaming_decode_loop_status",
+            "method_present": true,
+            "present": true,
+            "role": "metadata_only_trace_entrypoint",
+            "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_status"
+          },
+          {
+            "class_name": "StepFunResidentSession",
+            "class_present": true,
+            "method_name": "layer_prefix_prompt_logits_probe_bf16",
+            "method_present": true,
+            "present": true,
+            "role": "current_host_composed_prompt_smoke",
+            "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+          }
+        ]
+      },
+      "status": "blocked",
+      "streaming_runner_source_status": {
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+        "blocker_count": 3,
+        "blocker_names": [
+          "streaming_decode_loop_not_wired",
+          "kv_kernel_trace_artifact_missing",
+          "kv_backed_next_token_artifact_missing"
+        ],
+        "blueprint_operation_count": 135,
+        "blueprint_sha256": "b65e74949ee62b255b84c29c18a3fbdab79eb7c79d2bcc53a27a0e516dc2e674",
+        "blueprint_stage_count": 4,
+        "executable": false,
+        "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+        "kv_decode_run_plan_present": true,
+        "last_blocker_name": "kv_backed_next_token_artifact_missing",
+        "next_action": "wire_streaming_decode_loop",
+        "no_kernel_launches": true,
+        "ready": false,
+        "required_artifact_names": [
+          "kv_kernel_trace_artifact",
+          "kv_backed_next_token_artifact"
+        ],
+        "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+        "schema_version": 1,
+        "source": "kv_decode_run_plan"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_artifact_sha256": {
+    "kv_blocker_status": "4dece05a695cce03b9314143ddab1c388dd92241aac6d9f4ba00d72e1d377f83",
+    "oracle_backend_matrix": "8af19fff455a16695e67db979018e0ca6a6a83c086c27e1c3bcee77a3e22f952",
+    "status": "1552d6be5190e5afda21e6f73886e9cdc84c911128efa29c6d807eeba96ce21a"
+  },
+  "status": "blocked"
+}

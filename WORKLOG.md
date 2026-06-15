@@ -40759,3 +40759,31 @@ git diff --check
 ```
 
 Results: targeted oracle backend matrix tests passed (`3` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `c8606259554935cf876e573565a7b37c8eff11f48a1df7e82a59615ae8ec6204`; final-blocker file SHA `8e9407809cdfbe8ca527e7c1bd51127cf6ddfb56142278f43943793d22617abb`; handoff file SHA `cf1332bbb5f634407410498343c2e3481d34547552ede26aa85db9b6adb2bad8`; full StepFun guard passed; `git diff --check` passed.
+
+## 2026-06-15 - StepFun Q3_K_L remaining blocker rollup added
+
+Loop: `stepfun-gguf-correctness/run-20260529-195720` iteration 485. Added `scripts/stepfun_remaining_blockers_rollup.py`, a compact handoff generator that links the two remaining P0-P12 blockers to their retained artifacts and reproducible generator commands. The rollup combines the current correctness status, `scripts/stepfun_oracle_backend_matrix.py`, and `scripts/stepfun_kv_blocker_status.py` into `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`. Added `tests/test_stepfun_remaining_blockers_rollup.py` coverage for the builder, CLI output, and compact modes. Updated `docs/STEPFUN.md` to cite the generator and rollup artifact.
+
+The rollup reports `status=blocked`, `remaining_blocker_count=2`, readiness gates `oracle_parity|kv_backed_decode|e2e_inference`, blocker kinds `oracle_parity_blocked` and `kv_backed_decode_not_wired`, oracle backend outcomes `vulkan=executed_token_mismatch` / `hip=timeout`, and KV missing artifacts `benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json` plus `benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json`. It also carries the exact generator commands for the oracle backend matrix, oracle token mismatch, KV blocker status, status refresh, final-blocker refresh, and handoff refresh. This is handoff evidence only and makes no oracle/KV/e2e/performance claim. Rollup file SHA is `2c4206e1f98f5f30d141434fb26b0e95df315595c9c83a397340a804634c72f4`; stable rollup payload SHA from `scripts/stepfun_remaining_blockers_rollup.py --sha-only` is `a5a6324bfa22a262f6d534e2784bb4586e72210898e53db40c852f350e8b566f`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/stepfun_remaining_blockers_rollup.py tests/test_stepfun_remaining_blockers_rollup.py
+python3 -m pytest -q tests/test_stepfun_remaining_blockers_rollup.py
+python3 scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty
+python3 scripts/stepfun_remaining_blockers_rollup.py --sha-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --blocker-kinds-only
+python3 scripts/stepfun_remaining_blockers_rollup.py --generator-commands-only --pretty
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_final_blocker_manifest.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json
+python3 scripts/stepfun_handoff_check.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-handoff-check.json
+python3 scripts/stepfun_handoff_check.py --verify-handoff-report --report-verification-status-only
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only
+python3 scripts/stepfun_final_blocker_manifest.py --verify-manifest benchmarks/results/2026-05-31-stepfun-q3kl-final-blocker-manifest.json --verification-status-only
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+git diff --check
+```
+
+Results: targeted remaining-blocker rollup tests passed (`3` tests); status/manifest/handoff verification returned `"match"`; P0-P12 open/partial count stayed `2`; correctness-status file SHA `38afaef97084cfc6a4c29c72c133ad6a7413abe97ae453bd92e60ceb9a952f84`; final-blocker file SHA `04412971f0afe70eff41a28cdb3900cadf9a220e53732eaf4b5cecea9dcce8dd`; handoff file SHA `1921b9e4e798308073a6b7d4dd349ab480e05dbbbd92b24116dff9a5040ad6ef`; full StepFun guard passed; `git diff --check` passed.

@@ -898,7 +898,10 @@ reporting.
   `scripts/stepfun_oracle_backend_matrix.py --default-output --pretty` in
   `benchmarks/results/2026-06-15-stepfun-q3kl-llamacpp-oracle-backend-matrix.json`
   (`vulkan=executed_token_mismatch`, `hip=timeout`) with no parity/e2e/performance
-  claim. Historical
+  claim. The two remaining P0-P12 blockers and their generator commands are also
+  consolidated by `scripts/stepfun_remaining_blockers_rollup.py --default-output --pretty` in
+  `benchmarks/results/2026-06-15-stepfun-q3kl-remaining-blockers-rollup.json`.
+  Historical
   CPU/no-GPU timeout attempts in the same canonical path and the prior 2026-06-04
   outer-supervisor timeout remain documented by git history and the separate
   wrapper-timeout source artifact. The oracle helper now also traps `SIGTERM`/`SIGINT` from
