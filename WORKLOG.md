@@ -94266,3 +94266,35 @@ Validation:
 - Forbidden-pattern and diff checks passed.
 - Prompt verifier passed: metadata-only CLI, no torch import, no backend/quant
   branches, no runtime generation/GPU/KV path changes, no performance claims.
+
+## 2026-06-15 - MTP-GGUF call spec CLI unit coverage
+
+Implemented `mtp-gguf` multiloop iteration 36: added unit coverage for the
+metadata-only GGUF MTP CPU call-spec CLI.
+
+Scope note:
+- This is test-only coverage. It does not materialize weights, alter runtime
+  generation, dispatch GPU kernels, or change KV paths.
+- Tests monkeypatch discovery/summarization, so they do not require a real GGUF
+  file and do not read model tensors.
+
+Changes:
+- Added `tests/test_gguf_mtp_call_spec_cli.py`.
+  - `test_gguf_mtp_call_spec_cli_emits_json_and_propagates_non_strict` checks
+    path discovery, summary iteration, JSON payload shape, CPU-reference kernel
+    payload, tensor argument payload, and `--non-strict` propagation.
+  - `test_gguf_mtp_call_spec_cli_defaults_to_strict` checks strict mode remains
+    the default.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- CLI unit tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_call_spec_cli.py` -> `2` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for the CLI and test file.
+- Forbidden-pattern and whitespace checks passed.
+- Prompt verifier passed: test-only CLI metadata coverage, no torch import, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.
