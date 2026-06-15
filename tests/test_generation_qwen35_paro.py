@@ -549,7 +549,9 @@ def test_qwen35_paro_generator_allows_inert_greedy_filters(monkeypatch) -> None:
 
 
 
-def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> None:
+def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy_when_native_sampler_disabled(
+    monkeypatch,
+) -> None:
     calls = []
 
     class FakeSession:
@@ -577,6 +579,7 @@ def test_qwen35_paro_generator_uses_host_sampler_for_non_greedy(monkeypatch) -> 
             calls.append(("step", token_id, position, sample))
             return _result(101, "B") if sample else None
 
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -702,7 +705,9 @@ def test_qwen35_paro_stream_text_wrapper_preserves_plain_chunks(monkeypatch) -> 
     assert list(generator.stream(_request(max_tokens=2))) == ["A", "B"]
 
 
-def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -> None:
+def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry_with_native_sampler_disabled(
+    monkeypatch,
+) -> None:
     calls = []
 
     class FakeSession:
@@ -729,6 +734,7 @@ def test_qwen35_paro_stream_detailed_emits_live_sampled_telemetry(monkeypatch) -
             calls.append(("step", token_id, position, sample))
             return _result(101, "B") if sample else None
 
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -810,7 +816,7 @@ def test_qwen35_paro_stream_detailed_reports_native_sampler_route(monkeypatch) -
             calls.append(("step", token_id, position, sample))
             return _result(101, "B") if sample else None
 
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -1140,7 +1146,7 @@ def test_qwen35_paro_finish_details_report_forced_thinking_close(monkeypatch) ->
     assert decode_state["budget_pressure"] == "hard_close"
 
 
-def test_qwen35_paro_generator_env_routes_supported_c1_request_to_native_sampler(monkeypatch) -> None:
+def test_qwen35_paro_generator_default_routes_supported_c1_request_to_native_sampler(monkeypatch) -> None:
     calls = []
 
     class FakeSession:
@@ -1170,7 +1176,7 @@ def test_qwen35_paro_generator_env_routes_supported_c1_request_to_native_sampler
             calls.append(("step", token_id, position, sample))
             return _result(101, "B") if sample else None
 
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -1226,7 +1232,7 @@ def test_qwen35_paro_native_sampler_honors_stop_sequence_after_selection(monkeyp
             calls.append(("step", token_id, position, sample))
             return _result(101, "B") if sample else None
 
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -1274,7 +1280,7 @@ def test_qwen35_paro_native_sampler_honors_stop_sequence_after_selection(monkeyp
     }
 
 
-def test_qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback(monkeypatch) -> None:
+def test_qwen35_paro_native_default_reports_unsupported_top_logprobs_fallback(monkeypatch) -> None:
     calls = []
 
     class FakeSession:
@@ -1305,7 +1311,7 @@ def test_qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback(mon
             calls.append(("step", token_id, position, sample))
             return _result(101, "B") if sample else None
 
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -1335,7 +1341,7 @@ def test_qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback(mon
     }
 
 
-def test_qwen35_paro_native_opt_in_stream_reports_unsupported_top_k_fallback(monkeypatch) -> None:
+def test_qwen35_paro_native_default_stream_reports_unsupported_top_k_fallback(monkeypatch) -> None:
     class FakeSession:
         tokenizer = SimpleNamespace(token_to_id=lambda token: None)
         vocab_size = 128
@@ -1355,7 +1361,7 @@ def test_qwen35_paro_native_opt_in_stream_reports_unsupported_top_k_fallback(mon
         def step(self, token_id: int, *, position: int, sample: bool = True):
             return _result(101, "B") if sample else None
 
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
@@ -1754,15 +1760,16 @@ def test_qwen35_paro_processed_batch_honors_stop_tokens_per_row(monkeypatch) -> 
 
 
 @pytest.mark.parametrize(
-    ("native_requested", "expected_fallback"),
+    ("native_sampler_env", "expected_fallback"),
     [
-        (False, "host_sampling_required"),
-        (True, "native_gpu_unsupported_request"),
+        ("0", "host_sampling_required"),
+        (None, "native_gpu_unsupported_request"),
+        ("1", "native_gpu_unsupported_request"),
     ],
 )
 def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     monkeypatch,
-    native_requested: bool,
+    native_sampler_env: str | None,
     expected_fallback: str,
 ) -> None:
     calls = []
@@ -1832,10 +1839,10 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     )
     runner = object()
     generator._runner = runner
-    if native_requested:
-        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
-    else:
+    if native_sampler_env is None:
         monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", native_sampler_env)
 
     out = generator.generate(
         _request(
@@ -2032,7 +2039,7 @@ def test_qwen35_paro_sampled_batch_uses_native_sampler_rows_when_available(monke
         lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
     )
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     generator = qwen35.Qwen35ParoOneTokenGenerator(
         model_path="/tmp/model",
         weight_index=SimpleNamespace(),

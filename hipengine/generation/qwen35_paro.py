@@ -1812,7 +1812,7 @@ def _native_gpu_sampler_route_available(*, prompt_count: int) -> bool:
 
 
 def _native_gpu_sampler_requested() -> bool:
-    return _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER")
+    return _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER", default=True)
 
 
 def _session_capacity_for(required_sequence_length: int) -> int:

@@ -8652,7 +8652,7 @@ class Qwen35ParoResidentSession:
         self._native_sampling_states_by_slot = None
 
     def configure_native_sampler(self, params: Any | None, state: RowSamplingState | None) -> None:
-        """Configure the default-off native GPU sampler for c=1 samples."""
+        """Configure the native GPU sampler for c=1 samples."""
 
         self._native_sampling_params = params
         self._native_sampling_state = state

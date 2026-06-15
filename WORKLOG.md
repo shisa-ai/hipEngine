@@ -93715,3 +93715,41 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-16 - Native sampler scoped default promotion
+
+Promoted the PARO native GPU sampler from opt-in to default-on for the covered
+route: supported c=1 sampled requests and scheduler-owned c>N serial per-slot
+sampled rows when every row passes `supports_native_gpu_sampling()`. The old env
+remains as a rollback opt-out (`HIPENGINE_QWEN35_NATIVE_SAMPLER=0`). Unsupported
+native shapes still fail closed to host logits sampling: true batched c>N, GGUF,
+`top_logprobs`, suppress/min-token/EOS processors, forced-token queues, JSON
+close forcing, thinking-budget dynamic processors, `top_k > 64`, and combined
+`top_k` with `top_p`/`min_p`.
+
+Updated `/v1/hipengine/capabilities` to report
+`sampling.native_gpu.enabled=true`, `default_path=true`, and
+`disable_env="HIPENGINE_QWEN35_NATIVE_SAMPLER=0"`. Updated
+`docs/SAMPLING.md`, `docs/AGENTIC.md`, API/env/kernel/refactor docs, and the
+benchmark rollup to mark the scoped default promotion. Added
+`benchmarks/results/2026-06-16-gpu0-native-sampler-default-promotion.json`,
+which references the prior GPU0 W7900 c1 45/64 source smoke:
+greedy `73.517 tok/s`, host-logits sampling `29.360 tok/s`, native GPU sampling
+`65.111 tok/s`, native/host `2.218x`, native/greedy `0.886x`, native route
+`full_vocab_logits_d2h=false` and `logits_d2h_bytes=0`.
+
+Default route smoke:
+- `env -u HIPENGINE_QWEN35_NATIVE_SAMPLER HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY' ... LLM.generate_detailed(... SamplingParams(max_tokens=16, temperature=0.7, top_k=4, seed=123, kv_storage="bf16")) ... PY` ->
+  env unset, `sampler_mode="gpu_sample"`, `full_vocab_logits_d2h=false`,
+  `logits_d2h_bytes=0`, `generated_tokens=16`. Elapsed `55.355s` includes model
+  load/JIT and is route validation only, not a throughput benchmark.
+
+Validation:
+- `python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_sampling.py tests/test_server_api.py -q -k 'native_gpu or native_sampler or capabilities_endpoint_reports_manifest_and_auth'` -> `12 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q -k 'native_gpu_unsupported or non_greedy_request_uses_host_logits_sampler or stream_detailed_emits_live_sampled_telemetry'` -> `4 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q` -> `40 passed`.
+- `python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q -k 'native_gpu or native_sampler or capabilities_endpoint_reports_manifest_and_auth or sampling'` -> `65 passed`.
+- `python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> `All checks passed!`.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"` -> `hip OK`.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.

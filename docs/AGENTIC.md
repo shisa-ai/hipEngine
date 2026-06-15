@@ -41,14 +41,14 @@ Already available or recently added:
   telemetry marks the full-vocab host readback with `full_vocab_logits_d2h=true`
   and per-token `logits_d2h_bytes`. Greedy-equivalent requests stay on the
   graph/argmax fast path.
-- A default-off PARO native GPU sampler route exists for supported sampled
-  requests via `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; it covers c=1 and
+- A default-on PARO native GPU sampler route exists for supported sampled
+  requests; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables it for rollback. It
+  covers c=1 and
   scheduler-owned c>N serial per-slot decode when every row is GPU-sampler
   eligible. It supports logit bias/history-penalty processors, full-vocab
   temperature sampling, bounded `top_k <= 64`, exact full-vocab `top_p`/`min_p`,
-  selected-token logprobs, and post-accept token stops. It is not
-  performance-promoted and does not cover true batched c>N sampling, GGUF, or
-  `top_logprobs`.
+  selected-token logprobs, and post-accept token stops. It does not cover true
+  batched c>N sampling, GGUF, or `top_logprobs`.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, suppress token ids,
   min-token/EOS policy, stop token ids, stop token sequences, `seed`, and
@@ -402,12 +402,13 @@ Current code reality:
   and temperature fields for scheduler integration.
 - Standalone GPU sampler-family kernels exist for logit bias, penalties,
   full-vocab temperature sampling, bounded `top_k <= 64`, and exact full-vocab
-  `top_p`/`min_p`. Supported PARO c=1 sampled requests can opt into this route
-  with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`, and supported PARO c>N sampled
-  batches can route each physical slot through the same native sampler state;
+  `top_p`/`min_p`. Supported PARO c=1 sampled requests use this route by
+  default, and supported PARO c>N sampled batches can route each physical slot
+  through the same native sampler state; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`
+  disables the native route for rollback;
   suppress-token ids, min-token/EOS policy, true batched c>N sampling, GGUF,
-  `top_logprobs`, and performance promotion remain future work for the native
-  route.
+  `top_logprobs`, and full native processor parity remain future work for the
+  native route.
 
 Required pre-selection processors, in order:
 
@@ -432,7 +433,7 @@ Required post-accept state updates:
 Implementation notes:
 
 - Keep a pure, testable planner that decides whether processors require
-  `GREEDY_FAST`, `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or an opt-in
+  `GREEDY_FAST`, `PROCESSED_ARGMAX`, `HOST_LOGITS_SAMPLE`, or a guarded
   `GPU_SAMPLE` path.
 - Greedy-equivalent requests with no active processors must still take the graph
   fast path.
@@ -2249,17 +2250,18 @@ Current state:
   full-vocab temperature sampling, bounded `top_k <= 64`, exact full-vocab
   `top_p`/`min_p`, counter-based row/step RNG, selected-token logprob output,
   and small-vocab GPU1 CPU-reference fixtures;
-- supported PARO c=1 sampled requests can route through those kernels with
-  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`. PARO c=1 sampled telemetry reports
+- supported PARO c=1 sampled requests route through those kernels by default;
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables the route for rollback. PARO c=1
+  sampled telemetry reports
   `full_vocab_logits_d2h=false` and `logits_d2h_bytes=0` when that native
-  route actually runs. Env-enabled PARO c>N sampled batches use the same
+  route actually runs. Default-enabled PARO c>N sampled batches use the same
   no-full-logits-readback metadata when every row is routed through serial
   per-slot native sampler state. PARO/GGUF host-logits fallback paths report
   `full_vocab_logits_d2h=true` plus known per-token vector bytes, so server
   metadata can distinguish native sampling from host readback selection. PARO
   c>N unsupported sampled rows and GGUF sampled requests still run through host
-  sampling, but when `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` requested native
-  sampling, their decode-state telemetry reports
+  sampling, but when native sampling is enabled or explicitly requested for a
+  route shape, their decode-state telemetry reports
   `sampler_fallback_reason="native_gpu_unsupported_request"` instead of the
   generic host fallback reason. The capabilities manifest now advertises the
   same current native-sampler blockers enforced by `supports_native_gpu_sampling`,
@@ -2271,8 +2273,8 @@ Current state:
   sampling check after each selected token. The manifest scope is
   `paro_c1_and_serial_per_slot_c_gt_1`, while true batched c>N remains
   explicitly unsupported;
-- true batched c>N/GGUF integration, `top_logprobs`, retained performance
-  evidence, and default-path promotion remain unimplemented.
+- true batched c>N/GGUF integration, `top_logprobs`, and broader retained
+  profiler/shape coverage remain unimplemented.
 
 Exit gates:
 
@@ -2283,8 +2285,9 @@ Exit gates:
 #### P4.3 Exact GPU top-p
 
 Current state: a standalone correctness-first exact full-vocab GPU
-`top_p`/`min_p` sampler exists and the opt-in PARO c=1 native route can dispatch
-supported `top_k=0` top-p requests. It is not performance-promoted.
+`top_p`/`min_p` sampler exists and the default PARO native route can dispatch
+supported `top_k=0` top-p requests. A faster nucleus selector remains future
+performance work.
 
 Remaining implementation:
 
@@ -2432,8 +2435,8 @@ Current code reality:
   `budget_policy="prompt_hint_plus_tokenized_soft_and_hard_close"`,
   tokenizer-dependent `token_budget_enforced`, explicit
   `hard_close_token_forcing`, tokenizer-dependent `soft_close_bias`, and
-  tokenizer-dependent `eos_suppression`, the default-off PARO c=1 native GPU
-  sampler scope, speculative/MTP sampling compatibility,
+  tokenizer-dependent `eos_suppression`, the default-on scoped PARO native GPU
+  sampler route, speculative/MTP sampling compatibility,
   tool/structured-output result-validation failure reason sets,
   request-timeout/client-disconnect support, backend-authored choice telemetry,
   the optional `decode_state` field vocabulary, grammar-support status,
@@ -3116,11 +3119,11 @@ Remaining P3 work:
    snapshots, and prefix-vs-turn-history eviction policy are not implemented.
    Do this only when avoiding re-prefill is a measured bottleneck for real
    agent sessions.
-2. **Native sampler promotion and full sampler polish.** The opt-in PARO native
-   sampler route exists, but promotion still needs retained GPU evidence that
-   supported sampled shapes are correct, non-regressive, and operationally worth
-   making default. True batched c>N/GGUF native sampling and native
-   `top_logprobs` parity remain unimplemented while host fallback is explicit.
+2. **Native sampler full polish.** The scoped PARO native sampler route is
+   default-on for supported c=1 and serial per-slot c>N shapes, with
+   `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` as rollback. True batched c>N/GGUF native
+   sampling, native `top_logprobs` parity, and broader profiler/shape coverage
+   remain unimplemented while host fallback is explicit.
 3. **Multi-model routing, model-family fallback, and TP runtime.** Current
    routing metadata is single-model exact-match only. Multiple resident models,
    capability-aware fallback, model-family substitution, and tensor parallel

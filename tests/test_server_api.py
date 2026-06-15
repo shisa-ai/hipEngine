@@ -1248,12 +1248,13 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "eos_token_id" in body["sampling"]["parameters"]
     assert "json_object_close_forcing" in body["sampling"]["parameters"]
     assert body["sampling"]["native_gpu"] == {
-        "enabled": False,
+        "enabled": True,
         "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
+        "disable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
         "scope": "paro_c1_and_serial_per_slot_c_gt_1",
         "c_gt_1": "serial_per_slot_when_all_rows_supported",
         "true_batched_c_gt_1": False,
-        "default_path": False,
+        "default_path": True,
         "top_k_max": 64,
         "top_p_min_p": "exact_full_vocab_top_k_0",
         "selected_logprobs": True,

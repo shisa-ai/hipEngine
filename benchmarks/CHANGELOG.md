@@ -19,7 +19,8 @@ Examples:
 
 ## 2026-06-16
 
-- [diagnostic no-promote] Qwen3.6-35B-A3B PARO / w4_paro BF16 KV / GPU0 c1 sampled 45/64: host-logits sampling `29.360 -> 65.111 tok/s` (+121.8%) with opt-in native GPU sampling, while greedy fast path measured `73.517 tok/s` and native/greedy was `0.886x`; native route reported `full_vocab_logits_d2h=false`, GPU sampler suite passed `10/10`, but default promotion remains blocked by single-shape diagnostic scope plus missing true batched c>N/GGUF/`top_logprobs` parity and broader profiler evidence; `benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json`.
+- [promotion] Qwen3.6-35B-A3B PARO / w4_paro BF16 KV / GPU0 c1 sampled 45/64: host-logits sampling `29.360 -> 65.111 tok/s` (+121.8%) by promoting native GPU sampling as the scoped default for supported PARO requests; env-unset route smoke reports `sampler_mode=gpu_sample`, `full_vocab_logits_d2h=false`, and `logits_d2h_bytes=0`; `benchmarks/results/2026-06-16-gpu0-native-sampler-default-promotion.json` with source `benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json`.
+- [diagnostic superseded] Qwen3.6-35B-A3B PARO / w4_paro BF16 KV / GPU0 c1 sampled 45/64: host-logits sampling `29.360 -> 65.111 tok/s` (+121.8%) with opt-in native GPU sampling, while greedy fast path measured `73.517 tok/s` and native/greedy was `0.886x`; native route reported `full_vocab_logits_d2h=false`, GPU sampler suite passed `10/10`; superseded by the scoped default promotion entry above, with true batched c>N/GGUF/`top_logprobs` still documented as host-fallback gaps; `benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json`.
 
 ## 2026-06-15
 

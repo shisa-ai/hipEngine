@@ -212,7 +212,9 @@ def sample_top_p_temperature_f32_rows_i32(
     This correctness-first standalone S7 kernel sorts finite logits by
     descending value with lower-token-id ties, applies exact nucleus/min-p
     retain-one semantics, and writes selected ids/logprobs plus optional retained
-    candidate counts. It is not performance-promoted or routed into generation.
+    candidate counts. Generation routes supported PARO native-sampler requests
+    through this correctness-first kernel; a faster top-p selector remains future
+    performance work.
     """
 
     _check_rows_vocab(rows, vocab_size)

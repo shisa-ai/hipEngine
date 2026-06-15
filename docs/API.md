@@ -1049,9 +1049,10 @@ in local, non-sensitive debugging sessions.
   `suppress_token_ids`, forced-token queues, `min_tokens` / `eos_token_id`,
   `seed`, and `n` through the host-logits compatibility path.
   Greedy-equivalent requests stay on each engine's graph/argmax fast path. PARO
-  c=1 and scheduler-owned c>N serial per-slot decode also have a default-off
-  native GPU sampler route for supported sampled requests behind
-  `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; true batched c>N sampling, GGUF,
+  c=1 and scheduler-owned c>N serial per-slot decode use the native GPU sampler
+  by default for supported sampled requests; set
+  `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` to force host sampling for rollback.
+  True batched c>N sampling, GGUF,
   `top_logprobs`, suppress-token ids, min-token/EOS policy, forced-token queues,
   sequence-completion repair, JSON object close forcing, thinking-budget
   controls, and unsupported native filter combinations fall back to the host

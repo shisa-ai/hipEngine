@@ -1,0 +1,117 @@
+{
+  "schema": "hipengine.native_sampler_default_promotion.v1",
+  "date": "2026-06-16",
+  "status": "promoted_scoped_default",
+  "promotion_decision": "Make the native GPU sampler the default for supported PARO c=1 and scheduler-owned serial per-slot c>N sampled requests; keep explicit host fallback for unsupported shapes and HIPENGINE_QWEN35_NATIVE_SAMPLER=0 as rollback.",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100, HIP_VISIBLE_DEVICES=0",
+  "backend": "hip_gfx1100",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+  "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+  "quant": "w4_paro",
+  "source_benchmark": {
+    "artifact": "benchmarks/results/2026-06-16-gpu0-native-sampler-promotion-smoke.json",
+    "workload": "c1 sampled prompt 45 / decode 64, BF16 KV, one warmup plus three measured runs",
+    "greedy_fast_median_tok_s": 73.51721350808828,
+    "host_logits_sample_median_tok_s": 29.360481172056243,
+    "native_gpu_sample_median_tok_s": 65.11057896967117,
+    "native_vs_host_speedup": 2.2176264274456097,
+    "native_vs_greedy_ratio": 0.885650800169511,
+    "native_route": {
+      "sampler_mode": "gpu_sample",
+      "full_vocab_logits_d2h": false,
+      "logits_d2h_bytes": 0
+    },
+    "host_route": {
+      "sampler_mode": "host_logits_sample",
+      "full_vocab_logits_d2h": true,
+      "logits_d2h_bytes": 993280
+    }
+  },
+  "default_route_smoke": {
+    "command": "env -u HIPENGINE_QWEN35_NATIVE_SAMPLER HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 - <<'PY' ... LLM.generate_detailed(... SamplingParams(max_tokens=16, temperature=0.7, top_k=4, seed=123, kv_storage='bf16')) ... PY",
+    "workload": "one c1 sampled prompt, 9 prompt tokens, 16 generated tokens",
+    "performance_note": "Elapsed time includes model load/JIT and is route validation only, not a throughput benchmark.",
+    "env_value": null,
+    "elapsed_s_includes_load_and_jit": 55.35535666695796,
+    "generated_tokens": 16,
+    "finish": {
+      "reason": "length",
+      "length_limit": 16,
+      "sampler_mode": "gpu_sample"
+    },
+    "decode_state": {
+      "sampler_mode": "gpu_sample",
+      "sampler_fast_path_blockers": [
+        "temperature"
+      ],
+      "full_vocab_logits_d2h": false,
+      "logits_d2h_bytes": 0,
+      "prompt_tokens": 9,
+      "generated_tokens": 16,
+      "step_index": 16,
+      "phase": "done"
+    }
+  },
+  "promotion_scope": {
+    "default_enabled_when_env_unset": true,
+    "disable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
+    "supported": [
+      "PARO c=1 sampled requests accepted by supports_native_gpu_sampling()",
+      "PARO scheduler-owned c>N serial per-slot sampled requests when every row is accepted by supports_native_gpu_sampling() and the resident session exposes native row sampler configuration",
+      "selected-token logprobs",
+      "logit_bias plus repetition/presence/frequency penalties",
+      "full-vocab temperature sampling",
+      "bounded top_k in [1, 64]",
+      "exact full-vocab top_p/min_p with top_k=0",
+      "post-selection stop token ids/sequences"
+    ],
+    "fail_closed_to_host": [
+      "true batched c>N native token selection",
+      "GGUF native sampling",
+      "top_logprobs",
+      "suppress_token_ids",
+      "min_tokens/eos suppression",
+      "forced-token queues",
+      "sequence-completion repair",
+      "JSON object close forcing",
+      "thinking-budget dynamic processors",
+      "top_k > 64",
+      "combined top_k with top_p or min_p"
+    ]
+  },
+  "validation": [
+    {
+      "command": "python3 -m pytest tests/test_generation_qwen35_paro.py -q",
+      "result": "40 passed"
+    },
+    {
+      "command": "python3 -m pytest tests/test_sampling.py tests/test_server_api.py -q -k 'native_gpu or native_sampler or capabilities_endpoint_reports_manifest_and_auth or sampling'",
+      "result": "65 passed"
+    },
+    {
+      "command": "python3 -m pytest tests/test_generation_qwen35_gguf_sampling.py -q -k 'native_gpu_unsupported or non_greedy_request_uses_host_logits_sampler or stream_detailed_emits_live_sampled_telemetry'",
+      "result": "4 passed"
+    },
+    {
+      "command": "python3 -m py_compile hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_qwen35_paro.py tests/test_server_api.py",
+      "result": "passed"
+    },
+    {
+      "command": "uv run ruff check hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_qwen35_paro.py tests/test_server_api.py",
+      "result": "All checks passed"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+      "result": "hip OK"
+    },
+    {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q",
+      "result": "10 passed"
+    }
+  ],
+  "software": {
+    "hipengine_base_commit": "1b5e3969",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3",
+    "python_version": "3.12.9"
+  }
+}
