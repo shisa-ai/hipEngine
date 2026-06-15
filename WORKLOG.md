@@ -93344,3 +93344,32 @@ Validation:
 - Prompt verifier passed: metadata-only NextN draft shape/spec validation, no
   torch hot-path import, no backend/quant dispatch branches, no attention/KV /
   runtime behavior changes, no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference eh_proj oracle
+
+Implemented `mtp-gguf` multiloop iteration 17: the first torch-free CPU-reference
+oracle for GGUF NextN draft execution.
+
+Changes:
+- Added `qwen35_gguf_mtp_eh_proj(hidden_seed, token_embedding, eh_proj_weight)`
+  in `hipengine/kernels/cpu_reference/ops.py`.
+  - Validates `hidden_seed` shape `[rows, hidden]`.
+  - Requires `token_embedding` to match the hidden seed shape.
+  - Requires `eh_proj_weight` shape `[hidden, 2*hidden]`.
+  - Concatenates `[hidden_seed, token_embedding]` in that order and computes the
+    fp32 projection with `eh_proj_weight.T`.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_eh_proj", "gguf_f32", "qwen35")`.
+- Added `tests/test_gguf_mtp_cpu_reference.py` covering orientation, multi-row
+  support, shape validation, and registry resolution.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `4` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py` and
+  `hipengine/kernels/cpu_reference/__init__.py`.
+- Prompt verifier passed: torch-free CPU reference helper only, no backend/quant
+  dispatch branches, no attention/KV path changes, no full NextN math, and no
+  performance claims.

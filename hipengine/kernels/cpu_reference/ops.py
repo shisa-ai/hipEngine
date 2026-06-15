@@ -43,6 +43,38 @@ def qkv_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> 
     return linear(x, weight, bias)
 
 
+def qwen35_gguf_mtp_eh_proj(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+) -> np.ndarray:
+    """CPU reference for the first Qwen35 GGUF NextN draft operation.
+
+    llama.cpp's Qwen35MoE MTP block feeds the target hidden row and token
+    embedding through ``nextn.eh_proj``.  This helper pins the tensor orientation
+    before the full draft-only NextN attention/MoE oracle lands.
+    """
+
+    hidden = np.asarray(hidden_seed, dtype=np.float32)
+    embedding = np.asarray(token_embedding, dtype=np.float32)
+    weight = np.asarray(eh_proj_weight, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("hidden_seed must have shape [rows, hidden]")
+    if embedding.shape != hidden.shape:
+        raise ValueError("token_embedding must match hidden_seed shape")
+    if weight.ndim != 2:
+        raise ValueError("eh_proj_weight must have shape [hidden, 2 * hidden]")
+    rows, hidden_size = hidden.shape
+    if weight.shape != (hidden_size, hidden_size * 2):
+        raise ValueError(
+            "eh_proj_weight must have shape [hidden, 2 * hidden] "
+            f"for hidden={hidden_size}; got {weight.shape}"
+        )
+    del rows
+    fused = np.concatenate([hidden, embedding], axis=-1)
+    return np.matmul(fused, weight.T).astype(np.float32)
+
+
 def gguf_quant_gemv(
     x: ArrayLike,
     qweight: ArrayLike,
@@ -1048,6 +1080,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rmsnorm": rmsnorm,
         "linear": linear,
         "qkv_proj": qkv_proj,
+        "qwen35_gguf_mtp_eh_proj": qwen35_gguf_mtp_eh_proj,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1070,6 +1103,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate_fp16"),
         full_attn_prefill,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_eh_proj", "gguf_f32", "qwen35"),
+        qwen35_gguf_mtp_eh_proj,
         replace=replace,
     )
     register(
