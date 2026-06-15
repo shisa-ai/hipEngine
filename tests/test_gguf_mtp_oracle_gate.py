@@ -37,6 +37,33 @@ def test_gguf_mtp_oracle_gate_passes_committed_fixture() -> None:
     assert result["expected_top1_token_ids"] == [2]
     assert result["actual_top_k_token_ids"] == [[2, 0, 3]]
     assert result["actual_top_k_logits"] == [[1.8975492715835571, 0.630980908870697, -1.3442893028259277]]
+    assert result["draft_execution_plan"]["proposed_token_ids"] == [2]
+    assert result["draft_execution_plan"]["proposal"]["top_k_token_ids"] == [[2, 0, 3]]
+    assert result["draft_execution_plan"]["proposal"]["topk_kernel"] == [
+        "cpu_reference",
+        "mtp_draft_topk",
+        "w4_gguf",
+        "full_vocab_d2h",
+    ]
+    assert result["draft_execution_plan"]["kv_live_spans"] == {
+        "spans_mode": "uniform",
+        "storage_dtype": "bf16",
+        "rows": 1,
+        "block_size": 256,
+        "logical_blocks": 1,
+        "base_offsets": [[0]],
+        "append_live_counts": [1],
+        "decode_live_counts": [2],
+        "token_positions": [1],
+        "evict_mask": None,
+    }
+    assert result["draft_execution_plan"]["cpu_reference_kwargs"]["decode"] == {
+        "kv_base_offsets": [[0]],
+        "kv_live_counts": [2],
+        "kv_token_positions": [1],
+        "kv_evict_mask": None,
+        "block_size": 256,
+    }
 
 
 def test_gguf_mtp_oracle_gate_fails_tampered_expected_logits(tmp_path: Path) -> None:

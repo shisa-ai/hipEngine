@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +25,25 @@ if str(REPO_ROOT) not in sys.path:
 import hipengine.kernels.cpu_reference  # noqa: F401,E402 - self-registers CPU kernels
 from hipengine.kernels.registry import resolve  # noqa: E402
 from hipengine.quant.gguf import GGMLQuantizationType  # noqa: E402
+from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext  # noqa: E402
 
 
 DEFAULT_FIXTURE = Path("benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json")
+
+
+@dataclass(frozen=True)
+class _FixtureHiddenContract:
+    ready_for_mtp: bool
+    rows: int
+    hidden_size: int
+
+
+@dataclass(frozen=True)
+class _FixtureSeed:
+    token_id: int
+    position: int
+    hidden_ptr: int
+    hidden_contract: _FixtureHiddenContract
 
 
 def run_oracle_gate(
@@ -66,6 +83,11 @@ def run_oracle_gate(
         "rows": int(actual_logits.shape[0]),
         "vocab_size": int(actual_logits.shape[1]),
     }
+    draft_execution_plan = _build_draft_execution_plan_summary(
+        fixture,
+        actual_logits=actual_logits,
+        top_k=top_k,
+    )
     passed = metrics["max_kl"] <= float(max_kl) and metrics["top1_agreement"] >= float(
         min_top1_agreement
     )
@@ -85,8 +107,40 @@ def run_oracle_gate(
         "actual_top_k_token_ids": actual_top_k.astype(int).tolist(),
         "actual_top_k_logits": actual_top_k_logits.astype(float).tolist(),
         "expected_top_k_token_ids": expected_top_k.astype(int).tolist(),
+        "draft_execution_plan": draft_execution_plan,
         "passed": bool(passed),
     }
+
+
+def _build_draft_execution_plan_summary(
+    fixture: dict[str, Any],
+    *,
+    actual_logits: np.ndarray,
+    top_k: int,
+) -> dict[str, Any]:
+    hidden_seed = _f32(fixture["inputs"]["hidden_seed"])
+    if hidden_seed.ndim != 2 or hidden_seed.shape[0] < 1:
+        raise ValueError("hidden_seed must have shape [rows, hidden_size]")
+    seed = _FixtureSeed(
+        token_id=int(fixture.get("seed_token_id", 0)),
+        position=int(fixture.get("seed_position", 0)),
+        hidden_ptr=int(fixture.get("seed_hidden_ptr", 1)),
+        hidden_contract=_FixtureHiddenContract(
+            ready_for_mtp=True,
+            rows=1,
+            hidden_size=int(hidden_seed.shape[1]),
+        ),
+    )
+    context = Qwen35GGUFMTPContext(target_session=object())
+    context.capture_pending_seed(seed, source="oracle_fixture")
+    plan = context.build_draft_execution_plan_from_logits(
+        request_id=int(fixture.get("request_id", 0)),
+        logits=actual_logits,
+        top_k=int(top_k),
+        block_size=int(fixture.get("block_size", 256)),
+        storage_dtype=str(fixture.get("kv_storage_dtype", "bf16")),
+    )
+    return plan.as_dict()
 
 
 def _run_nextn_fixture(fixture: dict[str, Any]) -> np.ndarray:

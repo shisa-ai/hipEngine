@@ -565,9 +565,11 @@ Current status:
   fallback until a backend `topk_device` variant exists.
   `scripts/gguf_mtp_oracle_gate.py` turns that fixture into a
   reusable mechanical artifact with KL/top-1 metrics before any performance
-  comparison is allowed, and uses the registered
+  comparison is allowed, uses the registered
   `KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")`
-  unfused top-k fallback/oracle for draft token selection.
+  unfused top-k fallback/oracle for draft token selection, and embeds the
+  metadata-only `draft_execution_plan` contract that ties selected token rows to
+  KVLiveSpans-shaped append/decode kwargs.
 - llama.cpp verbose `draft-mtp` candidate fixture
   `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` captures a
   short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
@@ -836,6 +838,8 @@ is now answered by the M1 required/optional table.)
       qwen35_dense_logits)` (plus legacy `gguf_moe` alias) as the offline oracle,
       with a deterministic fixture:
       `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
+      The oracle gate now embeds the metadata-only draft execution-plan summary
+      derived from those exact logits.
 - [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
       attention path and dense fallback; CPU-reference coverage and call specs
       now include dense and KVLiveSpans-shaped paged-cache paths through the full

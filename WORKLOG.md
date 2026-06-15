@@ -95918,3 +95918,48 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. The execution plan
   explicitly carries KVLiveSpans-shaped append/decode kwargs for the future MTP
   attention/KV-write path.
+
+## 2026-06-15 - MTP-GGUF oracle gate execution-plan summary
+
+Implemented `mtp-gguf` multiloop iteration 72: wired the GGUF MTP
+CPU-reference oracle gate to the draft execution-plan contract.
+
+Scope note:
+- Oracle-gate/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- This makes the exactness artifact prove that the CPU-reference NextN logits,
+  registered top-k fallback, selected draft row, and metadata KVLiveSpans kwargs
+  are mutually consistent before native runtime execution is implemented.
+
+Changes:
+- `scripts/gguf_mtp_oracle_gate.py` now builds a metadata-only
+  `Qwen35GGUFMTPDraftExecutionPlan` from the actual CPU-reference logits and
+  includes it under `draft_execution_plan` in the JSON artifact.
+- The embedded execution-plan summary carries selected/proposed token IDs,
+  top-k token/logit evidence, the top-k registry key, uniform KVLiveSpans
+  metadata, and CPU-reference-shaped append/decode kwargs.
+- Added oracle-gate assertions for the embedded execution-plan top-k evidence and
+  KVLiveSpans decode kwargs.
+- Updated `docs/MTP-gguf.md` to document that the oracle gate now emits this
+  metadata execution-plan summary derived from the exact fixture logits.
+
+Validation:
+- Focused oracle/context/CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_cpu_reference.py` -> `38` passed.
+- Oracle gate CLI smoke passed:
+  `scripts/gguf_mtp_oracle_gate.py --out <tmp> --fail-on-fail` ->
+  `oracle_gate True tokens [2] topk [[2, 0, 3]] decode {'block_size': 256, 'kv_base_offsets': [[0]], 'kv_evict_mask': None, 'kv_live_counts': [2], 'kv_token_positions': [1]}`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_oracle_gate.py hipengine/speculative/gguf_mtp.py` and
+  `git diff --check -- scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_oracle_gate.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: oracle-gate/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; top-k proposal resolves the four-axis registry
+  key; no generation integration, native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. The oracle artifact
+  explicitly carries KVLiveSpans-shaped append/decode kwargs for future MTP
+  attention/KV-write execution.
