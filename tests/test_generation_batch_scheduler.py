@@ -16232,7 +16232,15 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     r0 = scheduler.submit(
         [10],
         max_new_tokens=2,
-        sampling=PerRowSamplingParams(temperature=0.0, top_k=1, top_p=1.0, seed=7, stop_tokens=(99,)),
+        sampling=PerRowSamplingParams(
+            temperature=0.0,
+            top_k=1,
+            top_p=1.0,
+            seed=7,
+            stop_tokens=(99,),
+            logprobs=True,
+            top_logprobs=2,
+        ),
     )
     r1 = scheduler.submit(
         [20],
@@ -16313,8 +16321,12 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.thinking_close_token_rows == ((), (42, 43), ())
     assert block.thinking_hard_token_caps == (None, 8, None)
     assert block.thinking_soft_close_windows == (0, 2, 0)
+    assert block.logprob_rows == (True, False, False)
+    assert block.top_logprob_rows == (2, 0, 0)
     assert block.seeds == again.seeds
     assert len(set(block.seeds)) == 3
+    assert block.params_for(r0).logprobs is True
+    assert block.params_for(r0).top_logprobs == 2
     assert block.params_for(r1).temperature == 0.7
     assert block.params_for(r1).min_p == 0.05
     assert block.params_for(r1).logit_bias == ((12, -1.5),)
@@ -16334,6 +16346,11 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
     assert block.params_for(r2).forced_token_reason == "tool_choice_required"
     assert block.sampler_plan_for(r0).mode is SamplingMode.PROCESSED_ARGMAX
     assert block.sampler_plan_for(r0).active_processors == ("stop_token_ids",)
+    assert block.sampler_plan_for(r0).fast_path_blockers == (
+        "stop_token_ids",
+        "logprobs",
+        "top_logprobs",
+    )
     assert block.sampler_plan_for(r1).mode is SamplingMode.HOST_LOGITS_SAMPLE
     assert block.sampler_plan_for(r1).active_processors == (
         "logit_bias",
@@ -16361,7 +16378,7 @@ def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_togeth
             "request_id": r0,
             "mode": "processed_argmax",
             "active_processors": ["stop_token_ids"],
-            "sampler_fast_path_blockers": ["stop_token_ids"],
+            "sampler_fast_path_blockers": ["stop_token_ids", "logprobs", "top_logprobs"],
             "native_gpu_available": False,
             "uses_host_logits": True,
             "sampler_fallback_reason": "processed_logits_required",
@@ -17157,6 +17174,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         (PerRowSamplingParams(frequency_penalty=0.1), "frequency_penalty"),
         (PerRowSamplingParams(suppress_tokens=(102,)), "suppress_token_ids"),
         (PerRowSamplingParams(min_tokens=2, eos_token_id=99), "min_tokens"),
+        (PerRowSamplingParams(eos_token_id=99), "eos_token_id"),
         (PerRowSamplingParams(stop_tokens=(99,)), "stop_token_ids"),
         (PerRowSamplingParams(stop_token_sequences=((99, 100),)), "stop_token_sequences"),
         (PerRowSamplingParams(forced_tokens_pending=(101,)), "forced_tokens_pending"),
@@ -17177,6 +17195,8 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
             PerRowSamplingParams(thinking_close_token_ids=(201, 202), thinking_hard_token_cap=4),
             "thinking_budget",
         ),
+        (PerRowSamplingParams(logprobs=True), "logprobs"),
+        (PerRowSamplingParams(top_logprobs=2), "top_logprobs"),
     ],
 )
 def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampling(

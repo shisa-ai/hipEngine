@@ -92639,3 +92639,22 @@ Validation:
 - `uv run pytest tests/test_server_api.py -q -k 'generation_batcher or streaming_completion_n_uses_scheduler_token_chunks_for_buffered_deltas or streaming_completion_can_include_hipengine_metadata or streaming_completion_prefers_backend_chunk_decode_state or streaming_completion_prefers_backend_chunk_finish_details or streaming_chat_completion_n_uses_scheduler_token_chunks_for_buffered_answer_deltas or streaming_chat_completion_can_include_hipengine_metadata or streaming_chat_completion_prefers_backend_chunk_decode_state or streaming_chat_completion_prefers_backend_chunk_finish_details or streaming_chat_completion_returns_tool_call_deltas'` -> `21 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC scheduler MTP logprob guards
+
+Threaded `logprobs` and `top_logprobs` through scheduler-owned
+`PerRowSamplingParams` and `SamplerParamsBlock` rows so resident c>N and
+speculative/MTP scheduler code can see metadata requirements that are not token
+processors but still make raw target top-1 verification insufficient. Extended
+the scheduler speculative-verify rejection matrix for explicit EOS-only,
+selected-logprob, and top-logprob rows. Updated `docs/AGENTIC.md` to make the
+implemented scope explicit: current raw-argmax MTP remains guarded off for
+logit bias, processors, explicit EOS, and logprob metadata requirements until
+processed-target verification exists.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_sampling.py` -> passed.
+- `uv run pytest tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py -q -k 'speculative_mtp_sampling_allows_only_greedy_fast_policy or speculative_mtp_incompatible_fields_match_blocker_policy or per_row_sampler_block_keeps_incompatible_rows_together or rejects_speculative_verify_for_processed_sampling or qwen35_paro_sampled_batch_uses_scheduler_packed_prefill'` -> `22 passed`.
+- `uv run pytest tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py -q -k 'speculative_mtp or sampler_block or speculative_verify or qwen35_paro_sampled_batch_uses_scheduler_packed_prefill or qwen35_paro_native_opt_in_reports_unsupported_top_logprobs_fallback'` -> `25 passed`.
+- `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_sampling.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_sampling.py docs/AGENTIC.md WORKLOG.md` -> clean.

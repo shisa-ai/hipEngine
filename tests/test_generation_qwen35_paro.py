@@ -1865,7 +1865,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
             "request_id": 0,
             "mode": "host_logits_sample",
             "active_processors": ["logit_bias"],
-            "sampler_fast_path_blockers": ["temperature", "logit_bias"],
+            "sampler_fast_path_blockers": ["temperature", "logit_bias", "logprobs"],
             "native_gpu_available": False,
             "uses_host_logits": True,
             "sampler_fallback_reason": expected_fallback,
@@ -1874,7 +1874,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
             "request_id": 1,
             "mode": "host_logits_sample",
             "active_processors": ["logit_bias"],
-            "sampler_fast_path_blockers": ["temperature", "logit_bias"],
+            "sampler_fast_path_blockers": ["temperature", "logit_bias", "logprobs"],
             "native_gpu_available": False,
             "uses_host_logits": True,
             "sampler_fallback_reason": expected_fallback,
@@ -1890,8 +1890,8 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
         ["logit_bias"],
     ]
     assert [_decode_state(output)["sampler_fast_path_blockers"] for output in generator.last_generation_outputs] == [
-        ["temperature", "logit_bias"],
-        ["temperature", "logit_bias"],
+        ["temperature", "logit_bias", "logprobs"],
+        ["temperature", "logit_bias", "logprobs"],
     ]
     assert [_decode_state(output)["sampler_fallback_reason"] for output in generator.last_generation_outputs] == [
         expected_fallback,
@@ -1965,7 +1965,7 @@ def test_qwen35_paro_sampled_batch_uses_scheduler_packed_prefill(
     first_decode_state = scheduler_chunks[0]["chunk"]["telemetry"]["decode_state"]
     assert first_decode_state["sampler_mode"] == "host_logits_sample"
     assert first_decode_state["active_processors"] == ["logit_bias"]
-    assert first_decode_state["sampler_fast_path_blockers"] == ["temperature", "logit_bias"]
+    assert first_decode_state["sampler_fast_path_blockers"] == ["temperature", "logit_bias", "logprobs"]
     assert first_decode_state["full_vocab_logits_d2h"] is True
     assert first_decode_state["logits_d2h_bytes"] == 2048
 

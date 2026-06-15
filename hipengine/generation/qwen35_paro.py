@@ -1340,6 +1340,8 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         thinking_close_token_ids=request.thinking_close_token_ids,
         thinking_hard_token_cap=request.thinking_hard_token_cap,
         thinking_soft_close_window=request.thinking_soft_close_window,
+        logprobs=request.logprobs,
+        top_logprobs=request.top_logprobs,
     )
 
 

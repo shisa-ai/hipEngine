@@ -70,6 +70,8 @@ class PerRowSamplingParams:
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
+    logprobs: bool = False
+    top_logprobs: int = 0
 
     def __post_init__(self) -> None:
         if self.temperature < 0.0:
@@ -119,6 +121,8 @@ class PerRowSamplingParams:
             raise ValueError("post_thinking_forced_tokens_pending requires a thinking budget")
         if int(self.thinking_soft_close_window) < 0:
             raise ValueError("thinking_soft_close_window must be non-negative")
+        if int(self.top_logprobs) < 0:
+            raise ValueError("top_logprobs must be non-negative")
         logit_bias = normalize_logit_bias_pairs(self.logit_bias)
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_k", int(self.top_k))
@@ -160,6 +164,8 @@ class PerRowSamplingParams:
             None if self.thinking_hard_token_cap is None else int(self.thinking_hard_token_cap),
         )
         object.__setattr__(self, "thinking_soft_close_window", int(self.thinking_soft_close_window))
+        object.__setattr__(self, "logprobs", bool(self.logprobs))
+        object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
 
     def resolved_seed(self, *, request_id: int, row_index: int) -> int:
         base = int(self.seed) if self.seed is not None else 0
@@ -195,6 +201,8 @@ class SamplerParamsBlock:
     thinking_close_token_rows: tuple[tuple[int, ...], ...] = ()
     thinking_hard_token_caps: tuple[int | None, ...] = ()
     thinking_soft_close_windows: tuple[int, ...] = ()
+    logprob_rows: tuple[bool, ...] = ()
+    top_logprob_rows: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         rows = len(self.request_ids)
@@ -254,6 +262,14 @@ class SamplerParamsBlock:
             _check_len("thinking_soft_close_windows", self.thinking_soft_close_windows, rows)
         else:
             object.__setattr__(self, "thinking_soft_close_windows", tuple(0 for _ in range(rows)))
+        if self.logprob_rows:
+            _check_len("logprob_rows", self.logprob_rows, rows)
+        else:
+            object.__setattr__(self, "logprob_rows", tuple(False for _ in range(rows)))
+        if self.top_logprob_rows:
+            _check_len("top_logprob_rows", self.top_logprob_rows, rows)
+        else:
+            object.__setattr__(self, "top_logprob_rows", tuple(0 for _ in range(rows)))
         object.__setattr__(
             self,
             "logit_bias_rows",
@@ -332,6 +348,11 @@ class SamplerParamsBlock:
         object.__setattr__(self, "thinking_close_token_rows", close_token_rows)
         object.__setattr__(self, "thinking_hard_token_caps", hard_caps)
         object.__setattr__(self, "thinking_soft_close_windows", soft_windows)
+        top_logprob_rows = tuple(int(value) for value in self.top_logprob_rows)
+        if any(value < 0 for value in top_logprob_rows):
+            raise ValueError("top_logprob_rows must be non-negative")
+        object.__setattr__(self, "logprob_rows", tuple(bool(value) for value in self.logprob_rows))
+        object.__setattr__(self, "top_logprob_rows", top_logprob_rows)
         if len(set(self.request_ids)) != rows:
             raise ValueError("sampler params block request_ids must be unique")
 
@@ -376,6 +397,8 @@ class SamplerParamsBlock:
             thinking_close_token_rows=tuple(row.thinking_close_token_ids for row in params),
             thinking_hard_token_caps=tuple(row.thinking_hard_token_cap for row in params),
             thinking_soft_close_windows=tuple(row.thinking_soft_close_window for row in params),
+            logprob_rows=tuple(row.logprobs for row in params),
+            top_logprob_rows=tuple(row.top_logprobs for row in params),
         )
 
     def params_for(self, request_id: int) -> PerRowSamplingParams:
@@ -405,6 +428,8 @@ class SamplerParamsBlock:
             thinking_close_token_ids=self.thinking_close_token_rows[index],
             thinking_hard_token_cap=self.thinking_hard_token_caps[index],
             thinking_soft_close_window=self.thinking_soft_close_windows[index],
+            logprobs=self.logprob_rows[index],
+            top_logprobs=self.top_logprob_rows[index],
         )
 
     def sampler_plan_for(

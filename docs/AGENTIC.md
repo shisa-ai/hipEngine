@@ -465,9 +465,12 @@ Current code reality:
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
   `speculative_mtp_sampling_blockers()` encode that policy. The resident
   scheduler rejects speculative verify work for rows with active blocker fields
-  before materializing target verification metadata. The capabilities manifest
-  advertises this guard, the blocker fields, and condition strings such as
-  `temperature > 0` and `eos_token_id set` instead of relying only on prose.
+  before materializing target verification metadata, including row-local
+  logprob / top-logprob requirements that are not token processors but still
+  make raw target top-1 insufficient. The capabilities manifest advertises
+  this guard, the blocker fields, and condition strings such as
+  `temperature > 0`, `eos_token_id set`, and `logprobs requested` instead of
+  relying only on prose.
 - Post-generation validation controls (`response_format`, `guided_json`,
   `guided_regex`, `guided_choice`, `guided_patch`, and `guided_diff`) are not
   MTP blockers as request fields; they add prompt hints and validate visible
@@ -1257,8 +1260,8 @@ Current code reality:
 - Scheduler-owned `SamplerParamsBlock` rows expose the same planner decision
   through `sampler_plan_for()`, `sampler_plans()`, and JSON-ready
   `sampler_plan_metadata()`, so c>N/native scheduler callers can inspect
-  per-row processor blockers and native-fallback reasons without duplicating
-  sampling policy.
+  per-row processor blockers, logprob metadata requirements, and
+  native-fallback reasons without duplicating sampling policy.
 - Host `select_token()` returns the same processor/blocker metadata on
   `SampleResult`; row-local forced-token queues are included even when they were
   not part of request-level params.
