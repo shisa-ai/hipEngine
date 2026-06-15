@@ -291,6 +291,131 @@ def _oracle_helper_prerequisite_handoff() -> dict[str, object]:
     }
 
 
+def _kv_runner_prerequisite_handoff() -> dict[str, object]:
+    """Return KV-backed decode runner prerequisite handoff metadata."""
+
+    session_path = Path(
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json"
+    )
+    preflight_path = Path(
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json"
+    )
+    blocker_path = Path(
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json"
+    )
+    session_file = _repo_relative_path(session_path)
+    preflight_file = _repo_relative_path(preflight_path)
+    blocker_file = _repo_relative_path(blocker_path)
+    session = _load_json_object_if_present(session_file) or {}
+    contract = session.get("contract") if isinstance(session.get("contract"), dict) else {}
+    preflight = _load_json_object_if_present(preflight_file) or {}
+    blocker = _load_json_object_if_present(blocker_file) or {}
+    source_status = blocker.get("streaming_runner_source_status")
+    source_status_record = source_status if isinstance(source_status, dict) else {}
+    runtime_wiring = blocker.get("runtime_wiring_symbol_validation")
+    runtime_wiring_record = runtime_wiring if isinstance(runtime_wiring, dict) else {}
+    trace_artifact = Path(
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json"
+    )
+    next_token_artifact = Path(
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    )
+    session_command = (
+        "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
+    )
+    preflight_command = (
+        "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty"
+    )
+    blocker_command = (
+        "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
+    )
+    trace_command = (
+        "python3 scripts/stepfun_kv_trace_check.py "
+        f"--trace {trace_artifact} "
+        f"--resource-artifact {status_mod.DEFAULT_RESOURCE_ARTIFACT} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    next_token_command = (
+        "python3 scripts/stepfun_kv_next_token_check.py "
+        f"--artifact {next_token_artifact} "
+        f"--prompt-artifact {status_mod.DEFAULT_PROMPT_ARTIFACT} "
+        "--summary-only --fail-on-missing --pretty"
+    )
+    missing_required_paths = preflight.get("missing_required_artifact_paths")
+    return {
+        "schema_version": 1,
+        "source": "stepfun_kv_evidence_preflight",
+        "session_contract_artifact": str(session_path),
+        "session_contract_artifact_present": session_file.exists(),
+        "session_contract_artifact_sha256": _file_sha256_if_present(session_file),
+        "session_contract_status": session.get("status"),
+        "session_contract_ready": contract.get("ready"),
+        "session_contract_executable": contract.get("executable"),
+        "session_contract_blocked_by": contract.get("blocked_by"),
+        "session_contract_pre_run_upload_checks_passed": contract.get(
+            "pre_run_upload_checks_passed"
+        ),
+        "session_contract_launch_operation_count": contract.get(
+            "launch_operation_count"
+        ),
+        "session_contract_all_launches_ready": contract.get("all_launches_ready"),
+        "session_contract_all_launches_have_dispatch_keys": contract.get(
+            "all_launches_have_dispatch_keys"
+        ),
+        "evidence_preflight_artifact": str(preflight_path),
+        "evidence_preflight_artifact_present": preflight_file.exists(),
+        "evidence_preflight_artifact_sha256": _file_sha256_if_present(
+            preflight_file
+        ),
+        "evidence_preflight_status": preflight.get("status"),
+        "evidence_preflight_next_action": preflight.get("next_action"),
+        "required_artifacts_present": preflight.get("required_artifacts_present"),
+        "missing_required_artifact_paths": list(missing_required_paths)
+        if isinstance(missing_required_paths, list)
+        else [],
+        "kv_blocker_status_artifact": str(blocker_path),
+        "kv_blocker_status_artifact_present": blocker_file.exists(),
+        "kv_blocker_status_artifact_sha256": _file_sha256_if_present(blocker_file),
+        "kv_blocker_status": blocker.get("status"),
+        "kv_backed_decode_ready": blocker.get("kv_backed_decode_ready"),
+        "kv_decode_dispatch_ready": blocker.get("kv_decode_dispatch_ready"),
+        "streaming_runner_source_status": source_status_record,
+        "runtime_wiring_symbol_validation": runtime_wiring_record,
+        "trace_artifact": str(trace_artifact),
+        "next_token_artifact": str(next_token_artifact),
+        "session_contract_refresh_command": session_command,
+        "session_contract_refresh_command_sha256": status_mod._stable_json_sha256(
+            session_command
+        ),
+        "evidence_preflight_refresh_command": preflight_command,
+        "evidence_preflight_refresh_command_sha256": status_mod._stable_json_sha256(
+            preflight_command
+        ),
+        "kv_blocker_status_refresh_command": blocker_command,
+        "kv_blocker_status_refresh_command_sha256": status_mod._stable_json_sha256(
+            blocker_command
+        ),
+        "trace_validator_command": trace_command,
+        "trace_validator_command_sha256": status_mod._stable_json_sha256(
+            trace_command
+        ),
+        "next_token_validator_command": next_token_command,
+        "next_token_validator_command_sha256": status_mod._stable_json_sha256(
+            next_token_command
+        ),
+        "no_claim_policy": {
+            "oracle_parity_claim_allowed": False,
+            "kv_backed_decode_claim_allowed": False,
+            "e2e_inference_claim_allowed": False,
+            "performance_claim_allowed": False,
+            "reason": (
+                "These are KV runner prerequisites; KV-backed decode remains blocked "
+                "until the streaming loop, kernel trace, and next-token artifact exist."
+            ),
+        },
+    }
+
+
 def _oracle_validator_handoff(
     prompt_artifact: object,
     oracle_artifact: object,
@@ -749,6 +874,7 @@ def build_final_blocker_manifest(status: dict[str, object]) -> dict[str, object]
                     "artifacts_needed_sha256"
                 ),
             }
+            entry["kv_runner_prerequisite_handoff"] = _kv_runner_prerequisite_handoff()
             entry["artifact_handoff"] = artifact
             artifacts_to_collect.extend(kv_required_artifacts)
         entries.append(entry)

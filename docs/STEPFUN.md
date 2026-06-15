@@ -685,7 +685,10 @@ reporting.
   embeds `oracle_helper_prerequisite_handoff`, linking the retained-token helper
   readiness/dry-run/patch artifacts, exact `git apply --unidiff-zero` command,
   readiness refresh command, and retained-token probe command before same-prompt
-  oracle capture. Its `--verify-manifest`
+  oracle capture. The KV entry embeds `kv_runner_prerequisite_handoff`, linking the
+  session-contract, KV-evidence-preflight, and KV-blocker-status artifacts plus the
+  trace/next-token validator commands needed after wiring the streaming decode loop.
+  Its `--verify-manifest`
   mode compares a persisted manifest with the current
   prompt/oracle/resource/docs inputs, while `--verification-status-only` and
   `--verification-failures-only` provide compact drift routing. `scripts/stepfun_handoff_check.py`

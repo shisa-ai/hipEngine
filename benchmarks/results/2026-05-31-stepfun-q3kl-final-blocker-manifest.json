@@ -526,6 +526,179 @@
       "first_missing_evidence": "streaming_runner_ready_flags",
       "gate_blocked_by": "kv_backed_decode_not_wired",
       "gate_ready": false,
+      "kv_runner_prerequisite_handoff": {
+        "evidence_preflight_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json",
+        "evidence_preflight_artifact_present": true,
+        "evidence_preflight_artifact_sha256": "d450b1b55db2dc26b87420d43cb6175ed2cc37c5d0b2938536176360891c4697",
+        "evidence_preflight_next_action": "wire_streaming_decode_loop",
+        "evidence_preflight_refresh_command": "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty",
+        "evidence_preflight_refresh_command_sha256": "6c500864f3f15b0a0f1a0e0adcb434ed53660ce8ae6394b71c675e6f9e9176f7",
+        "evidence_preflight_status": "blocked",
+        "kv_backed_decode_ready": false,
+        "kv_blocker_status": "blocked",
+        "kv_blocker_status_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json",
+        "kv_blocker_status_artifact_present": true,
+        "kv_blocker_status_artifact_sha256": "97c8bb2dd6dd983983e6b656aa9c29fe8d4e8032e5f114eb6a653f2116e8bcbc",
+        "kv_blocker_status_refresh_command": "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty",
+        "kv_blocker_status_refresh_command_sha256": "996ee6856dd4015e4b418cbdeadf8daa8bfaf6d2f19661437473e624c92f11ce",
+        "kv_decode_dispatch_ready": true,
+        "missing_required_artifact_paths": [
+          "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+          "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+        ],
+        "next_token_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+        "next_token_validator_command": "python3 scripts/stepfun_kv_next_token_check.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --summary-only --fail-on-missing --pretty",
+        "next_token_validator_command_sha256": "350d9d427afc31cbaa3ab6da1cf7f14461439850094dc3e7f1532cb7cad8c13a",
+        "no_claim_policy": {
+          "e2e_inference_claim_allowed": false,
+          "kv_backed_decode_claim_allowed": false,
+          "oracle_parity_claim_allowed": false,
+          "performance_claim_allowed": false,
+          "reason": "These are KV runner prerequisites; KV-backed decode remains blocked until the streaming loop, kernel trace, and next-token artifact exist."
+        },
+        "required_artifacts_present": false,
+        "runtime_wiring_symbol_validation": {
+          "all_symbols_present": true,
+          "file": "hipengine/runtime/stepfun_gguf_runner.py",
+          "missing_execution_owner": {
+            "class_present": true,
+            "owner": "StepFunResidentSession",
+            "present": true
+          },
+          "missing_symbols": [],
+          "schema_version": 1,
+          "source": "ast_symbol_validation",
+          "symbol_count": 9,
+          "symbols": [
+            {
+              "class_name": "StepFunShortContextDecodePlanner",
+              "class_present": true,
+              "method_name": "plan_kv_decode_chat",
+              "method_present": true,
+              "present": true,
+              "role": "planner_entrypoint",
+              "symbol": "StepFunShortContextDecodePlanner.plan_kv_decode_chat"
+            },
+            {
+              "class_name": "StepFunTextDecodeResourcePlan",
+              "class_present": true,
+              "method_name": "kv_decode_launch_schedule",
+              "method_present": true,
+              "present": true,
+              "role": "resource_plan_entrypoint",
+              "symbol": "StepFunTextDecodeResourcePlan.kv_decode_launch_schedule"
+            },
+            {
+              "class_name": "StepFunKVDecodeRunPlan",
+              "class_present": true,
+              "method_name": "upload_decode_inputs",
+              "method_present": true,
+              "present": true,
+              "role": "device_input_entrypoint",
+              "symbol": "StepFunKVDecodeRunPlan.upload_decode_inputs"
+            },
+            {
+              "class_name": "StepFunKVDecodeRunPlan",
+              "class_present": true,
+              "method_name": "decode_input_upload_plan",
+              "method_present": true,
+              "present": true,
+              "role": "device_input_entrypoint",
+              "symbol": "StepFunKVDecodeRunPlan.decode_input_upload_plan"
+            },
+            {
+              "class_name": "StepFunKVDecodeRunPlan",
+              "class_present": true,
+              "method_name": "streaming_decode_loop_blueprint",
+              "method_present": true,
+              "present": true,
+              "role": "metadata_only_trace_entrypoint",
+              "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_blueprint"
+            },
+            {
+              "class_name": "StepFunKVDecodeRunPlan",
+              "class_present": true,
+              "method_name": "streaming_decode_launch_trace",
+              "method_present": true,
+              "present": true,
+              "role": "metadata_only_trace_entrypoint",
+              "symbol": "StepFunKVDecodeRunPlan.streaming_decode_launch_trace"
+            },
+            {
+              "class_name": "StepFunKVDecodeRunPlan",
+              "class_present": true,
+              "method_name": "streaming_decode_loop_status",
+              "method_present": true,
+              "present": true,
+              "role": "metadata_only_trace_entrypoint",
+              "symbol": "StepFunKVDecodeRunPlan.streaming_decode_loop_status"
+            },
+            {
+              "class_name": "StepFunResidentSession",
+              "class_present": true,
+              "method_name": "layer_prefix_prompt_logits_probe_bf16",
+              "method_present": true,
+              "present": true,
+              "role": "current_host_composed_prompt_smoke",
+              "symbol": "StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16"
+            },
+            {
+              "class_name": "StepFunResidentSession",
+              "class_present": true,
+              "method_name": "kv_streaming_decode_contract",
+              "method_present": true,
+              "present": true,
+              "role": "session_contract_entrypoint",
+              "symbol": "StepFunResidentSession.kv_streaming_decode_contract"
+            }
+          ]
+        },
+        "schema_version": 1,
+        "session_contract_all_launches_have_dispatch_keys": true,
+        "session_contract_all_launches_ready": true,
+        "session_contract_artifact": "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json",
+        "session_contract_artifact_present": true,
+        "session_contract_artifact_sha256": "65a9d3f48e05b0659d4547f1cfe5cc645e9a57e9b861c4aa9e3eec0dd7f03532",
+        "session_contract_blocked_by": "streaming_decode_loop_not_wired",
+        "session_contract_executable": false,
+        "session_contract_launch_operation_count": 135,
+        "session_contract_pre_run_upload_checks_passed": true,
+        "session_contract_ready": false,
+        "session_contract_refresh_command": "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty",
+        "session_contract_refresh_command_sha256": "9541e5391a1397ec4c77ff804811578be6e55d361d3bd0c6ade2eef8a32c22a1",
+        "session_contract_status": "blocked",
+        "source": "stepfun_kv_evidence_preflight",
+        "streaming_runner_source_status": {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+          "blocker_count": 3,
+          "blocker_names": [
+            "streaming_decode_loop_not_wired",
+            "kv_kernel_trace_artifact_missing",
+            "kv_backed_next_token_artifact_missing"
+          ],
+          "blueprint_operation_count": 135,
+          "blueprint_sha256": "b65e74949ee62b255b84c29c18a3fbdab79eb7c79d2bcc53a27a0e516dc2e674",
+          "blueprint_stage_count": 4,
+          "executable": false,
+          "kernel_trace_blocker_name": "kv_kernel_trace_artifact_missing",
+          "kv_decode_run_plan_present": true,
+          "last_blocker_name": "kv_backed_next_token_artifact_missing",
+          "next_action": "wire_streaming_decode_loop",
+          "no_kernel_launches": true,
+          "ready": false,
+          "required_artifact_names": [
+            "kv_kernel_trace_artifact",
+            "kv_backed_next_token_artifact"
+          ],
+          "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+          "schema_version": 1,
+          "source": "kv_decode_run_plan"
+        },
+        "trace_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "trace_validator_command": "python3 scripts/stepfun_kv_trace_check.py --trace benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --summary-only --fail-on-missing --pretty",
+        "trace_validator_command_sha256": "62413aea4323a70ef13641c75406f17a8218dcdca0eec0c0ab6916738ae17ad4"
+      },
       "missing_evidence": [
         "streaming_runner_ready_flags",
         "kv_kernel_launch_trace",
@@ -545,7 +718,7 @@
       ]
     }
   ],
-  "entries_sha256": "62a67a946470142b6ffdb68590a2a2cbe4217f687737a3dc746a3ff82c74884c",
+  "entries_sha256": "76825c6f8080d7cc1c84956ec30358977e54f503665700ce1b9bbc7e17eae70e",
   "entry_count": 2,
   "gate_status_handoff": [
     {
@@ -798,13 +971,13 @@
     "next_action_commands_sha256": "8cbe625238b5b2e51914a2d479657fa73ae836d38205c29f45166748c5c59862",
     "oracle_partial_output_handoff_sha256": "181b866b8e2625e8d0b02780bda484767aaa96350158c3b0fb5c738f809171a0",
     "oracle_progress_sha256": "09e06b1655a5b56610a0550a8ad27a5add7d542d369b2420df6461cab1bd204f",
-    "readiness_summary_sha256": "48e064498e92e1a85647a67d0287f47b6e80c94d3859a07bfb15b17a2678eec6",
+    "readiness_summary_sha256": "8939ae4c4a4c3034dc9d42a86e990fd558cd9deaa8ae2c14645c98f21e05b12b",
     "source_artifacts": {
       "docs": {
         "exists": true,
         "path": "docs/STEPFUN.md",
-        "sha256": "3eb60c2ad8a15be83a5a36a570d4e7b212704ca092d104b76de572bbf40aedfb",
-        "size_bytes": 108193
+        "sha256": "26d500c3f283a8811d989bb2c7473b7473ae58b8ef5ec9ba0953fb8a54b3f2b2",
+        "size_bytes": 108430
       },
       "oracle": {
         "exists": true,
@@ -831,10 +1004,10 @@
         "size_bytes": 178045
       }
     },
-    "source_artifacts_sha256": "fa1a2850ed127f5b3242c19e512d04da61df402dda00c94cf1a59f8e15f4d3eb",
+    "source_artifacts_sha256": "0aaff1ee5cffc2084b7878caa18a6c20c9c6d6f16d7721e1c86c736619538adc",
     "status_integrity_sha256": "b7623cf25a5f923fc75f4cf0c2b608aa36d192bbc78098ed7313638d8cc5f54b"
   },
-  "status_provenance_sha256": "bff8ce59e27d309eb2eef082b7f716b8ebe14ea300b2e6ec4c0cc31d3ea68327",
+  "status_provenance_sha256": "09e348eb24519bb4f54dace67a870ee257c0f2c22cdaad37b4f52cbce5a89d08",
   "success_criteria_handoff": [
     {
       "blocker_kind": "oracle_parity_blocked",

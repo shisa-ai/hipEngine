@@ -118,6 +118,68 @@ def test_stepfun_final_blocker_manifest_joins_oracle_and_kv_evidence(
             "parity remains blocked until the retained-token probe captures evidence."
         ),
     }
+    kv_runner_handoff = manifest["entries"][1]["kv_runner_prerequisite_handoff"]
+    assert kv_runner_handoff["schema_version"] == 1
+    assert kv_runner_handoff["source"] == "stepfun_kv_evidence_preflight"
+    assert kv_runner_handoff["session_contract_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-session-contract.json"
+    )
+    assert kv_runner_handoff["evidence_preflight_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-evidence-preflight.json"
+    )
+    assert kv_runner_handoff["kv_blocker_status_artifact"] == (
+        "benchmarks/results/2026-06-15-stepfun-q3kl-kv-backed-blocker-status.json"
+    )
+    assert kv_runner_handoff["session_contract_status"] == "blocked"
+    assert kv_runner_handoff["session_contract_ready"] is False
+    assert kv_runner_handoff["session_contract_executable"] is False
+    assert kv_runner_handoff["session_contract_blocked_by"] == (
+        "streaming_decode_loop_not_wired"
+    )
+    assert kv_runner_handoff["session_contract_pre_run_upload_checks_passed"] is True
+    assert kv_runner_handoff["session_contract_launch_operation_count"] == 135
+    assert kv_runner_handoff["evidence_preflight_status"] == "blocked"
+    assert kv_runner_handoff["evidence_preflight_next_action"] == (
+        "wire_streaming_decode_loop"
+    )
+    assert kv_runner_handoff["required_artifacts_present"] is False
+    assert kv_runner_handoff["missing_required_artifact_paths"] == [
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json",
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json",
+    ]
+    assert kv_runner_handoff["kv_backed_decode_ready"] is False
+    assert kv_runner_handoff["kv_decode_dispatch_ready"] is True
+    assert kv_runner_handoff["trace_artifact"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-kernel-trace.json"
+    )
+    assert kv_runner_handoff["next_token_artifact"] == (
+        "benchmarks/results/2026-05-31-stepfun-q3kl-kv-backed-next-token.json"
+    )
+    assert kv_runner_handoff["session_contract_refresh_command"] == (
+        "python3 scripts/stepfun_kv_session_contract.py --default-output --pretty"
+    )
+    assert kv_runner_handoff["evidence_preflight_refresh_command"] == (
+        "python3 scripts/stepfun_kv_evidence_preflight.py --default-output --pretty"
+    )
+    assert kv_runner_handoff["kv_blocker_status_refresh_command"] == (
+        "python3 scripts/stepfun_kv_blocker_status.py --default-output --pretty"
+    )
+    assert "scripts/stepfun_kv_trace_check.py" in kv_runner_handoff[
+        "trace_validator_command"
+    ]
+    assert "scripts/stepfun_kv_next_token_check.py" in kv_runner_handoff[
+        "next_token_validator_command"
+    ]
+    assert kv_runner_handoff["no_claim_policy"] == {
+        "oracle_parity_claim_allowed": False,
+        "kv_backed_decode_claim_allowed": False,
+        "e2e_inference_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "reason": (
+            "These are KV runner prerequisites; KV-backed decode remains blocked "
+            "until the streaming loop, kernel trace, and next-token artifact exist."
+        ),
+    }
     assert manifest["entries_sha256"] == _stable_json_sha256(manifest["entries"])
     assert manifest["artifacts_to_collect_sha256"] == _stable_json_sha256(
         manifest["artifacts_to_collect"]
