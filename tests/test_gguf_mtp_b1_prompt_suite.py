@@ -504,6 +504,106 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     )
 
 
+def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_skips_b1_full_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-partial-trace-budget",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert artifact["llamacpp_trace_oracle"]["budget_coverage"] == suite.FULL_TRACE_BUDGET_COVERAGE
+
+
+def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_rejects_b4(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path, draft_max=4)
+    out = tmp_path / "b4-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--draft-max",
+            "4",
+            "--out",
+            str(out),
+            "--fail-on-partial-trace-budget",
+        ]
+    )
+
+    assert rc == 3
+    artifact = json.loads(out.read_text())
+    assert artifact["budget"] == "B4"
+    assert artifact["llamacpp_trace_oracle"]["budget_coverage"] == suite.PARTIAL_TRACE_BUDGET_COVERAGE
+
+
+def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-partial-trace-budget",
+        ]
+    )
+
+    assert rc == 3
+    matrix = json.loads(out.read_text())
+    assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+
+
 def test_b1_prompt_suite_preflight_blocks_requested_budget_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

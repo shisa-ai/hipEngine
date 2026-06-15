@@ -62,6 +62,8 @@ DEFAULT_SAMPLING_BY_DRAFT_MAX = {
     4: Path("benchmarks/fixtures/gguf_mtp_b4_sampling_greedy_seed12345.json"),
 }
 DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json")
+FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
+PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
 
 
 class B1PromptSuitePreflightError(RuntimeError):
@@ -370,9 +372,9 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
     if not isinstance(visible_output_token_count, int) or visible_output_token_count <= 0:
         visible_output_token_count = None
     budget_coverage = (
-        "full_requested_budget_exercised"
+        FULL_TRACE_BUDGET_COVERAGE
         if max_generated_per_call >= draft_max
-        else "partial_trace_did_not_exercise_full_budget"
+        else PARTIAL_TRACE_BUDGET_COVERAGE
     )
     denominator_metrics = {
         "accepted_draft_tokens": accepted_draft_tokens,
@@ -677,7 +679,7 @@ def build_b1_b4_prompt_suite_matrix(
     partial_trace_budget_budgets = [
         budget
         for budget, coverage in trace_budget_coverage_by_budget.items()
-        if coverage != "full_requested_budget_exercised"
+        if coverage != FULL_TRACE_BUDGET_COVERAGE
     ]
     matrix = {
         "schema": 1,
@@ -716,6 +718,17 @@ def build_b1_b4_prompt_suite_matrix(
     if include_artifacts:
         matrix["artifacts"] = artifacts
     return matrix
+
+
+def _has_partial_llamacpp_trace_budget_coverage(artifact: dict[str, Any]) -> bool:
+    partial_budgets = artifact.get("partial_llamacpp_trace_budget_budgets")
+    if isinstance(partial_budgets, list):
+        return bool(partial_budgets)
+    trace_oracle = artifact.get("llamacpp_trace_oracle")
+    if not isinstance(trace_oracle, dict):
+        return False
+    coverage = trace_oracle.get("budget_coverage")
+    return isinstance(coverage, str) and coverage != FULL_TRACE_BUDGET_COVERAGE
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -762,6 +775,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="return exit code 2 when the artifact status is blocked",
     )
+    parser.add_argument(
+        "--fail-on-partial-trace-budget",
+        action="store_true",
+        help="return exit code 3 when the llama.cpp trace did not exercise the requested draft budget",
+    )
     args = parser.parse_args(argv)
 
     if args.compact_matrix and not args.all_budgets:
@@ -801,6 +819,8 @@ def main(argv: list[str] | None = None) -> int:
         args.out.write_text(payload, encoding="utf-8")
     else:
         print(payload, end="")
+    if args.fail_on_partial_trace_budget and _has_partial_llamacpp_trace_budget_coverage(artifact):
+        return 3
     if args.fail_on_blocked and artifact["status"] == "blocked":
         return 2
     return 0
