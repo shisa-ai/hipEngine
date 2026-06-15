@@ -4991,7 +4991,26 @@ def test_chat_length_finish_with_reasoning_effort_is_continuation_ineligible() -
     )
 
 
-def test_chat_continuation_resume_rejects_reasoning_control_with_specific_param() -> None:
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("reasoning_effort", "low"),
+        ("max_think_tokens", 16),
+        ("min_answer_tokens", 4),
+        ("hard_think_cap", 16),
+        ("soft_close_window", 4),
+        ("hard_close_message", "answer now"),
+        ("hard_close_sequence", "</think>\n"),
+        ("thinking_token_budget", 16),
+        ("chat_template_kwargs", {"thinking_budget": 16}),
+        ("thinking", {"budget_tokens": 16}),
+        ("reasoning", {"allow_unbounded": True}),
+    ],
+)
+def test_chat_continuation_resume_rejects_thinking_controls_without_consuming_handle(
+    field: str,
+    value: Any,
+) -> None:
     fake = SequentialFakeLLM(
         [
             GenerationOutput(
@@ -5014,19 +5033,21 @@ def test_chat_continuation_resume_rejects_reasoning_control_with_specific_param(
     assert first.status_code == 200
     continuation_id = first.json()["choices"][0]["continuation_id"]
 
+    capabilities = client.get("/v1/hipengine/capabilities").json()
+    assert field in capabilities["sessions"]["continuations"]["unsupported_resume_fields"]
     resumed = client.post(
         "/v1/chat/completions",
         json={
             "model": "fake-model",
             "continuation_id": continuation_id,
             "max_tokens": 4,
-            "reasoning": {"allow_unbounded": True},
+            field: value,
         },
     )
 
     assert resumed.status_code == 400
     assert resumed.json()["error"]["code"] == "unsupported_parameter"
-    assert resumed.json()["error"]["param"] == "reasoning"
+    assert resumed.json()["error"]["param"] == field
     assert continuation_id in app.state.hipengine_continuations
     assert len(fake.calls) == 1
 

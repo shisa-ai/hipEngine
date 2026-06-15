@@ -93533,3 +93533,19 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'truncate_oldest_visible or context_overflow_policy_requires_known_stateful_mode or chat_context_overflow_reports_session_fit_context'` -> `4 passed`.
 - `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+
+## 2026-06-15 - Continuation resume thinking-control blockers
+
+Expanded chat continuation-resume coverage from one nested reasoning-control
+case to every thinking-budget control field advertised under
+`sessions.continuations.unsupported_resume_fields`. Each parametrized endpoint
+case verifies `/v1/hipengine/capabilities` advertises the blocker, resume
+rejects with `unsupported_parameter` on the exact field, no generation runs, and
+the continuation handle remains available.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py -q -k 'continuation_resume_rejects_thinking_controls_without_consuming_handle or chat_length_finish_with_reasoning_effort_is_continuation_ineligible or chat_session_continuation_resumes_buffered_length_finish_once'` -> `13 passed`.
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_server_api.py -q -k 'continuation_resume_rejects_thinking_controls_without_consuming_handle or continuation_resume_rejects_messages_without_consuming_handle or completion_continuation_resume_rejects_prompt_without_consuming_handle or completion_continuation_resume_rejects_explicit_stop_without_consuming_handle or completion_continuation_resume_rejects_ignore_eos_without_consuming_handle'` -> `15 passed`.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
