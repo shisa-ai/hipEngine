@@ -17175,6 +17175,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         (PerRowSamplingParams(suppress_tokens=(102,)), "suppress_token_ids"),
         (PerRowSamplingParams(min_tokens=2, eos_token_id=99), "min_tokens"),
         (PerRowSamplingParams(eos_token_id=99), "eos_token_id"),
+        (PerRowSamplingParams(ignore_eos=True), "ignore_eos"),
         (PerRowSamplingParams(stop_tokens=(99,)), "stop_token_ids"),
         (PerRowSamplingParams(stop_token_sequences=((99, 100),)), "stop_token_sequences"),
         (PerRowSamplingParams(forced_tokens_pending=(101,)), "forced_tokens_pending"),

@@ -467,9 +467,10 @@ Current code reality:
   back to host. Token-level thinking-budget hard close, token-sequence
   completion repair, and JSON object close-suffix forcing now follow the same
   planning contract: they bind to host row state, block native GPU sampling, and
-  are reported as speculative/MTP blockers. Explicit `eos_token_id` is also an
-  MTP-only blocker because the current speculative accept path records accepted
-  target tokens as unfinished until the decode budget is exhausted. None of
+  are reported as speculative/MTP blockers. Explicit `eos_token_id` and
+  `ignore_eos=true` are also MTP-only blockers because the current speculative
+  accept path records accepted target tokens as unfinished until the decode
+  budget is exhausted and does not apply the full AR EOS finish policy. None of
   these processors are compatible with MTP verification yet because verify top-1
   is raw argmax and commit does not apply AR finish policy.
 - `hipengine.generation.sampling.supports_speculative_mtp_sampling()` and
@@ -479,8 +480,8 @@ Current code reality:
   logprob / top-logprob requirements that are not token processors but still
   make raw target top-1 insufficient. The capabilities manifest advertises
   this guard, the blocker fields, and condition strings such as
-  `temperature > 0`, `eos_token_id set`, and `logprobs requested` instead of
-  relying only on prose.
+  `temperature > 0`, `eos_token_id set`, `ignore_eos=true`, and
+  `logprobs requested` instead of relying only on prose.
 - Post-generation validation controls (`response_format`, `guided_json`,
   `guided_regex`, `guided_choice`, `guided_patch`, and `guided_diff`) are not
   MTP blockers as request fields; they add prompt hints and validate visible
@@ -499,9 +500,9 @@ Default rule:
 - If `logit_bias`, penalties, suppressions, forced tokens, sequence-completion
   repair, JSON object close forcing, grammar constraints, thinking budget
   processors, `temperature > 0`, explicit EOS finish policy, or requested
-  logprobs are active, route to AR `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE`
-  until the verifier can produce the same processed target selection and finish
-  policy per verify row.
+  logprobs are active, or `ignore_eos=true` changes EOS handling, route to AR
+  `PROCESSED_ARGMAX` / `HOST_LOGITS_SAMPLE` until the verifier can produce the
+  same processed target selection and finish policy per verify row.
 
 Future exact speculative support:
 

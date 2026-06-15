@@ -37,6 +37,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "suppress_token_ids",
     "min_tokens",
     "eos_token_id",
+    "ignore_eos",
     "stop_token_ids",
     "stop_token_sequences",
     "forced_tokens_pending",
@@ -56,6 +57,7 @@ SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS: dict[str, str] = {
     "suppress_token_ids": "one or more suppressed token ids",
     "min_tokens": "min_tokens > 0",
     "eos_token_id": "eos_token_id set",
+    "ignore_eos": "ignore_eos=true",
     "stop_token_ids": "one or more token stop ids",
     "stop_token_sequences": "one or more multi-token stop sequences",
     "forced_tokens_pending": "one or more forced tokens pending",
@@ -664,6 +666,8 @@ def speculative_mtp_sampling_blockers(params: Any) -> tuple[str, ...]:
     blockers = list(sampler_fast_path_blockers(params))
     if getattr(params, "eos_token_id", None) is not None:
         blockers.append("eos_token_id")
+    if bool(getattr(params, "ignore_eos", False)):
+        blockers.append("ignore_eos")
     return tuple(dict.fromkeys(blockers))
 
 

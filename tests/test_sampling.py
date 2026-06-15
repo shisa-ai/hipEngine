@@ -41,6 +41,7 @@ def _params(**overrides):
         "suppress_token_ids": (),
         "min_tokens": 0,
         "eos_token_id": None,
+        "ignore_eos": False,
         "seed": None,
         "row_seeds": (),
         "stop_token_ids": (),
@@ -72,6 +73,7 @@ def _speculative_mtp_blocker_cases():
         "suppress_token_ids": _params(suppress_token_ids=(7,)),
         "min_tokens": _params(min_tokens=2, eos_token_id=9),
         "eos_token_id": _params(eos_token_id=9),
+        "ignore_eos": _params(ignore_eos=True),
         "stop_token_ids": _params(stop_token_ids=(99,)),
         "stop_token_sequences": _params(stop_token_sequences=((10, 11),)),
         "forced_tokens_pending": _params(forced_tokens_pending=(10, 11)),
@@ -258,6 +260,9 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
     assert speculative_mtp_sampling_blockers(_params(eos_token_id=9)) == (
         "eos_token_id",
     )
+    assert speculative_mtp_sampling_blockers(_params(ignore_eos=True)) == (
+        "ignore_eos",
+    )
     assert speculative_mtp_sampling_blockers(_params(stop_token_sequences=((10, 11),))) == (
         "stop_token_sequences",
     )
@@ -298,6 +303,7 @@ def test_speculative_mtp_sampling_allows_only_greedy_fast_policy() -> None:
             row_seeds=(),
             stop_tokens=(99,),
             stop_token_sequences=(),
+            ignore_eos=False,
             thinking_close_token_ids=(),
             thinking_hard_token_cap=None,
             thinking_soft_close_window=0,

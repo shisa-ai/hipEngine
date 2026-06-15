@@ -985,13 +985,13 @@ in local, non-sensitive debugging sessions.
   `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
   serving compatibility is greedy-fast only; `logit_bias`, penalties, token
   suppressions, min-token/EOS policy, explicit EOS finish policy, token stops,
-  pending forced-token queues, post-thinking forced-token queues,
+  `ignore_eos=true`, pending forced-token queues, post-thinking forced-token queues,
   token-sequence completion repair, JSON object close forcing, temperature
   sampling, and requested logprobs require autoregressive fallback. The
   manifest also includes
   `incompatible_conditions`, for example `temperature > 0` and
-  `eos_token_id set`, so inert greedy `top_p` / `top_k` / `min_p` settings are
-  not mistaken for MTP blockers.
+  `eos_token_id set` and `ignore_eos=true`, so inert greedy `top_p` / `top_k` /
+  `min_p` settings are not mistaken for MTP blockers.
 - The capabilities manifest reports `parallelism.tensor_parallel` as disabled
   with `world_size=1`, `mode="single_process"`, no collective backend, and a
   stable unsupported-feature list for multi-GPU weight/KV sharding, collectives,

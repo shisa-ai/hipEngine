@@ -93054,3 +93054,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'capabilities'` -> `5 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - MTP ignore-eos compatibility guard
+
+Made `ignore_eos=true` an explicit raw-argmax speculative/MTP blocker. The
+per-row scheduler sampling params now carry the request EOS-ignore policy, the
+MTP compatibility helper rejects it before target verification work is
+materialized, and the capabilities manifest advertises the blocker/condition so
+agent harnesses can distinguish it from inert greedy sampling knobs.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_sampling.py -q -k 'speculative_mtp'` -> `2 passed`.
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q -k 'rejects_speculative_verify_for_processed_sampling'` -> `18 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or agentic_replay_artifact_records_capabilities'` -> `1 passed`.
+- `python3 -m pytest tests/test_server_api.py::test_agentic_replay_failure_reasons_match_capability_contract -q` -> `1 passed`.
+- `uv run ruff check hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/generation/sampling.py hipengine/generation/batch_scheduler.py hipengine/generation/qwen35_paro.py tests/test_sampling.py tests/test_generation_batch_scheduler.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.

@@ -57,6 +57,7 @@ class PerRowSamplingParams:
     suppress_tokens: tuple[int, ...] = ()
     min_tokens: int = 0
     eos_token_id: int | None = None
+    ignore_eos: bool = False
     seed: int | None = None
     stop_tokens: tuple[int, ...] = ()
     stop_token_sequences: tuple[tuple[int, ...], ...] = ()
@@ -135,6 +136,7 @@ class PerRowSamplingParams:
         object.__setattr__(self, "suppress_tokens", suppress_tokens)
         object.__setattr__(self, "min_tokens", int(self.min_tokens))
         object.__setattr__(self, "eos_token_id", None if self.eos_token_id is None else int(self.eos_token_id))
+        object.__setattr__(self, "ignore_eos", bool(self.ignore_eos))
         object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
         object.__setattr__(self, "stop_tokens", stops)
         object.__setattr__(self, "stop_token_sequences", stop_sequences)

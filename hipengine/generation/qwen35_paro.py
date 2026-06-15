@@ -1347,6 +1347,7 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         suppress_tokens=request.suppress_token_ids,
         min_tokens=request.min_tokens,
         eos_token_id=request.eos_token_id,
+        ignore_eos=request.ignore_eos,
         seed=request.seed,
         stop_tokens=request.stop_token_ids,
         stop_token_sequences=request.stop_token_sequences,
