@@ -153,6 +153,12 @@ Initial focused lanes from evidence:
 
 No-hold notes:
 
+- **G-P4 MoE-only chunk=2048 rejected (2026-06-15).** Raising only the default
+  auto-tuned MoE prefill chunk from `1024` to `2048` preserved generated IDs and
+  memory and improved `4K/128` prefill (`1855.806 -> 1857.311 tok/s`), but left
+  `512/128` prefill flat/slightly lower and regressed both retained decode
+  medians (`127.012 -> 126.959 tok/s`, `115.805 -> 115.717 tok/s`). Keep the
+  mid-context MoE chunk at `1024`.
 - **G-P4 linear/MoE chunk=2048 rejected (2026-06-15).** Raising the default
   auto-tuned linear/MoE prefill chunks from `1024` to `2048` preserved generated
   IDs and memory and improved prefill (`512/128` `1647.390 -> 1661.258 tok/s`,
