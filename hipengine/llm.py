@@ -201,6 +201,38 @@ class LLM:
         for text in generator.generate(request):
             yield GenerationStreamChunk(text=str(text))
 
+    @property
+    def supports_stream_many(self) -> bool:
+        """Whether the resolved generator advertises public multi-row streaming."""
+
+        generator = self._text_generator
+        if generator is None:
+            return False
+        return bool(
+            getattr(generator, "supports_stream_many", False)
+            or getattr(generator, "supports_stream_many_detailed", False)
+        )
+
+    def stream_many_detailed(
+        self,
+        prompts: str | Iterable[str],
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Yield row-indexed stream chunks for multiple prompts when supported."""
+
+        prompt_tuple = _normalize_prompts(prompts)
+        if not prompt_tuple:
+            return
+        generator = self._get_text_generator()
+        detailed_streamer = getattr(generator, "stream_many_detailed", None)
+        if not callable(detailed_streamer):
+            raise NotImplementedError("multi-row streaming is not supported by this generator")
+        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        from hipengine.generation import GenerationStreamChunk
+
+        for chunk in detailed_streamer(request):
+            yield GenerationStreamChunk.from_value(chunk)
+
     def prepare(
         self,
         *,

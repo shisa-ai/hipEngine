@@ -93218,3 +93218,18 @@ Validation:
 - `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py && python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or runtime_native_live_chunks or buffered_answer_deltas or scheduler_chunks_for_tool_call_arguments or withheld_scheduler_tool_chunks or unmappable_scheduler_tool_chunks'` -> `6 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - Public stream_many wrapper boundary
+
+Tightened the live c>N stream hook boundary so the server calls only the public
+`engine.stream_many_detailed(prompts, sampling)` signature. `hipengine.LLM` now
+wraps generator-native `stream_many_detailed(GenerationRequest)` methods and
+advertises `supports_stream_many` after the text generator is resolved, avoiding
+an accidental direct call into generator internals with the wrong arguments.
+
+Validation:
+- `python3 -m py_compile hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py` -> passed.
+- `python3 -m pytest tests/test_llm_generate.py -q -k 'stream_many_detailed or stream_detailed'` -> `2 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'runtime_native_live_chunks or capabilities_endpoint_reports_manifest_and_auth'` -> `2 passed`.
+- `uv run ruff check hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py` -> clean.

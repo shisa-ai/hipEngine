@@ -4818,9 +4818,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 async def prepare_many_stream() -> tuple[Any, SamplingParams] | None:
                     async with session_lock:
                         engine = get_llm()
+                        await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                         if not _engine_supports_stream_many(engine):
                             return None
-                        await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                         sampling = sampling_params(
                             request,
                             prompts,
@@ -7338,12 +7338,9 @@ def _engine_supports_stream_logprobs(engine: Any | None) -> bool:
 def _engine_stream_many_callable(engine: Any | None) -> Callable[[tuple[str, ...], SamplingParams], Iterator[Any]] | None:
     if engine is None:
         return None
-    for target in (engine, getattr(engine, "_text_generator", None)):
-        if target is None:
-            continue
-        streamer = getattr(target, "stream_many_detailed", None)
-        if callable(streamer):
-            return streamer
+    streamer = getattr(engine, "stream_many_detailed", None)
+    if callable(streamer):
+        return streamer
     return None
 
 

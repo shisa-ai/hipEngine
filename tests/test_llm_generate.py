@@ -132,6 +132,62 @@ def test_llm_stream_detailed_preserves_backend_stream_telemetry(monkeypatch) -> 
     assert list(llm.stream("hello", SamplingParams(max_tokens=1))) == ["alpha"]
 
 
+def test_llm_stream_many_detailed_wraps_generation_request(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    calls = {}
+
+    class FakeGenerator:
+        supports_stream_many = True
+
+        def stream_many_detailed(self, request: GenerationRequest):
+            calls["request"] = request
+            yield GenerationStreamChunk(
+                "alpha",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=3,
+                    generated_tokens=1,
+                    row_index=0,
+                    phase="answer",
+                    sampler_mode="greedy_fast",
+                ),
+            )
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["unused" for _prompt in request.prompts]
+
+    fake_index = SimpleNamespace(config={"architectures": ["FakeStreamManyForCausalLM"]}, model_path="/tmp/fake-model")
+    fake_plugin = SimpleNamespace(name="fake_stream_many_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_stream_many_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    assert llm.supports_stream_many is False
+
+    chunks = list(llm.stream_many_detailed(["one", "two"], SamplingParams(max_tokens=2)))
+
+    assert llm.supports_stream_many is True
+    assert chunks[0].text == "alpha"
+    assert chunks[0].telemetry.decode_state.row_index == 0
+    assert calls["request"] == GenerationRequest(
+        prompts=("one", "two"),
+        max_tokens=2,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+    )
+
+
 def test_llm_detokenize_delegates_to_generator(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading
