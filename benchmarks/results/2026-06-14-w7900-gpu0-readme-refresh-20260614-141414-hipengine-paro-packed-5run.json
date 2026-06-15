@@ -1,0 +1,4829 @@
+{
+  "schema": 1,
+  "mode": "qwen35_readme_persistent_resident_sweep",
+  "engine": "paro",
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "quant": "w4_paro",
+  "workloads": [
+    "512/128",
+    "1K/128",
+    "4K/128",
+    "32K/128",
+    "64K/128",
+    "128K/128"
+  ],
+  "prompt_source": "repeated_token_id",
+  "warmup_decode_tokens": 4,
+  "warmup_runs": 2,
+  "measured_runs": 5,
+  "max_sequence_length": 131205,
+  "persistent_session_load_seconds": 34.488573875045404,
+  "persistent_session_memory": {},
+  "compiler_version_file": "/tmp/hipengine-readme-runs/20260614-141414/hipcc-version-713.txt",
+  "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s": {
+        "count": 5,
+        "median": 2729.701035358198,
+        "min": 2716.2512812838063,
+        "max": 2744.255428500702,
+        "mean": 2730.858178082905,
+        "stdev": 12.211799127082623
+      },
+      "decode_tok_s": {
+        "count": 5,
+        "median": 115.22711477772542,
+        "min": 113.37686558731319,
+        "max": 115.34976373490849,
+        "mean": 114.67366372062828,
+        "stdev": 0.8834455214268534
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "median": 21.02878673374653,
+        "min": 21.02878673374653,
+        "max": 21.02878673374653,
+        "mean": 21.02878673374653,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "count": 5,
+        "median": 2906.9501880760026,
+        "min": 2894.0286490040003,
+        "max": 2915.303203634969,
+        "mean": 2906.2740478329197,
+        "stdev": 7.833103092467205
+      },
+      "decode_tok_s": {
+        "count": 5,
+        "median": 102.92687841561937,
+        "min": 100.55115820491875,
+        "max": 102.9824400078005,
+        "mean": 102.20438820257628,
+        "stdev": 1.091021287310648
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "median": 21.24085719883442,
+        "min": 21.24085719883442,
+        "max": 21.24085719883442,
+        "mean": 21.24085719883442,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "count": 5,
+        "median": 2879.5782404950232,
+        "min": 2875.7437537851115,
+        "max": 2887.076666714356,
+        "mean": 2881.522900480117,
+        "stdev": 5.2064449093139284
+      },
+      "decode_tok_s": {
+        "count": 5,
+        "median": 105.2533418087578,
+        "min": 104.81235289300956,
+        "max": 105.31163685841821,
+        "mean": 105.18215305107196,
+        "stdev": 0.20862418891266984
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "median": 21.973118856549263,
+        "min": 21.973118856549263,
+        "max": 21.973118856549263,
+        "mean": 21.973118856549263,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "32K/128": {
+      "prefill_tok_s": {
+        "count": 5,
+        "median": 2079.423904564508,
+        "min": 2078.1557909925627,
+        "max": 2085.5806996224082,
+        "mean": 2080.617975303363,
+        "stdev": 2.992340764403145
+      },
+      "decode_tok_s": {
+        "count": 5,
+        "median": 91.96493159419701,
+        "min": 91.74743735879244,
+        "max": 92.35328969518133,
+        "mean": 91.98457601263607,
+        "stdev": 0.23169153490875996
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "median": 22.082493856549263,
+        "min": 22.082493856549263,
+        "max": 22.082493856549263,
+        "mean": 22.082493856549263,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "64K/128": {
+      "prefill_tok_s": {
+        "count": 5,
+        "median": 1559.0959857449873,
+        "min": 1558.7617500883478,
+        "max": 1561.5367094598514,
+        "mean": 1559.6207005013866,
+        "stdev": 1.1572614509984847
+      },
+      "decode_tok_s": {
+        "count": 5,
+        "median": 77.66605240869288,
+        "min": 77.4317120724415,
+        "max": 77.7181627285076,
+        "mean": 77.61964575602667,
+        "stdev": 0.11113182379683416
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "median": 22.082493856549263,
+        "min": 22.082493856549263,
+        "max": 22.082493856549263,
+        "mean": 22.082493856549263,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "128K/128": {
+      "prefill_tok_s": {
+        "count": 5,
+        "median": 1053.9192058010867,
+        "min": 1053.1996255580425,
+        "max": 1054.274272818192,
+        "mean": 1053.8741490978007,
+        "stdev": 0.4054470488604477
+      },
+      "decode_tok_s": {
+        "count": 5,
+        "median": 60.348897469752586,
+        "min": 60.10812800353367,
+        "max": 60.40172110284025,
+        "mean": 60.277867344806786,
+        "stdev": 0.14510918299059808
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 5,
+        "median": 22.123909033834934,
+        "min": 22.123909033834934,
+        "max": 22.123909033834934,
+        "mean": 22.123909033834934,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "runs_by_workload": {
+    "512/128": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.22633927199058235,
+          "warmup_decode_seconds": 0.04203334590420127,
+          "graph_capture_seconds": 0.012679256033152342,
+          "decode_seconds_excluding_graph_capture": 1.1105348009150475,
+          "wall_seconds_excluding_load": 1.3915866748429835
+        },
+        "throughput": {
+          "prefill_tok_s": 2262.090866941127,
+          "decode_tok_s": 115.25978284924689,
+          "decode_ms_per_token": 8.676053132148809
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8011536384,
+          "hip_used_peak_sampled_gib": 7.461324691772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.18688783794641495,
+          "warmup_decode_seconds": 0.03898652922362089,
+          "graph_capture_seconds": 0.017647067084908485,
+          "decode_seconds_excluding_graph_capture": 1.135845544980839,
+          "wall_seconds_excluding_load": 1.3793669792357832
+        },
+        "throughput": {
+          "prefill_tok_s": 2739.6111251862317,
+          "decode_tok_s": 112.69137830017134,
+          "decode_ms_per_token": 8.873793320162804
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8013633536,
+          "hip_used_peak_sampled_gib": 7.463277816772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.18657155404798687,
+          "warmup_decode_seconds": 0.039609977044165134,
+          "graph_capture_seconds": 0.014118202961981297,
+          "decode_seconds_excluding_graph_capture": 1.1096685060765594,
+          "wall_seconds_excluding_load": 1.3499682401306927
+        },
+        "throughput": {
+          "prefill_tok_s": 2744.255428500702,
+          "decode_tok_s": 115.34976373490849,
+          "decode_ms_per_token": 8.66928520372312
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8015730688,
+          "hip_used_peak_sampled_gib": 7.465230941772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.18809329299256206,
+          "warmup_decode_seconds": 0.038757576839998364,
+          "graph_capture_seconds": 0.007808706955984235,
+          "decode_seconds_excluding_graph_capture": 1.128978115040809,
+          "wall_seconds_excluding_load": 1.3636376918293536
+        },
+        "throughput": {
+          "prefill_tok_s": 2722.0534653526774,
+          "decode_tok_s": 113.37686558731319,
+          "decode_ms_per_token": 8.82014152375632
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8015730688,
+          "hip_used_peak_sampled_gib": 7.465230941772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.1884950790554285,
+          "warmup_decode_seconds": 0.03856744500808418,
+          "graph_capture_seconds": 0.008074330165982246,
+          "decode_seconds_excluding_graph_capture": 1.1102626470383257,
+          "wall_seconds_excluding_load": 1.3453995012678206
+        },
+        "throughput": {
+          "prefill_tok_s": 2716.2512812838063,
+          "decode_tok_s": 115.28803598089661,
+          "decode_ms_per_token": 8.67392692998692
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8015730688,
+          "hip_used_peak_sampled_gib": 7.465230941772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 4,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.18672299711033702,
+          "warmup_decode_seconds": 0.038689065957441926,
+          "graph_capture_seconds": 0.011800955049693584,
+          "decode_seconds_excluding_graph_capture": 1.1215620981529355,
+          "wall_seconds_excluding_load": 1.358775116270408
+        },
+        "throughput": {
+          "prefill_tok_s": 2742.0296799191406,
+          "decode_tok_s": 114.12653852229768,
+          "decode_ms_per_token": 8.762203891819809
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8015730688,
+          "hip_used_peak_sampled_gib": 7.465230941772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 5,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 512,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.18756632809527218,
+          "warmup_decode_seconds": 0.038442363031208515,
+          "graph_capture_seconds": 0.007648933911696076,
+          "decode_seconds_excluding_graph_capture": 1.1108496489468962,
+          "wall_seconds_excluding_load": 1.344507273985073
+        },
+        "throughput": {
+          "prefill_tok_s": 2729.701035358198,
+          "decode_tok_s": 115.22711477772542,
+          "decode_ms_per_token": 8.678512882397627
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.81315803527832,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22579487824,
+          "tracked_peak_allocated_gib": 21.02878673374653,
+          "tracked_current_allocated_bytes_before_close": 22349819928,
+          "tracked_current_allocated_gib_before_close": 20.81489183753729,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4788801040,
+          "owned_session_peak_gib": 4.459918513894081,
+          "hip_used_peak_sampled_bytes": 8015730688,
+          "hip_used_peak_sampled_gib": 7.465230941772461,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      }
+    ],
+    "1K/128": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.3523266159463674,
+          "warmup_decode_seconds": 0.03993448195978999,
+          "graph_capture_seconds": 0.009800290921702981,
+          "decode_seconds_excluding_graph_capture": 1.2432745101395994,
+          "wall_seconds_excluding_load": 1.6453358989674598
+        },
+        "throughput": {
+          "prefill_tok_s": 2906.3941060753627,
+          "decode_tok_s": 102.9539325033115,
+          "decode_ms_per_token": 9.71308211046562
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.35167129803448915,
+          "warmup_decode_seconds": 0.03988488018512726,
+          "graph_capture_seconds": 0.008171439869329333,
+          "decode_seconds_excluding_graph_capture": 1.2424440740142018,
+          "wall_seconds_excluding_load": 1.6421716921031475
+        },
+        "throughput": {
+          "prefill_tok_s": 2911.809993375047,
+          "decode_tok_s": 103.02274579365645,
+          "decode_ms_per_token": 9.706594328235951
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.35124991415068507,
+          "warmup_decode_seconds": 0.04032537597231567,
+          "graph_capture_seconds": 0.008432243950664997,
+          "decode_seconds_excluding_graph_capture": 1.2433523379731923,
+          "wall_seconds_excluding_load": 1.643359872046858
+        },
+        "throughput": {
+          "prefill_tok_s": 2915.303203634969,
+          "decode_tok_s": 102.94748808584279,
+          "decode_ms_per_token": 9.713690140415565
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.35246197995729744,
+          "warmup_decode_seconds": 0.04041262692771852,
+          "graph_capture_seconds": 0.007657324895262718,
+          "decode_seconds_excluding_graph_capture": 1.2729838450904936,
+          "wall_seconds_excluding_load": 1.6735157768707722
+        },
+        "throughput": {
+          "prefill_tok_s": 2905.2778972757937,
+          "decode_tok_s": 100.55115820491875,
+          "decode_ms_per_token": 9.945186289769481
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.3522592179942876,
+          "warmup_decode_seconds": 0.039784519001841545,
+          "graph_capture_seconds": 0.008455693954601884,
+          "decode_seconds_excluding_graph_capture": 1.2429303480312228,
+          "wall_seconds_excluding_load": 1.6434297789819539
+        },
+        "throughput": {
+          "prefill_tok_s": 2906.9501880760026,
+          "decode_tok_s": 102.9824400078005,
+          "decode_ms_per_token": 9.710393343993928
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 4,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.35191297507844865,
+          "warmup_decode_seconds": 0.04067834094166756,
+          "graph_capture_seconds": 0.008042419096454978,
+          "decode_seconds_excluding_graph_capture": 1.2596692370716482,
+          "wall_seconds_excluding_load": 1.6603029721882194
+        },
+        "throughput": {
+          "prefill_tok_s": 2909.810301173832,
+          "decode_tok_s": 101.61397629870002,
+          "decode_ms_per_token": 9.841165914622252
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 5,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 1024,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": false,
+          "reason": "below_min_tokens",
+          "max_sequence_length": 1024,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 0.0
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 0.35383201902732253,
+          "warmup_decode_seconds": 0.03987821098417044,
+          "graph_capture_seconds": 0.009337604977190495,
+          "decode_seconds_excluding_graph_capture": 1.2436013019178063,
+          "wall_seconds_excluding_load": 1.6466491369064897
+        },
+        "throughput": {
+          "prefill_tok_s": 2894.0286490040003,
+          "decode_tok_s": 102.92687841561937,
+          "decode_ms_per_token": 9.715635171232861
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 27.922136306762695,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 22807196752,
+          "tracked_peak_allocated_gib": 21.24085719883442,
+          "tracked_current_allocated_bytes_before_close": 22350147608,
+          "tracked_current_allocated_gib_before_close": 20.81519701331854,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4789128720,
+          "owned_session_peak_gib": 4.460223689675331,
+          "hip_used_peak_sampled_bytes": 8017057792,
+          "hip_used_peak_sampled_gib": 7.466466903686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      }
+    ],
+    "4K/128": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.4173883758485317,
+          "warmup_decode_seconds": 0.039020559983327985,
+          "graph_capture_seconds": 0.0077943759970366955,
+          "decode_seconds_excluding_graph_capture": 1.215652063023299,
+          "wall_seconds_excluding_load": 2.6798553748521954
+        },
+        "throughput": {
+          "prefill_tok_s": 2889.821921636612,
+          "decode_tok_s": 105.293285713403,
+          "decode_ms_per_token": 9.497281742369523
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.4185964069329202,
+          "warmup_decode_seconds": 0.03924704296514392,
+          "graph_capture_seconds": 0.00896078092046082,
+          "decode_seconds_excluding_graph_capture": 1.2256022989749908,
+          "wall_seconds_excluding_load": 2.692406529793516
+        },
+        "throughput": {
+          "prefill_tok_s": 2887.3610422119755,
+          "decode_tok_s": 104.43844639248015,
+          "decode_ms_per_token": 9.575017960742116
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.4187887341249734,
+          "warmup_decode_seconds": 0.03924139402806759,
+          "graph_capture_seconds": 0.0077300050761550665,
+          "decode_seconds_excluding_graph_capture": 1.2154402288142592,
+          "wall_seconds_excluding_load": 2.6812003620434552
+        },
+        "throughput": {
+          "prefill_tok_s": 2886.969639300227,
+          "decode_tok_s": 105.31163685841821,
+          "decode_ms_per_token": 9.4956267876114
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.4187361379154027,
+          "warmup_decode_seconds": 0.03947304701432586,
+          "graph_capture_seconds": 0.007704994874075055,
+          "decode_seconds_excluding_graph_capture": 1.2156750571448356,
+          "wall_seconds_excluding_load": 2.681589236948639
+        },
+        "throughput": {
+          "prefill_tok_s": 2887.076666714356,
+          "decode_tok_s": 105.29129412313843,
+          "decode_ms_per_token": 9.497461383944028
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.4224305290263146,
+          "warmup_decode_seconds": 0.039098381996154785,
+          "graph_capture_seconds": 0.00887278001755476,
+          "decode_seconds_excluding_graph_capture": 1.2161134060006589,
+          "wall_seconds_excluding_load": 2.686515097040683
+        },
+        "throughput": {
+          "prefill_tok_s": 2879.5782404950232,
+          "decode_tok_s": 105.2533418087578,
+          "decode_ms_per_token": 9.500885984380147
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 4,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.42308882297948,
+          "warmup_decode_seconds": 0.039339335868135095,
+          "graph_capture_seconds": 0.010592160047963262,
+          "decode_seconds_excluding_graph_capture": 1.2162428521551192,
+          "wall_seconds_excluding_load": 2.6892631710506976
+        },
+        "throughput": {
+          "prefill_tok_s": 2878.246202105869,
+          "decode_tok_s": 105.24213957203584,
+          "decode_ms_per_token": 9.501897282461869
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 5,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 4096,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 1.4243271830491722,
+          "warmup_decode_seconds": 0.03911210293881595,
+          "graph_capture_seconds": 0.008592445868998766,
+          "decode_seconds_excluding_graph_capture": 1.2212300980463624,
+          "wall_seconds_excluding_load": 2.6932618299033493
+        },
+        "throughput": {
+          "prefill_tok_s": 2875.7437537851115,
+          "decode_tok_s": 104.81235289300956,
+          "decode_ms_per_token": 9.540860140987206
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 28.78142547607422,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23593456720,
+          "tracked_peak_allocated_gib": 21.973118856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      }
+    ],
+    "32K/128": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.620562433963642,
+          "warmup_decode_seconds": 0.044767912942916155,
+          "graph_capture_seconds": 0.00879592914134264,
+          "decode_seconds_excluding_graph_capture": 1.3860895950347185,
+          "wall_seconds_excluding_load": 17.06021587108262
+        },
+        "throughput": {
+          "prefill_tok_s": 2097.74776923223,
+          "decode_tok_s": 92.34612283255318,
+          "decode_ms_per_token": 10.828824961208738
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.695980953983963,
+          "warmup_decode_seconds": 0.04514597915112972,
+          "graph_capture_seconds": 0.008561225840821862,
+          "decode_seconds_excluding_graph_capture": 1.388341692974791,
+          "wall_seconds_excluding_load": 17.138029851950705
+        },
+        "throughput": {
+          "prefill_tok_s": 2087.66818054037,
+          "decode_tok_s": 92.19632360513154,
+          "decode_ms_per_token": 10.846419476365554
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.711691235890612,
+          "warmup_decode_seconds": 0.04446101118810475,
+          "graph_capture_seconds": 0.007590184919536114,
+          "decode_seconds_excluding_graph_capture": 1.391834885114804,
+          "wall_seconds_excluding_load": 17.155577317113057
+        },
+        "throughput": {
+          "prefill_tok_s": 2085.5806996224082,
+          "decode_tok_s": 91.96493159419701,
+          "decode_ms_per_token": 10.873710039959406
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.745082828914747,
+          "warmup_decode_seconds": 0.04477696702815592,
+          "graph_capture_seconds": 0.007995579158887267,
+          "decode_seconds_excluding_graph_capture": 1.38598203076981,
+          "wall_seconds_excluding_load": 17.1838374058716
+        },
+        "throughput": {
+          "prefill_tok_s": 2081.1576767207507,
+          "decode_tok_s": 92.35328969518133,
+          "decode_ms_per_token": 10.827984615389141
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.758210689062253,
+          "warmup_decode_seconds": 0.04553880705498159,
+          "graph_capture_seconds": 0.007993750041350722,
+          "decode_seconds_excluding_graph_capture": 1.391036070883274,
+          "wall_seconds_excluding_load": 17.20277931704186
+        },
+        "throughput": {
+          "prefill_tok_s": 2079.423904564508,
+          "decode_tok_s": 92.01774323416582,
+          "decode_ms_per_token": 10.867469303775579
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 4,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.763153958134353,
+          "warmup_decode_seconds": 0.04505749209783971,
+          "graph_capture_seconds": 0.008359153987839818,
+          "decode_seconds_excluding_graph_capture": 1.3937361419666559,
+          "wall_seconds_excluding_load": 17.21030674618669
+        },
+        "throughput": {
+          "prefill_tok_s": 2078.771804616584,
+          "decode_tok_s": 91.83947818084373,
+          "decode_ms_per_token": 10.888563609114499
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 5,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 32768,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 15.76782652293332,
+          "warmup_decode_seconds": 0.04516666382551193,
+          "graph_capture_seconds": 0.008276463020592928,
+          "decode_seconds_excluding_graph_capture": 1.3951343349181116,
+          "wall_seconds_excluding_load": 17.216403984697536
+        },
+        "throughput": {
+          "prefill_tok_s": 2078.1557909925627,
+          "decode_tok_s": 91.74743735879244,
+          "decode_ms_per_token": 10.899486991547747
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.24884796142578,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      }
+    ],
+    "64K/128": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 41.9018839658238,
+          "warmup_decode_seconds": 0.05209727305918932,
+          "graph_capture_seconds": 0.008158612996339798,
+          "decode_seconds_excluding_graph_capture": 1.6460681511089206,
+          "wall_seconds_excluding_load": 43.60820800298825
+        },
+        "throughput": {
+          "prefill_tok_s": 1564.034687639648,
+          "decode_tok_s": 77.76105741051435,
+          "decode_ms_per_token": 12.859907430538442
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8023349248,
+          "hip_used_peak_sampled_gib": 7.472326278686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 41.95553815900348,
+          "warmup_decode_seconds": 0.05275049293413758,
+          "graph_capture_seconds": 0.008919002022594213,
+          "decode_seconds_excluding_graph_capture": 1.6485462000127882,
+          "wall_seconds_excluding_load": 43.665753853973
+        },
+        "throughput": {
+          "prefill_tok_s": 1562.0345459908312,
+          "decode_tok_s": 77.64416914673491,
+          "decode_ms_per_token": 12.879267187599908
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 41.96891408506781,
+          "warmup_decode_seconds": 0.052317569963634014,
+          "graph_capture_seconds": 0.009171226061880589,
+          "decode_seconds_excluding_graph_capture": 1.648069536080584,
+          "wall_seconds_excluding_load": 43.67847241717391
+        },
+        "throughput": {
+          "prefill_tok_s": 1561.5367094598514,
+          "decode_tok_s": 77.66662582964055,
+          "decode_ms_per_token": 12.875543250629562
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 42.041539398021996,
+          "warmup_decode_seconds": 0.053053081035614014,
+          "graph_capture_seconds": 0.007575106108561158,
+          "decode_seconds_excluding_graph_capture": 1.6491513960063457,
+          "wall_seconds_excluding_load": 43.75131898117252
+        },
+        "throughput": {
+          "prefill_tok_s": 1558.8392085158373,
+          "decode_tok_s": 77.61567574085082,
+          "decode_ms_per_token": 12.883995281299576
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 42.03461531503126,
+          "warmup_decode_seconds": 0.052387764910236,
+          "graph_capture_seconds": 0.008592498954385519,
+          "decode_seconds_excluding_graph_capture": 1.648081704042852,
+          "wall_seconds_excluding_load": 43.743677282938734
+        },
+        "throughput": {
+          "prefill_tok_s": 1559.0959857449873,
+          "decode_tok_s": 77.66605240869288,
+          "decode_ms_per_token": 12.87563831283478
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 4,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 42.01376163191162,
+          "warmup_decode_seconds": 0.05240976600907743,
+          "graph_capture_seconds": 0.008724841056391597,
+          "decode_seconds_excluding_graph_capture": 1.6469766590744257,
+          "wall_seconds_excluding_load": 43.721872898051515
+        },
+        "throughput": {
+          "prefill_tok_s": 1559.8698486979092,
+          "decode_tok_s": 77.7181627285076,
+          "decode_ms_per_token": 12.86700514901895
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 5,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 65536,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 65536,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 65536,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 42.043628538027406,
+          "warmup_decode_seconds": 0.05237554688937962,
+          "graph_capture_seconds": 0.009171356912702322,
+          "decode_seconds_excluding_graph_capture": 1.65306947985664,
+          "wall_seconds_excluding_load": 43.75824492168613
+        },
+        "throughput": {
+          "prefill_tok_s": 1558.7617500883478,
+          "decode_tok_s": 77.4317120724415,
+          "decode_ms_per_token": 12.91460531138
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.504919052124023,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23710897232,
+          "tracked_peak_allocated_gib": 22.082493856549263,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      }
+    ],
+    "128K/128": [
+      {
+        "run_index": 1,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.3963249179069,
+          "warmup_decode_seconds": 0.06686085602268577,
+          "graph_capture_seconds": 0.007767979986965656,
+          "decode_seconds_excluding_graph_capture": 2.1293043019250035,
+          "wall_seconds_excluding_load": 126.60025805584155
+        },
+        "throughput": {
+          "prefill_tok_s": 1053.6645683584188,
+          "decode_tok_s": 60.113530923823916,
+          "decode_ms_per_token": 16.63518985878909
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": false,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.3836090050172,
+          "warmup_decode_seconds": 0.06711389310657978,
+          "graph_capture_seconds": 0.009881526930257678,
+          "decode_seconds_excluding_graph_capture": 2.1199443808291107,
+          "wall_seconds_excluding_load": 126.58054880588315
+        },
+        "throughput": {
+          "prefill_tok_s": 1053.7722859827375,
+          "decode_tok_s": 60.37894255977564,
+          "decode_ms_per_token": 16.562065475227428
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 1,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.34813557798043,
+          "warmup_decode_seconds": 0.06642554607242346,
+          "graph_capture_seconds": 0.008160614874213934,
+          "decode_seconds_excluding_graph_capture": 2.1209998088888824,
+          "wall_seconds_excluding_load": 126.54372154781595
+        },
+        "throughput": {
+          "prefill_tok_s": 1054.072900978905,
+          "decode_tok_s": 60.348897469752586,
+          "decode_ms_per_token": 16.570311006944394
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 2,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.36626951908693,
+          "warmup_decode_seconds": 0.06641131802462041,
+          "graph_capture_seconds": 0.007977713132277131,
+          "decode_seconds_excluding_graph_capture": 2.1285954730119556,
+          "wall_seconds_excluding_load": 126.56925402325578
+        },
+        "throughput": {
+          "prefill_tok_s": 1053.9192058010867,
+          "decode_tok_s": 60.133548916591664,
+          "decode_ms_per_token": 16.629652132905903
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 3,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.32438444090076,
+          "warmup_decode_seconds": 0.06719883996993303,
+          "graph_capture_seconds": 0.009079847019165754,
+          "decode_seconds_excluding_graph_capture": 2.1191449128091335,
+          "wall_seconds_excluding_load": 126.51980804069899
+        },
+        "throughput": {
+          "prefill_tok_s": 1054.274272818192,
+          "decode_tok_s": 60.40172110284025,
+          "decode_ms_per_token": 16.555819631321356
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 4,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.36797651997767,
+          "warmup_decode_seconds": 0.06688365689478815,
+          "graph_capture_seconds": 0.008346168091520667,
+          "decode_seconds_excluding_graph_capture": 2.119309114990756,
+          "wall_seconds_excluding_load": 126.56251545995474
+        },
+        "throughput": {
+          "prefill_tok_s": 1053.9047403327772,
+          "decode_tok_s": 60.39704123131576,
+          "decode_ms_per_token": 16.55710246086528
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      },
+      {
+        "run_index": 5,
+        "measured": true,
+        "persistent_session": true,
+        "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": true
+        },
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_chunk_tuning": {
+          "enabled": true,
+          "applied": true,
+          "reason": "manual_long_equiv_gt1k",
+          "max_sequence_length": 131072,
+          "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
+          "memory_budget_gib": 17.23906984329224,
+          "estimated_peak_gib": 20.0,
+          "chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          }
+        },
+        "decode_graph_reused": false,
+        "timings": {
+          "load_seconds": 34.488573875045404,
+          "load_seconds_is_shared_session": true,
+          "prefill_seconds": 124.45124059985392,
+          "warmup_decode_seconds": 0.06651968299411237,
+          "graph_capture_seconds": 0.008703232975676656,
+          "decode_seconds_excluding_graph_capture": 2.1294956980273128,
+          "wall_seconds_excluding_load": 126.65595921385102
+        },
+        "throughput": {
+          "prefill_tok_s": 1053.1996255580425,
+          "decode_tok_s": 60.10812800353367,
+          "decode_ms_per_token": 16.63668514083838
+        },
+        "correctness_sanity": {
+          "finite_final_logit": true,
+          "final_token_id": 9707,
+          "final_logit": 29.7598876953125,
+          "generated_preview_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "generated_tail_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ]
+        },
+        "memory": {
+          "tracked_peak_allocated_bytes": 23755366440,
+          "tracked_peak_allocated_gib": 22.123909033834934,
+          "tracked_current_allocated_bytes_before_close": 22352113688,
+          "tracked_current_allocated_gib_before_close": 20.81702806800604,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 4791094800,
+          "owned_session_peak_gib": 4.462054744362831,
+          "hip_used_peak_sampled_bytes": 8021252096,
+          "hip_used_peak_sampled_gib": 7.470373153686523,
+          "kv_memory_audit": {
+            "passed": true,
+            "latest_label": "before_close",
+            "latest": {
+              "required": false,
+              "passed": true,
+              "kv_storage_dtype": "bf16"
+            }
+          },
+          "notes": [
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+          ]
+        }
+      }
+    ]
+  },
+  "extra": {
+    "backend": "hip_gfx1100",
+    "requested_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "shared_expert_format": "packed_paro_w4",
+    "max_layers": 40,
+    "kv_storage_dtype": "bf16",
+    "kv_policy": {
+      "policy_class": "FixedPagedKVPolicy",
+      "spans_mode": "uniform",
+      "block_size": 256,
+      "requested_storage": "auto",
+      "resolved_storage_dtype": "bf16",
+      "storage_dtype": "bf16",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "scale_metadata_format": {
+        "present": false,
+        "scale_dtype": null,
+        "granularity": null,
+        "k_scale": null,
+        "v_scale": null
+      },
+      "int8_explicit": false,
+      "int8_admission_gated": false,
+      "selection_reason": "default_bf16"
+    },
+    "attn_aotriton_min_tokens": 512
+  },
+  "notes": [
+    "The model/session is loaded once for the largest requested shape and reset between repetitions.",
+    "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
+    "Measured decode excludes HIP graph capture time when graph replay is enabled; graph capture is reported per first run of each shape.",
+    "Artifact compacted by scripts/run_w7900_readme_refresh.sh: verbose per-run memory_snapshots and retained-KV buffer inventories omitted; summary_by_workload, run timings/throughput, correctness sanity fields, and numeric memory peaks retained."
+  ]
+}

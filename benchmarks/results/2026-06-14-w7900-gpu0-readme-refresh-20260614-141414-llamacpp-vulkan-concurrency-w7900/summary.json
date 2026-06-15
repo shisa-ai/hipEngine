@@ -1,0 +1,707 @@
+{
+  "kind": "llamacpp_vulkan_concurrency_decode_sweep",
+  "created_at": "2026-06-14T15:54:38.799451+00:00",
+  "performance_claim": false,
+  "host": "GGML_VK_VISIBLE_DEVICES=0",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "fixture": "/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "ctx_per_seq": 1024,
+    "reps": 3,
+    "cache_type_k": "f16",
+    "cache_type_v": "f16"
+  },
+  "methodology": {
+    "server": "llama-server restarted per (concurrency, rep) with -np concurrency and -c ctx_per_seq*concurrency",
+    "client": "concurrent POST /completion with exact prompt token-id rows",
+    "primary_metric": "sum(predicted_n) / max(predicted_ms) across the concurrent responses",
+    "secondary_metric": "sum(predicted_n) / client wall time including prompt eval and HTTP",
+    "aggregate_across_runs": "median"
+  },
+  "rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 105.75960181509917,
+      "decode_tok_s_per_request_median": 105.75960181509917,
+      "decode_tok_s_aggregate_runs": [
+        105.75960181509917,
+        106.28413236027997,
+        104.63252322147191
+      ],
+      "e2e_tok_s_aggregate_median": 89.48231929534916,
+      "e2e_tok_s_aggregate_runs": [
+        89.48231929534916,
+        89.73360384029294,
+        88.47693835797261
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 1,
+          "wall_s": 1.4304501828737557,
+          "total_predicted": 128,
+          "max_predicted_ms": 1210.292,
+          "aggregate_decode_tok_s_timing": 105.75960181509917,
+          "aggregate_tok_s_e2e": 89.48231929534916,
+          "per_request_decode_tok_s_timing": 105.75960181509917,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 1.430353990988806,
+              "predicted_n": 128,
+              "predicted_ms": 1210.292,
+              "predicted_per_second": 105.75960181509917,
+              "prompt_n": 512,
+              "prompt_ms": 218.834,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c1-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 1024 -np 1 -b 2048 -ub 512 --host 127.0.0.1 --port 18110 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 1,
+          "wall_s": 1.4264444368891418,
+          "total_predicted": 128,
+          "max_predicted_ms": 1204.319,
+          "aggregate_decode_tok_s_timing": 106.28413236027997,
+          "aggregate_tok_s_e2e": 89.73360384029294,
+          "per_request_decode_tok_s_timing": 106.28413236027997,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 1.4263610958587378,
+              "predicted_n": 128,
+              "predicted_ms": 1204.319,
+              "predicted_per_second": 106.28413236027997,
+              "prompt_n": 512,
+              "prompt_ms": 220.842,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c1-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 1024 -np 1 -b 2048 -ub 512 --host 127.0.0.1 --port 18111 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 1,
+          "wall_s": 1.4467046710196882,
+          "total_predicted": 128,
+          "max_predicted_ms": 1223.329,
+          "aggregate_decode_tok_s_timing": 104.63252322147191,
+          "aggregate_tok_s_e2e": 88.47693835797261,
+          "per_request_decode_tok_s_timing": 104.63252322147191,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 1.4466370998416096,
+              "predicted_n": 128,
+              "predicted_ms": 1223.329,
+              "predicted_per_second": 104.6325232214719,
+              "prompt_n": 512,
+              "prompt_ms": 222.097,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c1-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 1024 -np 1 -b 2048 -ub 512 --host 127.0.0.1 --port 18112 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 157.38378959262803,
+      "decode_tok_s_per_request_median": 78.69189479631402,
+      "decode_tok_s_aggregate_runs": [
+        157.38378959262803,
+        157.7395916516321,
+        157.3054558570782
+      ],
+      "e2e_tok_s_aggregate_median": 111.69478364710177,
+      "e2e_tok_s_aggregate_runs": [
+        111.69478364710177,
+        111.71083158446795,
+        111.60567241866742
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 2,
+          "wall_s": 2.2919602119363844,
+          "total_predicted": 256,
+          "max_predicted_ms": 1626.597,
+          "aggregate_decode_tok_s_timing": 157.38378959262803,
+          "aggregate_tok_s_e2e": 111.69478364710177,
+          "per_request_decode_tok_s_timing": 78.69189479631402,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 2.291749477852136,
+              "predicted_n": 128,
+              "predicted_ms": 1625.64,
+              "predicted_per_second": 78.73822002411357,
+              "prompt_n": 512,
+              "prompt_ms": 664.787,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 2.291793658863753,
+              "predicted_n": 128,
+              "predicted_ms": 1626.597,
+              "predicted_per_second": 78.69189479631402,
+              "prompt_n": 512,
+              "prompt_ms": 663.643,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c2-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 2048 -np 2 -b 2048 -ub 512 --host 127.0.0.1 --port 18120 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 2,
+          "wall_s": 2.291630957974121,
+          "total_predicted": 256,
+          "max_predicted_ms": 1622.928,
+          "aggregate_decode_tok_s_timing": 157.7395916516321,
+          "aggregate_tok_s_e2e": 111.71083158446795,
+          "per_request_decode_tok_s_timing": 78.86979582581606,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 2.2911738499533385,
+              "predicted_n": 128,
+              "predicted_ms": 1622.928,
+              "predicted_per_second": 78.86979582581606,
+              "prompt_n": 512,
+              "prompt_ms": 667.158,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 2.291572415968403,
+              "predicted_n": 128,
+              "predicted_ms": 1622.505,
+              "predicted_per_second": 78.89035781091583,
+              "prompt_n": 512,
+              "prompt_ms": 667.782,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c2-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 2048 -np 2 -b 2048 -ub 512 --host 127.0.0.1 --port 18121 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 2,
+          "wall_s": 2.293790220981464,
+          "total_predicted": 256,
+          "max_predicted_ms": 1627.407,
+          "aggregate_decode_tok_s_timing": 157.3054558570782,
+          "aggregate_tok_s_e2e": 111.60567241866742,
+          "per_request_decode_tok_s_timing": 78.6527279285391,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 2.2936439879704267,
+              "predicted_n": 128,
+              "predicted_ms": 1627.407,
+              "predicted_per_second": 78.65272792853908,
+              "prompt_n": 512,
+              "prompt_ms": 664.78,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 2.293537207180634,
+              "predicted_n": 128,
+              "predicted_ms": 1626.611,
+              "predicted_per_second": 78.69121750682861,
+              "prompt_n": 512,
+              "prompt_ms": 665.731,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c2-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 2048 -np 2 -b 2048 -ub 512 --host 127.0.0.1 --port 18122 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 75.28632329829382,
+      "decode_tok_s_per_request_median": 18.821580824573456,
+      "decode_tok_s_aggregate_runs": [
+        75.28632329829382,
+        75.3244024877061,
+        75.26698832523748
+      ],
+      "e2e_tok_s_aggregate_median": 68.13093048425085,
+      "e2e_tok_s_aggregate_runs": [
+        68.13093048425085,
+        68.18004372135891,
+        68.09010249396549
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 4,
+          "wall_s": 7.514942132169381,
+          "total_predicted": 512,
+          "max_predicted_ms": 6800.704,
+          "aggregate_decode_tok_s_timing": 75.28632329829382,
+          "aggregate_tok_s_e2e": 68.13093048425085,
+          "per_request_decode_tok_s_timing": 18.821580824573456,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 7.4932666008826345,
+              "predicted_n": 128,
+              "predicted_ms": 6800.355,
+              "predicted_per_second": 18.822546764102757,
+              "prompt_n": 512,
+              "prompt_ms": 691.479,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 7.514395843958482,
+              "predicted_n": 128,
+              "predicted_ms": 6573.311,
+              "predicted_per_second": 19.472682792583527,
+              "prompt_n": 512,
+              "prompt_ms": 247.129,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 7.493221358861774,
+              "predicted_n": 128,
+              "predicted_ms": 6800.704,
+              "predicted_per_second": 18.821580824573456,
+              "prompt_n": 512,
+              "prompt_ms": 690.962,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 7.493843090021983,
+              "predicted_n": 128,
+              "predicted_ms": 6799.484,
+              "predicted_per_second": 18.82495789386371,
+              "prompt_n": 512,
+              "prompt_ms": 692.566,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c4-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 4096 -np 4 -b 2048 -ub 512 --host 127.0.0.1 --port 18140 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 4,
+          "wall_s": 7.509528771974146,
+          "total_predicted": 512,
+          "max_predicted_ms": 6797.266,
+          "aggregate_decode_tok_s_timing": 75.3244024877061,
+          "aggregate_tok_s_e2e": 68.18004372135891,
+          "per_request_decode_tok_s_timing": 18.831100621926524,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 7.487735968083143,
+              "predicted_n": 128,
+              "predicted_ms": 6796.546,
+              "predicted_per_second": 18.833095516457917,
+              "prompt_n": 512,
+              "prompt_ms": 689.693,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 7.509117285022512,
+              "predicted_n": 128,
+              "predicted_ms": 6568.872,
+              "predicted_per_second": 19.485841709200603,
+              "prompt_n": 512,
+              "prompt_ms": 248.171,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 7.48675119294785,
+              "predicted_n": 128,
+              "predicted_ms": 6797.266,
+              "predicted_per_second": 18.831100621926524,
+              "prompt_n": 512,
+              "prompt_ms": 688.397,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 7.48827979597263,
+              "predicted_n": 128,
+              "predicted_ms": 6796.007,
+              "predicted_per_second": 18.834589193330732,
+              "prompt_n": 512,
+              "prompt_ms": 690.819,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c4-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 4096 -np 4 -b 2048 -ub 512 --host 127.0.0.1 --port 18141 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 4,
+          "wall_s": 7.519448220031336,
+          "total_predicted": 512,
+          "max_predicted_ms": 6802.451,
+          "aggregate_decode_tok_s_timing": 75.26698832523748,
+          "aggregate_tok_s_e2e": 68.09010249396549,
+          "per_request_decode_tok_s_timing": 18.81674708130937,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 7.496712841792032,
+              "predicted_n": 128,
+              "predicted_ms": 6801.157,
+              "predicted_per_second": 18.820327188447493,
+              "prompt_n": 512,
+              "prompt_ms": 694.575,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 7.519244427094236,
+              "predicted_n": 128,
+              "predicted_ms": 6573.663,
+              "predicted_per_second": 19.47164008863856,
+              "prompt_n": 512,
+              "prompt_ms": 249.613,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 7.496434797998518,
+              "predicted_n": 128,
+              "predicted_ms": 6802.451,
+              "predicted_per_second": 18.81674708130937,
+              "prompt_n": 512,
+              "prompt_ms": 692.794,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 7.496916834963486,
+              "predicted_n": 128,
+              "predicted_ms": 6801.558,
+              "predicted_per_second": 18.819217596909414,
+              "prompt_n": 512,
+              "prompt_ms": 693.953,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c4-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 4096 -np 4 -b 2048 -ub 512 --host 127.0.0.1 --port 18142 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 25.15493993643956,
+      "decode_tok_s_per_request_median": 3.144367492054945,
+      "decode_tok_s_aggregate_runs": [
+        25.266597767483884,
+        25.15493993643956,
+        24.906178013940018
+      ],
+      "e2e_tok_s_aggregate_median": 23.349937452158546,
+      "e2e_tok_s_aggregate_runs": [
+        23.47422542606205,
+        23.349937452158546,
+        23.101221674533367
+      ],
+      "path": "llama-server /completion continuous batching",
+      "rep_artifacts": [
+        {
+          "concurrency": 8,
+          "wall_s": 43.62231261795387,
+          "total_predicted": 1024,
+          "max_predicted_ms": 40527.815,
+          "aggregate_decode_tok_s_timing": 25.266597767483884,
+          "aggregate_tok_s_e2e": 23.47422542606205,
+          "per_request_decode_tok_s_timing": 3.1583247209354854,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 43.36867988295853,
+              "predicted_n": 128,
+              "predicted_ms": 40527.815,
+              "predicted_per_second": 3.158324720935486,
+              "prompt_n": 512,
+              "prompt_ms": 2839.725,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 43.521950613940135,
+              "predicted_n": 128,
+              "predicted_ms": 29932.855,
+              "predicted_per_second": 4.276237599119764,
+              "prompt_n": 512,
+              "prompt_ms": 10748.134,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 43.52070757606998,
+              "predicted_n": 128,
+              "predicted_ms": 29934.013,
+              "predicted_per_second": 4.276072172481518,
+              "prompt_n": 512,
+              "prompt_ms": 10746.429,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 43.52216811804101,
+              "predicted_n": 128,
+              "predicted_ms": 29933.739,
+              "predicted_per_second": 4.276111313725291,
+              "prompt_n": 512,
+              "prompt_ms": 10747.002,
+              "stop": true
+            },
+            {
+              "index": 4,
+              "wall_s": 43.62171220895834,
+              "predicted_n": 128,
+              "predicted_ms": 21736.302,
+              "predicted_per_second": 5.8887661755895735,
+              "prompt_n": 512,
+              "prompt_ms": 8295.728,
+              "stop": true
+            },
+            {
+              "index": 5,
+              "wall_s": 43.6213478629943,
+              "predicted_n": 128,
+              "predicted_ms": 21735.415,
+              "predicted_per_second": 5.889006490099223,
+              "prompt_n": 512,
+              "prompt_ms": 8296.852,
+              "stop": true
+            },
+            {
+              "index": 6,
+              "wall_s": 43.62049217009917,
+              "predicted_n": 128,
+              "predicted_ms": 21737.292,
+              "predicted_per_second": 5.888497978497045,
+              "prompt_n": 512,
+              "prompt_ms": 19042.524,
+              "stop": true
+            },
+            {
+              "index": 7,
+              "wall_s": 43.62099168705754,
+              "predicted_n": 128,
+              "predicted_ms": 21736.549,
+              "predicted_per_second": 5.888699259482267,
+              "prompt_n": 512,
+              "prompt_ms": 8295.22,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c8-r0.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 8 -b 2048 -ub 512 --host 127.0.0.1 --port 18180 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 8,
+          "wall_s": 43.8545071950648,
+          "total_predicted": 1024,
+          "max_predicted_ms": 40707.71,
+          "aggregate_decode_tok_s_timing": 25.15493993643956,
+          "aggregate_tok_s_e2e": 23.349937452158546,
+          "per_request_decode_tok_s_timing": 3.144367492054945,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 43.7533843240235,
+              "predicted_n": 128,
+              "predicted_ms": 29988.048,
+              "predicted_per_second": 4.268367184152833,
+              "prompt_n": 512,
+              "prompt_ms": 10872.399,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 43.60085537680425,
+              "predicted_n": 128,
+              "predicted_ms": 40707.71,
+              "predicted_per_second": 3.144367492054945,
+              "prompt_n": 512,
+              "prompt_ms": 2891.639,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 43.85335666802712,
+              "predicted_n": 128,
+              "predicted_ms": 21748.851,
+              "predicted_per_second": 5.8853683810698785,
+              "prompt_n": 512,
+              "prompt_ms": 8337.229,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 43.75302704796195,
+              "predicted_n": 128,
+              "predicted_ms": 29987.7,
+              "predicted_per_second": 4.26841671752085,
+              "prompt_n": 512,
+              "prompt_ms": 10873.026,
+              "stop": true
+            },
+            {
+              "index": 4,
+              "wall_s": 43.75434956792742,
+              "predicted_n": 128,
+              "predicted_ms": 29986.782,
+              "predicted_per_second": 4.2685473886461045,
+              "prompt_n": 512,
+              "prompt_ms": 10874.218,
+              "stop": true
+            },
+            {
+              "index": 5,
+              "wall_s": 43.853045743191615,
+              "predicted_n": 128,
+              "predicted_ms": 21749.616,
+              "predicted_per_second": 5.885161374803123,
+              "prompt_n": 512,
+              "prompt_ms": 19210.628,
+              "stop": true
+            },
+            {
+              "index": 6,
+              "wall_s": 43.85312796407379,
+              "predicted_n": 128,
+              "predicted_ms": 21748.547,
+              "predicted_per_second": 5.885450646427093,
+              "prompt_n": 512,
+              "prompt_ms": 8337.754,
+              "stop": true
+            },
+            {
+              "index": 7,
+              "wall_s": 43.85363963292912,
+              "predicted_n": 128,
+              "predicted_ms": 21747.71,
+              "predicted_per_second": 5.885677158652566,
+              "prompt_n": 512,
+              "prompt_ms": 8338.821,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c8-r1.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 8 -b 2048 -ub 512 --host 127.0.0.1 --port 18181 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        },
+        {
+          "concurrency": 8,
+          "wall_s": 44.32666005403735,
+          "total_predicted": 1024,
+          "max_predicted_ms": 41114.297,
+          "aggregate_decode_tok_s_timing": 24.906178013940018,
+          "aggregate_tok_s_e2e": 23.101221674533367,
+          "per_request_decode_tok_s_timing": 3.113272251742502,
+          "records": [
+            {
+              "index": 0,
+              "wall_s": 44.22713270713575,
+              "predicted_n": 128,
+              "predicted_ms": 30123.867,
+              "predicted_per_second": 4.249122464921253,
+              "prompt_n": 512,
+              "prompt_ms": 11144.189,
+              "stop": true
+            },
+            {
+              "index": 1,
+              "wall_s": 44.07321747392416,
+              "predicted_n": 128,
+              "predicted_ms": 41114.297,
+              "predicted_per_second": 3.113272251742502,
+              "prompt_n": 512,
+              "prompt_ms": 2957.652,
+              "stop": true
+            },
+            {
+              "index": 2,
+              "wall_s": 44.32601201417856,
+              "predicted_n": 128,
+              "predicted_ms": 21743.476,
+              "predicted_per_second": 5.886823247580102,
+              "prompt_n": 512,
+              "prompt_ms": 8479.322,
+              "stop": true
+            },
+            {
+              "index": 3,
+              "wall_s": 44.22592920996249,
+              "predicted_n": 128,
+              "predicted_ms": 30124.139,
+              "predicted_per_second": 4.249084098304022,
+              "prompt_n": 512,
+              "prompt_ms": 11143.678,
+              "stop": true
+            },
+            {
+              "index": 4,
+              "wall_s": 44.32607299601659,
+              "predicted_n": 128,
+              "predicted_ms": 21743.187,
+              "predicted_per_second": 5.886901492407714,
+              "prompt_n": 512,
+              "prompt_ms": 8479.812,
+              "stop": true
+            },
+            {
+              "index": 5,
+              "wall_s": 44.225537723861635,
+              "predicted_n": 128,
+              "predicted_ms": 30124.944,
+              "predicted_per_second": 4.248970554102939,
+              "prompt_n": 512,
+              "prompt_ms": 11142.601,
+              "stop": true
+            },
+            {
+              "index": 6,
+              "wall_s": 44.32529067294672,
+              "predicted_n": 128,
+              "predicted_ms": 21744.239,
+              "predicted_per_second": 5.886616680399806,
+              "prompt_n": 512,
+              "prompt_ms": 8478.342,
+              "stop": true
+            },
+            {
+              "index": 7,
+              "wall_s": 44.32521459297277,
+              "predicted_n": 128,
+              "predicted_ms": 21744.98,
+              "predicted_per_second": 5.886416083160343,
+              "prompt_n": 512,
+              "prompt_ms": 19621.719,
+              "stop": true
+            }
+          ],
+          "server_log": "/tmp/hipengine-readme-runs/20260614-141414/llamacpp-vulkan-concurrency-work/server-c8-r2.log",
+          "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 8 -b 2048 -ub 512 --host 127.0.0.1 --port 18182 --no-webui --no-cache-prompt --cache-ram 0 --ctx-checkpoints 0 --metrics"
+        }
+      ]
+    }
+  }
+}

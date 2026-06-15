@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-14 (W7900 README PARO packed and GGUF Q4_K_S toplines remain on clean TheRock ROCm 7.13, `HIP version: 7.13.26162-1140233ffe`, measured code commit `c5c8bab1`: PARO 5-run median prefill `2708.314 / 2871.122 / 2075.471 / 1054.427 tok/s`, decode `114.724 / 105.468 / 91.922 / 60.216 tok/s`, tracked peak `23.098 / 25.113 / 25.222 / 25.222 GiB`; GGUF Q4_K_S prefill `2262.097 / 2544.475 / 1878.052 / 995.295 tok/s`, decode `109.347 / 99.873 / 86.486 / 58.066 tok/s`, tracked peak `25.108 GiB`. ROCm 7.14 nightly diagnostics were mixed and not promoted: PARO short-context decode improved slightly, PARO long-context and GGUF prefill regressed, and MTP verifier wall regressed; concurrency diagnostic refreshed to `116.29 / 113.89 / 159.31 / 188.98` aggregate tok/s for c=1/2/4/8. Previous MTP/DFlash update: 2026-06-13, 27B dense DFlash accepted 1.231x; 35B-A3B MTP B=1 current best is 1.023x prompt mean / 1.014x total-time, exact `9/9`; fixed B=1 remains current best.)
+Last updated: 2026-06-14 (W7900/GPU0 README refresh reran hipEngine PARO/GGUF, llama.cpp HIP/Vulkan, and vLLM/llama.cpp concurrency with exact commands now encoded in `scripts/run_w7900_readme_refresh.sh` and documented below. Main sweep measured code commit `fbbc7bf8` under clean TheRock ROCm 7.13, `HIP version: 7.13.26162-1140233ffe`; PARO 5-run median prefill `2729.701 / 2906.950 / 2879.578 / 2079.424 / 1559.096 / 1053.919 tok/s`, decode `115.227 / 102.927 / 105.253 / 91.965 / 77.666 / 60.349 tok/s`, tracked peak `21.029 / 21.241 / 21.973 / 22.082 / 22.082 / 22.124 GiB` for `512/1K/4K/32K/64K/128K`; GGUF Q4_K_S prefill `2226.422 / 2528.347 / 2515.478 / 1871.997 / 1442.153 / 994.989 tok/s`, decode `108.173 / 97.357 / 98.516 / 86.287 / 73.734 / 58.023 tok/s`, tracked peak `25.108 GiB`. llama.cpp HIP/Vulkan Q4_K_M reruns used commits `e37abd6b5` / `263cc04a5`; concurrency diagnostic refreshed to hipEngine aggregate `115.36 / 115.35 / 160.74 / 190.15 tok/s` for c=1/2/4/8, llama.cpp Vulkan `105.76 / 157.38 / 75.29 / 25.15`, and vLLM OpenAI wall `20.04 / 38.42 / 73.28 / 116.56`. Previous MTP/DFlash update: 2026-06-13, 27B dense DFlash accepted 1.231x; 35B-A3B MTP B=1 current best is 1.023x prompt mean / 1.014x total-time, exact `9/9`; fixed B=1 remains current best.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -37,6 +37,55 @@ families represented in this rollup. Unless a row also satisfies the full
 `docs/BENCHMARK.md` correctness/repetition requirements, keep it in the hardware
 report and `WORKLOG.md` as diagnostic rather than promoting it to "current
 fastest".
+
+### 0. Rerunnable W7900/GPU0 README suite
+
+The exact local runner for the W7900/GPU0 README refresh is
+[`scripts/run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh).
+It pins the current host's device mapping and binary paths while keeping repo
+assets relative to `$REPO_ROOT` rather than leaving them implicit in shell
+history:
+
+- GPU target: `HIP_VISIBLE_DEVICES=0`, the AMD Radeon Pro W7900.
+- amdgpu VRAM sampler target: `card1` (`44.984 GiB` on this host).
+- llama.cpp HIP device: `-dev ROCm0` after `HIP_VISIBLE_DEVICES=0` hides the
+  RX 7900 XTX.
+- llama.cpp Vulkan device: `-dev Vulkan0` / concurrency `--gpu 0`, which maps to
+  the W7900 in `llama-bench --list-devices` and `llama-server` on this host.
+- hipEngine stack: clean TheRock ROCm 7.13 from
+  `/home/lhl/mambaforge/envs/therock/bin/python3.12`.
+- vLLM stack: local source build in `/home/lhl/mambaforge/envs/vllm`, served via
+  OpenAI API on `127.0.0.1:8008`.
+- llama.cpp Q4_K_M model default: `$REPO_ROOT/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
+  with a host-local fallback to `/home/lhl/hipEngine/...` when running from a
+  clean detached worktree that does not contain the large untracked GGUF. Set
+  `LLAMACPP_Q4KM_MODEL=/path/to/model.gguf` to override explicitly.
+
+Recommended clean-worktree invocation:
+
+```bash
+RUN_TAG=$(date -u +%Y%m%d-%H%M%S)
+git worktree add --detach "/tmp/hipengine-readme-w7900-${RUN_TAG}" HEAD
+OUTDIR=/home/lhl/hipEngine/benchmarks/results \
+RUN_TAG="$RUN_TAG" \
+REPO_ROOT="/tmp/hipengine-readme-w7900-${RUN_TAG}" \
+  "/tmp/hipengine-readme-w7900-${RUN_TAG}/scripts/run_w7900_readme_refresh.sh" all
+```
+
+Run individual phases when debugging or refreshing a subset:
+
+```bash
+scripts/run_w7900_readme_refresh.sh hipengine
+scripts/run_w7900_readme_refresh.sh llamacpp
+scripts/run_w7900_readme_refresh.sh concurrency
+scripts/run_w7900_readme_refresh.sh vllm      # starts server, runs client, stops server
+```
+
+The script writes compact artifacts under `benchmarks/results/` and detailed
+logs/env capture under `/tmp/hipengine-readme-runs/$RUN_TAG/`. It also prebuilds
+hipEngine JIT kernels once before the measured resident sweeps, then reruns the
+measured rows with `--require-cached-build` so compiler work is not part of the
+measurement path.
 
 ### 1. Capture environment first
 
@@ -98,11 +147,11 @@ KV and llama.cpp `Q8_0` KV when available.
 hipEngine PARO BF16 KV:
 
 ```bash
-PARO=shisa-ai/Qwen3.6-35B-A3B-PARO-packed
+PARO=/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1
 # Historical artifacts before 2026-06-14 may show the older
 # Qwen3.6-35B-A3B-PARO-full4096-e5-packed snapshot name; it is the same packed
 # PARO architecture used by the canonical public topline model.
-PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
+HIP_VISIBLE_DEVICES=0 PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --engine paro --model "$PARO" --backend hip_gfx1100 \
   --shared-expert-format packed_paro_w4 --token-id 9707 \
   --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
@@ -137,13 +186,14 @@ PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
 llama.cpp HIP/Vulkan, with peak VRAM sampling:
 
 ```bash
-MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-python scripts/llamacpp_bench_with_peak.py \
-  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-bench \
+MODEL=/home/lhl/hipEngine/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+HIP_VISIBLE_DEVICES=0 python scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
   --model "$MODEL" --backend hip \
   --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
   --repetitions 1 --ngl 99 --flash-attn 1 \
   --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
+  --extra-args "-dev ROCm0" \
   --output benchmarks/results/<date>-<gpu>-llamacpp-hip-q4km-f16kv-sweep.json
 
 python scripts/llamacpp_bench_with_peak.py \
@@ -152,11 +202,66 @@ python scripts/llamacpp_bench_with_peak.py \
   --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
   --repetitions 1 --ngl 99 --flash-attn 1 \
   --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
+  --extra-args "-dev Vulkan0" \
   --output benchmarks/results/<date>-<gpu>-llamacpp-vulkan-q4km-f16kv-sweep.json
 ```
 
 For llama.cpp max-context compressed-KV rows, rerun the wrapper with
 `--workloads 64K/128 128K/128 --cache-type-k q8_0 --cache-type-v q8_0`.
+
+Concurrency comparison rows use the same W7900/GPU0 mapping. The script's
+`concurrency` phase expands to these commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 PYTHONPATH=. "$PY" scripts/qwen35_concurrency_decode_sweep.py \
+  --model "$PARO" \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
+  --concurrencies 1,2,4,8 --reps 3 \
+  --work-dir /tmp/hipengine-readme-runs/<run-tag>/hipengine-concurrency-work \
+  --json benchmarks/results/<date>-w7900-gpu0-readme-refresh-<run-tag>-hipengine-concurrency-w7900/summary.json
+
+python scripts/llamacpp_vulkan_concurrency_sweep.py \
+  --repo /home/lhl/llama.cpp/llama.cpp-vulkan \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --gpu 0 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --concurrencies 1,2,4,8 --reps 3 \
+  --work-dir /tmp/hipengine-readme-runs/<run-tag>/llamacpp-vulkan-concurrency-work \
+  --json benchmarks/results/<date>-w7900-gpu0-readme-refresh-<run-tag>-llamacpp-vulkan-concurrency-w7900/summary.json
+```
+
+The vLLM comparison is a server/client split. Start the pinned local source-build
+server on W7900/GPU0:
+
+```bash
+HIP_VISIBLE_DEVICES=0 \
+TORCHINDUCTOR_AUTOGRAD_CACHE=0 \
+HSA_NO_SCRATCH_RECLAIM=1 \
+/home/lhl/mambaforge/envs/vllm/bin/vllm serve \
+  palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4 \
+  --host 127.0.0.1 --port 8008 \
+  --served-model-name qwen36-gptq-int4 \
+  --dtype bfloat16 \
+  --max-model-len 128000 \
+  --gpu-memory-utilization 0.90 \
+  --enforce-eager
+```
+
+Then run the OpenAI client sweep:
+
+```bash
+/home/lhl/mambaforge/envs/vllm/bin/python \
+  scripts/vllm_openai_concurrency_sweep.py \
+  --url http://127.0.0.1:8008 \
+  --model qwen36-gptq-int4 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 \
+  --concurrencies 1,2,4,8 --reps 3 \
+  --json benchmarks/results/<date>-w7900-gpu0-readme-refresh-<run-tag>-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json
+```
 
 ### 3. PARO regression spot-check
 
@@ -508,20 +613,20 @@ wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
 
 | Concurrency `c` | hipEngine agg decode tok/s | hipEngine per-seq tok/s | llama.cpp Vulkan agg tok/s | llama.cpp per-seq tok/s | vLLM OpenAI agg tok/s | vLLM per-seq tok/s |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 116.29 | 116.29 | 106.47 | 106.47 | 19.39 | 19.39 |
-| 2 | 113.89 | 56.94 | 159.19 | 79.59 | 37.53 | 18.77 |
-| 4 | 159.31 | 39.83 | 70.44 | 17.61 | 72.96 | 18.24 |
-| 8 | 188.98 | 23.62 | 26.26 | 3.28 | 115.96 | 14.49 |
+| 1 | 115.36 | 115.36 | 105.76 | 105.76 | 20.04 | 20.04 |
+| 2 | 115.35 | 57.67 | 157.38 | 78.69 | 38.42 | 19.21 |
+| 4 | 160.74 | 40.19 | 75.29 | 18.82 | 73.28 | 18.32 |
+| 8 | 190.15 | 23.77 | 25.15 | 3.14 | 116.56 | 14.57 |
 
-Artifacts: [`hipEngine W7900`](results/2026-06-14-hipengine-qwen35-concurrency-decode-rocm714-w7900/summary.json),
-[`llama.cpp Vulkan W7900`](results/2026-06-13-llamacpp-vulkan-qwen35-concurrency-decode-w7900/summary.json),
-[`vLLM local build W7900`](results/2026-06-13-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json).
+Artifacts: [`hipEngine W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json),
+[`llama.cpp Vulkan W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json),
+[`vLLM local build W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
+[`full W7900 refresh summary`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json).
 The current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 blocked with HIP OOM;
 see [`XTX partial`](results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json).
-Replicate with `scripts/qwen35_concurrency_decode_sweep.py`,
-`scripts/llamacpp_vulkan_concurrency_sweep.py`, and
-`scripts/vllm_openai_concurrency_sweep.py` (see module docstrings and the
-top-level `README.md` "Concurrency" section for exact commands).
+Replicate with `scripts/run_w7900_readme_refresh.sh concurrency` and
+`scripts/run_w7900_readme_refresh.sh vllm`; the exact expanded commands are in
+this file's README sweep procedure and in the script.
 
 ## Source-lineage target: Qwen3.5-35B-A3B-PARO
 
@@ -718,6 +823,7 @@ requires a shisa correctness gate before promotion.
 
 | Model | Quant | Workload | Path | Correctness / status | Diagnostic timing | Memory | Artifact | Last updated | Blocker / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3.6-35B-A3B README refresh | PARO w4 BF16 KV + GGUF Q4_K_S + llama.cpp Q4_K_M + vLLM GPTQ Int4 | W7900/GPU0 README comparison refresh: `512/128`, `1K/128`, `4K/128`, `32K/128`, `64K/128`, `128K/128`; concurrency `c=1,2,4,8` at 512/128 | [`scripts/run_w7900_readme_refresh.sh`](../scripts/run_w7900_readme_refresh.sh) from clean detached worktree commit `fbbc7bf8`; exact expanded commands are documented in this file's README sweep procedure. | `status=diagnostic_retained`, `performance_claim=false`; all JSON artifacts parsed; hipEngine measured rows used cached JIT builds with final IDs/finite logits recorded in raw artifacts; no new KL/top-1 gate, and cross-engine columns are cross-quant. | PARO prefill `2729.701/2906.950/2879.578/2079.424/1559.096/1053.919`, decode `115.227/102.927/105.253/91.965/77.666/60.349`; GGUF Q4_K_S prefill `2226.422/2528.347/2515.478/1871.997/1442.153/994.989`, decode `108.173/97.357/98.516/86.287/73.734/58.023`; concurrency aggregate hipEngine `115.36/115.35/160.74/190.15`, llama.cpp Vulkan `105.76/157.38/75.29/25.15`, vLLM OpenAI wall `20.04/38.42/73.28/116.56`. | PARO tracked peak `21.029/21.241/21.973/22.082/22.082/22.124 GiB`; GGUF tracked peak `25.108 GiB`; llama.cpp HIP sampled peak `21.128/21.139/21.196/21.738/22.416/23.609 GiB`; llama.cpp Vulkan sampled peak `20.768/20.727/20.786/21.363/22.019/23.332 GiB`. | [`summary`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json), [`PARO`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-paro-packed-5run.json), [`GGUF`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json), [`llama.cpp HIP`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-hip-q4km-f16kv.json), [`llama.cpp Vulkan`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-q4km-f16kv.json), [`hipEngine concurrency`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json), [`llama.cpp concurrency`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json), [`vLLM`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json) | 2026-06-14 | This row makes the top-level README comparison exactly rerunnable. It supersedes the previous ad-hoc command prose for future refreshes but does not replace older faster retained rows in the current-fastest table unless they are beaten under the same gate. |
 | Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | native c=8 retained profiler preflight: 512/128 on RX 7900 XTX / `HIP_VISIBLE_DEVICES=1` | `scripts/qwen35_batch_c_sweep.py --batch-sizes 1,8` with repo-scoped compiler-version/c1/serial/primitive artifacts, batched-LM-head sampler evidence, and compact `rocprofv3 --kernel-trace` summary. | `status=blocked`, `performance_claim=false`; primitive c=8, c=1 native scaling baseline, c=8 serial-bridge scaling baseline, profiler-summary precondition, retained profiler-synthesis postcondition, and c=8 generated-token equality all passed (`prefixes=[137,137,137,137,137,137,137,137]`). | c=1 native decode `133.529 tok/s`; c=8 serial bridge decode `103.666 tok/s` aggregate / `12.958 tok/s` per request; c=8 native diagnostic decode `108.125 tok/s` aggregate / `13.516 tok/s` per request. Profiler compact trace totals `3.025s` native-batch kernel time including `batch_argmax_stage{1,2}` sampler kernels (`10.717 ms`). | c=1 native tracked peak `18.078 GiB`; c=8 native diagnostic allocator peak `20.499 GiB`. | [`summary`](results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/summary.json), [`profiler`](results/2026-06-02-hipengine-qwen35-native-c8-profiler-preflight/profiler-c8.json), [`no-flag sampler matrix`](results/2026-06-02-hipengine-qwen35-native-default-sampler-equality-matrix/summary.json), [`output-labeled matrix`](results/2026-06-02-hipengine-qwen35-native-default-output-labeled-equality-matrix/summary.json), [`repeat2 matrix`](results/2026-06-02-hipengine-qwen35-native-repeat2-equality-matrix/summary.json), [`c2 variability fingerprint`](results/2026-06-02-hipengine-qwen35-native-c2-primary-variability/summary.json), [`auto-QKV/Z matrix`](results/2026-06-02-hipengine-qwen35-native-auto-qkvz-equality-matrix/summary.json), [`full-attn batch-GEMV output matrix`](results/2026-06-02-hipengine-qwen35-native-fullattn-batchgemv-output-matrix/summary.json), [`linear batch-GEMV output matrix`](results/2026-06-02-hipengine-qwen35-native-linear-batchgemv-output-matrix/summary.json), [`batched selected-c1 MoE matrix`](results/2026-06-02-hipengine-qwen35-native-batched-selected-moe-matrix/summary.json), [`promoted selected-c1 MoE matrix`](results/2026-06-02-hipengine-qwen35-native-selected-moe-promoted-matrix/summary.json), [`grouped MoE red probe`](results/2026-06-02-hipengine-qwen35-native-grouped-moe-red-probe/summary.json), [`hidden MoE parity probe`](results/2026-06-02-hipengine-qwen35-native-hidden-moe-parity-probe/summary.json), [`promoted selected-QKV/Z matrix`](results/2026-06-02-hipengine-qwen35-native-selected-qkvz-promoted-matrix/summary.json), [`promoted equality gate matrix`](results/2026-06-02-hipengine-qwen35-native-equality-gate-promoted-matrix/summary.json), [`promoted context gate matrix`](results/2026-06-02-hipengine-qwen35-native-context-gate-promoted-matrix/summary.json), [`explicit batched sampler control`](results/2026-06-02-hipengine-qwen35-native-explicit-batched-sampler-control-matrix/summary.json), [`serial sampler control`](results/2026-06-02-hipengine-qwen35-native-serial-sampler-control-matrix/summary.json) | 2026-06-02 | Completes c=2/c=4/c=8 profiler/scaling preflight coverage with sampler profiler provenance green; no-flag retained-bench equality matrix now also passes c=2/c=4/c=8 with row-aware sampler metadata, the output-labeled rerun records linear output as `batch_gemv`, the two-repeat matrix passed all six runs, the auto projection default now uses selected-QKV/Z with native A/B for c=8, row-aware batch-GEMV linear and full-attention outputs no longer contribute diagnostic blockers, batched selected-c1 MoE removes the per-row MoE blockers, promoted selected-c1 MoE metadata removes the selected-c1 MoE decode blocker while preserving the grouped-compact retained target, the grouped-MoE red probe shows row 0 stops at prefix 82 when grouped MoE is enabled in linear layers, full-attention layers, or both, the hidden MoE parity probe shows the default selected/per-row MoE path is hidden-green vs an independent c=1 native-batch oracle while each grouped variant is hidden-red, promoted selected-QKV/Z metadata removes the generic QKV/Z projection decode blocker while preserving native projection-dispatch gating, promoted equality-gate metadata removes the stale generated-equality blocker only inside artifacts whose generated-token equality passed, promoted context-gate metadata removes the stale BF16/context<1024 full-attention support caveat only inside artifacts with native full-attention context evidence, and explicit `batched_lm_head` plus `serial_lm_head` controls pass c=2/c=4/c=8. Retained promotion remains blocked by non-full-native projection/MoE and missing graph-replay profiler evidence; the c=2 variability fingerprint preserves one transient prefix-82/prefix-104 batched-sampler sample before reruns at 137, so no c>N throughput/scaling or deterministic-stability claim is made. |
 | Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | native c=4 retained profiler preflight: 512/128 on RX 7900 XTX / `HIP_VISIBLE_DEVICES=1` | `scripts/qwen35_batch_c_sweep.py --batch-sizes 1,4` with repo-scoped compiler-version/c1/serial/primitive artifacts, batched-LM-head sampler evidence, and compact `rocprofv3 --kernel-trace` summary. | `status=blocked`, `performance_claim=false`; primitive c=4, c=1 native scaling baseline, c=4 serial-bridge scaling baseline, profiler-summary precondition, retained profiler-synthesis postcondition, and c=4 generated-token equality all passed (`prefixes=[137,137,137,137]`). | c=1 native decode `133.146 tok/s`; c=4 serial bridge decode `110.347 tok/s` aggregate / `27.587 tok/s` per request; c=4 native diagnostic decode `99.890 tok/s` aggregate / `24.972 tok/s` per request. Profiler compact trace totals `1.652s` native-batch kernel time including `batch_argmax_stage{1,2}` sampler kernels (`5.856 ms`). | c=1 native tracked peak `18.078 GiB`; c=4 native diagnostic allocator peak `19.143 GiB`. | [`summary`](results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/summary.json), [`profiler`](results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/profiler-c4.json) | 2026-06-02 | Extends profiler/scaling preflight from c=2 to c=4 with sampler profiler provenance green; retained promotion remains blocked by non-full-native decode/projection/MoE and missing graph-replay profiler evidence, so no c>N throughput/scaling claim is made. |
 | Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | native c=2 retained profiler preflight: 512/128 on RX 7900 XTX / `HIP_VISIBLE_DEVICES=1` | `scripts/qwen35_batch_c_sweep.py --batch-sizes 2` with repo-scoped compiler-version/c1/serial/primitive artifacts, batched-LM-head sampler evidence, and compact `rocprofv3 --kernel-trace` summary. | `status=blocked`, `performance_claim=false`; primitive c=2, c=1 native scaling baseline, c=2 serial-bridge scaling baseline, profiler-summary precondition, retained profiler-synthesis postcondition, and c=2 generated-token equality all passed (`prefixes=[137,137]`). | c=1 native decode `134.112 tok/s`; c=2 serial bridge decode `79.851 tok/s` aggregate / `39.925 tok/s` per request; c=2 native diagnostic decode `62.941 tok/s` aggregate / `31.470 tok/s` per request. Profiler compact trace totals `0.994s` native-batch kernel time including `batch_argmax_stage{1,2}` sampler kernels (`3.337 ms`). | c=1 native tracked peak `18.078 GiB`; c=2 native diagnostic allocator peak `18.466 GiB`. | [`summary`](results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/summary.json), [`profiler`](results/2026-06-02-hipengine-qwen35-native-c2-profiler-preflight/profiler-c2.json) | 2026-06-02 | Profiler evidence is now present and sampler profiler provenance is green; retained promotion remains blocked by non-full-native decode/projection/MoE and missing graph-replay profiler evidence, so no c>N throughput/scaling claim is made. |

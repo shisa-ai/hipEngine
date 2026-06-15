@@ -1,0 +1,301 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-06-14",
+  "created_at": "2026-06-14T16:01:01.269096+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "gfx1100",
+    "hip_visible_devices": "0",
+    "amdgpu_card": "card1",
+    "vram_total_gib": 44.984375
+  },
+  "measured_code_commit": "fbbc7bf8",
+  "clean_worktree": "/tmp/hipengine-readme-w7900-20260614-141414-fbbc7bf8",
+  "run_tag": "20260614-141414",
+  "runner": "scripts/run_w7900_readme_refresh.sh",
+  "runner_notes": "hipEngine/llama.cpp/vLLM commands are documented in benchmarks/README.md and encoded in the runner; this run used the clean worktree as REPO_ROOT and wrote artifacts to /home/lhl/hipEngine/benchmarks/results.",
+  "software": {
+    "therock_hipcc_version_file": "/tmp/hipengine-readme-runs/20260614-141414/hipcc-version-713.txt",
+    "therock_hipcc_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "llamacpp_hip_repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "llamacpp_hip_commit": "e37abd6b5",
+    "llamacpp_vulkan_repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "llamacpp_vulkan_commit": "263cc04a5",
+    "vllm_env": "/home/lhl/mambaforge/envs/vllm",
+    "vllm_version": "0.22.1rc1.dev499+g470229c37.d20260613"
+  },
+  "models": {
+    "hipengine_paro": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "hipengine_gguf_q4ks": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "llamacpp_q4km": "/home/lhl/hipEngine/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "vllm": "palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4"
+  },
+  "artifacts": {
+    "hipengine_paro": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-paro-packed-5run.json",
+    "hipengine_gguf_q4ks": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json",
+    "llamacpp_hip_q4km": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-hip-q4km-f16kv.json",
+    "llamacpp_vulkan_q4km": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-q4km-f16kv.json",
+    "hipengine_concurrency": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json",
+    "llamacpp_vulkan_concurrency": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json",
+    "vllm_concurrency": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json"
+  },
+  "main_sweep": {
+    "hipengine_paro": {
+      "512/128": {
+        "prefill_tok_s": 2729.701035358198,
+        "decode_tok_s": 115.22711477772542,
+        "peak_gib": 21.02878673374653,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "1K/128": {
+        "prefill_tok_s": 2906.9501880760026,
+        "decode_tok_s": 102.92687841561937,
+        "peak_gib": 21.24085719883442,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "4K/128": {
+        "prefill_tok_s": 2879.5782404950232,
+        "decode_tok_s": 105.2533418087578,
+        "peak_gib": 21.973118856549263,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "32K/128": {
+        "prefill_tok_s": 2079.423904564508,
+        "decode_tok_s": 91.96493159419701,
+        "peak_gib": 22.082493856549263,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "64K/128": {
+        "prefill_tok_s": 1559.0959857449873,
+        "decode_tok_s": 77.66605240869288,
+        "peak_gib": 22.082493856549263,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "128K/128": {
+        "prefill_tok_s": 1053.9192058010867,
+        "decode_tok_s": 60.348897469752586,
+        "peak_gib": 22.123909033834934,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      }
+    },
+    "hipengine_gguf_q4ks": {
+      "512/128": {
+        "prefill_tok_s": 2226.422215144837,
+        "decode_tok_s": 108.17261460961619,
+        "peak_gib": 25.107746124267578,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      "1K/128": {
+        "prefill_tok_s": 2528.3466171060477,
+        "decode_tok_s": 97.35734108204356,
+        "peak_gib": 25.107746124267578,
+        "final_token_ids": [
+          165936,
+          165936,
+          165936,
+          165936,
+          165936
+        ]
+      },
+      "4K/128": {
+        "prefill_tok_s": 2515.478112698793,
+        "decode_tok_s": 98.5158626903348,
+        "peak_gib": 25.107746124267578,
+        "final_token_ids": [
+          570,
+          570,
+          570,
+          570,
+          570
+        ]
+      },
+      "32K/128": {
+        "prefill_tok_s": 1871.996869312227,
+        "decode_tok_s": 86.28689435147948,
+        "peak_gib": 25.107746124267578,
+        "final_token_ids": [
+          234921,
+          234921,
+          234921,
+          234921,
+          234921
+        ]
+      },
+      "64K/128": {
+        "prefill_tok_s": 1442.1527630487697,
+        "decode_tok_s": 73.73423961871401,
+        "peak_gib": 25.107746124267578,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      "128K/128": {
+        "prefill_tok_s": 994.9886315530986,
+        "decode_tok_s": 58.02308834705047,
+        "peak_gib": 25.107746124267578,
+        "final_token_ids": [
+          1510,
+          1510,
+          1510,
+          1510,
+          1510
+        ]
+      }
+    },
+    "llamacpp_hip_q4km": {
+      "512/128": {
+        "prefill_tok_s": 2539.170788,
+        "decode_tok_s": 77.861068,
+        "peak_gib": 21.127880096435547
+      },
+      "1K/128": {
+        "prefill_tok_s": 2441.407554,
+        "decode_tok_s": 79.3111,
+        "peak_gib": 21.139495849609375
+      },
+      "4K/128": {
+        "prefill_tok_s": 2301.756731,
+        "decode_tok_s": 77.785616,
+        "peak_gib": 21.196006774902344
+      },
+      "32K/128": {
+        "prefill_tok_s": 1693.732693,
+        "decode_tok_s": 71.662569,
+        "peak_gib": 21.73769760131836
+      },
+      "64K/128": {
+        "prefill_tok_s": 1323.460886,
+        "decode_tok_s": 65.578982,
+        "peak_gib": 22.416053771972656
+      },
+      "128K/128": {
+        "prefill_tok_s": 917.428088,
+        "decode_tok_s": 56.437483,
+        "peak_gib": 23.60886001586914
+      }
+    },
+    "llamacpp_vulkan_q4km": {
+      "512/128": {
+        "prefill_tok_s": 2751.29266,
+        "decode_tok_s": 106.719708,
+        "peak_gib": 20.767696380615234
+      },
+      "1K/128": {
+        "prefill_tok_s": 2643.138419,
+        "decode_tok_s": 106.332614,
+        "peak_gib": 20.72707748413086
+      },
+      "4K/128": {
+        "prefill_tok_s": 2547.644981,
+        "decode_tok_s": 102.146319,
+        "peak_gib": 20.785625457763672
+      },
+      "32K/128": {
+        "prefill_tok_s": 1958.410036,
+        "decode_tok_s": 91.082199,
+        "peak_gib": 21.36281967163086
+      },
+      "64K/128": {
+        "prefill_tok_s": 1405.55694,
+        "decode_tok_s": 82.826275,
+        "peak_gib": 22.019088745117188
+      },
+      "128K/128": {
+        "prefill_tok_s": 1080.387222,
+        "decode_tok_s": 70.000305,
+        "peak_gib": 23.33163833618164
+      }
+    }
+  },
+  "concurrency": {
+    "1": {
+      "hipengine_aggregate_tok_s": 115.36410393962534,
+      "hipengine_per_seq_tok_s": 115.36410393962534,
+      "llamacpp_vulkan_aggregate_tok_s": 105.75960181509917,
+      "llamacpp_vulkan_per_seq_tok_s": 105.75960181509917,
+      "vllm_openai_wall_aggregate_tok_s": 20.04497278513729,
+      "vllm_openai_wall_per_seq_tok_s": 20.04497278513729,
+      "vllm_post_ttft_aggregate_tok_s": 20.621388161567978
+    },
+    "2": {
+      "hipengine_aggregate_tok_s": 115.34886239757661,
+      "hipengine_per_seq_tok_s": 57.674431198788305,
+      "llamacpp_vulkan_aggregate_tok_s": 157.38378959262803,
+      "llamacpp_vulkan_per_seq_tok_s": 78.69189479631402,
+      "vllm_openai_wall_aggregate_tok_s": 38.41645522266306,
+      "vllm_openai_wall_per_seq_tok_s": 19.20822761133153,
+      "vllm_post_ttft_aggregate_tok_s": 40.14761587807206
+    },
+    "4": {
+      "hipengine_aggregate_tok_s": 160.74147641947064,
+      "hipengine_per_seq_tok_s": 40.18536910486766,
+      "llamacpp_vulkan_aggregate_tok_s": 75.28632329829382,
+      "llamacpp_vulkan_per_seq_tok_s": 18.821580824573456,
+      "vllm_openai_wall_aggregate_tok_s": 73.2801265845768,
+      "vllm_openai_wall_per_seq_tok_s": 18.3200316461442,
+      "vllm_post_ttft_aggregate_tok_s": 77.21631285505167
+    },
+    "8": {
+      "hipengine_aggregate_tok_s": 190.14967974258252,
+      "hipengine_per_seq_tok_s": 23.768709967822815,
+      "llamacpp_vulkan_aggregate_tok_s": 25.15493993643956,
+      "llamacpp_vulkan_per_seq_tok_s": 3.144367492054945,
+      "vllm_openai_wall_aggregate_tok_s": 116.5648809263467,
+      "vllm_openai_wall_per_seq_tok_s": 14.570610115793338,
+      "vllm_post_ttft_aggregate_tok_s": 126.94521045115806
+    }
+  },
+  "validation": [
+    "All raw JSON artifacts parsed with json.load during summary creation.",
+    "GPU was free after vLLM run; rocm-smi showed no KFD PIDs.",
+    "benchmarks/README.md now records exact rerun commands and scripts/run_w7900_readme_refresh.sh encodes them."
+  ]
+}

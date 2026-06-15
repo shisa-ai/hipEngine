@@ -1,0 +1,87 @@
+{
+  "kind": "concurrency_decode_throughput_sweep",
+  "created_at": "2026-06-14T15:50:46.024393+00:00",
+  "performance_claim": false,
+  "retained_ready": false,
+  "host": "gfx1100/RDNA3 via HIP_VISIBLE_DEVICES=0",
+  "model": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "reps": 3,
+    "kv_storage_dtype": "bf16"
+  },
+  "methodology": {
+    "c1": "scripts/qwen35_paro_bench.py --graph-replay-decode -> throughput.warmed_decode_tok_s",
+    "cN": "scripts/qwen35_batch_retained_bench.py --batch-size N -> measurements.decode_tok_s_{aggregate,per_request}",
+    "aggregate_across_runs": "median"
+  },
+  "rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 115.36410393962534,
+      "decode_tok_s_per_request_median": 115.36410393962534,
+      "decode_tok_s_aggregate_runs": [
+        115.36410393962534,
+        115.15834949521869,
+        115.50181640500543
+      ],
+      "decode_tok_s_per_request_runs": [
+        115.36410393962534,
+        115.15834949521869,
+        115.50181640500543
+      ],
+      "path": "paro_bench_graph_replay"
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 115.34886239757661,
+      "decode_tok_s_per_request_median": 57.674431198788305,
+      "decode_tok_s_aggregate_runs": [
+        115.221228828012,
+        115.34886239757661,
+        115.51230865541939
+      ],
+      "decode_tok_s_per_request_runs": [
+        57.610614414006,
+        57.674431198788305,
+        57.756154327709694
+      ],
+      "path": "retained_native_batch"
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 160.74147641947064,
+      "decode_tok_s_per_request_median": 40.18536910486766,
+      "decode_tok_s_aggregate_runs": [
+        161.36969660939718,
+        160.74147641947064,
+        160.5809415002407
+      ],
+      "decode_tok_s_per_request_runs": [
+        40.342424152349295,
+        40.18536910486766,
+        40.145235375060174
+      ],
+      "path": "retained_native_batch"
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 190.14967974258252,
+      "decode_tok_s_per_request_median": 23.768709967822815,
+      "decode_tok_s_aggregate_runs": [
+        191.3291200381899,
+        189.4997335255395,
+        190.14967974258252
+      ],
+      "decode_tok_s_per_request_runs": [
+        23.916140004773737,
+        23.68746669069244,
+        23.768709967822815
+      ],
+      "path": "retained_native_batch"
+    }
+  }
+}

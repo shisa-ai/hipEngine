@@ -92066,3 +92066,65 @@ Validation:
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
 - `python3 -m pytest tests/test_server_api.py -q` -> passed.
 - `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> passed.
+
+## 2026-06-15 - W7900 README refresh rerun script and artifacts
+
+Reran the top-level README W7900/GPU0 comparison suite from clean detached
+worktree `/tmp/hipengine-readme-w7900-20260614-141414-fbbc7bf8` at measured code
+commit `fbbc7bf8`, writing artifacts back to `/home/lhl/hipEngine`. Device
+mapping was verified as W7900/GPU0: HIP `HIP_VISIBLE_DEVICES=0`, amdgpu VRAM
+sampler `card1`, llama.cpp HIP `-dev ROCm0`, llama.cpp Vulkan `-dev Vulkan0`,
+and Vulkan concurrency `--gpu 0`. The script now keeps repo assets relative to
+`$REPO_ROOT`; the Q4_K_M model default is `$REPO_ROOT/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+with a host-local fallback for clean detached worktrees, and explicit override
+via `LLAMACPP_Q4KM_MODEL`.
+
+Added `scripts/run_w7900_readme_refresh.sh` with phases `hipengine`, `llamacpp`,
+`concurrency`, `vllm-server`, `vllm-client`, `vllm`, and `all`. It encodes the
+exact TheRock ROCm 7.13 hipEngine environment, llama.cpp HIP/Vulkan binary and
+device selectors, vLLM local source-build server flags, model paths, workloads,
+repetition counts, and artifact names. It also post-compacts hipEngine sweep
+artifacts by dropping verbose per-run memory snapshots / retained-KV buffer
+inventories while retaining summary medians, run timings/throughput, correctness
+sanity fields, and numeric memory peaks. `benchmarks/README.md` now documents the
+same expanded commands plus the clean-worktree invocation.
+
+Measured artifacts:
+- Summary: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json`.
+- hipEngine PARO: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-paro-packed-5run.json`.
+- hipEngine GGUF Q4_K_S: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json`.
+- llama.cpp HIP Q4_K_M f16 KV: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-hip-q4km-f16kv.json`.
+- llama.cpp Vulkan Q4_K_M f16 KV: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-q4km-f16kv.json`.
+- hipEngine concurrency: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json`.
+- llama.cpp Vulkan concurrency: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json`.
+- vLLM OpenAI concurrency: `benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json`.
+
+Key W7900 results:
+- Main sweep PARO prefill tok/s: `2729.701 / 2906.950 / 2879.578 / 2079.424 / 1559.096 / 1053.919` for `512/1K/4K/32K/64K/128K`; decode `115.227 / 102.927 / 105.253 / 91.965 / 77.666 / 60.349`; tracked peak `21.029 / 21.241 / 21.973 / 22.082 / 22.082 / 22.124 GiB`.
+- Main sweep GGUF Q4_K_S prefill tok/s: `2226.422 / 2528.347 / 2515.478 / 1871.997 / 1442.153 / 994.989`; decode `108.173 / 97.357 / 98.516 / 86.287 / 73.734 / 58.023`; tracked peak `25.108 GiB`.
+- llama.cpp HIP Q4_K_M f16 KV decode tok/s: `77.861 / 79.311 / 77.786 / 71.663 / 65.579 / 56.437`; llama.cpp Vulkan Q4_K_M f16 KV decode tok/s: `106.720 / 106.333 / 102.146 / 91.082 / 82.826 / 70.000`.
+- Concurrency aggregate decode tok/s c1/c2/c4/c8: hipEngine `115.36 / 115.35 / 160.74 / 190.15`, llama.cpp Vulkan `105.76 / 157.38 / 75.29 / 25.15`, vLLM OpenAI wall `20.04 / 38.42 / 73.28 / 116.56`.
+
+Validation:
+- `bash -n scripts/run_w7900_readme_refresh.sh` -> passed.
+- `scripts/run_w7900_readme_refresh.sh --help` -> printed expected phases/overrides.
+- JSON loaded successfully for all eight new artifacts listed above.
+- `git diff --check -- README.md benchmarks/README.md scripts/run_w7900_readme_refresh.sh` -> clean.
+- `rocm-smi --showpidgpus --showmeminfo vram --showuse` after vLLM phase -> no KFD PIDs, GPU0/GPU1 use 0%.
+
+## 2026-06-15 - AGENTIC JSON schema conditionals
+
+Strict tool schemas and structured-output JSON Schema validation now support
+conditional `if` / `then` / `else` applicators. Request validation rejects
+malformed conditional branch schemas before generation, the capability manifest
+advertises `conditional.if`, `conditional.then`, and `conditional.else`, and
+result validation applies the matching branch to completed JSON/tool outputs.
+
+Validation:
+- `python3 -m pytest tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth tests/test_server_api.py::test_completions_response_format_json_schema_validates_conditional_schemas tests/test_server_api.py::test_completions_response_format_rejects_invalid_conditional_schema tests/test_server_api.py::test_chat_completion_strict_tool_schema_validates_conditional_schemas -q` -> `6 passed`.
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `python3 -m ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+- `python3 -m pytest tests/test_server_api.py -q` -> passed.
+- `python3 -m pytest tests/test_agentic_harness_traces.py tests/test_agentic_server_conformance.py tests/test_local_agent_config.py tests/test_sampling.py -q` -> passed.
