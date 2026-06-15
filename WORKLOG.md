@@ -92797,3 +92797,16 @@ Validation:
 - `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
 - `uv run ruff check hipengine/generation/constraints.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/constraints.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py docs/API.md docs/AGENTIC.md` -> clean.
+
+## 2026-06-15 - AGENTIC scheduler metadata doc alignment
+
+Updated `docs/AGENTIC.md` P1.1 to match current PARO scheduler behavior:
+scheduler-owned c>N token chunks already carry planner metadata, fallback
+reason, host-logits D2H accounting, and execution flags for buffered server
+replay. The remaining gap is runtime-native live c>N forwarding plus
+GGUF/native GPU and phase/logprob semantics for reasoning/tool/structured
+chunks, not generic per-token scheduler metadata.
+
+Validation:
+- Re-read `docs/AGENTIC.md` P1.1 edited section.
+- `git diff --check -- docs/AGENTIC.md` -> clean.

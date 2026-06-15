@@ -1279,9 +1279,13 @@ Current code reality:
   `sampler_fast_path_blockers` plus `sampler_fallback_reason`, and PARO/GGUF
   final telemetry snapshots attach those fields for sampled / processed
   requests. PARO scheduler-owned c>N final snapshots also expose scheduler
-  execution path and native/serial fallback state; live per-token scheduler
-  chunks still need the same lower-loop metadata before server streams can
-  become fully backend-authoritative.
+  execution path and native/serial fallback state. PARO scheduler-owned c>N
+  token chunks now carry per-token planner metadata, fallback reason,
+  host-logits D2H accounting, and execution flags for buffered server replay;
+  runtime-native live c>N forwarding, GGUF/native GPU parity, and
+  phase/logprob semantics for reasoning/tool/structured chunks still need
+  lower-loop coverage before server streams can become fully
+  backend-authoritative.
 - Host suppress-token ids and min-token/EOS policy are implemented as
   pre-selection processors after static bias/history penalties and before the
   forced-token override. They are exposed through public/server request fields,
