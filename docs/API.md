@@ -467,7 +467,7 @@ left partially emitted.
 The current post-generation schema subset covers `type`, `enum`, `const`,
 schema composition with `allOf` / `anyOf` / `oneOf` / `not`, object
 `properties` / `patternProperties` / `propertyNames` / `required` /
-`dependentRequired` /
+`dependentRequired` / `dependentSchemas` /
 `additionalProperties: false` or a schema / `minProperties` / `maxProperties`,
 array `items` / `contains` with `minItems` / `maxItems` / `minContains` /
 `maxContains`, `uniqueItems`, string `minLength` / `maxLength` / `pattern`,
@@ -480,9 +480,8 @@ are distinct from numbers while numeric `1` and `1.0` compare equal. String
 generation, and invalid regexes are rejected before generation. Numeric
 `multipleOf` uses decimal divisibility semantics after generation, and
 non-positive or non-finite divisors are rejected before generation. Unsupported
-validation keywords such as `$ref`, `if` / `then` / `else`, and
-`dependentSchemas` are rejected before generation when strict tool validation
-would use the schema;
+validation keywords such as `$ref` and `if` / `then` / `else` are rejected
+before generation when strict tool validation would use the schema;
 annotation keys such as `title`, `description`, `default`, and `format` are
 accepted but ignored by validation. This is result validation only; decode-time
 JSON/schema constraints remain unsupported.
@@ -518,7 +517,7 @@ reason under
 JSON-schema result validation uses the same supported subset as strict tool
 argument validation: `type`, `enum`, `const`, object `properties` /
 `patternProperties` / `propertyNames` / `required` / `dependentRequired` /
-`additionalProperties: false` or a supported subschema /
+`dependentSchemas` / `additionalProperties: false` or a supported subschema /
 `minProperties` / `maxProperties`, array `items` / `contains` / `minItems` /
 `maxItems` / `minContains` / `maxContains` / `uniqueItems`, string `minLength`
 / `maxLength` / `pattern`, numeric min/max / `multipleOf` bounds, and schema

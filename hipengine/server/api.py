@@ -176,6 +176,7 @@ _JSON_SCHEMA_SUPPORTED_KEYS = frozenset(
         "propertyNames",
         "required",
         "dependentRequired",
+        "dependentSchemas",
         "additionalProperties",
         "minProperties",
         "maxProperties",
@@ -880,6 +881,7 @@ def _tool_schema_subset() -> list[str]:
         "object.propertyNames",
         "object.required",
         "object.dependentRequired",
+        "object.dependentSchemas",
         "object.additionalProperties=false",
         "object.additionalProperties=schema",
         "object.minProperties",
@@ -9741,6 +9743,20 @@ def _validate_json_schema_subset(schema: Mapping[str, Any], *, path: str) -> tup
             if any(not isinstance(item, str) for item in dependencies):
                 return (dependency_path, f"{dependency_path} must contain only strings")
 
+    dependent_schemas = schema.get("dependentSchemas")
+    if dependent_schemas is not None:
+        if not isinstance(dependent_schemas, Mapping):
+            return (f"{path}.dependentSchemas", f"{path}.dependentSchemas must be an object")
+        for raw_key, subschema in dependent_schemas.items():
+            dependency_path = f"{path}.dependentSchemas.{raw_key}"
+            if not isinstance(raw_key, str):
+                return (f"{path}.dependentSchemas", f"{path}.dependentSchemas keys must be strings")
+            if not isinstance(subschema, Mapping):
+                return (dependency_path, f"{dependency_path} must be an object")
+            error = _validate_json_schema_subset(subschema, path=dependency_path)
+            if error is not None:
+                return error
+
     additional_properties = schema.get("additionalProperties")
     if "additionalProperties" in schema:
         if isinstance(additional_properties, bool):
@@ -9877,6 +9893,14 @@ def _validate_json_schema_value(value: Any, schema: Mapping[str, Any], *, path: 
                     for dependency in dependencies:
                         if isinstance(dependency, str) and dependency not in value:
                             return f"{path}.{dependency} is required when {raw_key} is present"
+        dependent_schemas = schema.get("dependentSchemas")
+        if isinstance(dependent_schemas, Mapping):
+            for raw_key, subschema in dependent_schemas.items():
+                if not isinstance(raw_key, str) or raw_key not in value or not isinstance(subschema, Mapping):
+                    continue
+                error = _validate_json_schema_value(value, subschema, path=path)
+                if error is not None:
+                    return error
         properties = schema.get("properties")
         property_map = properties if isinstance(properties, Mapping) else {}
         for key, subschema in property_map.items():

@@ -1554,9 +1554,10 @@ Current state:
   names, malformed tool-call blocks, and a minimal function `parameters` JSON
   schema subset: scalar types, `enum`, `const`, object `properties` /
   `patternProperties` / `propertyNames` / `required` /
-  `dependentRequired` / `additionalProperties=false` or a supported subschema /
-  `minProperties` / `maxProperties`, array `items` / `contains` /
-  `minItems` / `maxItems` / `minContains` / `maxContains` / `uniqueItems`,
+  `dependentRequired` / `dependentSchemas` / `additionalProperties=false` or a
+  supported subschema / `minProperties` / `maxProperties`, array `items` /
+  `contains` / `minItems` / `maxItems` / `minContains` / `maxContains` /
+  `uniqueItems`,
   string `minLength` / `maxLength` / `pattern`, and numeric min/max /
   `multipleOf` bounds. `enum`, `const`, and
   array `uniqueItems` use JSON-typed value equality after generation, so

@@ -765,6 +765,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "object.propertyNames",
             "object.required",
             "object.dependentRequired",
+            "object.dependentSchemas",
             "object.additionalProperties=false",
             "object.additionalProperties=schema",
             "object.minProperties",
@@ -846,6 +847,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "object.propertyNames",
             "object.required",
             "object.dependentRequired",
+            "object.dependentSchemas",
             "object.additionalProperties=false",
             "object.additionalProperties=schema",
             "object.minProperties",
@@ -5060,6 +5062,64 @@ def test_completions_response_format_json_schema_validates_object_name_keywords(
         assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
 
 
+def test_completions_response_format_json_schema_validates_dependent_schemas() -> None:
+    schema = {
+        "name": "agent_result",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"enum": ["file", "url"]},
+                "path": {"type": "string"},
+                "href": {"type": "string", "pattern": r"^https://"},
+            },
+            "dependentSchemas": {
+                "path": {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "file"}},
+                },
+                "href": {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "url"}},
+                },
+            },
+            "additionalProperties": False,
+        },
+    }
+    payload = {
+        "model": "fake-model",
+        "prompt": "json",
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+    valid_client = TestClient(
+        create_app(
+            ServerConfig(model="fake-path", served_model_name="fake-model"),
+            llm=FakeLLM(outputs=['{"kind":"file","path":"README.md"}']),
+        )
+    )
+    invalid_outputs = [
+        '{"kind":"url","path":"README.md"}',
+        '{"href":"https://example.test"}',
+    ]
+
+    valid = valid_client.post("/v1/completions", json=payload)
+
+    assert valid.status_code == 200
+    assert valid.json()["choices"][0]["text"] == '{"kind":"file","path":"README.md"}'
+    assert valid.json()["choices"][0]["finish_details"] == _stateless_finish_details("stop")
+    for generated in invalid_outputs:
+        invalid = TestClient(
+            create_app(
+                ServerConfig(model="fake-path", served_model_name="fake-model"),
+                llm=FakeLLM(outputs=[generated]),
+            )
+        ).post("/v1/completions", json=payload)
+        assert invalid.status_code == 200
+        invalid_choice = invalid.json()["choices"][0]
+        assert invalid_choice["text"] == ""
+        assert invalid_choice["finish_reason"] == "stop"
+        assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+
+
 def test_completions_response_format_json_schema_validates_numeric_multiple_of() -> None:
     schema = {
         "name": "agent_result",
@@ -5703,6 +5763,14 @@ def test_completions_response_format_rejects_invalid_pattern_properties_schema()
         (
             {"type": "object", "dependentRequired": {"id": "name"}},
             "response_format.json_schema.schema.dependentRequired.id",
+        ),
+        (
+            {"type": "object", "dependentSchemas": "path"},
+            "response_format.json_schema.schema.dependentSchemas",
+        ),
+        (
+            {"type": "object", "dependentSchemas": {"path": "schema"}},
+            "response_format.json_schema.schema.dependentSchemas.path",
         ),
     ],
 )
@@ -9762,6 +9830,67 @@ def test_chat_completion_strict_tool_schema_validates_object_name_keywords() -> 
     invalid_app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model"),
         llm=FakeLLM(outputs=['<tool_call>{"name":"record","arguments":{"id":"1","x-extra":"ok"}}</tool_call>']),
+    )
+
+    valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
+    invalid = TestClient(invalid_app).post("/v1/chat/completions", json=payload)
+
+    assert valid.status_code == 200
+    valid_choice = valid.json()["choices"][0]
+    assert valid_choice["finish_reason"] == "tool_calls"
+    assert valid_choice["finish_details"]["reason"] == "tool_calls"
+    assert invalid.status_code == 200
+    invalid_choice = invalid.json()["choices"][0]
+    assert invalid_choice["finish_reason"] == "stop"
+    assert invalid_choice["finish_details"] == _stateless_finish_details("schema_violation")
+    assert "tool_calls" not in invalid_choice["message"]
+
+
+def test_chat_completion_strict_tool_schema_validates_dependent_schemas() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "record",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"enum": ["file", "url"]},
+                        "path": {"type": "string"},
+                        "href": {"type": "string", "pattern": r"^https://"},
+                    },
+                    "dependentSchemas": {
+                        "path": {
+                            "required": ["kind"],
+                            "properties": {"kind": {"const": "file"}},
+                        },
+                        "href": {
+                            "required": ["kind"],
+                            "properties": {"kind": {"const": "url"}},
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+        }
+    ]
+    payload = {
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "record result"}],
+        "tools": tools,
+    }
+    valid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=['<tool_call>{"name":"record","arguments":{"kind":"file","path":"README.md"}}</tool_call>']
+        ),
+    )
+    invalid_app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=FakeLLM(
+            outputs=['<tool_call>{"name":"record","arguments":{"kind":"url","path":"README.md"}}</tool_call>']
+        ),
     )
 
     valid = TestClient(valid_app).post("/v1/chat/completions", json=payload)
