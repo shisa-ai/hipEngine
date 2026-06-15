@@ -444,6 +444,10 @@ Current status:
   `prefill(..., capture_hidden_seed_fp32=True)` populate a guarded fp32
   post-`output_norm` device seed row and expose it via `mtp_draft_seed()`.
   Default AR generation leaves the tap off.
+- Fixture `benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json`
+  pins a deterministic post-`output_norm` seed row. A HIP-guarded test proves
+  the `gguf_rmsnorm_bf16_f32_weight_out_f32` tap is finite and matches the CPU
+  RMSNorm oracle for that row.
 
 Acceptance:
 
@@ -752,8 +756,9 @@ is now answered by the M1 required/optional table.)
       fallback table.
 - [x] Extend `tests/test_qwen35_gguf_mtp_mapping.py` for MTP-block validation
       (missing/mis-shaped required, tolerated optional).
-- [ ] **M2.5:** expose the fp32 post-`output_norm` per-token hidden seed from the
+- [x] **M2.5:** expose the fp32 post-`output_norm` per-token hidden seed from the
       GGUF decode path (per-token tap; `run_prompt_hidden` returns BF16 today).
+      Fixture: `benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json`.
 - [x] **Add a `cpu_reference` NextN forward** in `kernels/cpu_reference/ops.py`
       registered under `(cpu_reference, mtp_nextn_layer, gguf_moe,
       qwen35_dense_logits)` as the offline oracle, with a deterministic fixture:

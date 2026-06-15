@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ctypes
+import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -20,12 +22,68 @@ from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
 
 
+HIDDEN_SEED_FIXTURE = Path("benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json")
+
+
 def _hip_available() -> bool:
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError:
         return False
     return True
+
+
+def test_gguf_hidden_seed_output_norm_fixture_matches_cpu_reference() -> None:
+    fixture = _load_hidden_seed_fixture()
+    source_hidden = np.asarray(fixture["source_hidden"], dtype=np.float32)
+    output_norm_weight = np.asarray(fixture["output_norm_weight"], dtype=np.float32)
+    expected = np.asarray(fixture["expected_hidden_seed_fp32"], dtype=np.float32)
+
+    assert fixture["provenance"] == "post_output_norm"
+    assert fixture["dtype"] == "FP32"
+    assert fixture["rows"] == source_hidden.shape[0] == 1
+    assert fixture["hidden_size"] == source_hidden.shape[1]
+    actual = _rmsnorm(source_hidden, output_norm_weight).astype(np.float32)
+    assert np.isfinite(actual).all()
+    np.testing.assert_allclose(actual, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_hidden_seed_output_norm_f32_tap_matches_fixture() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _load_hidden_seed_fixture()
+    runtime = get_hip_runtime()
+    library = build_gguf_ops(load=True)
+    source_hidden = np.asarray(fixture["source_hidden"], dtype=np.float32)
+    source_hidden_bf16 = float_array_to_bf16_bits(source_hidden)
+    output_norm_weight = np.asarray(fixture["output_norm_weight"], dtype=np.float32)
+    expected = np.asarray(fixture["expected_hidden_seed_fp32"], dtype=np.float32)
+    actual = np.empty_like(expected)
+    bufs = []
+    try:
+        dx = _dev(source_hidden_bf16, runtime, bufs)
+        dw = _dev(output_norm_weight, runtime, bufs)
+        dout = malloc(actual.nbytes, runtime=runtime)
+        bufs.append(dout)
+        gguf_rmsnorm_bf16_f32_weight_out_f32(
+            dx.ptr,
+            dw.ptr,
+            dout.ptr,
+            int(fixture["rows"]),
+            int(fixture["hidden_size"]),
+            float(fixture["eps"]),
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), dout, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    assert np.isfinite(actual).all()
+    np.testing.assert_allclose(actual, expected, rtol=1.0e-6, atol=1.0e-6)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -223,6 +281,10 @@ def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
     np.testing.assert_allclose(key_out, expected_key, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(query_out_bf16_key, expected_query, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(key_out_bf16_key, expected_key_bf16_input, rtol=1e-6, atol=1e-6)
+
+
+def _load_hidden_seed_fixture() -> dict[str, object]:
+    return json.loads(HIDDEN_SEED_FIXTURE.read_text())
 
 
 def _dev(array: np.ndarray, runtime, bufs: list):

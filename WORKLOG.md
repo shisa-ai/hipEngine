@@ -94741,3 +94741,44 @@ Validation:
   backend/quant dispatch branch; no runtime attention/KV path change; the doc
   still requires KVLiveSpans for runtime MTP attention/KV-write work; no
   performance claim.
+
+## 2026-06-15 - MTP-GGUF fp32 hidden seed numeric fixture
+
+Implemented `mtp-gguf` multiloop iteration 47: closed the remaining M2.5 evidence
+gap with a deterministic post-`output_norm` hidden-seed fixture and a HIP-guarded
+kernel check for the fp32 tap.
+
+Scope note:
+- Fixture/test/docs only. No runtime generation, GGUF loading, MTP draft
+  execution, sampling, attention/KV path, or performance path changed.
+- The HIP test exercises the existing `gguf_rmsnorm_bf16_f32_weight_out_f32`
+  output-norm tap used by `Qwen35GGUFResidentSession` capture plumbing.
+
+Changes:
+- Added `benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json`
+  with a synthetic BF16-exact hidden row, output-norm weights, and the expected
+  fp32 post-output_norm seed row.
+- Added a CPU fixture test that recomputes the expected seed via RMSNorm and
+  asserts finite output.
+- Added a HIP-guarded test that launches `gguf_rmsnorm_bf16_f32_weight_out_f32`,
+  copies the fp32 tap back, and checks it against the fixture/CPU oracle.
+- Updated `docs/MTP-gguf.md` M2.5 status and checked off the hidden-seed backlog
+  row with the fixture path.
+
+Validation:
+- Focused hidden-seed fixture tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_ops.py::test_gguf_hidden_seed_output_norm_fixture_matches_cpu_reference tests/test_gguf_ops.py::test_gguf_hidden_seed_output_norm_f32_tap_matches_fixture` -> `2` passed.
+- Full GGUF ops tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_ops.py` -> `5` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile tests/test_gguf_ops.py` and
+  `git diff --check -- tests/test_gguf_ops.py docs/MTP-gguf.md benchmarks/fixtures/qwen35_gguf_hidden_seed_output_norm_fixture.json`.
+- Fixture smoke printed `post_output_norm FP32 finite True` with expected prefix
+  `[0.5132001638412476, 0.5132001638412476, 0.5132001638412476, -0.5132001638412476]`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `28` selected tests (`22` pass, `6` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: fixture/kernel-test/docs only; no torch import; no
+  backend/quant dispatch branch; no runtime attention/KV path change; future MTP
+  attention/KV-write work remains KVLiveSpans-gated; no performance claim.
