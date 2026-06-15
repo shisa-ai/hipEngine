@@ -92949,3 +92949,32 @@ Validation:
 - Prompt verifier passed: oracle/parity tooling only, no torch hot-path import,
   no backend/quant dispatch branches, no attention/KV/runtime generation path
   changes, no NextN math, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF llama.cpp prompt token inventory scaffold
+
+Implemented `mtp-gguf` multiloop iteration 5: a llama.cpp-side prompt token
+inventory helper that queries an already-running `llama-server` `POST /tokenize`
+endpoint and emits JSON compatible with the exact token parity gate.
+
+Changes:
+- Added `scripts/llamacpp_gguf_prompt_token_inventory.py`.
+  - Uses llama.cpp server `/tokenize` and does not launch/configure the server.
+  - Records token IDs, token pieces when available, prompt hashes, tokenizer
+    request flags, server URL, and model path metadata.
+  - Produces `kind=llamacpp_prompt_token_inventory`, directly consumable by
+    `scripts/compare_prompt_token_inventories.py`.
+- Extended `tests/test_gguf_prompt_token_inventory_compare.py` to cover:
+  - llama.cpp token entries with `{id, piece}` objects;
+  - plain integer token response entries;
+  - invalid token response rejection.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `12` selected tests (`6` pass, `6` skip).
+- Helper tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_prompt_token_inventory_compare.py` -> `5` passed.
+- `py_compile` passed for `scripts/llamacpp_gguf_prompt_token_inventory.py`.
+- CLI help smoke passed.
+- Prompt verifier passed: oracle/parity tooling only, no torch hot-path import,
+  no backend/quant dispatch branches, no hipEngine runtime generation changes,
+  no attention/KV path changes, no NextN math, and no performance claims.

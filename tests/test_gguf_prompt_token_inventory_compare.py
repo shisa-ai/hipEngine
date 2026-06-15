@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts.compare_prompt_token_inventories import compare_prompt_token_inventories
+from scripts.llamacpp_gguf_prompt_token_inventory import (
+    ServerTokenizeError,
+    build_llamacpp_prompt_token_inventory,
+    extract_token_ids_and_pieces,
+)
 
 
 def test_compare_prompt_token_inventories_reports_match_and_mismatch() -> None:
@@ -48,6 +55,45 @@ def test_compare_prompt_token_inventories_reports_match_and_mismatch() -> None:
             "right_window": [4, 7],
         }
     ]
+
+
+def test_llamacpp_prompt_token_inventory_accepts_token_ids_and_pieces() -> None:
+    responses = {
+        "alpha": {
+            "tokens": [
+                {"id": 11, "piece": "a"},
+                {"id": 12, "piece": [195]},
+            ]
+        }
+    }
+
+    inventory = build_llamacpp_prompt_token_inventory(
+        prompts=[{"name": "p0", "prompt": "alpha"}],
+        server_url="http://127.0.0.1:8080",
+        tokenizer=responses.__getitem__,
+        prompts_file="synthetic-prompts.json",
+        model="model.gguf",
+    )
+
+    assert inventory["kind"] == "llamacpp_prompt_token_inventory"
+    assert inventory["tokenization"] == "llamacpp.server.tokenize"
+    assert inventory["model"] == "model.gguf"
+    row = inventory["prompts"][0]
+    assert row["name"] == "p0"
+    assert row["token_ids"] == [11, 12]
+    assert row["token_pieces"] == ["a", [195]]
+
+
+def test_llamacpp_tokenize_response_accepts_plain_ids() -> None:
+    token_ids, pieces = extract_token_ids_and_pieces({"tokens": [1, 2, 3]})
+
+    assert token_ids == [1, 2, 3]
+    assert pieces is None
+
+
+def test_llamacpp_tokenize_response_rejects_invalid_tokens() -> None:
+    with pytest.raises(ServerTokenizeError, match="invalid token entry"):
+        extract_token_ids_and_pieces({"tokens": [{"piece": "missing id"}]})
 
 
 def test_compare_prompt_token_inventories_passes_identical_ids() -> None:
