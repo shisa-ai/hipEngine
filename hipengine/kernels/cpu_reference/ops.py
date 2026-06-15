@@ -115,6 +115,42 @@ def qwen35_gguf_mtp_shared_head_logits(
     return np.matmul(normed, head_weight.T).astype(np.float32)
 
 
+def qwen35_gguf_mtp_boundary_logits(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference scaffold for known Qwen35 GGUF MTP boundary stages.
+
+    This helper intentionally composes only the two llama.cpp-pinned boundary
+    stages available before the full M3 oracle lands:
+    ``hnorm/enorm + [e_norm, h_norm] + eh_proj`` followed by
+    ``shared_head_norm + LM head``.  It does **not** implement the required
+    NextN dense attention or MoE sublayers and must not be used as a parity
+    oracle for final draft logits.
+    """
+
+    projected = qwen35_gguf_mtp_eh_proj(
+        hidden_seed,
+        token_embedding,
+        eh_proj_weight,
+        hnorm_weight,
+        enorm_weight,
+        eps=eps,
+    )
+    return qwen35_gguf_mtp_shared_head_logits(
+        projected,
+        shared_head_norm_weight,
+        shared_head_weight,
+        eps=eps,
+    )
+
+
 def gguf_quant_gemv(
     x: ArrayLike,
     qweight: ArrayLike,
@@ -1122,6 +1158,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "qkv_proj": qkv_proj,
         "qwen35_gguf_mtp_eh_proj": qwen35_gguf_mtp_eh_proj,
         "qwen35_gguf_mtp_shared_head_logits": qwen35_gguf_mtp_shared_head_logits,
+        "qwen35_gguf_mtp_boundary_logits": qwen35_gguf_mtp_boundary_logits,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -1154,6 +1191,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "mtp_nextn_shared_head", "gguf_f32", "qwen35"),
         qwen35_gguf_mtp_shared_head_logits,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_boundary_logits", "gguf_f32", "qwen35"),
+        qwen35_gguf_mtp_boundary_logits,
         replace=replace,
     )
     register(

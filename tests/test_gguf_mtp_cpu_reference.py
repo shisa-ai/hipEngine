@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from hipengine.kernels.cpu_reference import (
+    qwen35_gguf_mtp_boundary_logits,
     qwen35_gguf_mtp_eh_proj,
     qwen35_gguf_mtp_shared_head_logits,
 )
@@ -108,6 +109,43 @@ def test_qwen35_gguf_mtp_shared_head_logits_validates_shapes() -> None:
         qwen35_gguf_mtp_shared_head_logits(hidden, norm, np.ones((3, 3), dtype=np.float32))
 
 
+def test_qwen35_gguf_mtp_boundary_logits_composes_pinned_boundary_stages() -> None:
+    hidden = np.asarray([[3.0, 4.0]], dtype=np.float32)
+    embedding = np.asarray([[1.0, 2.0]], dtype=np.float32)
+    hnorm = np.asarray([10.0, 20.0], dtype=np.float32)
+    enorm = np.asarray([30.0, 40.0], dtype=np.float32)
+    eh_proj = np.asarray(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    shared_norm = np.asarray([2.0, 3.0], dtype=np.float32)
+    shared_head = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [1.0, -1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    logits = qwen35_gguf_mtp_boundary_logits(
+        hidden,
+        embedding,
+        eh_proj,
+        hnorm,
+        enorm,
+        shared_norm,
+        shared_head,
+    )
+
+    projected = qwen35_gguf_mtp_eh_proj(hidden, embedding, eh_proj, hnorm, enorm)
+    expected = qwen35_gguf_mtp_shared_head_logits(projected, shared_norm, shared_head)
+    np.testing.assert_allclose(logits, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
 def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
     eh_proj = resolve(
         backend="cpu_reference",
@@ -121,6 +159,13 @@ def test_qwen35_gguf_mtp_cpu_helpers_are_registered() -> None:
         quant="gguf_f32",
         variant="qwen35",
     )
+    boundary_logits = resolve(
+        backend="cpu_reference",
+        layer="mtp_nextn_boundary_logits",
+        quant="gguf_f32",
+        variant="qwen35",
+    )
 
     assert eh_proj is qwen35_gguf_mtp_eh_proj
     assert shared_head is qwen35_gguf_mtp_shared_head_logits
+    assert boundary_logits is qwen35_gguf_mtp_boundary_logits

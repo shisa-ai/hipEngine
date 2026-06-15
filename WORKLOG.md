@@ -93444,3 +93444,50 @@ Validation:
 - Prompt verifier passed: torch-free CPU reference helper only, no backend/quant
   dispatch branches, no attention/KV/runtime path changes, no full NextN
   execution, and no performance claims.
+
+## 2026-06-15 - MTP-GGUF CPU reference boundary scaffold
+
+Implemented `mtp-gguf` multiloop iteration 20: a torch-free CPU-reference
+boundary scaffold that composes the two llama.cpp-pinned GGUF MTP stages already
+validated independently.
+
+Scope note:
+- This is intentionally **not** the full M3 NextN oracle. It omits the required
+  dense self-attention and MoE sublayers and must not be used as a final
+  draft-logit parity oracle.
+- It exists to keep the known boundary contract testable while the full
+  attention+MoE oracle lands incrementally.
+
+Source check:
+- Command: `nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '599,661p'; nl -ba /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp | sed -n '719,735p'`
+- Confirmed order:
+  - `hnorm(h_embd)` and `enorm(tok_embd)`.
+  - `concat = [e_norm, h_norm]`.
+  - `eh_proj`.
+  - Then llama.cpp runs full attention/MoE, which this scaffold explicitly does
+    not implement.
+  - Final shared-head stage uses `nextn.shared_head_norm` else `output_norm`,
+    then `nextn.shared_head_head` else `model.output`.
+
+Changes:
+- Added `qwen35_gguf_mtp_boundary_logits(...)` in
+  `hipengine/kernels/cpu_reference/ops.py`.
+  - Composes `qwen35_gguf_mtp_eh_proj(...)` and
+    `qwen35_gguf_mtp_shared_head_logits(...)`.
+  - Docstring explicitly states the omission of NextN attention/MoE.
+- Exported the helper from `hipengine/kernels/cpu_reference/__init__.py`.
+- Registered `KernelKey("cpu_reference", "mtp_nextn_boundary_logits", "gguf_f32", "qwen35")`.
+- Extended `tests/test_gguf_mtp_cpu_reference.py` with deterministic composition
+  and registry assertions.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `20` selected tests (`14` pass, `6` skip).
+- CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `7` passed.
+- `py_compile` passed for `hipengine/kernels/cpu_reference/ops.py` and
+  `hipengine/kernels/cpu_reference/__init__.py`.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: torch-free CPU reference scaffold only, four-axis
+  registry key, no backend/quant branches, no attention/KV path changes, no
+  performance claims.
