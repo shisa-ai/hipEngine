@@ -92981,3 +92981,19 @@ Validation:
 - `uv run pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth or buffered_streaming_completion_preserves_backend_done_decode_state'` -> `2 passed`.
 - `uv run ruff check hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/generation/registry.py hipengine/generation/qwen35_paro.py hipengine/server/api.py tests/test_generation_registry.py tests/test_generation_qwen35_paro.py tests/test_server_api.py docs/API.md docs/AGENTIC.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - Exact OpenAI tool-call shape regressions
+
+Tightened the duplicated `<tool_call>` start-marker endpoint regressions so they
+assert the exact OpenAI-compatible tool-call surfaces that local agents depend
+on. Non-streaming repaired tool calls now pin assistant message keys, `id`,
+`type="function"`, and string-valued JSON `function.arguments`; streaming
+repaired tool calls now pin the role chunk, `delta.tool_calls[]` object shape,
+tool indexes, and empty final `delta`.
+
+Validation:
+- `python3 -m py_compile tests/test_server_api.py` -> passed.
+- `uv run pytest tests/test_server_api.py -q -k 'chat_completion_returns_tool_call_deltas or auto_tool_recovers_duplicated_start_marker or strict_validation_recovers_doubled_tool_call_tag or streaming_chat_completion_recovers_duplicated_tool_start_marker or streaming_chat_completion_strict_validation_recovers_doubled_tool_call_tag'` -> `5 passed`.
+- `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
+- `uv run ruff check tests/test_server_api.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_server_api.py docs/AGENTIC.md WORKLOG.md` -> clean.

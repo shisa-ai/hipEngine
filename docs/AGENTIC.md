@@ -1598,7 +1598,9 @@ Current state:
   Compatibility parsing recovers the common
   `<tool_call><tool_call>{...}</tool_call>` duplicated-start wrapper when the
   inner JSON is valid, including under strict tool validation before schema
-  checks.
+  checks. Endpoint regressions pin the repaired non-streaming message and
+  streaming `delta.tool_calls[]` shape, including `id`, `type="function"`,
+  stable indexes, and string-valued JSON `function.arguments`.
 - Once a tool block parses, the server always rejects undeclared tool names and
   multiple parsed calls without `parallel_tool_calls=true`, including in
   compatibility auto-tool mode.

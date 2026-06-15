@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Mapping
 
 import pytest
 from fastapi import Request
@@ -305,6 +305,52 @@ def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
 
 def _stateless_finish_details(reason: str, **extra: Any) -> dict[str, Any]:
     return {"reason": reason, **extra, "cache_action": "append_none"}
+
+
+def _assert_openai_tool_call_shape(
+    tool_call: Mapping[str, Any],
+    *,
+    name: str,
+    arguments: Mapping[str, Any],
+) -> None:
+    assert set(tool_call) == {"id", "type", "function"}
+    assert isinstance(tool_call["id"], str)
+    assert tool_call["id"].startswith("call_")
+    assert tool_call["type"] == "function"
+    function = tool_call["function"]
+    assert isinstance(function, Mapping)
+    assert set(function) == {"name", "arguments"}
+    assert function["name"] == name
+    assert isinstance(function["arguments"], str)
+    assert json.loads(function["arguments"]) == dict(arguments)
+
+
+def _assert_openai_stream_tool_call_delta_shape(
+    choice: Mapping[str, Any],
+    *,
+    name: str,
+    arguments: Mapping[str, Any],
+    index: int = 0,
+    tool_index: int = 0,
+) -> None:
+    assert choice["index"] == index
+    assert choice["finish_reason"] is None
+    assert set(choice["delta"]) == {"tool_calls"}
+    tool_calls = choice["delta"]["tool_calls"]
+    assert isinstance(tool_calls, list)
+    assert len(tool_calls) == 1
+    tool_call = tool_calls[0]
+    assert set(tool_call) == {"index", "id", "type", "function"}
+    assert tool_call["index"] == tool_index
+    _assert_openai_tool_call_shape(
+        {
+            "id": tool_call["id"],
+            "type": tool_call["type"],
+            "function": tool_call["function"],
+        },
+        name=name,
+        arguments=arguments,
+    )
 
 
 def _routing_metadata(
@@ -10347,11 +10393,14 @@ def test_chat_completion_auto_tool_recovers_duplicated_start_marker() -> None:
         phase="tool_call",
     )
     message = choice["message"]
+    assert set(message) == {"role", "content", "tool_calls"}
+    assert message["role"] == "assistant"
     assert message["content"] == ""
     assert "<tool_call>" not in json.dumps(message)
+    assert isinstance(message["tool_calls"], list)
+    assert len(message["tool_calls"]) == 1
     tool_call = message["tool_calls"][0]
-    assert tool_call["function"]["name"] == "read"
-    assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
+    _assert_openai_tool_call_shape(tool_call, name="read", arguments={"path": "README.md"})
 
 
 def test_chat_completion_auto_tool_rejects_unparseable_tool_markup() -> None:
@@ -10454,10 +10503,13 @@ def test_chat_completion_strict_validation_recovers_doubled_tool_call_tag() -> N
         phase="tool_call",
     )
     message = choice["message"]
+    assert set(message) == {"role", "content", "tool_calls"}
+    assert message["role"] == "assistant"
     assert message["content"] == ""
+    assert isinstance(message["tool_calls"], list)
+    assert len(message["tool_calls"]) == 1
     tool_call = message["tool_calls"][0]
-    assert tool_call["function"]["name"] == "read"
-    assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
+    _assert_openai_tool_call_shape(tool_call, name="read", arguments={"path": "README.md"})
     assert "<tool_call>" not in response.text
 
 
@@ -11952,6 +12004,7 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     assert response.status_code == 200
     assert "<tool_call>" not in response.text
     payloads = _sse_payloads(response.text)
+    assert payloads[0]["choices"][0]["delta"] == {"role": "assistant"}
     tool_delta = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
     tool_call = tool_delta["choices"][0]["delta"]["tool_calls"][0]
     assert tool_call["index"] == 0
@@ -12139,12 +12192,15 @@ def test_streaming_chat_completion_recovers_duplicated_tool_start_marker() -> No
     assert response.status_code == 200
     assert "<tool_call>" not in response.text
     payloads = _sse_payloads(response.text)
+    assert payloads[0]["choices"][0]["delta"] == {"role": "assistant"}
     tool_delta = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
-    tool_call = tool_delta["choices"][0]["delta"]["tool_calls"][0]
-    assert tool_call["index"] == 0
-    assert tool_call["function"]["name"] == "bash"
-    assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_delta["choices"][0],
+        name="bash",
+        arguments={"command": "pwd"},
+    )
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["delta"] == {}
     assert done["choices"][0]["finish_reason"] == "tool_calls"
     assert done["choices"][0]["finish_details"] == _stateless_finish_details(
         "tool_calls",
@@ -12402,11 +12458,15 @@ def test_streaming_chat_completion_strict_validation_recovers_doubled_tool_call_
     assert response.status_code == 200
     assert "<tool_call>" not in response.text
     payloads = _sse_payloads(response.text)
+    assert payloads[0]["choices"][0]["delta"] == {"role": "assistant"}
     tool_payload = next(payload for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
-    tool_call = tool_payload["choices"][0]["delta"]["tool_calls"][0]
-    assert tool_call["function"]["name"] == "bash"
-    assert json.loads(tool_call["function"]["arguments"]) == {"command": "pwd"}
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_payload["choices"][0],
+        name="bash",
+        arguments={"command": "pwd"},
+    )
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
+    assert done["choices"][0]["delta"] == {}
     assert done["choices"][0]["finish_reason"] == "tool_calls"
     assert done["choices"][0]["finish_details"] == _stateless_finish_details(
         "tool_calls",
