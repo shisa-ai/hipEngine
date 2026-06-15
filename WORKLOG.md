@@ -93233,3 +93233,20 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'runtime_native_live_chunks or capabilities_endpoint_reports_manifest_and_auth'` -> `2 passed`.
 - `uv run ruff check hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/llm.py hipengine/server/api.py tests/test_llm_generate.py` -> clean.
+
+## 2026-06-15 - Pi streaming smoke runner coverage
+
+Pinned the documented pi-agent `--streaming-smoke` helper path with a direct
+unit regression that exercises `run_pi_streaming_chat_smoke()` without a live
+server. The test verifies the helper POSTs to `/chat/completions`, requests
+`text/event-stream`, sends `stream_options.include_usage=true`, and reconstructs
+streamed OpenAI `delta.tool_calls` argument fragments into the expected
+`record_result` tool call.
+
+Validation:
+- `python3 -m pytest tests/test_local_agent_config.py -q -k 'pi_agent_streaming_chat_smoke_runner_posts_sse_request or pi_agent_streaming_chat_smoke_response_reconstructs_tool_call or pi_agent_streaming_smoke_cli_enters_live_mode_without_base_url'` -> `3 passed`.
+- `python3 -m pytest tests/test_local_agent_config.py -q` -> `43 passed`.
+- `python3 -m py_compile tests/test_local_agent_config.py scripts/validate_pi_agent_models.py` -> passed.
+- `python3 scripts/validate_pi_agent_models.py --config docs/examples/pi-agent/models.json` -> `ok: true`.
+- `uv run ruff check tests/test_local_agent_config.py scripts/validate_pi_agent_models.py` -> `All checks passed!`.
+- `git diff --check -- tests/test_local_agent_config.py docs/AGENTIC.md WORKLOG.md` -> clean.

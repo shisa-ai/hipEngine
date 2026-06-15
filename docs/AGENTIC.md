@@ -2481,7 +2481,9 @@ Current code reality:
   tool-calling mismatch. `--streaming-smoke` sends the same tool request as
   `stream=true` with `stream_options.include_usage=true`, reconstructs streamed
   `delta.tool_calls` fragments, rejects raw `<tool_call>` leakage, and requires
-  both a usage SSE payload and final `data: [DONE]`.
+  both a usage SSE payload and final `data: [DONE]`; the helper that performs
+  the live streaming smoke POST is regression-tested directly for the
+  `/chat/completions` SSE request shape.
   `--reasoning-smoke` POSTs a small `enable_thinking=true` request, requires
   parsed non-empty `message.reasoning_content`, and rejects raw `<think>` tags
   in assistant text fields as a Qwen thinking/parser mismatch.

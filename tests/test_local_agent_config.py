@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -705,6 +706,71 @@ def test_pi_agent_streaming_chat_smoke_response_reconstructs_tool_call() -> None
         "usage_chunk": True,
         "done": True,
     }
+
+
+def test_pi_agent_streaming_chat_smoke_runner_posts_sse_request(monkeypatch) -> None:
+    config = validate_pi_agent_models.load_config(PI_CONFIG_PATH)
+    model_id = config["providers"]["hipengine-local"]["models"][0]["id"]
+    capabilities = {"model": {"id": model_id}}
+    calls: dict[str, Any] = {}
+
+    def fake_request_text(
+        method,
+        url,
+        *,
+        api_key=None,
+        payload=None,
+        timeout,
+        accept="text/plain",
+    ):
+        calls["request"] = {
+            "method": method,
+            "url": url,
+            "api_key": api_key,
+            "payload": payload,
+            "timeout": timeout,
+            "accept": accept,
+        }
+        return "\n".join(
+            [
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"record_result","arguments":"{\\"result\\""}}]},"finish_reason":null}]}',
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"ok\\"}"}}]},"finish_reason":null}]}',
+                'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+                'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+                "data: [DONE]",
+            ]
+        )
+
+    monkeypatch.setattr(validate_pi_agent_models, "_request_text", fake_request_text)
+
+    summary = validate_pi_agent_models.run_pi_streaming_chat_smoke(
+        "http://server.test/v1",
+        config,
+        capabilities,
+        api_key="secret",
+        timeout=12.5,
+    )
+
+    assert summary == {
+        "finish_reason": "tool_calls",
+        "tool_name": "record_result",
+        "argument_keys": ["result"],
+        "result": "ok",
+        "sse_payloads": 4,
+        "usage_chunk": True,
+        "done": True,
+    }
+    request = calls["request"]
+    assert request["method"] == "POST"
+    assert request["url"] == "http://server.test/v1/chat/completions"
+    assert request["api_key"] == "secret"
+    assert request["timeout"] == 12.5
+    assert request["accept"] == "text/event-stream"
+    payload = request["payload"]
+    assert payload["model"] == model_id
+    assert payload["stream"] is True
+    assert payload["stream_options"] == {"include_usage": True}
+    assert payload["tool_choice"] == {"type": "function", "function": {"name": "record_result"}}
 
 
 def test_pi_agent_reasoning_smoke_response_requires_reasoning_content() -> None:
