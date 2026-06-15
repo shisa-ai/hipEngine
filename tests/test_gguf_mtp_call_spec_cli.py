@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import scripts.gguf_mtp_call_spec as call_spec_cli
 
 
@@ -112,6 +114,32 @@ def test_gguf_mtp_call_spec_cli_defaults_to_strict(monkeypatch, capsys) -> None:
     ]
 
 
+def test_gguf_mtp_call_spec_cli_reports_missing_layer(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(call_spec_cli, "discover_gguf_files", lambda path: [Path(path)])
+
+    def fake_summarize(
+        path: Path,
+        *,
+        strict: bool,
+        layers: list[int] | None,
+    ) -> dict[str, object]:
+        raise call_spec_cli.MissingMTPDraftLayerError(
+            f"{path}: requested MTP draft layer(s) 99 not found; available layer(s): 40"
+        )
+
+    monkeypatch.setattr(call_spec_cli, "summarize", fake_summarize)
+
+    status = call_spec_cli.main(["model.gguf", "--layer", "99"])
+
+    captured = capsys.readouterr()
+    assert status == 2
+    assert captured.out == ""
+    assert (
+        captured.err
+        == "error: model.gguf: requested MTP draft layer(s) 99 not found; available layer(s): 40\n"
+    )
+
+
 def test_gguf_mtp_call_spec_summarize_filters_layers(monkeypatch) -> None:
     class _FakeInfo:
         path = Path("model.gguf")
@@ -145,3 +173,32 @@ def test_gguf_mtp_call_spec_summarize_filters_layers(monkeypatch) -> None:
     summary = call_spec_cli.summarize(Path("model.gguf"), layers={41})
 
     assert summary["mtp_draft_call_specs"] == [{"layer_id": 41}]
+
+
+def test_gguf_mtp_call_spec_summarize_rejects_missing_layer(monkeypatch) -> None:
+    class _FakeInfo:
+        path = Path("model.gguf")
+        architecture = "qwen35moe"
+        tensor_count = 1
+
+    class _FakeReader:
+        def __init__(self, path: Path) -> None:
+            assert path == Path("model.gguf")
+            self.info = _FakeInfo()
+
+    class _FakePlan:
+        def __init__(self, layer: int) -> None:
+            self.layer_id = layer
+
+    monkeypatch.setattr(call_spec_cli, "GGUFReader", _FakeReader)
+    monkeypatch.setattr(
+        call_spec_cli,
+        "build_qwen35_gguf_mtp_draft_tensor_plans",
+        lambda info, *, strict: (_FakePlan(40),),
+    )
+
+    with pytest.raises(
+        call_spec_cli.MissingMTPDraftLayerError,
+        match=r"requested MTP draft layer\(s\) 99 not found; available layer\(s\): 40",
+    ):
+        call_spec_cli.summarize(Path("model.gguf"), layers={99})

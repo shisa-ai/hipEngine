@@ -94395,3 +94395,45 @@ Validation:
 - Prompt verifier passed: metadata-only CLI filter, no torch import, no
   backend/quant branches, no runtime generation/GPU/KV path changes, no
   performance claims.
+
+## 2026-06-15 - MTP-GGUF call spec CLI missing-layer guard
+
+Implemented `mtp-gguf` multiloop iteration 39: made explicit `--layer` filters in
+`scripts/gguf_mtp_call_spec.py` fail fast when the requested MTP draft layer is
+not present.
+
+Scope note:
+- This is metadata CLI error handling only. It reads GGUF headers only and does
+  not materialize weights, alter runtime generation, dispatch GPU kernels, or
+  change KV paths.
+- Runtime MTP attention/KV-write work still must use the KVLiveSpans paged-KV
+  ABI.
+
+Changes:
+- Added `MissingMTPDraftLayerError`.
+- `summarize(..., layers=...)` now compares requested layer ids against
+  available MTP draft plan layer ids and raises when any requested layer is
+  absent.
+- `main(...)` catches the missing-layer error, prints a concise `error: ...` to
+  stderr, and returns status `2`.
+- Extended `tests/test_gguf_mtp_call_spec_cli.py` to cover both direct
+  `summarize(...)` rejection and `main(...)` error reporting.
+
+Evidence:
+- Real GGUF missing-layer smoke passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --layer 99 --indent 0`
+  returned status `2`, wrote no stdout, and stderr reported:
+  `requested MTP draft layer(s) 99 not found; available layer(s): 40`.
+
+Validation:
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `26` selected tests (`20` pass, `6` skip).
+- CLI unit tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_call_spec_cli.py` -> `5` passed.
+- CPU-reference regression tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py` -> `15` passed.
+- `py_compile` passed for the CLI and updated CLI test.
+- Forbidden-pattern and diff checks passed.
+- Prompt verifier passed: metadata-only CLI error handling, no torch import, no
+  backend/quant branches, no runtime generation/GPU/KV path changes, no
+  performance claims.

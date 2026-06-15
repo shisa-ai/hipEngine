@@ -21,6 +21,10 @@ from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_mtp_draft_tensor_plans
 
 
+class MissingMTPDraftLayerError(ValueError):
+    """Raised when an explicit layer filter does not match a draft layer."""
+
+
 def summarize(
     path: str | Path,
     *,
@@ -31,6 +35,17 @@ def summarize(
     plans = build_qwen35_gguf_mtp_draft_tensor_plans(reader.info, strict=strict)
     layer_filter = None if layers is None else set(layers)
     if layer_filter is not None:
+        available_layers = {plan.layer_id for plan in plans}
+        missing_layers = sorted(layer_filter - available_layers)
+        if missing_layers:
+            requested = ", ".join(str(layer) for layer in missing_layers)
+            available = ", ".join(str(layer) for layer in sorted(available_layers))
+            if not available:
+                available = "none"
+            raise MissingMTPDraftLayerError(
+                f"{reader.info.path}: requested MTP draft layer(s) {requested} "
+                f"not found; available layer(s): {available}"
+            )
         plans = tuple(plan for plan in plans if plan.layer_id in layer_filter)
     return {
         "path": str(reader.info.path),
@@ -63,11 +78,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     summaries: list[dict[str, Any]] = []
-    for raw_path in args.paths:
-        for path in discover_gguf_files(raw_path):
-            summaries.append(
-                summarize(path, strict=not args.non_strict, layers=args.layers)
-            )
+    try:
+        for raw_path in args.paths:
+            for path in discover_gguf_files(raw_path):
+                summaries.append(
+                    summarize(path, strict=not args.non_strict, layers=args.layers)
+                )
+    except MissingMTPDraftLayerError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     json.dump(summaries, sys.stdout, indent=args.indent, sort_keys=True)
     sys.stdout.write("\n")
     return 0
