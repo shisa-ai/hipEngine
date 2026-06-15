@@ -42,6 +42,8 @@ from hipengine.generation import (
     ResidentBatchScheduler,
     ResidentEngineLoop,
     SamplingMode,
+    SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES,
+    SPECULATIVE_TARGET_SAMPLING_POLICY,
     SubmitPollTextGenerator,
     SpeculativeCommitPlan,
     SpeculativeStateCommitPlan,
@@ -16967,6 +16969,9 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert work.work_item.row_to_request == (r0, r0, r1)
     assert work.work_item.token_rows == ((101,), (102,), (201,))
     assert work.work_item.tree_parents == (0, 1, 0)
+    assert work.target_sampling_policy == SPECULATIVE_TARGET_SAMPLING_POLICY
+    assert work.processed_target_verification is False
+    assert work.compatible_sampling_modes == SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES
 
     key = scheduler.speculative_verify_shape_key(work, top_k=8, experts_per_token=8, replay_steps=2)
     assert key.mode is WorkKind.VERIFY_TREE
@@ -17025,6 +17030,9 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert plan.transaction.candidate_counts == (2, 1)
     assert plan.shape_key == key
     assert plan.graph is graph
+    assert plan.target_sampling_policy == work.target_sampling_policy
+    assert plan.processed_target_verification is False
+    assert plan.compatible_sampling_modes == work.compatible_sampling_modes
     assert scheduler.graph_buckets.stats.hits == 2
     rollback_plan = scheduler.plan_speculative_verify(
         policy,

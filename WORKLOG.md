@@ -93345,3 +93345,23 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md` -> clean.
+
+## 2026-06-15 - Speculative verify sampling policy metadata
+
+Made the current raw-MTP verifier contract explicit on scheduler-owned
+speculative verification objects. `SpeculativeVerifyWork` and
+`SpeculativeVerifyPlan` now carry `target_sampling_policy="raw_target_top1"`,
+`processed_target_verification=false`, and
+`compatible_sampling_modes=("greedy_fast",)`, with constants exported through
+`hipengine.generation`. This preserves the existing blocker guard for logit
+bias, penalties, EOS/min-token policy, forced tokens, thinking budgets, and
+logprob requests while giving downstream verifier runners a concrete policy bit
+instead of prose.
+
+Validation:
+- `python3 -m pytest tests/test_generation_batch_scheduler.py -q -k 'emits_speculative_verify_work or rejects_speculative_verify_for_processed_sampling'` -> `19 passed`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'speculative_mtp'` -> `2 passed`.
+- `python3 -m py_compile hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> passed.
+- `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
+- `git diff --check -- hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md docs/SAMPLING.md` -> clean.

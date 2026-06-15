@@ -30,6 +30,9 @@ from hipengine.generation.sampling import (
 from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
+SPECULATIVE_TARGET_SAMPLING_POLICY = "raw_target_top1"
+SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES = ("greedy_fast",)
+
 
 @dataclass(frozen=True, slots=True)
 class BatchGenerateRequest:
@@ -756,6 +759,9 @@ class CompactPromptSlab:
 class SpeculativeVerifyWork:
     target_batch: TargetVerifyBatch
     work_item: WorkItem
+    target_sampling_policy: str = SPECULATIVE_TARGET_SAMPLING_POLICY
+    processed_target_verification: bool = False
+    compatible_sampling_modes: tuple[str, ...] = SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES
 
 
 @dataclass(frozen=True, slots=True)
@@ -765,6 +771,9 @@ class SpeculativeVerifyPlan:
     transaction: KVTransaction
     shape_key: BatchShapeKey
     graph: object
+    target_sampling_policy: str = SPECULATIVE_TARGET_SAMPLING_POLICY
+    processed_target_verification: bool = False
+    compatible_sampling_modes: tuple[str, ...] = SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES
 
 
 @dataclass(frozen=True, slots=True)
@@ -1220,7 +1229,13 @@ class ResidentBatchScheduler:
                     f"request_id {request_id} has incompatible fields: {joined}"
                 )
         target = TargetVerifyBatch.from_draft(draft, root_tokens=root_tokens, root_positions=root_positions)
-        return SpeculativeVerifyWork(target_batch=target, work_item=target.to_work_item())
+        return SpeculativeVerifyWork(
+            target_batch=target,
+            work_item=target.to_work_item(),
+            target_sampling_policy=SPECULATIVE_TARGET_SAMPLING_POLICY,
+            processed_target_verification=False,
+            compatible_sampling_modes=SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES,
+        )
 
     def begin_speculative_verify_transaction(self, kv_policy, work: SpeculativeVerifyWork):
         """Begin the KV transaction for scheduler-owned target verification."""
@@ -1390,6 +1405,9 @@ class ResidentBatchScheduler:
             transaction=transaction,
             shape_key=key,
             graph=graph,
+            target_sampling_policy=work.target_sampling_policy,
+            processed_target_verification=work.processed_target_verification,
+            compatible_sampling_modes=work.compatible_sampling_modes,
         )
 
     def bind_speculative_verify_buffers(
@@ -1851,6 +1869,8 @@ __all__ = [
     "SamplerParamsBlock",
     "SpeculativeCommitPlan",
     "SpeculativeStateCommitPlan",
+    "SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES",
+    "SPECULATIVE_TARGET_SAMPLING_POLICY",
     "SpeculativeVerifyBufferPlan",
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",

@@ -174,11 +174,14 @@ min-token/EOS policy, token stops, pending forced-token queues, post-thinking
 forced-token queues, token-sequence completion repair, `temperature > 0`, and
 requested logprobs. The resident scheduler applies this guard before emitting
 speculative target-verification work, so rows that need processed logits cannot
-silently enter the raw-argmax MTP path. The public capabilities manifest exposes
-both the flat blocker field list and
-`sampling.speculative_mtp.incompatible_conditions`, so clients can distinguish
-conditional blockers such as `temperature > 0` from inert greedy filters like
-`top_p`, `top_k`, and `min_p`.
+silently enter the raw-argmax MTP path. Successful scheduler verify work and
+plans carry `target_sampling_policy="raw_target_top1"`,
+`processed_target_verification=false`, and
+`compatible_sampling_modes=("greedy_fast",)` until a processed target verifier
+exists. The public capabilities manifest exposes both the flat blocker field
+list and `sampling.speculative_mtp.incompatible_conditions`, so clients can
+distinguish conditional blockers such as `temperature > 0` from inert greedy
+filters like `top_p`, `top_k`, and `min_p`.
 
 ### Server/API mapping
 

@@ -481,8 +481,13 @@ Current code reality:
   scheduler rejects speculative verify work for rows with active blocker fields
   before materializing target verification metadata, including row-local
   logprob / top-logprob requirements that are not token processors but still
-  make raw target top-1 insufficient. The capabilities manifest advertises
-  this guard, the blocker fields, and condition strings such as
+  make raw target top-1 insufficient. Successful `SpeculativeVerifyWork` and
+  `SpeculativeVerifyPlan` objects carry `target_sampling_policy="raw_target_top1"`,
+  `processed_target_verification=false`, and
+  `compatible_sampling_modes=("greedy_fast",)` so downstream verifier runners
+  cannot mistake the current raw verifier for processed AR sampling parity. The
+  capabilities manifest advertises this guard, the blocker fields, and
+  condition strings such as
   `temperature > 0`, `eos_token_id set`, `ignore_eos=true`, and
   `logprobs requested` instead of relying only on prose.
 - Post-generation validation controls (`response_format`, `guided_json`,
@@ -2940,9 +2945,11 @@ golden harness traces are now implemented. Good next logical units, in order:
    metadata and logprob semantics to match host AR sampling everywhere; invalid
    tool calls and structured validation failures still require full buffering.
 3. **Speculative/MTP processed-target verification:** keep raw-argmax MTP
-   limited to greedy-fast requests until the target verifier and commit path
-   apply the same EOS finish, logit bias, penalties, suppressions, forced-token,
-   thinking-budget, and logprob policy as AR sampling.
+   limited to greedy-fast requests and preserve the scheduler's explicit
+   `raw_target_top1` / `processed_target_verification=false` metadata until the
+   target verifier and commit path apply the same EOS finish, logit bias,
+   penalties, suppressions, forced-token, thinking-budget, and logprob policy as
+   AR sampling.
 4. **Decode-time grammar constraints:** add tokenizer-aware JSON/tool/patch
    grammars on the shared DFA/forced-token path, including close-brace/quote and
    tool-argument schema enforcement.
