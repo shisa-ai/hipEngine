@@ -195,6 +195,12 @@ No-hold notes:
   `512/128` decode up (`127.012 -> 127.112 tok/s`), but regressed the retained
   `4K/128` gate (`115.805 -> 115.704 tok/s`) and lowered 4K prefill. Keep Q8_0
   T16 GEMV decode at `128,4`.
+- **G-D2 Q8 launch-bound=5 rejected (2026-06-15).** Tightening all four Q8_0
+  T16 GEMV decode kernels from `__launch_bounds__(128, 4)` to
+  `__launch_bounds__(128, 5)` preserved generated IDs and memory, but regressed
+  both retained decode medians (`127.012 -> 126.870 tok/s`, `115.805 ->
+  115.565 tok/s`) and did not improve prefill. Keep Q8_0 T16 GEMV decode at
+  `128,4`.
 - **G-D2 scale broadcast rejected (2026-06-15).** Replacing per-lane Q8_0 T16
   scale loads with `__shfl` broadcast preserved correctness but regressed the
   gate metric from `114.602` to `106.905 tok/s` (`-6.7%`) and reduced both gate
