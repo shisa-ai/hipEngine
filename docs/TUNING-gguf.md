@@ -153,6 +153,12 @@ Initial focused lanes from evidence:
 
 No-hold notes:
 
+- **G-D3 selected SiLU maxThreads=128 rejected (2026-06-15).** Matching
+  `q4_k_t16_selected_dual_silu_direct_gemv_kernel` launch bounds to its actual
+  128-thread launch (`256,1 -> 128,1`) preserved generated IDs and memory, but
+  regressed the retained selected-down gate (`115.805 -> 115.669 tok/s`) and
+  lowered `512/128` prefill to `1597.871 tok/s`. Keep the selected dual+SiLU T16
+  GEMV launch bound at `256,1`.
 - **G-D3 selected down launch-bound=1 rejected (2026-06-15).** Further
   relaxing `qk_t16_selected_direct_gemv_kernel` from `__launch_bounds__(128, 2)`
   to `__launch_bounds__(128, 1)` preserved generated IDs and memory, but
