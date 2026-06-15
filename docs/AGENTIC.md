@@ -2517,8 +2517,10 @@ Current code reality:
   streamed malformed tool JSON fail-closed behavior,
   `session.commit="append_none"` finish metadata, app-local `session.id`
   visible-only transcript retention, snapshot export/restore of a hidden-
-  reasoning tool-call loop, and streaming tool-call parity without raw
-  `<tool_call>` leakage. The trace suite also includes representative
+  reasoning tool-call loop, streaming tool-call parity without raw
+  `<tool_call>` leakage, and stateless streamed parallel tool-call continuation
+  from replayed `assistant.tool_calls` plus multiple `role="tool"` results. The
+  trace suite also includes representative
   completion/chat logprob success paths, explicit selected-score omission
   reasons when backend token metadata is partial, and the stable
   `unsupported_feature` fallback when a backend cannot return token metadata.

@@ -92745,3 +92745,20 @@ Validation:
 - `uv run pytest tests/test_agentic_harness_traces.py -q` -> `57 passed`.
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `git diff --check -- hipengine/server/api.py tests/test_server_api.py docs/AGENTIC.md docs/API.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - AGENTIC parallel tool-loop conformance
+
+Added a deterministic FastAPI conformance test for the pi/local-agent style
+parallel tool loop: a streaming chat response emits two parsed
+OpenAI-compatible `delta.tool_calls` entries with stable indexes and ids, then a
+follow-up stateless transcript replays the prior assistant `tool_calls` plus two
+`role="tool"` results and verifies the rendered prompt contains each
+`<tool_call>` and `<tool_response>` exactly once. Updated `docs/AGENTIC.md`
+coverage notes. Stateful `session.id` streaming remains intentionally
+unsupported; the test uses the supported OpenAI transcript replay path.
+
+Validation:
+- `python3 -m py_compile tests/test_agentic_server_conformance.py` -> passed.
+- `uv run pytest tests/test_agentic_server_conformance.py -q -k 'streaming_parallel_tool_loop'` -> `1 passed`.
+- `uv run pytest tests/test_agentic_server_conformance.py -q` -> `11 passed`.
+- `uv run pytest tests/test_local_agent_config.py -q` -> `42 passed`.

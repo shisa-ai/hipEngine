@@ -515,6 +515,115 @@ def test_agentic_conformance_streaming_tool_call_matches_non_streaming_shape() -
     assert llm.stream_calls
 
 
+def test_agentic_conformance_streaming_parallel_tool_loop_continues_from_tool_results() -> None:
+    raw_calls = (
+        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"summary"}}</tool_call>'
+        '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md","mode":"summary"}}</tool_call>'
+    )
+    llm = AgenticFakeLLM(
+        outputs=["Both files summarized."],
+        stream_chunks=[raw_calls],
+    )
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=llm,
+    )
+    client = TestClient(app)
+    tools = [_read_tool()]
+
+    first = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "Read README.md and WORKLOG.md."}],
+            "tools": tools,
+            "parallel_tool_calls": True,
+            "stream": True,
+            "stream_options": {"include_hipengine": True},
+            "max_tokens": 64,
+        },
+    )
+
+    assert first.status_code == 200
+    assert "<tool_call>" not in first.text
+    first_payloads = _sse_payloads(first.text)
+    tool_deltas = [
+        payload["choices"][0]["delta"]["tool_calls"][0]
+        for payload in first_payloads
+        if payload.get("choices") and payload["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert [delta["index"] for delta in tool_deltas] == [0, 1]
+    assert [delta["function"]["name"] for delta in tool_deltas] == ["read", "read"]
+    assert [json.loads(delta["function"]["arguments"]) for delta in tool_deltas] == [
+        {"path": "README.md", "mode": "summary"},
+        {"path": "WORKLOG.md", "mode": "summary"},
+    ]
+    assert tool_deltas[0]["id"] != tool_deltas[1]["id"]
+    first_done = next(payload for payload in first_payloads if payload["choices"][0]["finish_reason"])
+    assert first_done["choices"][0]["finish_reason"] == "tool_calls"
+    assert first_done["choices"][0]["finish_details"] == {
+        "reason": "tool_calls",
+        "cache_action": "append_none",
+        "tool_call_tokens": 2,
+        "phase": "tool_call",
+    }
+
+    second = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [
+                {"role": "user", "content": "Read README.md and WORKLOG.md."},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": tool_deltas[0]["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tool_deltas[0]["function"]["name"],
+                                "arguments": tool_deltas[0]["function"]["arguments"],
+                            },
+                        },
+                        {
+                            "id": tool_deltas[1]["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tool_deltas[1]["function"]["name"],
+                                "arguments": tool_deltas[1]["function"]["arguments"],
+                            },
+                        },
+                    ],
+                },
+                {"role": "tool", "tool_call_id": tool_deltas[0]["id"], "content": "README summary"},
+                {"role": "tool", "tool_call_id": tool_deltas[1]["id"], "content": "WORKLOG summary"},
+            ],
+            "tools": tools,
+            "session": {"commit": "append_none"},
+            "max_tokens": 64,
+        },
+    )
+
+    assert second.status_code == 200
+    second_choice = second.json()["choices"][0]
+    assert second_choice["finish_reason"] == "stop"
+    assert second_choice["message"] == {"role": "assistant", "content": "Both files summarized."}
+    assert second_choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
+
+    prompt = llm.calls[1][0][0]
+    readme_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"summary"}}</tool_call>'
+    )
+    worklog_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md","mode":"summary"}}</tool_call>'
+    )
+    assert prompt.count(readme_call) == 1
+    assert prompt.count(worklog_call) == 1
+    assert prompt.count("<tool_response>\nREADME summary\n</tool_response>") == 1
+    assert prompt.count("<tool_response>\nWORKLOG summary\n</tool_response>") == 1
+
+
 def test_agentic_conformance_streaming_malformed_tool_json_fails_closed() -> None:
     llm = AgenticFakeLLM(
         stream_chunks=[
