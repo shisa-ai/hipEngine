@@ -153,6 +153,11 @@ Initial focused lanes from evidence:
 
 No-hold notes:
 
+- **G-D3 selected down launch-bound=1 rejected (2026-06-15).** Further
+  relaxing `qk_t16_selected_direct_gemv_kernel` from `__launch_bounds__(128, 2)`
+  to `__launch_bounds__(128, 1)` preserved generated IDs and memory, but
+  regressed the retained selected-down gate (`115.805 -> 115.570 tok/s`) and
+  lowered both prefill medians. Keep selected-down T16 GEMV at `128,2`.
 - **G-D2 scale broadcast rejected (2026-06-15).** Replacing per-lane Q8_0 T16
   scale loads with `__shfl` broadcast preserved correctness but regressed the
   gate metric from `114.602` to `106.905 tok/s` (`-6.7%`) and reduced both gate
