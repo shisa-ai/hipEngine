@@ -425,6 +425,14 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["all_sampling_contract_prechecks_pass"] is True
     assert matrix["all_hidden_seed_contract_prechecks_pass"] is True
     assert matrix["all_exactness_gates_pass"] is True
+    assert matrix["all_llamacpp_trace_budgets_full"] is False
+    assert matrix["llamacpp_trace_budget_coverage_by_budget"] == {
+        "B1": "full_requested_budget_exercised",
+        "B2": "partial_trace_did_not_exercise_full_budget",
+        "B3": "partial_trace_did_not_exercise_full_budget",
+        "B4": "partial_trace_did_not_exercise_full_budget",
+    }
+    assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
     assert matrix["all_native_runtime_kernels_ready"] is False
     assert matrix["all_optimization_kernels_ready"] is False
     assert matrix["readiness_by_budget"]["B1"] == {
@@ -486,6 +494,8 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is False
     assert "artifacts" not in matrix
+    assert matrix["all_llamacpp_trace_budgets_full"] is False
+    assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
     assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
     assert (

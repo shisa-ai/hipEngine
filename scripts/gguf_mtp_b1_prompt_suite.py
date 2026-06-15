@@ -670,6 +670,15 @@ def build_b1_b4_prompt_suite_matrix(
         for draft_max in (1, 2, 3, 4)
     ]
     readiness_by_budget = {item["budget"]: _matrix_budget_readiness(item) for item in artifacts}
+    trace_budget_coverage_by_budget = {
+        budget: readiness["llamacpp_trace_budget_coverage"]
+        for budget, readiness in readiness_by_budget.items()
+    }
+    partial_trace_budget_budgets = [
+        budget
+        for budget, coverage in trace_budget_coverage_by_budget.items()
+        if coverage != "full_requested_budget_exercised"
+    ]
     matrix = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
@@ -690,6 +699,9 @@ def build_b1_b4_prompt_suite_matrix(
             item["hidden_seed_contract_precheck"]["passed"] for item in artifacts
         ),
         "all_exactness_gates_pass": all(item["execution"]["exactness_gate"] == "passed" for item in artifacts),
+        "all_llamacpp_trace_budgets_full": not partial_trace_budget_budgets,
+        "llamacpp_trace_budget_coverage_by_budget": trace_budget_coverage_by_budget,
+        "partial_llamacpp_trace_budget_budgets": partial_trace_budget_budgets,
         "all_native_runtime_kernels_ready": all(
             item["runtime_kernel_precheck"]["native_runtime_kernels_ready"] for item in artifacts
         ),

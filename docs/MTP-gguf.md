@@ -335,8 +335,11 @@ default or emit a consolidated B1-B4 blocked matrix with `--all-budgets`. The
 matrix includes a compact `readiness_by_budget` section for precheck booleans,
 missing native keys, exactness status, llama.cpp trace budget coverage,
 metrics-contract status, and blocker codes without requiring reviewers to inspect
-each full child artifact; add `--compact-matrix` to omit full child artifacts
-for compact benchmark evidence.
+each full child artifact. It also includes matrix-level
+`llamacpp_trace_budget_coverage_by_budget`,
+`partial_llamacpp_trace_budget_budgets`, and
+`all_llamacpp_trace_budgets_full` rollups; add `--compact-matrix` to omit full
+child artifacts for compact benchmark evidence.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -907,9 +910,9 @@ is now answered by the M1 required/optional table.)
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
-      `readiness_by_budget` parity/preflight/native-key status plus llama.cpp
-      trace budget coverage (`--compact-matrix` omits full child artifacts for
-      compact evidence); actual B2-B4
+      `readiness_by_budget` parity/preflight/native-key status plus per-budget
+      and matrix-level llama.cpp trace budget coverage (`--compact-matrix` omits
+      full child artifacts for compact evidence); actual B2-B4
       execution/parity still waits on native draft execution.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
