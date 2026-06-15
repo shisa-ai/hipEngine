@@ -47,7 +47,13 @@ def run_oracle_gate(
     expected_top1 = np.argmax(expected_logits, axis=-1)
     top1_agreement = float(np.mean(actual_top1 == expected_top1))
     top_k = int(fixture.get("top_k", 1))
-    actual_top_k = np.argsort(-actual_logits, axis=-1, kind="stable")[:, :top_k]
+    topk_kernel = resolve(
+        backend="cpu_reference",
+        layer="mtp_draft_topk",
+        quant="w4_gguf",
+        variant="full_vocab_d2h",
+    )
+    actual_top_k, actual_top_k_logits = topk_kernel(actual_logits, k=top_k)
     expected_top_k = np.asarray(fixture["expected"].get("top_k_token_ids", []), dtype=np.int64)
     if expected_top_k.ndim == 1:
         expected_top_k = expected_top_k[None, :]
@@ -68,6 +74,7 @@ def run_oracle_gate(
         "kind": "gguf_mtp_oracle_gate",
         "fixture": str(fixture_path),
         "cpu_reference_kernel": fixture["cpu_reference_kernel"],
+        "draft_topk_kernel": ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"],
         "thresholds": {
             "max_kl": float(max_kl),
             "min_top1_agreement": float(min_top1_agreement),
@@ -76,6 +83,7 @@ def run_oracle_gate(
         "actual_top1_token_ids": actual_top1.astype(int).tolist(),
         "expected_top1_token_ids": expected_top1.astype(int).tolist(),
         "actual_top_k_token_ids": actual_top_k.astype(int).tolist(),
+        "actual_top_k_logits": actual_top_k_logits.astype(float).tolist(),
         "expected_top_k_token_ids": expected_top_k.astype(int).tolist(),
         "passed": bool(passed),
     }

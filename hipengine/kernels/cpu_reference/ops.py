@@ -87,6 +87,36 @@ def qwen35_gguf_mtp_eh_proj(
     return np.matmul(fused, weight.T).astype(np.float32)
 
 
+def qwen35_gguf_mtp_draft_topk_full_vocab_d2h(
+    logits: ArrayLike,
+    *,
+    k: int = 1,
+    vocab_limit: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """CPU oracle for the unfused GGUF MTP draft top-k fallback.
+
+    The future backend ``topk_device`` variant should avoid copying the full
+    vocab logits to the host. This reference deliberately models the unfused
+    fallback/oracle: logits are already materialized on the host, then stable
+    descending top-k is selected with lower token ids winning ties.
+    """
+
+    logits_arr = np.asarray(logits, dtype=np.float32)
+    if logits_arr.ndim != 2:
+        raise ValueError("logits must have shape [rows, vocab]")
+    _, vocab = logits_arr.shape
+    limit = vocab if vocab_limit is None else int(vocab_limit)
+    if limit <= 0 or limit > vocab:
+        raise ValueError("vocab_limit must be in 1..vocab")
+    top_k = int(k)
+    if top_k <= 0 or top_k > limit:
+        raise ValueError("k must be in 1..vocab_limit")
+    limited = logits_arr[:, :limit]
+    token_ids = np.argsort(-limited, axis=-1, kind="stable")[:, :top_k].astype(np.int32)
+    values = np.take_along_axis(limited, token_ids, axis=-1).astype(np.float32)
+    return token_ids, values
+
+
 def qwen35_gguf_mtp_shared_head_logits(
     nextn_hidden: ArrayLike,
     shared_head_norm_weight: ArrayLike,
@@ -1563,6 +1593,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "mtp_nextn_boundary_logits", "gguf_f32", "qwen35"),
         qwen35_gguf_mtp_boundary_logits,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"),
+        qwen35_gguf_mtp_draft_topk_full_vocab_d2h,
         replace=replace,
     )
     register(

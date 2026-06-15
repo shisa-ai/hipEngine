@@ -559,7 +559,9 @@ Current status:
   KVLiveSpans dynamic inputs plus `block_size` in addition to the dense-cache
   placeholders. `scripts/gguf_mtp_oracle_gate.py` turns that fixture into a
   reusable mechanical artifact with KL/top-1 metrics before any performance
-  comparison is allowed.
+  comparison is allowed, and uses the registered
+  `KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")`
+  unfused top-k fallback/oracle for draft token selection.
 - llama.cpp verbose `draft-mtp` candidate fixture
   `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` captures a
   short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
@@ -836,7 +838,9 @@ is now answered by the M1 required/optional table.)
 - [ ] Run B1 exactness and accepted/output parity against llama.cpp B1.
 - [ ] Extend to B2-B4 after B1 is exact.
 - [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
-      `full_vocab_d2h` registered as the unfused fallback/oracle.
+      `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
+      `full_vocab_d2h` fallback/oracle is registered; backend `topk_device`
+      remains open.
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 

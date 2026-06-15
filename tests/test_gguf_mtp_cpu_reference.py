@@ -9,6 +9,7 @@ import pytest
 from hipengine.kernels.cpu_reference import (
     qwen35_gguf_mtp_attention_sublayer,
     qwen35_gguf_mtp_boundary_logits,
+    qwen35_gguf_mtp_draft_topk_full_vocab_d2h,
     qwen35_gguf_mtp_eh_proj,
     qwen35_gguf_mtp_ffn_sublayer,
     qwen35_gguf_mtp_moe_routing,
@@ -62,6 +63,37 @@ def _nextn_logits_from_fixture(inputs: dict[str, object], **kwargs: object) -> n
         _f32(inputs["shared_head_weight"]),
         **kwargs,
     )
+
+
+def test_qwen35_gguf_mtp_draft_topk_full_vocab_d2h_is_stable_and_registered() -> None:
+    logits = np.asarray(
+        [
+            [0.5, 3.0, 3.0, -1.0],
+            [2.0, 2.0, 1.0, 4.0],
+        ],
+        dtype=np.float32,
+    )
+
+    token_ids, values = qwen35_gguf_mtp_draft_topk_full_vocab_d2h(logits, k=2)
+    registered = resolve(
+        backend="cpu_reference",
+        layer="mtp_draft_topk",
+        quant="w4_gguf",
+        variant="full_vocab_d2h",
+    )
+
+    assert registered is qwen35_gguf_mtp_draft_topk_full_vocab_d2h
+    np.testing.assert_array_equal(token_ids, np.asarray([[1, 2], [3, 0]], dtype=np.int32))
+    np.testing.assert_allclose(values, np.asarray([[3.0, 3.0], [4.0, 2.0]], dtype=np.float32))
+
+
+def test_qwen35_gguf_mtp_draft_topk_full_vocab_d2h_honors_vocab_limit() -> None:
+    logits = np.asarray([[0.0, 9.0, 1.0, 10.0]], dtype=np.float32)
+
+    token_ids, values = qwen35_gguf_mtp_draft_topk_full_vocab_d2h(logits, k=2, vocab_limit=3)
+
+    np.testing.assert_array_equal(token_ids, np.asarray([[1, 2]], dtype=np.int32))
+    np.testing.assert_allclose(values, np.asarray([[9.0, 1.0]], dtype=np.float32))
 
 
 def test_qwen35_gguf_mtp_eh_proj_normalizes_and_concatenates_embedding_then_hidden() -> None:

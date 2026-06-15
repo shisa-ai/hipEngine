@@ -19,6 +19,12 @@ def test_gguf_mtp_oracle_gate_passes_committed_fixture() -> None:
         "w4_gguf",
         "qwen35_dense_logits",
     ]
+    assert result["draft_topk_kernel"] == [
+        "cpu_reference",
+        "mtp_draft_topk",
+        "w4_gguf",
+        "full_vocab_d2h",
+    ]
     assert result["metrics"] == {
         "max_kl": 0.0,
         "mean_kl": 0.0,
@@ -30,6 +36,7 @@ def test_gguf_mtp_oracle_gate_passes_committed_fixture() -> None:
     assert result["actual_top1_token_ids"] == [2]
     assert result["expected_top1_token_ids"] == [2]
     assert result["actual_top_k_token_ids"] == [[2, 0, 3]]
+    assert result["actual_top_k_logits"] == [[1.8975492715835571, 0.630980908870697, -1.3442893028259277]]
 
 
 def test_gguf_mtp_oracle_gate_fails_tampered_expected_logits(tmp_path: Path) -> None:

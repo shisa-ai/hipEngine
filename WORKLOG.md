@@ -95533,3 +95533,50 @@ Validation:
   runtime backend/quant dispatch branch; no generation, MTP execution, sampling
   implementation, GPU kernel, attention/KV runtime path, or performance claim;
   future MTP attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF full-vocab top-k fallback oracle
+
+Implemented `mtp-gguf` multiloop iteration 64: added the registered CPU-reference
+`full_vocab_d2h` top-k fallback/oracle for GGUF MTP draft selection and wired it
+into the oracle gate.
+
+Scope note:
+- CPU-reference registry/test/docs only. No hipEngine runtime generation, GGUF
+  tensor loading, MTP draft execution, sampling implementation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This lays down the unfused correctness fallback required before adding a future
+  backend `topk_device` variant. The backend device top-k implementation remains
+  open.
+
+Changes:
+- Added `qwen35_gguf_mtp_draft_topk_full_vocab_d2h(logits, k, vocab_limit)` in
+  `hipengine/kernels/cpu_reference/ops.py`, selecting stable descending top-k
+  over host-materialized logits with lower token IDs winning ties.
+- Registered it under
+  `KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")`
+  and exported it from `hipengine.kernels.cpu_reference`.
+- Updated `scripts/gguf_mtp_oracle_gate.py` to resolve and use this registered
+  top-k fallback instead of open-coded `argsort`, and to include
+  `draft_topk_kernel` plus `actual_top_k_logits` in the JSON artifact.
+- Added tests for stable tie-breaking, `vocab_limit`, registry resolution, and
+  oracle-gate artifact fields.
+- Updated `docs/MTP-gguf.md` to document the registered `full_vocab_d2h` fallback
+  and clarify that backend `topk_device` remains open.
+
+Validation:
+- Focused CPU-reference/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` -> `24` passed.
+- Oracle gate CLI smoke passed:
+  `scripts/gguf_mtp_oracle_gate.py --out <tmp> --fail-on-fail` ->
+  `oracle_gate True topk_kernel cpu_reference/mtp_draft_topk/w4_gguf/full_vocab_d2h topk_ids [[2, 0, 3]]`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/kernels/cpu_reference/ops.py hipengine/kernels/cpu_reference/__init__.py scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py` and
+  `git diff --check -- hipengine/kernels/cpu_reference/ops.py hipengine/kernels/cpu_reference/__init__.py scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_cpu_reference.py tests/test_gguf_mtp_oracle_gate.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: CPU-reference registry/test/docs only; no torch import;
+  no runtime backend/quant dispatch branch; no generation, MTP execution,
+  sampling implementation, GPU kernel, attention/KV runtime path, or performance
+  claim; future MTP attention/KV-write execution remains KVLiveSpans-gated.
