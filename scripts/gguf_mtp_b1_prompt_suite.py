@@ -789,6 +789,7 @@ def build_b1_b4_prompt_suite_matrix(
     hidden_seed_contract_precheck_by_budget = {
         item["budget"]: item["hidden_seed_contract_precheck"] for item in artifacts
     }
+    oracle_gate_by_budget = {item["budget"]: item["oracle_gate"] for item in artifacts}
     runtime_kernel_precheck_by_budget = {
         item["budget"]: item["runtime_kernel_precheck"] for item in artifacts
     }
@@ -875,6 +876,7 @@ def build_b1_b4_prompt_suite_matrix(
         ),
         "hidden_seed_contract_precheck_by_budget": hidden_seed_contract_precheck_by_budget,
         "all_exactness_gates_pass": all(item["execution"]["exactness_gate"] == "passed" for item in artifacts),
+        "oracle_gate_by_budget": oracle_gate_by_budget,
         "all_kvlivespans_paged_cache_smokes_pass": all(
             kvlivespans_paged_cache_smoke_by_budget.values()
         ),

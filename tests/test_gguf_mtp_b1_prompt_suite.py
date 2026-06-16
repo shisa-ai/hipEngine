@@ -652,6 +652,11 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["required_contract"]["provenance"] == "post_output_norm"
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["required_contract"]["ready_for_mtp"] is True
     assert matrix["all_exactness_gates_pass"] is True
+    assert matrix["oracle_gate_by_budget"]["B1"] == matrix["artifacts"][0]["oracle_gate"]
+    assert matrix["oracle_gate_by_budget"]["B4"] == matrix["artifacts"][3]["oracle_gate"]
+    assert matrix["oracle_gate_by_budget"]["B1"]["passed"] is True
+    assert matrix["oracle_gate_by_budget"]["B4"]["metrics"]["max_kl"] == 0.0
+    assert matrix["oracle_gate_by_budget"]["B4"]["kvlivespans_paged_cache_smoke"]["passed"] is True
     assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
     assert matrix["kvlivespans_paged_cache_smoke_by_budget"] == {
         "B1": True,
@@ -879,6 +884,10 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
         "failed_budgets": [],
     }
     assert matrix["all_hipengine_metrics_contracts_valid"] is True
+    assert matrix["oracle_gate_by_budget"]["B1"]["passed"] is True
+    assert matrix["oracle_gate_by_budget"]["B4"]["metrics"]["top1_agreement"] == 1.0
+    assert matrix["oracle_gate_by_budget"]["B4"]["kvlivespans_paged_cache_smoke"]["passed"] is True
+    assert "artifacts" not in matrix["oracle_gate_by_budget"]["B1"]
     assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
     assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"]["B1"] == 0.0
     assert matrix["all_llamacpp_trace_budgets_full"] is False
