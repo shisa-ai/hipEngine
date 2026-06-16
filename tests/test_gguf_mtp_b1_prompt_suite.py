@@ -378,6 +378,12 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         artifact["hipengine_metrics_contract"],
         candidate_budget=1,
     )
+    assert artifact["hipengine_metrics_contract_validation"] == {
+        "passed": True,
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "candidate_budget": 1,
+        "budget_label": "B1",
+    }
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "passed",
@@ -521,6 +527,33 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
             contract,
             candidate_budget=int(budget[1:]),
         )
+    assert matrix["hipengine_metrics_contract_validation_by_budget"] == {
+        "B1": {
+            "passed": True,
+            "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+            "candidate_budget": 1,
+            "budget_label": "B1",
+        },
+        "B2": {
+            "passed": True,
+            "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+            "candidate_budget": 2,
+            "budget_label": "B2",
+        },
+        "B3": {
+            "passed": True,
+            "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+            "candidate_budget": 3,
+            "budget_label": "B3",
+        },
+        "B4": {
+            "passed": True,
+            "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+            "candidate_budget": 4,
+            "budget_label": "B4",
+        },
+    }
+    assert matrix["all_hipengine_metrics_contracts_valid"] is True
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is True
@@ -698,6 +731,19 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
             contract,
             candidate_budget=int(budget[1:]),
         )
+    assert matrix["hipengine_metrics_contract_validation_by_budget"]["B1"] == {
+        "passed": True,
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "candidate_budget": 1,
+        "budget_label": "B1",
+    }
+    assert matrix["hipengine_metrics_contract_validation_by_budget"]["B4"] == {
+        "passed": True,
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "candidate_budget": 4,
+        "budget_label": "B4",
+    }
+    assert matrix["all_hipengine_metrics_contracts_valid"] is True
     assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
     assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"]["B1"] == 0.0
     assert matrix["all_llamacpp_trace_budgets_full"] is False

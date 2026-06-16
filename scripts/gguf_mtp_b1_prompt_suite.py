@@ -190,6 +190,20 @@ def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
     return contract
 
 
+def _hipengine_metrics_contract_validation(contract: dict[str, Any], *, draft_max: int) -> dict[str, Any]:
+    candidate_budget = int(draft_max)
+    Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(
+        contract,
+        candidate_budget=candidate_budget,
+    )
+    return {
+        "passed": True,
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "candidate_budget": candidate_budget,
+        "budget_label": f"B{candidate_budget}",
+    }
+
+
 def _sampling_draft_budget(settings: dict[str, Any]) -> dict[str, Any]:
     draft = settings.get("draft") if isinstance(settings.get("draft"), dict) else {}
     return {
@@ -509,6 +523,10 @@ def build_b1_prompt_suite_artifact(
         draft_max=requested_draft_max,
     )
     hipengine_metrics_contract = _build_hipengine_metrics_contract(draft_max=requested_draft_max)
+    hipengine_metrics_contract_validation = _hipengine_metrics_contract_validation(
+        hipengine_metrics_contract,
+        draft_max=requested_draft_max,
+    )
     blockers: list[dict[str, Any]] = []
     if not parity["all_pass"]:
         blockers.append(
@@ -634,6 +652,7 @@ def build_b1_prompt_suite_artifact(
         "oracle_gate": oracle_gate,
         "llamacpp_trace_oracle": llamacpp_trace_oracle,
         "hipengine_metrics_contract": hipengine_metrics_contract,
+        "hipengine_metrics_contract_validation": hipengine_metrics_contract_validation,
         "execution": {
             "implemented": False,
             "exactness_gate": "passed" if oracle_gate["passed"] and llamacpp_trace_oracle["passed"] else "failed",
@@ -732,6 +751,9 @@ def build_b1_b4_prompt_suite_matrix(
     hipengine_metrics_contract_by_budget = {
         item["budget"]: item["hipengine_metrics_contract"] for item in artifacts
     }
+    hipengine_metrics_contract_validation_by_budget = {
+        item["budget"]: item["hipengine_metrics_contract_validation"] for item in artifacts
+    }
     trace_budget_coverage_by_budget = {
         budget: readiness["llamacpp_trace_budget_coverage"]
         for budget, readiness in readiness_by_budget.items()
@@ -788,6 +810,10 @@ def build_b1_b4_prompt_suite_matrix(
         "cli_gate_exit_codes": dict(CLI_GATE_EXIT_CODES),
         "cli_gate_failures_by_budget": cli_gate_failures_by_budget,
         "hipengine_metrics_contract_by_budget": hipengine_metrics_contract_by_budget,
+        "hipengine_metrics_contract_validation_by_budget": hipengine_metrics_contract_validation_by_budget,
+        "all_hipengine_metrics_contracts_valid": all(
+            validation["passed"] for validation in hipengine_metrics_contract_validation_by_budget.values()
+        ),
         "model": str(model),
         "backend": str(backend),
         "budgets": [item["budget"] for item in artifacts],
