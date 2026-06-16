@@ -17,6 +17,7 @@ from hipengine.speculative.gguf_mtp import (
     GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
     GGUF_MTP_METRICS_CONTRACT_READY,
     GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
+    Qwen35GGUFMTPAcceptStep,
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPDraftBatch,
     Qwen35GGUFMTPDraftExecutionPlan,
@@ -494,20 +495,31 @@ def test_gguf_mtp_context_accepts_target_top1_with_commit_plan_reseed() -> None:
     )
     context.record_verify_seeds(seeds)
 
-    partial_commit, partial_seed = context.accept_target_top1(
+    partial_step = context.accept_target_top1(
         plan,
         (1, 9, 77),
         transaction_id=12,
         request_id=7,
     )
-    full_commit, full_seed = context.accept_target_top1(
+    partial_commit, partial_seed = partial_step
+    full_step = context.accept_target_top1(
         plan,
         (1, 2, 77),
         transaction_id=13,
         remaining_decode=(2,),
         request_id=7,
     )
+    full_commit, full_seed = full_step
 
+    assert isinstance(partial_step, Qwen35GGUFMTPAcceptStep)
+    assert partial_step.as_dict()["transaction_id"] == 12
+    assert partial_step.as_dict()["request_ids"] == [7]
+    assert partial_step.as_dict()["accepted_counts"] == [1]
+    assert partial_step.as_dict()["commit_rows"] == [1]
+    assert partial_step.as_dict()["next_tokens"] == [9]
+    assert partial_step.as_dict()["candidate_counts"] == [2]
+    assert partial_step.as_dict()["tree_shape"] == [0, 1]
+    assert partial_step.as_dict()["reseed"] == seeds[1].as_dict()
     assert partial_commit.accepted_counts == (1,)
     assert partial_commit.commit_rows == (1,)
     assert partial_commit.next_tokens == (9,)

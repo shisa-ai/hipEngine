@@ -565,6 +565,36 @@ class Qwen35GGUFMTPDraftExecutionPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPAcceptStep:
+    """Metadata result for one GGUF MTP target verify/commit step."""
+
+    commit_plan: TargetCommitPlan
+    reseed: Qwen35GGUFMTPSeedRow
+
+    def __iter__(self):
+        yield self.commit_plan
+        yield self.reseed
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "transaction_id": self.commit_plan.transaction_id,
+            "request_ids": list(self.commit_plan.request_ids),
+            "accepted_counts": list(self.commit_plan.accepted_counts),
+            "commit_rows": list(self.commit_plan.commit_rows),
+            "commit_tokens": list(self.commit_plan.commit_tokens),
+            "commit_positions": list(self.commit_plan.commit_positions),
+            "next_tokens": None if self.commit_plan.next_tokens is None else list(self.commit_plan.next_tokens),
+            "candidate_counts": None
+            if self.commit_plan.candidate_counts is None
+            else list(self.commit_plan.candidate_counts),
+            "draft_depth": self.commit_plan.draft_depth,
+            "tree_shape": None if self.commit_plan.tree_shape is None else list(self.commit_plan.tree_shape),
+            "mode": self.commit_plan.mode,
+            "reseed": self.reseed.as_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Qwen35GGUFMTPVerificationResult:
     """Prefix-match result for GGUF MTP proposal verification."""
 
@@ -1042,7 +1072,7 @@ class Qwen35GGUFMTPContext:
         remaining_decode: Sequence[int] | None = None,
         request_id: int | None = None,
         mode: str = "verify_chain",
-    ) -> tuple[TargetCommitPlan, Qwen35GGUFMTPSeedRow]:
+    ) -> Qwen35GGUFMTPAcceptStep:
         """Build/apply a validated target commit plan from top-1 verifier rows.
 
         This is the metadata-only boundary for the future native GGUF MTP target
@@ -1058,7 +1088,7 @@ class Qwen35GGUFMTPContext:
             mode=mode,
         )
         seed = self.accept_target_commit_plan(commit_plan, request_id=request_id)
-        return commit_plan, seed
+        return Qwen35GGUFMTPAcceptStep(commit_plan=commit_plan, reseed=seed)
 
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
         return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))
