@@ -2479,7 +2479,7 @@ class Qwen35GGUFMTPPerformanceReadiness:
 
     @staticmethod
     def required_fields() -> tuple[str, ...]:
-        return ("ready", "blockers", "known_blockers")
+        return ("ready", "blockers", "known_blockers", "required_fields", "validator")
 
     @staticmethod
     def validator_name() -> str:

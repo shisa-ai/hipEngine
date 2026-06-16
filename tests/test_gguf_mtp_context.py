@@ -1362,6 +1362,8 @@ def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:
 
     assert readiness.ready is True
     assert readiness.blockers == ()
+    assert "required_fields" in Qwen35GGUFMTPPerformanceReadiness.required_fields()
+    assert "validator" in Qwen35GGUFMTPPerformanceReadiness.required_fields()
     assert readiness.as_dict() == {
         "ready": True,
         "blockers": [],
@@ -1382,6 +1384,9 @@ def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:
         Qwen35GGUFMTPPerformanceReadiness.validate_payload(bad_payload)
     bad_payload = {**readiness.as_dict(), "validator": "wrong"}
     with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPPerformanceReadiness.validate_payload(bad_payload)
+    bad_payload = {key: value for key, value in readiness.as_dict().items() if key != "validator"}
+    with pytest.raises(ValueError, match="missing required fields: validator"):
         Qwen35GGUFMTPPerformanceReadiness.validate_payload(bad_payload)
 
 
