@@ -353,6 +353,7 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             "step_candidate_token_counts",
             "step_accepted_token_counts",
             "step_rows",
+            "steps",
             "accepted_per_draft",
             "accepted_per_output",
         ],
@@ -631,6 +632,10 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     )
     assert all(
         "step_rows" in item["hipengine_metrics_contract"]["required_fields"]
+        for item in matrix["artifacts"]
+    )
+    assert all(
+        "steps" in item["hipengine_metrics_contract"]["required_fields"]
         for item in matrix["artifacts"]
     )
 

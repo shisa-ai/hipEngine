@@ -965,7 +965,7 @@ is now answered by the M1 required/optional table.)
       NextN composite key and the KVLiveSpans paged-KV append/decode component
       keys), CPU-reference oracle
       gate output, a hipEngine metrics contract with schema/kind/source labels,
-      B-budget fields, compact per-step fields, explicit
+      B-budget fields, compact per-step fields, full serialized `steps`, explicit
       accepted-per-draft/output denominator labels, and captured
       llama.cpp draft-trace oracle provenance/denominator checks; B1 runtime
       execution remains in the next backlog row.
@@ -986,9 +986,9 @@ is now answered by the M1 required/optional table.)
       `accepted_per_output` with explicit `draft_n_accepted / predicted_n`
       denominator for future parity rows, while the preflight artifact exposes
       the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` schema/kind/source,
-      `candidate_budget` / `budget_label`, compact per-step row fields, and
-      denominator contract that native runtime must fill from serialized
-      target-top1 accept steps.
+      `candidate_budget` / `budget_label`, compact per-step row fields, full
+      serialized `steps`, and denominator contract that native runtime must fill
+      from serialized target-top1 accept steps.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,

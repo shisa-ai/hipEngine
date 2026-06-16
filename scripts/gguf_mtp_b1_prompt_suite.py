@@ -201,6 +201,7 @@ def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
             "step_candidate_token_counts",
             "step_accepted_token_counts",
             "step_rows",
+            "steps",
             "accepted_per_draft",
             "accepted_per_output",
         ],
