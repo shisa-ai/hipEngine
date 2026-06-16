@@ -674,11 +674,11 @@ Current status:
   verification, validating shared `TargetCommitPlan` metadata from that summary
   or directly from target top-1 rows, applying the summary, validated commit
   plan, or serializable direct top-1 accept-step result back to GGUF hidden-seed
-  reseed state, aggregating accept-step artifacts into the `accepted_per_draft`
-  and `accepted_per_output` denominator contract, and scoring proposed draft
-  tokens against target tokens while applying the llama.cpp verify-row reseed
-  rule. It does not allocate MTP KV buffers or run NextN draft kernels
-  yet.
+  reseed state, aggregating individual accept steps or per-cycle top-1 specs
+  into the `accepted_per_draft` and `accepted_per_output` denominator contract,
+  and scoring proposed draft tokens against target tokens while applying the
+  llama.cpp verify-row reseed rule. It does not allocate MTP KV buffers or run
+  NextN draft kernels yet.
 
 Deliverables:
 
@@ -714,6 +714,9 @@ Deliverables:
   count back to the llama.cpp verify-row hidden-seed reseed rule;
   `accept_target_top1()` returns a serializable `Qwen35GGUFMTPAcceptStep` while
   still supporting tuple unpacking as `(commit_plan, reseed)`, and
+  `Qwen35GGUFMTPTop1AcceptSpec` plus
+  `Qwen35GGUFMTPContext.accept_target_top1_metrics()` feed per-cycle target top-1
+  rows and verify seeds into one metrics artifact, and
   `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
   self-identifying schema/kind/source payload and the same accepted/draft and
   accepted/output denominator labels used for llama.cpp parity; the GGUF row

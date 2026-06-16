@@ -98154,3 +98154,47 @@ Validation:
   allocation, GPU kernel, attention/KV runtime path, or performance claim.
   Existing KVLiveSpans execution-plan contract is unchanged and future native
   attention/KV-write remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF target-top1 metrics loop helper
+
+Implemented `mtp-gguf` multiloop iteration 123: added a context-level metadata
+helper that consumes per-cycle target-top1 specs and returns one serializable
+accept-step metrics artifact.
+
+Scope note:
+- Metadata/state/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- The helper is the compact metadata boundary for future native verify/commit
+  integration: each cycle can provide target top-1 rows plus captured verify
+  hidden seed rows, and the context applies the already-defined commit/reseed
+  path before aggregating accepted/draft and accepted/output denominator metrics.
+
+Changes:
+- Added `Qwen35GGUFMTPTop1AcceptSpec` with target-top1, transaction-id,
+  optional verify-seed rows, remaining-decode, request-id, and mode metadata.
+- Added `Qwen35GGUFMTPContext.accept_target_top1_metrics()` to apply a sequence
+  of specs via `accept_target_top1()` and return `Qwen35GGUFMTPAcceptStepMetrics`.
+- Exported `Qwen35GGUFMTPTop1AcceptSpec` from `hipengine.speculative`.
+- Added context/export tests covering spec normalization/validation, metrics
+  aggregation, serialized step transaction ids, and final pending-seed reseed.
+- Updated `docs/MTP-gguf.md` M4 status/deliverables to record the per-cycle
+  top1-spec metrics helper.
+
+Validation:
+- Focused GGUF MTP context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> `37` passed.
+- Prompt-suite regression passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `41` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/state/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no native MTP execution, actual KV
+  allocation, GPU kernel, attention/KV runtime path, or performance claim.
+  Existing KVLiveSpans execution-plan contract is unchanged and future native
+  attention/KV-write remains KVLiveSpans-gated.

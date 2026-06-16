@@ -672,6 +672,39 @@ class Qwen35GGUFMTPAcceptStepMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPTop1AcceptSpec:
+    """One target-top1 accept cycle for GGUF MTP metrics aggregation."""
+
+    plan: Qwen35GGUFMTPDraftExecutionPlan
+    target_top1: Sequence[int]
+    transaction_id: int
+    verify_seeds: Sequence[Qwen35GGUFMTPSeedRow] = ()
+    remaining_decode: Sequence[int] | None = None
+    request_id: int | None = None
+    mode: str = "verify_chain"
+
+    def __post_init__(self) -> None:
+        target_top1 = tuple(int(token) for token in self.target_top1)
+        if not target_top1:
+            raise ValueError("target_top1 must be non-empty")
+        transaction_id = int(self.transaction_id)
+        if transaction_id < 0:
+            raise ValueError("transaction_id must be non-negative")
+        remaining_decode = (
+            None
+            if self.remaining_decode is None
+            else tuple(int(token) for token in self.remaining_decode)
+        )
+        request_id = None if self.request_id is None else int(self.request_id)
+        object.__setattr__(self, "target_top1", target_top1)
+        object.__setattr__(self, "transaction_id", transaction_id)
+        object.__setattr__(self, "verify_seeds", tuple(self.verify_seeds))
+        object.__setattr__(self, "remaining_decode", remaining_decode)
+        object.__setattr__(self, "request_id", request_id)
+        object.__setattr__(self, "mode", str(self.mode))
+
+
+@dataclass(frozen=True, slots=True)
 class Qwen35GGUFMTPVerificationResult:
     """Prefix-match result for GGUF MTP proposal verification."""
 
@@ -1166,6 +1199,36 @@ class Qwen35GGUFMTPContext:
         )
         seed = self.accept_target_commit_plan(commit_plan, request_id=request_id)
         return Qwen35GGUFMTPAcceptStep(commit_plan=commit_plan, reseed=seed)
+
+    def accept_target_top1_metrics(
+        self,
+        specs: Sequence[Qwen35GGUFMTPTop1AcceptSpec],
+        *,
+        output_token_count: int,
+    ) -> Qwen35GGUFMTPAcceptStepMetrics:
+        """Run a metadata-only sequence of target-top1 accept cycles.
+
+        Each spec may include the verify hidden rows captured for that cycle;
+        when present they replace the context's recorded verify seeds before the
+        target-top1 commit/reseed step.  The returned metrics object is the
+        compact artifact contract used for future llama.cpp parity rows.
+        """
+
+        steps: list[Qwen35GGUFMTPAcceptStep] = []
+        for spec in specs:
+            if spec.verify_seeds:
+                self.record_verify_seeds(spec.verify_seeds)
+            steps.append(
+                self.accept_target_top1(
+                    spec.plan,
+                    spec.target_top1,
+                    transaction_id=spec.transaction_id,
+                    remaining_decode=spec.remaining_decode,
+                    request_id=spec.request_id,
+                    mode=spec.mode,
+                )
+            )
+        return Qwen35GGUFMTPAcceptStepMetrics.from_steps(steps, output_token_count=output_token_count)
 
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
         return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))

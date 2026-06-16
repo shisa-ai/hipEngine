@@ -19,6 +19,7 @@ from hipengine.speculative.gguf_mtp import (
     GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
     Qwen35GGUFMTPAcceptStep,
     Qwen35GGUFMTPAcceptStepMetrics,
+    Qwen35GGUFMTPTop1AcceptSpec,
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPDraftBatch,
     Qwen35GGUFMTPDraftExecutionPlan,
@@ -600,6 +601,57 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
             (Qwen35GGUFMTPAcceptStep(commit_plan=missing_counts, reseed=seeds[0]),),
             output_token_count=1,
         )
+
+
+def test_gguf_mtp_context_accepts_top1_specs_into_metrics() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=2, position=7, hidden_ptr=0x3000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1, 2), seed_rows=seeds[:2])
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,), (2,)),
+        top_k_logits=((4.0,), (3.0,)),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+    specs = (
+        Qwen35GGUFMTPTop1AcceptSpec(
+            plan=plan,
+            target_top1=[1, 9, 77],
+            transaction_id=12,
+            verify_seeds=seeds,
+            request_id=7,
+        ),
+        Qwen35GGUFMTPTop1AcceptSpec(
+            plan=plan,
+            target_top1=(1, 2, 77),
+            transaction_id=13,
+            verify_seeds=seeds,
+            remaining_decode=[2],
+            request_id=7,
+        ),
+    )
+
+    metrics = context.accept_target_top1_metrics(specs, output_token_count=5)
+
+    assert specs[0].target_top1 == (1, 9, 77)
+    assert specs[1].remaining_decode == (2,)
+    assert metrics.accepted_token_count == 3
+    assert metrics.draft_token_count == 4
+    assert metrics.as_dict()["steps"][0]["transaction_id"] == 12
+    assert metrics.as_dict()["steps"][1]["transaction_id"] == 13
+    assert context.pending_seed == seeds[2]
+
+    with pytest.raises(ValueError, match="target_top1"):
+        Qwen35GGUFMTPTop1AcceptSpec(plan=plan, target_top1=(), transaction_id=0)
+    with pytest.raises(ValueError, match="transaction_id"):
+        Qwen35GGUFMTPTop1AcceptSpec(plan=plan, target_top1=(1,), transaction_id=-1)
 
 
 def test_gguf_mtp_context_applies_target_commit_plan_reseed_rule() -> None:

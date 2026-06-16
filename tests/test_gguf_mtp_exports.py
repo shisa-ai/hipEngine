@@ -15,6 +15,7 @@ from hipengine.speculative import (
     GGUF_MTP_METRICS_CONTRACT_READY,
     Qwen35GGUFMTPAcceptStep,
     Qwen35GGUFMTPAcceptStepMetrics,
+    Qwen35GGUFMTPTop1AcceptSpec,
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPKVLiveSpansPlan,
     Qwen35GGUFMTPPerformanceReadiness,
@@ -25,6 +26,7 @@ from hipengine.speculative import (
 )
 from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPAcceptStep as ModuleAcceptStep
 from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPAcceptStepMetrics as ModuleAcceptStepMetrics
+from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPTop1AcceptSpec as ModuleTop1AcceptSpec
 from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext as ModuleContext
 
 
@@ -34,6 +36,7 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
     assert Qwen35GGUFMTPContext is ModuleContext
     assert Qwen35GGUFMTPAcceptStep is ModuleAcceptStep
     assert Qwen35GGUFMTPAcceptStepMetrics is ModuleAcceptStepMetrics
+    assert Qwen35GGUFMTPTop1AcceptSpec is ModuleTop1AcceptSpec
     assert DEFAULT_DRAFT_TOPK == 10
     assert DEFAULT_DRAFT_SELECTION == "greedy_top1_from_topk"
     assert DEFAULT_DRAFT_TOPK_KERNEL == ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
