@@ -329,10 +329,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   CPU oracle test that reconstructs raw Q4_K values. A tiny RDNA3
   `wmma_i8_probe_16x16` kernel now verifies the key
   `__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32` fragment/store mapping against
-  CPU int32 matmul and has a rocprof kernel-trace smoke. **Next code test:**
-  port the actual shared-memory + WMMA/MMA tile path (`load_tiles_q4_K` +
-  `vec_dot_q8_1_q8_1_mma`) for this microbench shape; layout-only scalar
-  variants are rejected.
+  CPU int32 matmul and has a rocprof kernel-trace smoke. The first DS4
+  integer-WMMA selected-prefill prototype (`q8-1-ds4-wmma`) uses that mapping
+  over raw Q4_K nibbles and measures `8.233 ms/call` (`16.69` logical TFLOP/s)
+  on the synthetic qwen-like shape, faster than same-script selected-WMMA
+  `11.581 ms/call` and DS4 scalar `21.842 ms/call`; it remains a diagnostic
+  because it still uses raw global Q4_K loads rather than llama.cpp-style
+  shared-memory tile staging. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`.
+  **Next code test:** add the actual shared-memory `load_tiles_q4_K` staging and
+  widen the MMQ tile beyond the one-wave 16x16 prototype.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`

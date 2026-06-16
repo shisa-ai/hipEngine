@@ -11,6 +11,9 @@ It builds a synthetic compact-selected MoE fixture and can time either:
 * ``q8-1-ds4-dot``: the same scalar dot prototype fed by llama.cpp-style
   DS4 ``block_q8_1_mmq`` activation blocks, isolating layout effects before a
   tiled WMMA/MMQ port.
+* ``q8-1-ds4-wmma``: a first wave32 integer-WMMA prototype over the DS4 layout
+  and raw Q4_K nibbles. It validates the MMA decomposition before a wider
+  shared-memory tiled MMQ port.
 
 The script does not load a full GGUF model and does not validate model quality;
 it is a same-shape kernel-design baseline/prototype harness.
@@ -124,7 +127,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--mode", choices=("selected-wmma", "q8-1-dot", "q8-1-ds4-dot"), default="selected-wmma")
+    parser.add_argument(
+        "--mode",
+        choices=("selected-wmma", "q8-1-dot", "q8-1-ds4-dot", "q8-1-ds4-wmma"),
+        default="selected-wmma",
+    )
     parser.add_argument("--hidden", type=int, default=2048)
     parser.add_argument("--out-features-a", type=int, default=4096)
     parser.add_argument("--out-features-b", type=int, default=4096)
@@ -232,6 +239,7 @@ def main() -> None:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
                 build_gguf_q4_k_q8_1_selected_prefill,
                 gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
+                gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
             )
 
@@ -288,6 +296,12 @@ def main() -> None:
                 q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(x_host)
                 q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
                 bufs.append(q8_ds4_dev)
+                use_wmma = args.mode == "q8-1-ds4-wmma"
+                ds4_launcher = (
+                    gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out
+                    if use_wmma
+                    else gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out
+                )
                 variant_extra = {
                     "host_q8_ds4_mib": q8_ds4.nbytes / (1 << 20),
                     "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
@@ -295,11 +309,16 @@ def main() -> None:
                     "activation_quantization_in_loop": False,
                     "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
                     "weight_layout": "raw_gguf_q4_k",
-                    "prototype_note": "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation.",
+                    "integer_mma": use_wmma,
+                    "prototype_note": (
+                        "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile."
+                        if use_wmma
+                        else "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation."
+                    ),
                 }
 
                 def launch() -> None:
-                    gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out(
+                    ds4_launcher(
                         q8_ds4_dev.ptr,
                         start_compact_dev.ptr,
                         start_wmma_dev.ptr,
