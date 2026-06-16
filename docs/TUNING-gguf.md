@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Full-attention scratch library handles rejected (2026-06-16).** Moving
+  cached cast, paged-KV-write, and paged-attention library handles from the
+  runner accessors onto `_FullStackScratch` passed the focused routing smoke and
+  `154`-test GGUF guard with stable IDs and flat memory, but it regressed the
+  retained decode-policy cache baseline (`512/128` `1958.536 / 127.263 ->
+  1901.611 / 127.149 tok/s`, `4K/128` `2292.684 / 114.991 -> 2288.138 /
+  114.695 tok/s`). Code and test changes were reverted. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-scratch-library-cache-rejected.json`.
+
 - **Full-attention cached Qwen-GQA shape rejected (2026-06-16).** Caching the
   Qwen full-attention GQA-shape boolean on `_FullStackScratch` passed the
   focused routing smoke and the `154`-test GGUF guard, with stable IDs and flat
