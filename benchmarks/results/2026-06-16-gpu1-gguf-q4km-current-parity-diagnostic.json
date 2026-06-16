@@ -1,0 +1,129 @@
+{
+  "commands": {
+    "configured_verify_q4ks": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "hipengine_q4km": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-q4km-current.json"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX, gfx1100, HIP_VISIBLE_DEVICES=1, sysfs card0 total 23.984375 GiB",
+    "notes": "hipEngine tracked peak comes from hipengine allocator; sampled HIP peak is phase-boundary hipMemGetInfo in raw sweep JSON."
+  },
+  "interpretation": [
+    "Apples-to-apples Q4_K_M pp512 confirms the short-prefill gap: llama.cpp HIP is +46.7% over current hipEngine Q4_K_M pp512; Vulkan is +28.1%.",
+    "hipEngine Q4_K_M decode remains faster than the user llama.cpp Q4_K_M tg128 row (+32.3% vs HIP, +55.9% vs Vulkan), so the immediate gap remains prefill.",
+    "Q4_K_M primary-shape residency is 22.491 GiB tracked / about 23.068 GiB sampled HIP used, leaving less than 1 GiB free on GPU1; Q4_K_S remains the safer active tuning gate for 128K promotion."
+  ],
+  "performance_claim": false,
+  "raw_inputs_not_committed": {
+    "configured_verify_q4ks_json": "/tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "hipengine_q4km_json": "/tmp/hipengine-gguf-tuning-gpu1-q4km-current.json"
+  },
+  "reason_not_promoted": "Measurement-only parity refresh; no runtime code changed and no hipEngine performance improvement is claimed.",
+  "results": {
+    "comparison_to_user_llamacpp_512_128": {
+      "hip_llamacpp_vs_hipengine_pp512_delta_pct": 46.6735057679216,
+      "hip_llamacpp_vs_hipengine_pp512_ratio": 1.466735057679216,
+      "hipengine_vs_llamacpp_hip_tg128_delta_pct": 32.30318911023038,
+      "hipengine_vs_llamacpp_hip_tg128_ratio": 1.3230318911023038,
+      "hipengine_vs_llamacpp_vulkan_tg128_delta_pct": 55.86607247742159,
+      "hipengine_vs_llamacpp_vulkan_tg128_ratio": 1.558660724774216,
+      "vulkan_llamacpp_vs_hipengine_pp512_delta_pct": 28.05381925977599,
+      "vulkan_llamacpp_vs_hipengine_pp512_ratio": 1.28053819259776
+    },
+    "configured_verify_q4ks": {
+      "4K/128": {
+        "decode_tok_s_median": 115.66737471155139,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2157.0723059964066,
+        "tracked_peak_allocated_gib_median": 21.334841787815094
+      },
+      "512/128": {
+        "decode_tok_s_median": 126.55814994208116,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 1835.9662609342417,
+        "tracked_peak_allocated_gib_median": 21.334841787815094
+      }
+    },
+    "configured_verify_q4ks_min_gate_decode_tok_s": 115.66737471155139,
+    "hipengine_q4km": {
+      "4K/128": {
+        "decode_tok_s_median": 114.07508492127434,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2133.917447563812,
+        "tracked_peak_allocated_gib_median": 22.491091787815094
+      },
+      "512/128": {
+        "decode_tok_s_median": 124.53699190945986,
+        "final_token_ids": [
+          318,
+          318,
+          318
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 1866.0357135873373,
+        "tracked_peak_allocated_gib_median": 22.491091787815094
+      }
+    },
+    "hipengine_q4km_min_gate_decode_tok_s": 114.07508492127434,
+    "user_llamacpp_q4km": {
+      "hip": {
+        "build": "263cc04a5 (9600)",
+        "pp512_stdev": 53.51,
+        "pp512_tok_s": 2736.98,
+        "tg128_stdev": 1.29,
+        "tg128_tok_s": 94.13
+      },
+      "source": "user-provided llama.cpp benches in chat, same GPU1/RX 7900 XTX and /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf, -fa 1",
+      "vulkan": {
+        "build": "263cc04a5 (9600)",
+        "pp512_stdev": 16.94,
+        "pp512_tok_s": 2389.53,
+        "tg128_stdev": 0.22,
+        "tg128_tok_s": 79.9
+      }
+    }
+  },
+  "run_tag": "gpu1-gguf-q4km-current-parity-diagnostic",
+  "schema": 2,
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "hipengine_commit": "192335cc0130467e31c4626800bc2eea3db70b35",
+    "hipengine_dirty_files_at_artifact_creation": [],
+    "python": "3.12.9"
+  },
+  "status": "diagnostic_retained",
+  "summary": "Current hipEngine Q4_K_M primary-gate baseline on GPU1 after GGUF tuning, compared to user-provided llama.cpp Q4_K_M pp512/tg128 rows.",
+  "timestamp": "2026-06-16T02:25:05.940073+00:00",
+  "workload": {
+    "bulk_prefill_attention_mode": "bulk",
+    "comparison_model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "comparison_quant": "gguf_q4_k_s",
+    "engine": "hipengine gguf",
+    "measured_runs": 3,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "warmup_decode_tokens": 1,
+    "warmup_runs": 1,
+    "workloads": [
+      "512/128",
+      "4K/128"
+    ]
+  }
+}

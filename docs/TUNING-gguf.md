@@ -307,11 +307,22 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   rocprofv3/RGP-equivalent llama.cpp HIP pp512 capture and a Vulkan pipeline log,
   then compare launch families against hipEngine's current `512/128` profile.
 - Apples-to-apples before adopting: the user benchmark is `Q4_K_M`, while the
-  active loop gates are `Q4_K_S`. Rerun current hipEngine `Q4_K_M` on GPU1 and,
-  if a `Q4_K_S` llama.cpp model is available, rerun llama.cpp `Q4_K_S`. Prior
-  hipEngine Q4_K_M rows (`2140.225` pp512 / `2640.840` 4K prefill) are stale
-  relative to this loop's Q4_K_S changes and should not be used as final gap
-  math.
+  active loop gates are `Q4_K_S`. The first refreshed current hipEngine
+  `Q4_K_M` GPU1 diagnostic is
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`:
+  `512/128` measured `1866.036` prefill / `124.537` decode tok/s with stable
+  ID `[318, 318, 318]`; `4K/128` measured `2133.917` / `114.075` tok/s with
+  stable ID `[220, 220, 220]`; tracked peak was `22.491 GiB` and sampled HIP
+  used was about `23.068 GiB`. Against the user's same-model llama.cpp row,
+  llama.cpp HIP pp512 is `+46.7%` and Vulkan pp512 is `+28.1%`, while
+  hipEngine decode is still faster (`+32.3%` vs llama.cpp HIP tg128, `+55.9%`
+  vs Vulkan tg128). This confirms the immediate parity gap is short prefill,
+  not decode. Q4_K_M leaves less than 1 GiB sampled headroom on GPU1 at 4K, so
+  keep `Q4_K_S` as the active 128K promotion gate unless a Q4_K_M memory plan is
+  added. Prior hipEngine Q4_K_M rows (`2140.225` pp512 / `2640.840` 4K prefill)
+  are stale relative to this loop's Q4_K_S changes and should not be used as
+  final gap math. If a `Q4_K_S` llama.cpp model is available, still rerun
+  llama.cpp `Q4_K_S` before comparing the active gate directly.
 
 No-hold notes:
 

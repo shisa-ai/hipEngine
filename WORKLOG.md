@@ -94279,3 +94279,24 @@ Validation and outcome:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a documentation/planning detour. No runtime code changed, generated IDs stayed stable on the primary gate, memory stayed flat, no torch/llama.cpp dependency was added to the hot path, and the documented next steps are apples-to-apples measurement/microbench/profile tasks rather than unverified adoption.
 - Decision: log only. The codepath review sharpens the GGUF punchlist around llama.cpp's Q8_1-activation MMQ and Vulkan int-dot paths; it does not claim a hipEngine performance promotion yet.
+
+## 2026-06-16 - GGUF Q4_K_M parity refresh
+
+Ran the apples-to-apples current hipEngine `Q4_K_M` GPU1 primary shapes before attempting any llama.cpp MMQ/Q8_1 adoption. This uses the same current resident GGUF path and `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`; the user's llama.cpp row is the same model/quant with `-fa 1`.
+
+Measurement command:
+- `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-q4km-current.json`.
+
+Results:
+- hipEngine `Q4_K_M` `512/128`: `1866.035714` prefill tok/s, `124.536992` decode tok/s, stable final IDs `[318, 318, 318]`.
+- hipEngine `Q4_K_M` `4K/128`: `2133.917448` prefill tok/s, `114.075085` decode tok/s, stable final IDs `[220, 220, 220]`.
+- Q4_K_M tracked peak `22.491092 GiB`; sampled HIP-used peak in the raw sweep was about `23.068489 GiB`, leaving less than 1 GiB sampled free on the 24GB GPU1 card at these primary shapes.
+- Versus the user's same-model llama.cpp rows, llama.cpp HIP pp512 is `+46.7%` over hipEngine and Vulkan pp512 is `+28.1%`; hipEngine decode remains faster (`+32.3%` vs llama.cpp HIP tg128 and `+55.9%` vs Vulkan tg128). This confirms the current parity gap to chase is short prefill, not decode.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1835.966261 / 126.558150 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2157.072306 / 115.667375 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.667375 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`; benchmark rollup/changelog updated as a diagnostic comparison-baseline refresh.
+- Prompt verifier: passed for a diagnostic baseline refresh. No runtime code changed, IDs stayed stable on Q4_K_M and Q4_K_S gates, the memory increase is explained by Q4_K_M selected-weight residency and leaves little GPU1 headroom, and no torch/llama.cpp hot-path dependency was added. No performance promotion is claimed.
+- Decision: log only. Next prefill work should profile or microbench the llama.cpp-style Q8_1-activation MMQ path against hipEngine selected-WMMA at the Q4_K_M/Q4_K_S shapes before adopting code.
