@@ -97112,3 +97112,47 @@ Validation:
   performance claim. The oracle gate now mechanically exercises the KVLiveSpans
   paged-cache CPU path while future native MTP attention/KV-write execution
   remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF KVLiveSpans smoke matrix rollup
+
+Implemented `mtp-gguf` multiloop iteration 98: surfaced the oracle gate's
+KVLiveSpans paged-cache smoke in B1-B4 prompt-suite compact artifacts.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This exposes the CPU-reference dense-vs-paged KVLiveSpans oracle result in the
+  B1-B4 matrix summary so reviewers do not need full child artifacts to see the
+  M4 ABI smoke status.
+
+Changes:
+- `scripts/gguf_mtp_b1_prompt_suite.py` readiness rows now include
+  `kvlivespans_paged_cache_smoke` and `kvlivespans_paged_cache_max_abs_diff` from
+  the nested oracle gate output.
+- B1-B4 matrix artifacts now include
+  `all_kvlivespans_paged_cache_smokes_pass`,
+  `kvlivespans_paged_cache_smoke_by_budget`, and
+  `kvlivespans_paged_cache_max_abs_diff_by_budget`.
+- Updated prompt-suite tests and the oracle stub to assert all B1-B4 budgets pass
+  the KVLiveSpans smoke with max abs diff `0.0`.
+- Updated `docs/MTP-gguf.md` to document the compact KVLiveSpans smoke rollup.
+
+Validation:
+- Focused prompt-suite/oracle tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py` -> `26` passed.
+- Real local compact B1-B4 matrix smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `kv_smokes True`, `kv_diff_B1 0.0`, `readiness_B1_kv True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. The compact rollup exposes CPU-reference KVLiveSpans oracle status while
+  future native attention/KV-write execution remains KVLiveSpans-gated.

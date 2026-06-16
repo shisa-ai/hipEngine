@@ -659,6 +659,12 @@ def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
         "draft_sampling_contract_precheck": artifact["draft_sampling_contract_precheck"]["passed"],
         "hidden_seed_contract_precheck": artifact["hidden_seed_contract_precheck"]["passed"],
         "exactness_gate": artifact["execution"]["exactness_gate"],
+        "kvlivespans_paged_cache_smoke": artifact["oracle_gate"]["kvlivespans_paged_cache_smoke"][
+            "passed"
+        ],
+        "kvlivespans_paged_cache_max_abs_diff": artifact["oracle_gate"][
+            "kvlivespans_paged_cache_smoke"
+        ]["max_abs_diff"],
         "llamacpp_trace_budget_coverage": artifact["llamacpp_trace_oracle"]["budget_coverage"],
         "accepted_per_output_status": artifact["llamacpp_trace_oracle"]["denominator_metrics"][
             "accepted_per_output_status"
@@ -735,6 +741,14 @@ def build_b1_b4_prompt_suite_matrix(
         for budget, ready in performance_comparison_ready_by_budget.items()
         if not ready
     ]
+    kvlivespans_paged_cache_smoke_by_budget = {
+        budget: readiness["kvlivespans_paged_cache_smoke"]
+        for budget, readiness in readiness_by_budget.items()
+    }
+    kvlivespans_paged_cache_max_abs_diff_by_budget = {
+        budget: readiness["kvlivespans_paged_cache_max_abs_diff"]
+        for budget, readiness in readiness_by_budget.items()
+    }
     matrix = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
@@ -755,6 +769,11 @@ def build_b1_b4_prompt_suite_matrix(
             item["hidden_seed_contract_precheck"]["passed"] for item in artifacts
         ),
         "all_exactness_gates_pass": all(item["execution"]["exactness_gate"] == "passed" for item in artifacts),
+        "all_kvlivespans_paged_cache_smokes_pass": all(
+            kvlivespans_paged_cache_smoke_by_budget.values()
+        ),
+        "kvlivespans_paged_cache_smoke_by_budget": kvlivespans_paged_cache_smoke_by_budget,
+        "kvlivespans_paged_cache_max_abs_diff_by_budget": kvlivespans_paged_cache_max_abs_diff_by_budget,
         "all_llamacpp_trace_budgets_full": not partial_trace_budget_budgets,
         "llamacpp_trace_budget_coverage_by_budget": trace_budget_coverage_by_budget,
         "partial_llamacpp_trace_budget_budgets": partial_trace_budget_budgets,

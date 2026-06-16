@@ -333,9 +333,12 @@ from the top-k set). Matching B2-B4 deterministic fixtures are also committed as
 preflight child can pick a budget-matched fixture for `--draft-max {1,2,3,4}` by
 default or emit a consolidated B1-B4 blocked matrix with `--all-budgets`. The
 matrix includes a compact `readiness_by_budget` section for precheck booleans,
-missing native keys, exactness status, llama.cpp trace budget coverage,
-metrics-contract status, and blocker codes without requiring reviewers to inspect
-each full child artifact. It also includes matrix-level
+missing native keys, exactness status, KVLiveSpans paged-cache smoke status,
+llama.cpp trace budget coverage, metrics-contract status, and blocker codes
+without requiring reviewers to inspect each full child artifact. It also
+includes matrix-level `kvlivespans_paged_cache_smoke_by_budget`,
+`kvlivespans_paged_cache_max_abs_diff_by_budget`,
+`all_kvlivespans_paged_cache_smokes_pass`,
 `llamacpp_trace_budget_coverage_by_budget`,
 `partial_llamacpp_trace_budget_budgets`, and
 `all_llamacpp_trace_budgets_full` rollups, plus accepted/output denominator
@@ -936,8 +939,9 @@ is now answered by the M1 required/optional table.)
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
       `readiness_by_budget` parity/preflight/native-key status plus per-budget
-      and matrix-level llama.cpp trace budget coverage and accepted/output
-      denominator comparability (`--compact-matrix` omits
+      and matrix-level KVLiveSpans paged-cache smoke status, llama.cpp trace
+      budget coverage, and accepted/output denominator comparability
+      (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
       trace provenance, `--fail-on-noncomparable-accepted-output` exits `4`

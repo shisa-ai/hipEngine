@@ -151,6 +151,17 @@ def _patch_model(monkeypatch: pytest.MonkeyPatch) -> None:
             "passed": True,
             "fixture": str(fixture),
             "metrics": {"max_kl": 0.0, "top1_agreement": 1.0},
+            "kvlivespans_paged_cache_smoke": {
+                "passed": True,
+                "max_abs_diff": 0.0,
+                "dense_shape": [1, 4],
+                "paged_shape": [1, 4],
+                "cache_tokens": 2,
+                "block_size": 2,
+                "kv_base_offsets": [[0]],
+                "kv_live_counts": [2],
+                "kv_token_positions": [1],
+            },
         },
     )
 
@@ -425,6 +436,19 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["all_sampling_contract_prechecks_pass"] is True
     assert matrix["all_hidden_seed_contract_prechecks_pass"] is True
     assert matrix["all_exactness_gates_pass"] is True
+    assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
+    assert matrix["kvlivespans_paged_cache_smoke_by_budget"] == {
+        "B1": True,
+        "B2": True,
+        "B3": True,
+        "B4": True,
+    }
+    assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"] == {
+        "B1": 0.0,
+        "B2": 0.0,
+        "B3": 0.0,
+        "B4": 0.0,
+    }
     assert matrix["all_llamacpp_trace_budgets_full"] is False
     assert matrix["llamacpp_trace_budget_coverage_by_budget"] == {
         "B1": "full_requested_budget_exercised",
@@ -470,6 +494,8 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "draft_sampling_contract_precheck": True,
         "hidden_seed_contract_precheck": True,
         "exactness_gate": "passed",
+        "kvlivespans_paged_cache_smoke": True,
+        "kvlivespans_paged_cache_max_abs_diff": 0.0,
         "llamacpp_trace_budget_coverage": "full_requested_budget_exercised",
         "accepted_per_output_status": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
         "native_runtime_kernels_ready": False,
@@ -528,6 +554,8 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is False
     assert "artifacts" not in matrix
+    assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
+    assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"]["B1"] == 0.0
     assert matrix["all_llamacpp_trace_budgets_full"] is False
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
     assert matrix["all_accepted_per_output_metrics_comparable"] is False
