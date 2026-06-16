@@ -94300,3 +94300,27 @@ Configured loop verification after the diagnostic:
 - Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`; benchmark rollup/changelog updated as a diagnostic comparison-baseline refresh.
 - Prompt verifier: passed for a diagnostic baseline refresh. No runtime code changed, IDs stayed stable on Q4_K_M and Q4_K_S gates, the memory increase is explained by Q4_K_M selected-weight residency and leaves little GPU1 headroom, and no torch/llama.cpp hot-path dependency was added. No performance promotion is claimed.
 - Decision: log only. Next prefill work should profile or microbench the llama.cpp-style Q8_1-activation MMQ path against hipEngine selected-WMMA at the Q4_K_M/Q4_K_S shapes before adopting code.
+
+## 2026-06-16 - GGUF llama.cpp HIP pp512 rocprof
+
+Captured a focused llama.cpp HIP `Q4_K_M` pp512 kernel-family profile on GPU1 to validate the MMQ/Q8_1 hypothesis before any hipEngine adoption work.
+
+Commands:
+- Warm profiled capture: `rocprofv3 --kernel-trace -d /tmp/hipengine-gguf-tuning/20260616-llamacpp-hip-q4km-pp512-warm/rocprof -o llamacpp-q4km-pp512-warm -f csv -- env HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 512 -n 0 -r 1 -o json -dev ROCm0`.
+- Non-profiled confirmation: `HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 512 -n 0 -r 3 -o json -dev ROCm0`.
+
+Findings:
+- Non-profiled confirmation matched the user row: `2754.638 tok/s ± 53.972` for pp512 (`samples 2813.27, 2707.03, 2743.62`).
+- Profiled run reported `2746.089 tok/s`; the trace includes one warmup pp512 pass and one measured pp512 pass. The measured pass was isolated as all dispatches after the warmup pass's first `mul_mat_vec_q` lm-head dispatch.
+- Isolated measured pass: `2259` dispatches, `176.818 ms` total kernel time.
+- Top families: `mul_mat_q_type12_q4k` `64.261 ms / 80 dispatches / 36.34%`; `mul_mat_q_type13_q5k` `30.524 ms / 37 / 17.26%`; `mul_mat_q_type8_q8_0` `26.909 ms / 250 / 15.22%`; `gated_delta_net` `15.534 ms / 30 / 8.79%`; rocBLAS GEMM `7.821 ms / 140 / 4.42%`; `quantize_mmq_q8_1` `3.961 ms / 370 / 2.24%`; `mul_mat_q_type14_q6k` `3.332 ms / 3 / 1.88%`; flash attention only `2.883 ms / 20 / 1.63%`.
+- Interpretation: llama.cpp's pp512 lead is dominated by quantized MMQ/Q8_1 activation matrix work (`mul_mat_q` plus activation quantization is `72.95%` of kernel time), not attention. This directly supports a hipEngine microbench/prototype for llama-style Q8_1-activation MMQ tiles before more selected-WMMA live-state tweaks.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json`.
+
+Configured loop verification after the profile:
+- Docs/artifact check: `git diff --check` passed; `python3 -m json.tool benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json >/dev/null` passed.
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1844.274383 / 126.142689 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.048448 / 115.727869 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.727869 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for an external-profile diagnostic. No runtime code changed, Q4_K_S IDs stayed stable, memory stayed flat, no torch/llama.cpp hot-path dependency was added to hipEngine, and the profile only sharpens the next prefill hypothesis. No performance promotion is claimed.
+- Decision: log only. Proceed to a hipEngine-side Q8_1-activation MMQ microbench/prototype or a more direct selected-WMMA-vs-MMQ same-shape comparison.

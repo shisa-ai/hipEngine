@@ -270,7 +270,7 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   (`263cc04a5405fc55122bf59383dd8195519b30f4`). The user's `llama-bench`
   output reports build `263cc04a5`; verify the HIP binary/source SHA before
   copying exact code.
-- HIP prefill likely reaches llama.cpp's quantized MMQ path for Q4_K on RDNA3:
+- HIP prefill reaches llama.cpp's quantized MMQ path for Q4_K on RDNA3:
   `ggml_cuda_mul_mat` selects `ggml_cuda_mul_mat_q` when `src1->ne[1]` is above
   the small-vector MMVQ range and `ggml_cuda_should_use_mmq()` returns true for
   RDNA3/WMMA Q4_K (`ggml/src/ggml-cuda/ggml-cuda.cu:2590-2668`,
@@ -280,10 +280,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   (`mmq.cu:77-160`, `mmq.cuh:109-160`, `mmq.cuh:237-254`). The Q4_K loader
   repacks nibbles/scales into shared tiles, and Q4_K's MMQ trait uses
   `vec_dot_q8_1_q8_1_mma` for the matrix path while retaining a DP4A fallback
-  (`mmq.cuh:2100-2237`, `mmq.cuh:3358-3363`). **Next test:** build a same-shape
-  one-layer Q4_K_M/Q4_K_S microbench that runs hipEngine selected-WMMA prefill vs
-  a llama-style Q8_1-activation MMQ tile for the attention/FFN/MoE shapes before
-  more live-state tweaks.
+  (`mmq.cuh:2100-2237`, `mmq.cuh:3358-3363`). A focused GPU1 rocprof capture of
+  llama.cpp HIP `Q4_K_M` pp512 confirms this is the hot path: the measured pass
+  is `176.818 ms` of kernel time at `2746.089 tok/s`, with `mul_mat_q` Q4_K/Q5_K
+  /Q8_0/Q6_K plus `quantize_mmq_q8_1` taking `72.95%` of kernel time, while
+  flash attention is only `1.63%`
+  (`benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json`).
+  **Next test:** build a same-shape one-layer Q4_K_M/Q4_K_S microbench that runs
+  hipEngine selected-WMMA prefill vs a llama-style Q8_1-activation MMQ tile for
+  the attention/FFN/MoE shapes before more live-state tweaks.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
