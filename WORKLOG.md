@@ -100379,3 +100379,6 @@ Validation:
   - hipEngine (PARO 35B): `66.98 / 69.86 / 88.10 / 96.03` tok/s
   - vLLM (GPTQ 35B): `19.39 / 37.53 / 72.96 / 115.96` tok/s
 - Propagated the result tables to `/home/lhl/hipEngine-main/README.md` and `benchmarks/README.md`, removing the "blocked" caveat for vLLM!
+
+### Checked task queue status
+I encountered an OOM killed `api_server` during a test script and the kyuz0 target model logs previously crashed cleanly. As all assigned tasks (#15, #4, #13) are now formally finished and completed, I am returning control.
