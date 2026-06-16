@@ -10832,21 +10832,59 @@ def _split_reasoning(text: str) -> _ReasoningSplit:
     return _ReasoningSplit(content=content, reasoning_content=reasoning)
 
 
-_TOOL_CALL_BLOCK_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL | re.IGNORECASE)
+@dataclass(frozen=True)
+class _ToolCallBlock:
+    start: int
+    end: int
+    parsed: _ParsedToolCall
+
+
+def _find_marker(lowered: str, marker: str, start: int, end: int | None = None) -> int:
+    if end is None:
+        return lowered.find(marker, start)
+    return lowered.find(marker, start, end)
+
+
+def _find_valid_tool_call_block(text: str, lowered: str, start_at: int) -> _ToolCallBlock | None:
+    start = _find_marker(lowered, _TOOL_CALL_START_MARKER, start_at)
+    while start >= 0:
+        body_start = start + len(_TOOL_CALL_START_MARKER)
+        end = _find_marker(lowered, _TOOL_CALL_END_MARKER, body_start)
+        while end >= 0:
+            raw_text = text[start : end + len(_TOOL_CALL_END_MARKER)]
+            parsed = _parsed_tool_call_from_block_body(text[body_start:end], raw_text=raw_text)
+            if parsed is not None:
+                return _ToolCallBlock(
+                    start=start,
+                    end=end + len(_TOOL_CALL_END_MARKER),
+                    parsed=parsed,
+                )
+            end = _find_marker(lowered, _TOOL_CALL_END_MARKER, end + len(_TOOL_CALL_END_MARKER))
+        start = _find_marker(lowered, _TOOL_CALL_START_MARKER, body_start)
+    return None
+
+
+def _valid_tool_call_blocks(text: str) -> tuple[_ToolCallBlock, ...]:
+    lowered = text.lower()
+    blocks: list[_ToolCallBlock] = []
+    cursor = 0
+    while cursor < len(text):
+        block = _find_valid_tool_call_block(text, lowered, cursor)
+        if block is None:
+            break
+        blocks.append(block)
+        cursor = block.end
+    return tuple(blocks)
 
 
 def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     calls: list[_ParsedToolCall] = []
     text_parts: list[str] = []
     last_end = 0
-    for match in _TOOL_CALL_BLOCK_RE.finditer(text):
-        text_parts.append(text[last_end : match.start()])
-        parsed = _parsed_tool_call_from_block_body(match.group(1), raw_text=match.group(0))
-        if parsed is None:
-            text_parts.append(match.group(0))
-        else:
-            calls.append(parsed)
-        last_end = match.end()
+    for block in _valid_tool_call_blocks(text):
+        text_parts.append(text[last_end : block.start])
+        calls.append(block.parsed)
+        last_end = block.end
     text_parts.append(text[last_end:])
     if not calls:
         stripped = text.strip()
@@ -11108,25 +11146,53 @@ def _tool_call_arguments_value(call: _ParsedToolCall) -> Any:
 
 
 def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
-    malformed: list[str] = []
-    for match in _TOOL_CALL_BLOCK_RE.finditer(text):
-        if _parsed_tool_call_from_block_body(match.group(1), raw_text=match.group(0)) is None:
-            malformed.append(match.group(0))
-    if _has_unclosed_tool_call(text):
-        open_index = text.lower().rfind("<tool_call>")
-        malformed.append(text[open_index:] if open_index >= 0 else str(text))
-    return tuple(malformed)
+    return _invalid_tool_call_blocks(text)
 
 
 def _unparseable_tool_call_blocks(text: str) -> tuple[str, ...]:
-    malformed: list[str] = []
-    for match in _TOOL_CALL_BLOCK_RE.finditer(text):
-        if _parsed_tool_call_from_block_body(match.group(1), raw_text=match.group(0)) is None:
-            malformed.append(match.group(0))
-    if _has_unclosed_tool_call(text):
-        open_index = text.lower().rfind("<tool_call>")
-        malformed.append(text[open_index:] if open_index >= 0 else str(text))
-    return tuple(malformed)
+    return _invalid_tool_call_blocks(text)
+
+
+def _invalid_tool_call_blocks(text: str) -> tuple[str, ...]:
+    lowered = text.lower()
+    invalid: list[str] = []
+    cursor = 0
+    blocks = _valid_tool_call_blocks(text)
+    for block in blocks:
+        invalid.extend(_invalid_tool_call_blocks_between(text, lowered, cursor, block.start, flag_unclosed=False))
+        cursor = block.end
+    invalid.extend(_invalid_tool_call_blocks_between(text, lowered, cursor, len(text), flag_unclosed=True))
+    return tuple(invalid)
+
+
+def _invalid_tool_call_blocks_between(
+    text: str,
+    lowered: str,
+    start: int,
+    end: int,
+    *,
+    flag_unclosed: bool,
+) -> tuple[str, ...]:
+    invalid: list[str] = []
+    cursor = start
+    while cursor < end:
+        open_index = _find_marker(lowered, _TOOL_CALL_START_MARKER, cursor, end)
+        if open_index < 0:
+            break
+        close_index = _find_marker(
+            lowered,
+            _TOOL_CALL_END_MARKER,
+            open_index + len(_TOOL_CALL_START_MARKER),
+            end,
+        )
+        if close_index < 0:
+            if flag_unclosed:
+                invalid.append(text[open_index:end])
+            break
+        close_end = close_index + len(_TOOL_CALL_END_MARKER)
+        invalid.append(text[open_index:close_end])
+        cursor = close_end
+    return tuple(invalid)
 
 
 def _json_schema_pointer_token(raw_token: str) -> tuple[str | None, str | None]:

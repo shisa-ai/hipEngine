@@ -93959,3 +93959,22 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth'` -> `1 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'bounded_top_k_probability_filters or suppress_and_min_tokens or bounded_top_logprobs or unsupported_full_vocab_top_logprobs'` -> `4 passed`.
 - `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+
+## 2026-06-16 - Tool-call parser marker hardening
+
+Audited local OpenAI-compatible Qwen-style tool-call parsing against the failure
+class addressed by vLLM PR #45413: marker-like text in streamed deltas should
+not steal parser state from a later real tool call. hipEngine does not currently
+have a token-ID parser path for final chat output, so the server now chooses
+tool-call spans by successful JSON tool-call parsing instead of binding the
+first `<tool_call>` to the first later `</tool_call>` regex match. Literal
+unclosed marker text before a valid call is preserved as assistant content,
+valid arguments may contain marker text such as `</tool_call>`, duplicated start
+markers still repair, and standalone malformed/paired marker prose still fails
+closed as `invalid_tool_call` when tools are enabled.
+
+Validation:
+- `python3 -m py_compile hipengine/server/api.py tests/test_server_api.py` -> passed.
+- `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'literal_marker_text or marker_text_in_arguments or literal_paired_tool_markup or unparseable_tool_markup or duplicated_start_marker or strict_validation_recovers_doubled_tool_call_tag or returns_tool_call_deltas'` -> `11 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'tool_call'` -> `59 passed`.

@@ -11736,6 +11736,115 @@ def test_chat_completion_preserves_reasoning_with_openai_tool_call() -> None:
     assert "<tool_call>" not in json.dumps(message)
 
 
+def test_chat_completion_parses_tool_call_after_literal_marker_text() -> None:
+    fake = FakeLLM(
+        outputs=[
+            'Mention <tool_call> literally, then call. '
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    message = choice["message"]
+    assert message["content"] == "Mention <tool_call> literally, then call."
+    assert len(message["tool_calls"]) == 1
+    _assert_openai_tool_call_shape(message["tool_calls"][0], name="read", arguments={"path": "README.md"})
+
+
+def test_chat_completion_parses_tool_call_with_marker_text_in_arguments() -> None:
+    fake = FakeLLM(
+        outputs=[
+            '<tool_call>{"name":"read","arguments":{"path":"README.md",'
+            '"needle":"</tool_call>"}}</tool_call>'
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    message = choice["message"]
+    assert message["content"] == ""
+    _assert_openai_tool_call_shape(
+        message["tool_calls"][0],
+        name="read",
+        arguments={"path": "README.md", "needle": "</tool_call>"},
+    )
+
+
+def test_chat_completion_auto_tool_rejects_literal_paired_tool_markup() -> None:
+    raw_tool_markup = "Use <tool_call> to invoke tools.</tool_call>"
+    fake = FakeLLM(outputs=[raw_tool_markup])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "explain tool syntax"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert raw_tool_markup not in response.text
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
 def test_chat_completion_auto_tool_recovers_duplicated_start_marker() -> None:
     fake = FakeLLM(
         outputs=['<tool_call>\n<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
@@ -13455,6 +13564,54 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
         tool_call_tokens=1,
         phase="tool_call",
     )
+
+
+def test_streaming_chat_completion_parses_tool_call_after_literal_marker_text() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            "Mention <tool_call> literally, then call. ",
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>',
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert '<tool_call>{"name"' not in response.text
+    payloads = _sse_payloads(response.text)
+    content = "".join(
+        payload["choices"][0]["delta"].get("content", "")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    assert content == "Mention <tool_call> literally, then call."
+    tool_choice = next(payload["choices"][0] for payload in payloads if payload["choices"][0]["delta"].get("tool_calls"))
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_choice,
+        name="read",
+        arguments={"path": "README.md"},
+    )
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
 
 
 def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_arguments() -> None:
