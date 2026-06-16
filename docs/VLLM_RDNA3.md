@@ -1,14 +1,23 @@
-# vLLM on RDNA3 / gfx1100
+# vLLM on RDNA3 / gfx1100 and gfx1151
 
-This note tracks the local setup path for running vLLM on RDNA3 (`gfx1100`,
-W7900 / RX 7900 XTX class GPUs) and the Qwen3.6-35B-A3B Q4/MTP model
-candidates used for comparison against hipEngine and llama.cpp.
+This note tracks the local setup path for running vLLM on RDNA3/RDNA3.5
+(`gfx1100`, W7900 / RX 7900 XTX class GPUs, and `gfx1151`, Strix Halo / Radeon
+8060S) and the Qwen3.6-35B-A3B Q4/MTP model candidates used for comparison
+against hipEngine and llama.cpp.
 
-Status as of 2026-06-13: the **native TheRock source build is the known-good
-path on this host**. The Docker images remain useful for reproduction, but they
-were not the best path here: no-MTP serving worked in the pinned image, while
-Qwen3.6 MTP loading failed inside the container, and the images do not use our
-local TheRock torch/ROCm stack or the local `gfx1100` GPTQ build patch.
+Status as of 2026-06-13 for `gfx1100`: the **native TheRock source build is the
+known-good path on this host**. The Docker images remain useful for reproduction,
+but they were not the best path here: no-MTP serving worked in the pinned image,
+while Qwen3.6 MTP loading failed inside the container, and the images do not use
+our local TheRock torch/ROCm stack or the local `gfx1100` GPTQ build patch.
+
+Status as of 2026-06-15 for `gfx1151`: the native TheRock source build completed
+and imported `vllm._C` / `vllm._rocm_C`, but the target GPTQ server path is still
+blocked. `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4` non-text-only startup hit a
+ViT SDPA 256 GiB allocation, while text-only/language-only attempts loaded all
+seven shards (~342 s, ~20.15 GiB model memory) and then never bound port `8008`.
+The kyuz0 Strix Halo toolbox looks like the next best reproduction path, but it
+has not been run here yet because no local container runtime is available.
 
 For the detailed build log/recipe, also see `/home/lhl/vllm/BUILD-gfx1100.md`.
 This file keeps the hipEngine-facing summary, model table, and benchmark notes.
@@ -57,6 +66,75 @@ Observed differences:
 
 Bottom line: use Docker to reproduce container behavior, but use the TheRock
 source build as the reference path for hipEngine comparisons on this machine.
+
+## gfx1151 / Strix Halo follow-up notes, 2026-06-15
+
+Reviewed sources:
+
+- `https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes` at commit
+  `088d8e8c3396b64766eefbe896824f40e910ffd5`.
+- `https://community.frame.work/t/how-to-compiling-vllm-from-source-on-strix-halo/77241`.
+- Earlier `https://github.com/lhl/strix-halo-testing/tree/main/vllm` at commit
+  `5ee14b5b0ecfbd16b7fd0aa41a91581c32b33b61`.
+
+What differs from our first `gfx1151` attempt:
+
+- kyuz0's known-good 35B path starts with `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`,
+  not the `palmfuture/...GPTQ-Int4` model that currently hangs after loading on
+  our native build. Their model defaults set `VLLM_USE_TRITON_AWQ=1` and
+  `--enforce-eager` for this AWQ checkpoint.
+- Their launcher always adds `--mm-encoder-attn-backend TRITON_ATTN`. This is
+  directly relevant to our non-text-only failure: kyuz0 documents that ViT
+  attention on `gfx1151` can otherwise fall to `TORCH_SDPA`; our run failed in
+  the ViT SDPA path with a 256 GiB allocation.
+- Their Strix env defaults include
+  `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1`,
+  `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`, `VLLM_TARGET_DEVICE=rocm`,
+  `VLLM_USE_TRITON_AWQ=1`, `MIOPEN_FIND_MODE=FAST`,
+  `VLLM_DISABLE_COMPILE_CACHE=1`, and `PYTHONNOUSERSITE=1`.
+- Their patch set still treats `amdsmi` as fragile in containers, forces the ROCm
+  arch to `gfx1151`, disables unsafe AITER MoE/RMSNorm paths on `gfx1x`, adds
+  RDNA AITER header fallbacks, and patches the WNA16 MoE loader's `tp_size`
+  access. The older `lhl/strix-halo-testing` recipe had the same broad themes:
+  `amdsmi` workarounds, explicit `gfx1151` arch plumbing, and AOTriton/flash-attn
+  setup. Some upstream pieces have likely improved, but the kyuz0 patches show
+  not all Strix-specific runtime issues are gone.
+- The Framework thread also recommends TheRock `rocm[libraries,devel]` for
+  `gfx1151`, `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`, `PYTORCH_ROCM_ARCH=gfx1151`,
+  `--dtype float16` for performance, and limiting `--max-num-seqs` when HIP
+  crashes occur. Reports in the thread are mixed: successful serving exists, but
+  users also saw flash-attention flakiness, GPU hangs, and poor token rate when
+  the attention path was wrong.
+
+Container smoke status: **not run yet**. Preflight on this host found accessible
+`/dev/kfd` and `/dev/dri/renderD128`, plus a populated Hugging Face cache, but
+none of `podman`, `docker`, `toolbox`, or `distrobox` is installed/on `PATH`.
+Once a runtime is available, use the kyuz0 `latest` image first and test AWQ
+before retrying GPTQ:
+
+```bash
+# Fedora/toolbox-style path from kyuz0 README.
+toolbox create vllm \
+  --image docker.io/kyuz0/vllm-therock-gfx1151:latest \
+  -- --device /dev/dri --device /dev/kfd \
+     --group-add video --group-add render \
+     --security-opt seccomp=unconfined
+
+toolbox enter vllm
+start-vllm
+```
+
+Suggested smoke order inside the toolbox/container:
+
+1. `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` with `VLLM_USE_TRITON_AWQ=1`,
+   `--attention-backend TRITON_ATTN`, `--mm-encoder-attn-backend TRITON_ATTN`,
+   `--dtype float16`, and a conservative `--max-model-len` / `--max-num-seqs`.
+2. `Qwen/Qwen3.6-35B-A3B` BF16, to confirm the non-quantized Strix path.
+3. `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, to determine whether our blocker is
+   model/quant-specific or native-env-specific.
+
+If the AWQ container path binds `/health`, repeat the exact 512/128 OpenAI
+concurrency sweep used by the README table before claiming a vLLM comparison row.
 
 ## Native TheRock source-build recipe
 

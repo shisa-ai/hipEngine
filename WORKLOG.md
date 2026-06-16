@@ -93391,3 +93391,29 @@ Validation:
 - Parsed 14 copied gfx1151 JSON artifacts successfully.
 - Checked README local markdown links; all resolve.
 - `git diff --check -- README.md benchmarks/results/2026-06-15-gfx1151-*` -> clean.
+
+## 2026-06-15 - kyuz0 Strix Halo vLLM toolbox review
+
+Reviewed `kyuz0/amd-strix-halo-vllm-toolboxes` at
+`088d8e8c3396b64766eefbe896824f40e910ffd5`, the Framework community Strix Halo
+vLLM thread, and the earlier `lhl/strix-halo-testing` vLLM notes at
+`5ee14b5b0ecfbd16b7fd0aa41a91581c32b33b61` after the native gfx1151 vLLM GPTQ
+server continued to load weights but never bind port 8008.
+
+Findings recorded in `docs/VLLM_RDNA3.md`:
+- kyuz0's known-good 35B smoke starts from `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`,
+  with `VLLM_USE_TRITON_AWQ=1` and eager mode, before testing our GPTQ model.
+- Their launcher always adds `--mm-encoder-attn-backend TRITON_ATTN`, which is
+  directly relevant to our non-text-only ViT SDPA 256 GiB OOM failure.
+- Their Strix env includes AOTriton/flash-attn/Triton-AWQ variables plus
+  `MIOPEN_FIND_MODE=FAST` and `VLLM_DISABLE_COMPILE_CACHE=1`.
+- Their patch set still works around fragile `amdsmi`, forces `gfx1151`, disables
+  unsafe AITER MoE/RMSNorm paths on `gfx1x`, adds RDNA AITER header fallbacks,
+  and patches the WNA16 MoE loader `tp_size` access.
+- Container smoke was not run: `/dev/kfd` and `/dev/dri/renderD128` are present,
+  but none of `podman`, `docker`, `toolbox`, or `distrobox` exists on PATH.
+
+Next action once a runtime is available: run the kyuz0 `latest` toolbox/container
+with ROCm device passthrough, smoke `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`, then
+retry `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, and only add a README vLLM row if
+`/health` binds and the 512/128 OpenAI concurrency sweep completes.
