@@ -646,10 +646,10 @@ wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
 
 | Concurrency `c` | hipEngine agg decode tok/s | hipEngine per-seq tok/s | llama.cpp Vulkan agg tok/s | llama.cpp per-seq tok/s | vLLM OpenAI agg tok/s | vLLM per-seq tok/s |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 115.36 | 115.36 | 105.76 | 105.76 | 20.04 | 20.04 |
-| 2 | 115.35 | 57.67 | 157.38 | 78.69 | 38.42 | 19.21 |
-| 4 | 160.74 | 40.19 | 75.29 | 18.82 | 73.28 | 18.32 |
-| 8 | 190.15 | 23.77 | 25.15 | 3.14 | 116.56 | 14.57 |
+| 1 | 66.98 | 66.98 | 62.16 | 62.16 | blocked | blocked |
+| 2 | 69.86 | 34.93 | 94.12 | 47.06 | blocked | blocked |
+| 4 | 88.10 | 22.02 | 119.51 | 29.88 | blocked | blocked |
+| 8 | 96.03 | 12.00 | 119.94 | 14.99 | blocked | blocked |
 
 Artifacts: [`hipEngine W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json),
 [`llama.cpp Vulkan W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json),

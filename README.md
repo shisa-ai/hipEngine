@@ -323,10 +323,10 @@ and text-only attempts loaded weights but never bound port 8008.
 
 | Concurrency `c` | hipEngine aggregate | hipEngine per-seq | llama.cpp Vulkan aggregate | llama.cpp Vulkan per-seq | vLLM OpenAI |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | 66.62 | 66.62 | 62.16 | 62.16 | blocked: server unhealthy |
-| 2 | 69.54 | 34.77 | 94.12 | 47.06 | blocked |
-| 4 | 88.39 | 22.10 | 119.51 | 29.88 | blocked |
-| 8 | 100.68 | 12.59 | 119.94 | 14.99 | blocked |
+| 1 | 66.98 | 66.98 | 62.16 | 62.16 | blocked: server unhealthy |
+| 2 | 69.86 | 34.93 | 94.12 | 47.06 | blocked |
+| 4 | 88.10 | 22.02 | 119.51 | 29.88 | blocked |
+| 8 | 96.03 | 12.00 | 119.94 | 14.99 | blocked |
 
 Source artifacts: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json),
 [`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),
