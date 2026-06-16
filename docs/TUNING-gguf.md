@@ -594,6 +594,17 @@ No-hold notes:
   keep the out8192 large-projection rule at `TM32` for rows above 512. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-out8192-tm64-rejected.json`.
 
+- **Q8_0 T16 1024-row out8192 TN16 rejected (2026-06-16).** Narrowing only the
+  N tile for resident Q8_0 T16 WMMA prefill 1024-row `in=2048,out=8192`
+  projections from `TM32/TN32` to `TM32/TN16` passed the focused tile-policy
+  smoke and `154`-test GGUF guard with stable IDs and flat memory, but regressed
+  both primary prefill medians versus the retained 1024-square TN16 baseline
+  (`512/128` `1965.587 -> 1949.431 tok/s`, `4K/128` `2293.367 -> 2255.344
+  tok/s`) and regressed `4K/128` decode (`115.168 -> 114.689 tok/s`). Code/test
+  changes were reverted; keep 1024-row out8192 projections at `TM32/TN32`.
+  Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-out8192-tn16-rejected.json`.
+
 - **Q8_0 T16 768-row square-projection TN16 rejected (2026-06-16).**
   Narrowing only the N tile for resident Q8_0 T16 WMMA prefill 768-row
   `in=2048,out=2048` projections from `TM32/TN32` to `TM32/TN16` passed the
