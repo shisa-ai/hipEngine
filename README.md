@@ -51,7 +51,7 @@ numbers below.
 - INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
 - The OpenAI-compatible server now has resident context/KV preallocation, startup warmup, max-prompt scratch probing, bounded chat-shaped startup smoke, `/ready` diagnostics, request context admission, and `max_tokens=auto` defaults for chat requests that omit an output cap.
 - `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
-- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
+- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_M sweep is in [Performance](#performance) alongside packed PARO and llama.cpp HIP/Vulkan Q4_K_M baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
 - Current gfx1100 and gfx1151 performance snapshots are summarized in [Performance](#performance) with hardware-separated tables and recent llama.cpp baselines.
 
 
@@ -146,38 +146,38 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 
 ### Prefill tok/s
 
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 2729.701 | 2226.422 | 2539.171 | **2751.293** |
-| 1K/128 | **2906.950** | 2528.347 | 2441.408 | 2643.138 |
-| 4K/128 | **2879.578** | 2515.478 | 2301.757 | 2547.645 |
-| 32K/128 | **2079.424** | 1871.997 | 1693.733 | 1958.410 |
-| 64K/128 | **1559.096** | 1442.153 | 1323.461 | 1405.557 |
-| 128K/128 | 1053.919 | 994.989 | 917.428 | **1080.387** |
+| 512/128 | 2729.701 | 2181.8 | 2515.628 | **2822.688** |
+| 1K/128 | **2906.950** | 2463.6 | 2430.947 | 2710.994 |
+| 4K/128 | **2879.578** | 2490.6 | 2303.237 | 2581.819 |
+| 32K/128 | **2079.424** | 1839.8 | 1685.089 | 1968.760 |
+| 64K/128 | **1559.096** | 1427.2 | 1324.775 | 1411.790 |
+| 128K/128 | 1053.919 | 989.1 | 918.128 | **1081.646** |
 
 ### Decode tok/s
 
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.227** | 108.173 | 77.861 | 106.720 |
-| 1K/128 | 102.927 | 97.357 | 79.311 | **106.333** |
-| 4K/128 | **105.253** | 98.516 | 77.786 | 102.146 |
-| 32K/128 | **91.965** | 86.287 | 71.663 | 91.082 |
-| 64K/128 | 77.666 | 73.734 | 65.579 | **82.826** |
-| 128K/128 | 60.349 | 58.023 | 56.437 | **70.000** |
+| 512/128 | **115.227** | 106.6 | 79.568 | 106.235 |
+| 1K/128 | 102.927 | 96.0 | 79.256 | **106.204** |
+| 4K/128 | **105.253** | 97.5 | 78.688 | 102.556 |
+| 32K/128 | **91.965** | 84.9 | 71.842 | 91.644 |
+| 64K/128 | 77.666 | 72.6 | 66.453 | **83.326** |
+| 128K/128 | 60.349 | 57.3 | 57.713 | **70.476** |
 
 ### Peak GiB
 
-| Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 21.029 | 25.108 | 21.128 | **20.768** |
-| 1K/128 | 21.241 | 25.108 | 21.139 | **20.727** |
-| 4K/128 | 21.973 | 25.108 | 21.196 | **20.786** |
-| 32K/128 | 22.082 | 25.108 | 21.738 | **21.363** |
-| 64K/128 | 22.082 | 25.108 | 22.416 | **22.019** |
-| 128K/128 | **22.124** | 25.108 | 23.609 | 23.332 |
+| 512/128 | 21.029 | 26.264 | 21.621 | **21.261** |
+| 1K/128 | 21.241 | 26.264 | 21.633 | **21.220** |
+| 4K/128 | 21.973 | 26.264 | 21.690 | **21.278** |
+| 32K/128 | 22.082 | 26.264 | 22.232 | **21.855** |
+| 64K/128 | 22.082 | 26.264 | 22.910 | **22.512** |
+| 128K/128 | **22.124** | 26.264 | 24.103 | 23.824 |
 
-W7900 row sources: summary [`benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json), PARO [`benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-paro-packed-5run.json`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-paro-packed-5run.json), GGUF [`benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json), llama.cpp HIP [`benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-hip-q4km-f16kv.json`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-hip-q4km-f16kv.json), and llama.cpp Vulkan [`benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-q4km-f16kv.json`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-q4km-f16kv.json). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`), so hipEngine peak memory is a max-context persistent-session high-water mark rather than each shape's minimum allocation. The TheRock userspace reports invalid/low `hipMemGetInfo` totals on this host, so hipEngine tracked allocator memory is the retained memory source. Cross-engine comparisons are cross-quant (`PARO w4`/GGUF Q4_K_S vs llama.cpp Q4_K_M) and should be read as approximate.
+W7900 row sources: PARO from the prior `2026-06-14` refresh, GGUF/llama.cpp HIP/llama.cpp Vulkan from the `2026-06-16` Q4_K_M standardized sweep ([hipEngine GGUF](benchmarks/results/2026-06-16-w7900-gpu0-gguf-q4km-hipengine-gguf-q4km-readme-sweep.json), [llama.cpp HIP](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json), [llama.cpp Vulkan](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`), so hipEngine peak memory is a max-context persistent-session high-water mark rather than each shape's minimum allocation. The TheRock userspace reports invalid/low `hipMemGetInfo` totals on this host, so hipEngine tracked allocator memory is the retained memory source. All GGUF columns now use Q4_K_M; PARO is a different quant/format (`w4_paro`).
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
