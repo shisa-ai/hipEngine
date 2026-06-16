@@ -93978,3 +93978,52 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_server_api.py -q -k 'literal_marker_text or marker_text_in_arguments or literal_paired_tool_markup or unparseable_tool_markup or duplicated_start_marker or strict_validation_recovers_doubled_tool_call_tag or returns_tool_call_deltas'` -> `11 passed`.
 - `python3 -m pytest tests/test_server_api.py -q -k 'tool_call'` -> `59 passed`.
+
+## 2026-06-16 — GGUF Q4_K_M benchmark standardization
+
+Standardized all GGUF README benchmarks on Q4_K_M (was Q4_K_S). Ran fresh
+1:1 hipEngine vs llama.cpp HIP comparison on W7900/GPU0 under TheRock 7.13.
+
+Changes:
+- `scripts/run_w7900_readme_refresh.sh`: default GGUF model changed from
+  `Q4_K_S` to `Q4_K_M`, quant label from `gguf_q4_k_s` to `gguf_q4_k_m`.
+- `benchmarks/README.md`: retained rows replaced with Q4_K_M sweep data;
+  added hipEngine vs llama.cpp HIP head-to-head comparison section.
+
+hipEngine GGUF Q4_K_M results (W7900/GPU0, decode-repack + WMMA prefill +
+GEMV decode, 2 warmups + 5 measured runs):
+
+| Workload | Prefill | Decode | Peak GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | 2182 | 106.6 | 26.26 |
+| 1K/128 | 2464 | 96.0 | 26.26 |
+| 4K/128 | 2491 | 97.5 | 26.26 |
+| 32K/128 | 1840 | 84.9 | 26.26 |
+| 64K/128 | 1427 | 72.6 | 26.26 |
+| 128K/128 | 989 | 57.3 | 26.26 |
+
+llama.cpp HIP Q4_K_M results (same W7900/GPU0, ngl=99 flash-attn f16 KV,
+build `263cc04a5`):
+
+| Workload | Prefill | Decode | Peak GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | 2516 | 79.6 | 21.6 |
+| 1K/128 | 2431 | 79.3 | 21.6 |
+| 4K/128 | 2303 | 78.7 | 21.7 |
+| 32K/128 | 1685 | 71.8 | 22.2 |
+| 64K/128 | 1325 | 66.5 | 22.9 |
+| 128K/128 | 918 | 57.7 | 24.1 |
+
+hipEngine decode wins: +33.9% at 512/128, +23.9% at 4K/128, +18.2% at
+32K/128, +9.2% at 64K/128, tied at 128K/128.
+hipEngine prefill wins: +8-9% at 1K-128K, -13.3% at 512/128.
+hipEngine peak memory: 26.26 GiB (W7900 48 GiB territory); llama.cpp: 21.6-24.1 GiB.
+
+Artifacts:
+- `benchmarks/results/2026-06-16-w7900-gpu0-gguf-q4km-hipengine-gguf-q4km-readme-sweep.json`
+- `benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json`
+
+Validation:
+- Both JSON artifacts parse cleanly.
+- `bash -n scripts/run_w7900_readme_refresh.sh` -> no syntax errors.
+- `git diff --check` -> clean.
