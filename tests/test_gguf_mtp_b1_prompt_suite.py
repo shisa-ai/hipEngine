@@ -335,8 +335,8 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["hipengine_metrics_contract"] == {
         "status": "not_run",
         "blocked_until": "native_gguf_mtp_runtime",
-        "source": "Qwen35GGUFMTPVerificationMetrics",
-        "result_source": "Qwen35GGUFMTPVerificationResult",
+        "source": "Qwen35GGUFMTPAcceptStepMetrics",
+        "result_source": "Qwen35GGUFMTPAcceptStep",
         "draft_max": 1,
         "required_fields": [
             "cycle_count",

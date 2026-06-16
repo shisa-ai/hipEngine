@@ -37,9 +37,9 @@ from hipengine.speculative import (  # noqa: E402
     GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
     GGUF_MTP_METRICS_CONTRACT_READY,
     GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
+    Qwen35GGUFMTPAcceptStepMetrics,
     Qwen35GGUFMTPPerformanceReadiness,
     Qwen35GGUFMTPRuntimeKernelPlan,
-    Qwen35GGUFMTPVerificationMetrics,
 )
 from scripts.gguf_mtp_oracle_gate import (  # noqa: E402
     DEFAULT_FIXTURE as DEFAULT_ORACLE_FIXTURE,
@@ -184,8 +184,8 @@ def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
     return {
         "status": "not_run",
         "blocked_until": "native_gguf_mtp_runtime",
-        "source": "Qwen35GGUFMTPVerificationMetrics",
-        "result_source": "Qwen35GGUFMTPVerificationResult",
+        "source": "Qwen35GGUFMTPAcceptStepMetrics",
+        "result_source": "Qwen35GGUFMTPAcceptStep",
         "draft_max": int(draft_max),
         "required_fields": [
             "cycle_count",
@@ -195,7 +195,7 @@ def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
             "accepted_per_draft",
             "accepted_per_output",
         ],
-        "denominators": Qwen35GGUFMTPVerificationMetrics.denominator_labels(),
+        "denominators": Qwen35GGUFMTPAcceptStepMetrics.denominator_labels(),
     }
 
 
