@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Full-attention KV pair cache rejected (2026-06-16).** Adding cached
+  per-layer full-attention `(key_cache, value_cache)` tuples to
+  `_FullStackScratch` passed the focused full-cache/routing smoke and `154`-test
+  GGUF guard with stable IDs and flat memory, but it regressed the retained
+  decode-policy cache baseline (`512/128` `1958.536 / 127.263 -> 1913.472 /
+  127.079 tok/s`, `4K/128` `2292.684 / 114.991 -> 2288.777 / 114.916 tok/s`).
+  Code and test changes were reverted. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-full-cache-pair-rejected.json`.
+
 - **Full-attention scratch library handles rejected (2026-06-16).** Moving
   cached cast, paged-KV-write, and paged-attention library handles from the
   runner accessors onto `_FullStackScratch` passed the focused routing smoke and
