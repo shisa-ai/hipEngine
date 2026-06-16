@@ -316,6 +316,12 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "native_runtime_missing",
         "performance_unready",
     ]
+    assert artifact["cli_gate_failure_exit_codes"] == {
+        "blocked": 2,
+        "noncomparable_accepted_output": 4,
+        "native_runtime_missing": 7,
+        "performance_unready": 5,
+    }
     assert suite.CLI_GATE_EXIT_CODES == EXPECTED_CLI_GATE_EXIT_CODES
     assert artifact["backend"] == "hip_gfx1100"
     assert artifact["budget"] == "B1"
@@ -847,6 +853,26 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
         "native_runtime_missing",
         "performance_unready",
     ]
+    assert matrix["cli_gate_failure_exit_codes_by_budget"]["B1"] == {
+        "blocked": 2,
+        "noncomparable_accepted_output": 4,
+        "native_runtime_missing": 7,
+        "performance_unready": 5,
+    }
+    assert matrix["cli_gate_failure_exit_codes_by_budget"]["B4"] == {
+        "blocked": 2,
+        "partial_trace_budget": 3,
+        "noncomparable_accepted_output": 4,
+        "native_runtime_missing": 7,
+        "performance_unready": 5,
+    }
+    assert matrix["cli_gate_failure_exit_codes"] == {
+        "blocked": 2,
+        "partial_trace_budget": 3,
+        "noncomparable_accepted_output": 4,
+        "native_runtime_missing": 7,
+        "performance_unready": 5,
+    }
     assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
     assert (

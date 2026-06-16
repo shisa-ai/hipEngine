@@ -358,8 +358,10 @@ matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
 Each single-budget or matrix artifact embeds `cli_gate_exit_codes` with the
 stable CLI gate names and exit codes plus `cli_gate_failures` with the currently
-failing gate names; matrix artifacts also include `cli_gate_failures_by_budget`
-for compact per-budget diagnostics. Use `--fail-on-precheck-fail` to return
+failing gate names and `cli_gate_failure_exit_codes` for the current failure-name
+to exit-code subset; matrix artifacts also include `cli_gate_failures_by_budget`
+and `cli_gate_failure_exit_codes_by_budget` for compact per-budget diagnostics.
+Use `--fail-on-precheck-fail` to return
 exit code `11` when token/sampling/budget/hidden-seed prechecks fail. Use
 `--fail-on-exactness-fail` to return exit code `10` when the CPU-reference or
 llama.cpp trace exactness gate fails.
@@ -1006,10 +1008,11 @@ is now answered by the M1 required/optional table.)
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
-      `readiness_by_budget` parity/preflight/native-key status plus per-budget
-      and matrix-level KVLiveSpans paged-cache smoke status, llama.cpp trace
-      budget coverage, and accepted/draft plus accepted/output denominator
-      comparability (`--compact-matrix` omits
+      `readiness_by_budget` parity/preflight/native-key status, current CLI
+      failure-to-exit-code maps, plus per-budget and matrix-level KVLiveSpans
+      paged-cache smoke status, llama.cpp trace budget coverage, and
+      accepted/draft plus accepted/output denominator comparability
+      (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
       trace provenance, `--fail-on-precheck-fail` exits `11` when token,

@@ -98850,3 +98850,40 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. Existing
   KVLiveSpans execution-plan contract is unchanged and future native attention/
   KV-write remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF CLI failure exit-code maps
+
+Implemented `mtp-gguf` multiloop iteration 142: made prompt-suite artifacts report
+current CLI gate failures with their exact exit codes.
+
+Scope note:
+- Prompt-suite artifact/reporting change only. No GGUF tensor loading, native MTP
+  execution, KV allocation, GPU kernel, attention/KV runtime path, or performance
+  path changed.
+- This keeps compact B1-B4 review artifacts self-contained: reviewers no longer
+  need to manually join `cli_gate_failures` against `cli_gate_exit_codes`.
+
+Changes:
+- Added `cli_gate_failure_exit_codes` to single-budget artifacts.
+- Added `cli_gate_failure_exit_codes` plus
+  `cli_gate_failure_exit_codes_by_budget` to B1-B4 matrix artifacts.
+- Updated prompt-suite tests for single-budget and compact matrix failure-code
+  maps.
+- Updated `docs/MTP-gguf.md` to document the new fields.
+
+Validation:
+- Focused prompt-suite/context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> passed (81 tests).
+- Real local compact B1-B4 matrix smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` -> `status blocked`; top-level and per-budget `cli_gate_failure_exit_codes` maps present for B1 and B4.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: reporting/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Existing
+  KVLiveSpans execution-plan contract is unchanged.

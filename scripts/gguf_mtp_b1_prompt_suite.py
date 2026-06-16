@@ -663,6 +663,9 @@ def build_b1_prompt_suite_artifact(
         "blockers": blockers,
     }
     artifact["cli_gate_failures"] = _cli_gate_failures(artifact)
+    artifact["cli_gate_failure_exit_codes"] = _cli_gate_failure_exit_codes(
+        artifact["cli_gate_failures"]
+    )
     return artifact
 
 
@@ -749,6 +752,9 @@ def build_b1_b4_prompt_suite_matrix(
     ]
     readiness_by_budget = {item["budget"]: _matrix_budget_readiness(item) for item in artifacts}
     cli_gate_failures_by_budget = {item["budget"]: item["cli_gate_failures"] for item in artifacts}
+    cli_gate_failure_exit_codes_by_budget = {
+        item["budget"]: item["cli_gate_failure_exit_codes"] for item in artifacts
+    }
     hipengine_metrics_contract_by_budget = {
         item["budget"]: item["hipengine_metrics_contract"] for item in artifacts
     }
@@ -828,6 +834,7 @@ def build_b1_b4_prompt_suite_matrix(
         "status": "blocked" if any(item["status"] == "blocked" for item in artifacts) else "ready",
         "cli_gate_exit_codes": dict(CLI_GATE_EXIT_CODES),
         "cli_gate_failures_by_budget": cli_gate_failures_by_budget,
+        "cli_gate_failure_exit_codes_by_budget": cli_gate_failure_exit_codes_by_budget,
         "hipengine_metrics_contract_by_budget": hipengine_metrics_contract_by_budget,
         "hipengine_metrics_contract_validation_by_budget": hipengine_metrics_contract_validation_by_budget,
         "hipengine_metrics_contract_validation_summary": hipengine_metrics_contract_validation_summary,
@@ -879,6 +886,9 @@ def build_b1_b4_prompt_suite_matrix(
     if include_artifacts:
         matrix["artifacts"] = artifacts
     matrix["cli_gate_failures"] = _cli_gate_failures(matrix)
+    matrix["cli_gate_failure_exit_codes"] = _cli_gate_failure_exit_codes(
+        matrix["cli_gate_failures"]
+    )
     return matrix
 
 
@@ -1024,6 +1034,10 @@ def _has_invalid_hipengine_metrics_contracts(artifact: dict[str, Any]) -> bool:
                 return True
     validation = artifact.get("hipengine_metrics_contract_validation")
     return isinstance(validation, dict) and validation.get("passed") is False
+
+
+def _cli_gate_failure_exit_codes(failures: list[str]) -> dict[str, int]:
+    return {name: CLI_GATE_EXIT_CODES[name] for name in failures}
 
 
 def _cli_gate_failures(artifact: dict[str, Any]) -> list[str]:
