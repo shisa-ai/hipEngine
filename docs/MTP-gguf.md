@@ -377,9 +377,9 @@ or KVLiveSpans runtime component keys are absent. Use
 `--fail-on-optimization-missing` to return exit code `8` when optimization keys
 (such as device-side draft top-k) are absent. Matrix artifacts also carry an M6
 performance-comparison readiness rollup (`performance_readiness_contract`,
-`performance_comparison_ready_by_budget`, `performance_comparison_blockers_by_budget`,
-`performance_unready_budgets`, and `all_performance_comparisons_ready`). The
-blocker derivation is shared through
+`performance_readiness_by_budget`, `performance_comparison_ready_by_budget`,
+`performance_comparison_blockers_by_budget`, `performance_unready_budgets`, and
+`all_performance_comparisons_ready`). The blocker derivation is shared through
 the torch-free, self-validating `Qwen35GGUFMTPPerformanceReadiness`
 speculative contract whose required fields include its own validator metadata;
 `--fail-on-performance-unready` returns exit code `5`
@@ -1066,7 +1066,8 @@ is now answered by the M1 required/optional table.)
       contract validation fails, and `--fail-on-performance-unready`
       exits `5` until the combined, self-validating M6 readiness
       rollup from `Qwen35GGUFMTPPerformanceReadiness` is complete (including the
-      exported `performance_readiness_contract` plus its own
+      exported `performance_readiness_contract`, per-budget
+      `performance_readiness_by_budget` payloads, and their own
       required-field/validator metadata) and clean, including
       accepted/draft comparability, the KVLiveSpans smoke, and
       optimization-kernel readiness bits); actual B2-B4

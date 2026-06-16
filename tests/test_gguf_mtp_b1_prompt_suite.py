@@ -707,6 +707,25 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "native_runtime_kernels_missing",
         "hipengine_metrics_not_ready",
     ]
+    assert matrix["performance_readiness_by_budget"]["B1"] == {
+        "ready": False,
+        "blockers": [
+            "accepted_output_denominator_not_comparable",
+            "native_runtime_kernels_missing",
+            "hipengine_metrics_not_ready",
+        ],
+        "known_blockers": list(Qwen35GGUFMTPPerformanceReadiness.known_blockers()),
+        "required_fields": list(Qwen35GGUFMTPPerformanceReadiness.required_fields()),
+        "validator": "Qwen35GGUFMTPPerformanceReadiness.validate_payload",
+    }
+    assert matrix["performance_readiness_by_budget"]["B4"]["blockers"] == [
+        "partial_llamacpp_trace_budget_coverage",
+        "accepted_output_denominator_not_comparable",
+        "native_runtime_kernels_missing",
+        "hipengine_metrics_not_ready",
+    ]
+    for readiness in matrix["performance_readiness_by_budget"].values():
+        Qwen35GGUFMTPPerformanceReadiness.validate_payload(readiness)
     assert matrix["readiness_by_budget"]["B1"] == {
         "status": "blocked",
         "draft_max": 1,
@@ -848,6 +867,11 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_performance_comparisons_ready"] is False
     assert matrix["performance_unready_budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["performance_readiness_by_budget"]["B1"]["validator"] == (
+        "Qwen35GGUFMTPPerformanceReadiness.validate_payload"
+    )
+    assert matrix["performance_readiness_by_budget"]["B4"]["ready"] is False
+    assert "artifacts" not in matrix["performance_readiness_by_budget"]["B1"]
     assert matrix["cli_gate_failures_by_budget"]["B1"] == [
         "blocked",
         "noncomparable_accepted_output",

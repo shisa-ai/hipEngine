@@ -671,7 +671,7 @@ def build_b1_prompt_suite_artifact(
     return artifact
 
 
-def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
+def _performance_readiness_payload(readiness: dict[str, Any]) -> dict[str, Any]:
     payload = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
         parity_precheck=bool(readiness["parity_precheck"]),
         draft_budget_precheck=bool(readiness["draft_budget_precheck"]),
@@ -687,6 +687,11 @@ def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
         metrics_contract_status=str(readiness["metrics_contract_status"]),
     ).as_dict()
     Qwen35GGUFMTPPerformanceReadiness.validate_payload(payload)
+    return payload
+
+
+def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
+    payload = _performance_readiness_payload(readiness)
     return list(payload["blockers"])
 
 
@@ -808,6 +813,10 @@ def build_b1_b4_prompt_suite_matrix(
         for budget, status in accepted_per_output_status_by_budget.items()
         if status != ACCEPTED_OUTPUT_COMPARABLE
     ]
+    performance_readiness_by_budget = {
+        budget: _performance_readiness_payload(readiness)
+        for budget, readiness in readiness_by_budget.items()
+    }
     performance_comparison_ready_by_budget = {
         budget: readiness["performance_comparison_ready"]
         for budget, readiness in readiness_by_budget.items()
@@ -878,6 +887,7 @@ def build_b1_b4_prompt_suite_matrix(
         ),
         "all_performance_comparisons_ready": not performance_unready_budgets,
         "performance_readiness_contract": Qwen35GGUFMTPPerformanceReadiness.contract(),
+        "performance_readiness_by_budget": performance_readiness_by_budget,
         "performance_comparison_ready_by_budget": performance_comparison_ready_by_budget,
         "performance_comparison_blockers_by_budget": performance_comparison_blockers_by_budget,
         "performance_unready_budgets": performance_unready_budgets,
