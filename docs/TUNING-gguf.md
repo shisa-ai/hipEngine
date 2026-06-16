@@ -248,11 +248,70 @@ Current focused lanes from evidence:
    W7900 diagnostic `995.295 tok/s`). Next targets are lower-overhead
    long-context prefill staging, full-attention prefill chunk/AOTriton tuning,
    or KV/cache residency reductions that permit larger chunks.
-3. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
+3. **llama.cpp parity detour (new):** the 2026-06-16 local llama.cpp
+   `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` bench on GPU1 reported HIP
+   `pp512=2736.98 ± 53.51 tok/s`, `tg128=94.13 ± 1.29 tok/s`, and Vulkan
+   `pp512=2389.53 ± 16.94 tok/s`, `tg128=79.90 ± 0.22 tok/s` with `-fa 1`.
+   Decode remains behind the current hipEngine Q4_K_S decode gate, but HIP
+   pp512 is `+50.7%` over the current Q4_K_S `512/128` prefill median
+   (`1816.758 tok/s`) despite the larger `Q4_K_M` model. Treat this as a
+   prefill-priority signal, not a decode target.
+4. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
    WMMA is no longer the dominant 4K prefill bucket; GDN prefill recurrent and
    dense Q8_0 WMMA are now comparable follow-up targets, and any further G-P1
    live-state work must beat the remaining 256-VGPR cap without extra decode
    noise.
+
+llama.cpp HIP/Vulkan codepath detour (2026-06-16):
+
+- Reviewed local llama.cpp source trees: HIP `~/llama.cpp/llama.cpp-hip`
+  (`e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6`) and Vulkan
+  `~/llama.cpp/llama.cpp-vulkan`
+  (`263cc04a5405fc55122bf59383dd8195519b30f4`). The user's `llama-bench`
+  output reports build `263cc04a5`; verify the HIP binary/source SHA before
+  copying exact code.
+- HIP prefill likely reaches llama.cpp's quantized MMQ path for Q4_K on RDNA3:
+  `ggml_cuda_mul_mat` selects `ggml_cuda_mul_mat_q` when `src1->ne[1]` is above
+  the small-vector MMVQ range and `ggml_cuda_should_use_mmq()` returns true for
+  RDNA3/WMMA Q4_K (`ggml/src/ggml-cuda/ggml-cuda.cu:2590-2668`,
+  `ggml/src/ggml-cuda/mmq.cu:267-374`). That path quantizes the activation
+  matrix to Q8_1 in the pool, tiles up to `mmq_x=128` and `mmq_y=128` on AMD
+  WMMA, and maps Q4_K through the Q8_1 MMA tile shape
+  (`mmq.cu:77-160`, `mmq.cuh:109-160`, `mmq.cuh:237-254`). The Q4_K loader
+  repacks nibbles/scales into shared tiles, and Q4_K's MMQ trait uses
+  `vec_dot_q8_1_q8_1_mma` for the matrix path while retaining a DP4A fallback
+  (`mmq.cuh:2100-2237`, `mmq.cuh:3358-3363`). **Next test:** build a same-shape
+  one-layer Q4_K_M/Q4_K_S microbench that runs hipEngine selected-WMMA prefill vs
+  a llama-style Q8_1-activation MMQ tile for the attention/FFN/MoE shapes before
+  more live-state tweaks.
+- HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
+  explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
+  then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
+  (`ggml-cuda.cu:3447-4162`, `ggml-cuda/mmvq.cu:475-672`). hipEngine decode is
+  already faster on the current gate, so use this mainly to audit launch count
+  and fusion coverage, not as the first prefill fix.
+- HIP `-fa 1` routes through `ggml_cuda_flash_attn_ext`; on RDNA3 it chooses
+  between vector/tile/WMMA/MMA kernels by head size, GQA applicability, and
+  `Q->ne[1] * gqa_ratio_eff`, with an AMD WMMA branch for head sizes up to 128
+  when the effective query batch is large enough (`ggml-cuda/fattn.cu:332-596`).
+  Because llama.cpp's pp512 lead is visible at short context, first profile its
+  prefill kernel-family breakdown before assuming attention is the limiter.
+- Vulkan provides a second sanity oracle: before falling back to dequant+f16
+  matmul, `ggml_vk_mul_mat_q_f16` tries to quantize F32 activations to Q8_1 and
+  use `pipeline_dequant_mul_mat_mat_q8_1` when integer dot support is available
+  (`ggml-vulkan.cpp:6848-6917`, `8279-8387`). Its Q4_K MMQ shader packs Q4_K
+  quants/scales into a shared-cache form and uses `dotPacked4x8EXT`, with
+  K-quant warptiles deliberately reducing `WMITER` to `1` to contain register
+  pressure (`vulkan-shaders/mul_mmq_funcs.glsl:303-374`,
+  `ggml-vulkan.cpp:3448-3496`, `3651-3753`, `4318-4332`). **Next test:** run a
+  rocprofv3/RGP-equivalent llama.cpp HIP pp512 capture and a Vulkan pipeline log,
+  then compare launch families against hipEngine's current `512/128` profile.
+- Apples-to-apples before adopting: the user benchmark is `Q4_K_M`, while the
+  active loop gates are `Q4_K_S`. Rerun current hipEngine `Q4_K_M` on GPU1 and,
+  if a `Q4_K_S` llama.cpp model is available, rerun llama.cpp `Q4_K_S`. Prior
+  hipEngine Q4_K_M rows (`2140.225` pp512 / `2640.840` 4K prefill) are stale
+  relative to this loop's Q4_K_S changes and should not be used as final gap
+  math.
 
 No-hold notes:
 

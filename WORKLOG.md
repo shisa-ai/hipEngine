@@ -94253,3 +94253,29 @@ Validation and outcome:
 - Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-all768-gate.json`; benchmark rollup updated with the retained all-768 row and the 512-probe no-hold note.
 - Prompt verifier: passed. Primary and 128K generated IDs stayed deterministic, 128K logits were finite, no torch/llama.cpp hot-path dependency was added, raw+packed residency did not increase, and 128K memory stayed below 24GB. This is a long-context prefill promotion, not a primary-gate decode promotion.
 - Decision: retain/log. Keep all 24GB low-memory prefill chunks at 768 for now. User-provided llama.cpp HIP/Vulkan numbers show local llama.cpp Q4_K_M pp512 is substantially ahead of hipEngine GGUF primary prefill, so the next iteration should detour into llama.cpp HIP/Vulkan codepath review and update `docs/TUNING-gguf.md` with concrete adoption/test hypotheses.
+
+## 2026-06-16 - GGUF llama.cpp HIP/Vulkan codepath detour
+
+User provided fresh local llama.cpp GPU1 Q4_K_M numbers: HIP `pp512=2736.98 ± 53.51 tok/s`, `tg128=94.13 ± 1.29 tok/s`; Vulkan `pp512=2389.53 ± 16.94 tok/s`, `tg128=79.90 ± 0.22 tok/s`, both with `-fa 1` on `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. Decode is still behind the current hipEngine Q4_K_S primary gate, but HIP pp512 is `+50.7%` over the current `1816.758 tok/s` Q4_K_S prefill row, so this is a prefill-source-review signal.
+
+Reviewed local llama.cpp source trees:
+- HIP: `~/llama.cpp/llama.cpp-hip` HEAD `e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6`; note the user benchmark binary itself reports build `263cc04a5`, so verify binary/source SHA before porting exact code.
+- Vulkan: `~/llama.cpp/llama.cpp-vulkan` HEAD `263cc04a5405fc55122bf59383dd8195519b30f4`.
+
+Findings recorded in `docs/TUNING-gguf.md`:
+- HIP prefill likely uses llama.cpp's quantized MMQ path for Q4_K on RDNA3: `ggml_cuda_mul_mat` chooses `ggml_cuda_mul_mat_q` when the small-vector path is not selected and `ggml_cuda_should_use_mmq()` returns true for RDNA3/WMMA. The path quantizes activations to Q8_1, tiles up to `mmq_x=128` / `mmq_y=128`, and uses a Q4_K loader/trait that repacks Q4_K nibbles/scales into the Q8_1 MMA tile shape (`ggml/src/ggml-cuda/ggml-cuda.cu:2590-2668`, `mmq.cu:77-160`, `mmq.cu:267-374`, `mmq.cuh:109-160`, `mmq.cuh:2100-2237`, `mmq.cuh:3358-3363`).
+- HIP decode/MoE fusion is useful but lower priority because hipEngine decode is already faster: llama.cpp fuses top-k MoE and `MUL_MAT(_ID)+GLU`/bias patterns and only uses fused `mul_mat_vec_q` for `ncols_dst=1` (`ggml-cuda.cu:3447-4162`, `mmvq.cu:475-672`).
+- HIP `-fa 1` dispatches through `ggml_cuda_flash_attn_ext`; RDNA3 chooses among vector/tile/WMMA/MMA based on head size/GQA/effective query batch (`fattn.cu:332-596`). Do not assume attention is the pp512 limiter without a llama.cpp rocprof family breakdown.
+- Vulkan first tries an integer-dot/Q8_1 activation pipeline before dequant+f16 matmul: `ggml_vk_mul_mat_q_f16` quantizes F32 Y to Q8_1 when possible and selects `pipeline_dequant_mul_mat_mat_q8_1`; Q4_K shader uses `dotPacked4x8EXT` with K-quant warptiles set to `WMITER=1` to control register pressure (`ggml-vulkan.cpp:6848-6917`, `8279-8387`, `3448-3496`, `3651-3753`, `4318-4332`, `vulkan-shaders/mul_mmq_funcs.glsl:303-374`).
+
+Next tests/hypotheses:
+1. Rerun apples-to-apples current hipEngine Q4_K_M on GPU1 and, if available, llama.cpp Q4_K_S, because the user benchmark is Q4_K_M while the active gates are Q4_K_S.
+2. Build a same-shape Q4_K_M/Q4_K_S microbench comparing hipEngine selected-WMMA prefill against a llama-style Q8_1-activation MMQ tile on attention/FFN/MoE shapes.
+3. Capture llama.cpp HIP pp512 with rocprofv3 kernel families and compare launch counts/buckets against hipEngine's current `512/128` profile before more selected-WMMA/Q8 live-state tweaks.
+
+Validation and outcome:
+- Docs/source-review check: `git diff --check` passed. Re-read the added `docs/TUNING-gguf.md` detour section against the local llama.cpp code references before committing.
+- Primary gate evidence reused from `/tmp/hipengine-gguf-tuning-gpu1-acceptance.json` generated at `2026-06-16T11:12:51+0900`: `512/128` median prefill/decode `1882.104447 / 126.557668 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2163.534507 / 115.722842 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.722842 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a documentation/planning detour. No runtime code changed, generated IDs stayed stable on the primary gate, memory stayed flat, no torch/llama.cpp dependency was added to the hot path, and the documented next steps are apples-to-apples measurement/microbench/profile tasks rather than unverified adoption.
+- Decision: log only. The codepath review sharpens the GGUF punchlist around llama.cpp's Q8_1-activation MMQ and Vulkan int-dot paths; it does not claim a hipEngine performance promotion yet.
