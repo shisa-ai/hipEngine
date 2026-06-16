@@ -1,0 +1,170 @@
+{
+  "change": "Added microbench-only q8-1-ds4-preview-wmma32 kernel consuming GGUFQ4KMMQTile16Preview q4/scales/mins.",
+  "commands": {
+    "microbench": "for mode in q8-1-ds4-preview-wmma32 q8-1-ds4-wmma32 q8-1-ds4-wmma32-ldspack selected-wmma q8-1-ds4-dot; do HIP_VISIBLE_DEVICES=1 ... scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode $mode --hidden 2048 --out-features-a 4096 --out-features-b 4096 --experts 8 --rows-per-expert 512 --warmup 3 --iters 10 --require-cached-build --json /tmp/hipengine-gguf-q4k-preview-$mode.json; done",
+    "primary_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 ... scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "rocprof": "HIP_VISIBLE_DEVICES=1 ... rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-preview-wmma32-trace -- python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_preview_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference -q",
+    "selected_prefill_tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q"
+  },
+  "correctness": {
+    "pytest_selected_prefill": "18 passed",
+    "rocprof_duration_ns": [
+      18880,
+      28680
+    ],
+    "rocprof_kernel_matches": 2,
+    "rocprof_trace": "/tmp/hipengine-gguf-ds4-preview-wmma32-trace/epyc/3009142_kernel_trace.csv"
+  },
+  "guard": {
+    "command": "python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "result": "154 passed"
+  },
+  "hardware": {
+    "device": "GPU1",
+    "gfx": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "interpretation": "Pre-unpacked Q4_K preview avoids raw GGUF metadata decode but is 12.020 ms/call, 1.46x slower than raw DS4 WMMA32 and slightly slower than selected-WMMA while using more microbench memory, so do not promote. Bottleneck is not simply Q4 metadata decode; tile geometry/data movement remains the blocker.",
+  "microbench": {
+    "q8-1-ds4-dot": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 6.301202285921467,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": false,
+        "prototype_note": "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 21.811544406227767,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "q8-1-ds4-preview-wmma32": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 11.433755093753334,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_preview_min_a_mib": 8.0,
+        "host_preview_min_b_mib": 8.0,
+        "host_preview_q4_a_mib": 64.0,
+        "host_preview_q4_b_mib": 64.0,
+        "host_preview_scale_a_mib": 8.0,
+        "host_preview_scale_b_mib": 8.0,
+        "host_q8_ds4_mib": 9.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles over pre-unpacked Q4_K preview q4/scales/mins; diagnostic replacement-layout probe only.",
+        "tracked_peak_allocated_gib": 0.22754110395908356,
+        "weight_layout": "gguf_q4_k_mmq_tile16_preview_unpacked_q4_f32_scale_min"
+      },
+      "ms_per_call": 12.02045630197972,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.22754110395908356,
+      "weight_layout": "gguf_q4_k_mmq_tile16_preview_unpacked_q4_f32_scale_min"
+    },
+    "q8-1-ds4-wmma32": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 16.742354018079624,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 8.20905789732933,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "q8-1-ds4-wmma32-ldspack": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 11.995399812982315,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged packed Q4_K qs bytes; still a diagnostic microbench, not a full runtime MMQ integration.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 11.457638395950198,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "selected-wmma": {
+      "activation_layout": null,
+      "finite_output": true,
+      "logical_tflops": 11.864804435082625,
+      "memory": {
+        "activation_quantization_in_loop": false,
+        "host_input_mib": 16.0,
+        "host_output_mib": 64.0,
+        "host_tiles_a_mib": 37.0,
+        "host_tiles_b_mib": 37.0,
+        "tracked_peak_allocated_gib": 0.15039266645908356,
+        "weight_layout": "gguf_q4_k_t16_v1"
+      },
+      "ms_per_call": 11.583752115257084,
+      "output_checksum_f64": 6715252.562845781,
+      "tracked_peak_allocated_gib": 0.15039266645908356,
+      "weight_layout": "gguf_q4_k_t16_v1"
+    }
+  },
+  "microbench_shape": {
+    "experts": 8,
+    "hidden": 2048,
+    "iters": 10,
+    "out_features_a": 4096,
+    "out_features_b": 4096,
+    "rows_per_expert": 512,
+    "warmup": 3
+  },
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.13466590074388,
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2152.1022733226973,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 127.18567994717002,
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1867.8334624714023,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.13466590074388,
+  "prompt_verifier": {
+    "evidence": "Diagnostic-only kernel/microbench; runtime defaults unchanged, primary GGUF gates kept stable IDs and flat 21.334842 GiB peak; no torch/llama.cpp hot-path dependency; preview path is not promoted so no raw+packed residency in runtime.",
+    "passed": true
+  },
+  "quant": "gguf_q4_k_s",
+  "run_tag": "gguf_q4k_q8_1_ds4_preview_wmma32_selected_prefill_probe",
+  "schema": 1,
+  "status": "diagnostic_rejected_for_promotion",
+  "timestamp": "2026-06-16T04:56:18.705625+00:00"
+}

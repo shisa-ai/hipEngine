@@ -20,6 +20,7 @@ constexpr int Q4_K_BLOCK_BYTES = 144;
 constexpr int Q4_K_SCALE_BYTES = 12;
 constexpr int Q4_K_QS_OFFSET = 2 + 2 + Q4_K_SCALE_BYTES;
 constexpr int Q4_K_QS_BYTES = QK_K / 2;
+constexpr int Q4_K_TILE16_COLS = 16;
 constexpr int Q4_K_SUBBLOCK = 32;
 constexpr int Q4_K_SUBBLOCKS = QK_K / Q4_K_SUBBLOCK;  // == 8
 constexpr int Q8_1_MMQ_BLOCK = 4 * Q8_1_BLOCK;        // == 128
@@ -571,6 +572,137 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel
   for (int j = 0; j < 8; ++j) {
     const int64_t local_out_row = tile_row_in_expert + half_id + j * 2;
     if (valid_col && local_out_row < expert_count) {
+      const int64_t compact_out_row = compact_base + local_out_row;
+      if (compact_out_row < compact_rows) {
+        out[compact_out_row * out_features_total + global_col] = float_to_bf16_bits(acc_f[j]);
+      }
+    }
+  }
+}
+
+__launch_bounds__(64, 1)
+__global__ void gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ q4_a,
+    const float* __restrict__ scale_a,
+    const float* __restrict__ min_a,
+    const uint8_t* __restrict__ q4_b,
+    const float* __restrict__ scale_b,
+    const float* __restrict__ min_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows) {
+  const int col_tile = blockIdx.x;
+  const int row_tile = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int wave_id = tid >> 5;
+  const int wave_tid = tid & 31;
+  const int lane16 = wave_tid & 15;
+  const int half_id = wave_tid >> 4;
+
+  typedef int int32x4_t __attribute__((__vector_size__(4 * sizeof(int))));
+  typedef int int32x8_t __attribute__((__vector_size__(8 * sizeof(int))));
+
+  const int64_t col_base = static_cast<int64_t>(col_tile) * 32 + wave_id * 16;
+  const int64_t global_col = col_base + lane16;
+  const int64_t out_features_total = out_features_a + out_features_b;
+  if (global_col >= out_features_total) return;
+
+  const int64_t expert_id = tile_expert[row_tile];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t compact_base = expert_start_compact[expert_id];
+  const int64_t expert_count = expert_start_compact[expert_id + 1] - compact_base;
+  const int64_t wmma_base = expert_start_wmma[expert_id];
+  const int64_t row_start_in_wmma = static_cast<int64_t>(row_tile) * 16;
+  const int64_t tile_row_in_expert = row_start_in_wmma - wmma_base;
+
+  const bool use_b = global_col >= out_features_a;
+  const int64_t local_col = use_b ? (global_col - out_features_a) : global_col;
+  const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+  if (local_col >= local_out_features) return;
+  const uint8_t* __restrict__ q4 = use_b ? q4_b : q4_a;
+  const float* __restrict__ scale = use_b ? scale_b : scale_a;
+  const float* __restrict__ minv = use_b ? min_b : min_a;
+
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t q8_mmq_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
+  const int64_t out_tiles = local_out_features / Q4_K_TILE16_COLS;
+  const int64_t local_tile = local_col / Q4_K_TILE16_COLS;
+  const int64_t col_in_tile = local_col & (Q4_K_TILE16_COLS - 1);
+
+  const int64_t local_a_row = tile_row_in_expert + lane16;
+  const bool valid_a_row = local_a_row < expert_count;
+  const int64_t compact_a_row = valid_a_row ? (compact_base + local_a_row) : 0;
+
+  float acc_f[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+#pragma unroll
+    for (int sb = 0; sb < Q4_K_SUBBLOCKS; ++sb) {
+      const int64_t preview_index =
+          (((((expert_id * out_tiles + local_tile) * Q4_K_TILE16_COLS + col_in_tile) *
+             blocks_per_row + blk) * Q4_K_SUBBLOCKS + sb));
+      const uint8_t* __restrict__ q4_vec = q4 + preview_index * Q4_K_SUBBLOCK;
+      const float scale_f = scale[preview_index];
+      const float min_f = minv[preview_index];
+
+      int32x8_t dot_acc = {0, 0, 0, 0, 0, 0, 0, 0};
+#pragma unroll
+      for (int kt = 0; kt < 2; ++kt) {
+        int32x4_t a_vec = {0, 0, 0, 0};
+        if (valid_a_row && compact_a_row < compact_rows) {
+          const int64_t q8_block = compact_a_row * q8_mmq_blocks_per_row + blk * 2 + (sb >> 2);
+          const int ds4_idx = sb & 3;
+          const block_q8_1_mmq_ds4& xb = x_q8[q8_block];
+          const int8_t* __restrict__ xq = xb.qs + ds4_idx * Q8_1_BLOCK + kt * 16;
+          a_vec = int32x4_t{
+              pack_i8x4(xq + 0),
+              pack_i8x4(xq + 4),
+              pack_i8x4(xq + 8),
+              pack_i8x4(xq + 12),
+          };
+        }
+        const int lane32_base = kt * 16;
+        const int32x4_t b_vec = int32x4_t{
+            pack_u8x4(q4_vec + lane32_base + 0),
+            pack_u8x4(q4_vec + lane32_base + 4),
+            pack_u8x4(q4_vec + lane32_base + 8),
+            pack_u8x4(q4_vec + lane32_base + 12),
+        };
+        dot_acc = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+            true, a_vec, true, b_vec, dot_acc, false);
+      }
+
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int64_t local_out_row = tile_row_in_expert + half_id + j * 2;
+        if (local_out_row < expert_count) {
+          const int64_t compact_out_row = compact_base + local_out_row;
+          if (compact_out_row < compact_rows) {
+            const int64_t q8_block = compact_out_row * q8_mmq_blocks_per_row + blk * 2 + (sb >> 2);
+            const int ds4_idx = sb & 3;
+            const block_q8_1_mmq_ds4& xb = x_q8[q8_block];
+            const float xd = fp16_bits_to_float(xb.ds4[2 * ds4_idx + 0]);
+            const float xsum = fp16_bits_to_float(xb.ds4[2 * ds4_idx + 1]);
+            acc_f[j] += scale_f * xd * static_cast<float>(dot_acc[j]) - min_f * xsum;
+          }
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t local_out_row = tile_row_in_expert + half_id + j * 2;
+    if (local_out_row < expert_count) {
       const int64_t compact_out_row = compact_base + local_out_row;
       if (compact_out_row < compact_rows) {
         out[compact_out_row * out_features_total + global_col] = float_to_bf16_bits(acc_f[j]);
@@ -1135,6 +1267,76 @@ int launch_selected_dual_q8_1_ds4_wmma32_compact32(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_selected_dual_q8_1_ds4_preview_wmma32_compact32(
+    const block_q8_1_mmq_ds4* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* q4_a,
+    const float* scale_a,
+    const float* min_a,
+    const uint8_t* q4_b,
+    const float* scale_b,
+    const float* min_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!valid_q8_1_selected_dual_common(
+          x_q8,
+          x_q8,
+          x_q8,
+          expert_start_compact,
+          expert_start_wmma,
+          tile_expert,
+          q4_a,
+          q4_b,
+          out,
+          compact_rows,
+          in_features,
+          out_features_a,
+          out_features_b,
+          num_experts,
+          wmma_total_rows) || scale_a == nullptr || min_a == nullptr ||
+      scale_b == nullptr || min_b == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t row_tiles = wmma_total_rows / 16;
+  const dim3 block(64);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_total + 31) / 32),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x_q8,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      q4_a,
+      scale_a,
+      min_a,
+      q4_b,
+      scale_b,
+      min_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_selected_dual_q8_1_ds4_wmma32_ldspack_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* expert_start_compact,
@@ -1418,6 +1620,46 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact
       tile_expert,
       qweight_a,
       qweight_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* q4_a,
+    const float* scale_a,
+    const float* min_a,
+    const uint8_t* q4_b,
+    const float* scale_b,
+    const float* min_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_preview_wmma32_compact32(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      q4_a,
+      scale_a,
+      min_a,
+      q4_b,
+      scale_b,
+      min_b,
       out,
       compact_rows,
       in_features,

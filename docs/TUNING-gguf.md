@@ -341,16 +341,24 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   promote that staging shape. A packed-Q4 LDS staging variant
   (`q8-1-ds4-wmma32-ldspack`) recovers much of that loss at `11.438 ms/call`
   and is slightly faster than selected-WMMA on the same synthetic run, but it is
-  still `1.38x` slower than raw WMMA32. The remaining useful MMQ direction is a
-  true llama.cpp-like packed `load_tiles_q4_K`/`load_ldmatrix` tile or wider
-  reuse, not per-column staging consumed by the same 16x32 tile.
+  still `1.38x` slower than raw WMMA32. A pre-unpacked host-preview variant
+  (`q8-1-ds4-preview-wmma32`) feeds the two-wave WMMA kernel from
+  `GGUFQ4KMMQTile16Preview` q4/scales/mins arrays and measured
+  `12.020 ms/call` (`11.43` logical TFLOP/s), slower than raw WMMA32
+  (`8.209 ms/call`) and slightly slower than selected-WMMA (`11.584 ms/call`)
+  while raising synthetic fixture memory to `0.228 GiB`; Q4_K metadata decode is
+  therefore not the standalone bottleneck. The remaining useful MMQ direction is
+  real llama.cpp-style tile geometry / data reuse, not simply pre-unpacking
+  per-column operands consumed by the same 16x32 tile.
   Artifacts:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`,
-  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`.
-  **Next code test:** try a true packed/ldmatrix-style MMQ tile or move to a
-  full 16x32/16x64 tile that reuses staged data across more columns/rows.
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`,
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`.
+  **Next code test:** stop adding same-shape staging variants; port a true
+  MMQ-style multi-output tile (larger `mmq_x`/`mmq_y` reuse) or switch focus to
+  another prefill bottleneck.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`

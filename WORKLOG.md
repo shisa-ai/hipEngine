@@ -94527,3 +94527,25 @@ Configured loop verification after the diagnostic:
 - Q4_K_S primary gate result: `512/128` median prefill/decode `1860.926155 / 127.096309 tok/s`, stable IDs true; `4K/128` median prefill/decode `2153.042586 / 115.303486 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.303486 tok/s` (runtime defaults unchanged; decode movement is run noise).
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 pre-unpacked preview WMMA32 probe
+
+Added a diagnostic `q8-1-ds4-preview-wmma32` selected-prefill variant. It keeps the two-wave/32-column DS4 integer-WMMA mapping but consumes host-pre-unpacked `GGUFQ4KMMQTile16Preview` operands (`q4` nibbles plus FP32 scale/min arrays) instead of decoding raw GGUF Q4_K metadata in the kernel. The path is microbench-only and not wired into model runtime/default dispatch.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `18 passed` (includes two preview-WMMA32 cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-preview-wmma32-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_preview_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-preview-wmma32-trace/epyc/3009142_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_kernel` (`18880 ns`, `28680 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-preview-wmma32`: `12.020456 ms/call`, `11.434` logical TFLOP/s, finite output, tracked peak `0.227541 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.209058 ms/call`, `16.742` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32-ldspack`: `11.457638 ms/call`, `11.995` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.583752 ms/call`, `11.865` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.811544 ms/call`, `6.301` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`.
+- Interpretation: pre-unpacking q4/scales/mins does not fix the bottleneck. Preview-WMMA32 is `1.46x` slower than raw WMMA32, slightly slower than selected-WMMA, and larger in memory. Do not promote. Stop adding same-shape staging/pre-unpack variants; next useful code target is a true wider MMQ tile with reuse, or a different prefill bottleneck.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1867.833462 / 127.185680 tok/s`, stable IDs true; `4K/128` median prefill/decode `2152.102273 / 115.134666 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.134666 tok/s` (runtime defaults unchanged; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only rejected path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and the preview layout is not promoted so no runtime raw+packed duplicate residency. 128K final-promotion gate is not applicable until a runtime path is promoted.

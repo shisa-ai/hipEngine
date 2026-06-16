@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     build_gguf_q4_k_q8_1_selected_prefill,
     gguf_q4_k_q8_1_wmma_i8_probe_16x16,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out,
@@ -131,6 +132,15 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
         )
         is gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out
     )
     assert (
         resolve(
@@ -426,6 +436,97 @@ def _run_q8_1_ds4_variant_gpu(fixture, launcher) -> np.ndarray:
     return _decode_output(host_out, "bf16")
 
 
+def _run_q8_1_ds4_preview_wmma32_selected_dual_gpu(fixture) -> np.ndarray:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    host_out = np.zeros(
+        (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
+        dtype=np.uint16,
+    )
+    q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(fixture.x_host)
+    previews_a = [pack_gguf_q4_k_mmq_tile16_preview(fixture.qweight_a[expert]) for expert in range(fixture.num_experts)]
+    previews_b = [pack_gguf_q4_k_mmq_tile16_preview(fixture.qweight_b[expert]) for expert in range(fixture.num_experts)]
+    q4_a = np.ascontiguousarray(np.stack([preview.q4 for preview in previews_a], axis=0))
+    scale_a = np.ascontiguousarray(np.stack([preview.scales for preview in previews_a], axis=0), dtype=np.float32)
+    min_a = np.ascontiguousarray(np.stack([preview.mins for preview in previews_a], axis=0), dtype=np.float32)
+    q4_b = np.ascontiguousarray(np.stack([preview.q4 for preview in previews_b], axis=0))
+    scale_b = np.ascontiguousarray(np.stack([preview.scales for preview in previews_b], axis=0), dtype=np.float32)
+    min_b = np.ascontiguousarray(np.stack([preview.mins for preview in previews_b], axis=0), dtype=np.float32)
+
+    bufs = []
+    try:
+        q8_ds4_dev = malloc(q8_ds4.nbytes, runtime=runtime)
+        start_compact_dev = malloc(fixture.expert_start_compact.nbytes, runtime=runtime)
+        start_wmma_dev = malloc(fixture.expert_start_wmma.nbytes, runtime=runtime)
+        tile_expert_dev = malloc(fixture.tile_expert.nbytes, runtime=runtime)
+        q4_a_dev = malloc(q4_a.nbytes, runtime=runtime)
+        scale_a_dev = malloc(scale_a.nbytes, runtime=runtime)
+        min_a_dev = malloc(min_a.nbytes, runtime=runtime)
+        q4_b_dev = malloc(q4_b.nbytes, runtime=runtime)
+        scale_b_dev = malloc(scale_b.nbytes, runtime=runtime)
+        min_b_dev = malloc(min_b.nbytes, runtime=runtime)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        bufs.extend(
+            (
+                q8_ds4_dev,
+                start_compact_dev,
+                start_wmma_dev,
+                tile_expert_dev,
+                q4_a_dev,
+                scale_a_dev,
+                min_a_dev,
+                q4_b_dev,
+                scale_b_dev,
+                min_b_dev,
+                out_dev,
+            )
+        )
+        for dev, arr in (
+            (q8_ds4_dev, q8_ds4),
+            (start_compact_dev, fixture.expert_start_compact),
+            (start_wmma_dev, fixture.expert_start_wmma),
+            (tile_expert_dev, fixture.tile_expert),
+            (q4_a_dev, q4_a),
+            (scale_a_dev, scale_a),
+            (min_a_dev, min_a),
+            (q4_b_dev, q4_b),
+            (scale_b_dev, scale_b),
+            (min_b_dev, min_b),
+        ):
+            copy_host_to_device(dev, host_array_ptr(np.ascontiguousarray(arr)), runtime=runtime)
+
+        gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out(
+            q8_ds4_dev.ptr,
+            start_compact_dev.ptr,
+            start_wmma_dev.ptr,
+            tile_expert_dev.ptr,
+            q4_a_dev.ptr,
+            scale_a_dev.ptr,
+            min_a_dev.ptr,
+            q4_b_dev.ptr,
+            scale_b_dev.ptr,
+            min_b_dev.ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            fixture.out_features_a,
+            fixture.out_features_b,
+            fixture.num_experts,
+            fixture.wmma_total_rows,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    return _decode_output(host_out, "bf16")
+
+
 def _run_q8_1_ds4_selected_dual_gpu(fixture) -> np.ndarray:
     return _run_q8_1_ds4_variant_gpu(
         fixture,
@@ -553,6 +654,30 @@ def test_q4_k_q8_1_ds4_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference(
         seed=7,
     )
     actual = _run_q8_1_ds4_wmma32_selected_dual_gpu(fixture)
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"),
+    [
+        pytest.param([4, 0, 5], 256, 16, 16, id="empty-middle-small-boundary"),
+        pytest.param([0, 17, 31], 512, 32, 48, id="empty-first-multi-block"),
+    ],
+)
+def test_q4_k_q8_1_ds4_preview_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference(
+    counts: list[int], in_features: int, out_features_a: int, out_features_b: int
+) -> None:
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=7,
+    )
+    actual = _run_q8_1_ds4_preview_wmma32_selected_dual_gpu(fixture)
     expected = _q8_1_ds4_selected_reference(fixture)
     np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
 
