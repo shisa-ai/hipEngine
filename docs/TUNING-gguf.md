@@ -300,8 +300,24 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `11.933 ms/call` (`11.52` logical TFLOP/s), with finite output and lower
   tracked fixture memory (`0.143 GiB`). Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-selected-prefill-prototype.json`.
-  **Next test:** inspect/port the actual llama.cpp tiled MMQ work decomposition;
-  the naive scalar Q8_1 dot is not a promotion candidate.
+  Follow-up source audit of llama.cpp HIP commit
+  `e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6` shows why the scalar prototype
+  missed the mark: Q4_K uses the DS4 Q8_1 activation layout (`block_q8_1_mmq` =
+  128 int8 values plus four half2 scale/sum pairs) and the AMD WMMA/MMA path,
+  not the DP4A Q4_K scalar loop. `load_tiles_q4_K` first stages each raw Q4_K
+  weight tile into shared memory as low/high nibble int matrices plus half2
+  scale/min products (`ggml/src/ggml-cuda/mmq.cuh:2093-2165`). The Q4_K trait
+  then dispatches `vec_dot_q8_1_q8_1_mma` on AMD WMMA (`mmq.cuh:3358-3363`),
+  where 16x8 int tiles are loaded with `load_ldmatrix`, accumulated as a 16x16
+  int tile, and converted with both Q4_K `dm` and Q8_1 `ds` terms
+  (`mmq.cuh:1330-1380`). The outer kernel stages `mmq_x` activation columns and
+  `mmq_y` weight rows in shared memory, processes two 128-value Q8_1 activation
+  blocks per 256-wide Q4_K block, and writes back a full tile
+  (`mmq.cuh:3447-3518`). On RDNA3, `mmq_y=128`; `mmq_x` is chosen up to 128 by
+  shared-memory fit and output column tiling (`mmq.cuh:3943-4138`).
+  **Next code test:** port a minimal Q4_K/DS4 shared-memory + WMMA-tile kernel
+  for the same microbench shape (even without stream-k/fixup) rather than
+  optimizing the rejected scalar Q8_1 dot.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`

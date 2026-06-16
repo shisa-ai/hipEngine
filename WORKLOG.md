@@ -94367,3 +94367,25 @@ Configured loop verification after Q8_1 prototype:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a diagnostic prototype. Runtime model dispatch/defaults were unchanged; the new kernel is standalone and registered only as a diagnostic variant, no torch/llama.cpp hot-path dependency was added, Q4_K_S generated IDs remained stable, memory remained flat on the primary gate, and the Q8_1 scalar result was explicitly rejected as slower than current selected-WMMA.
 - Decision: log only. The scalar Q8_1 prototype is not a promotion path; inspect/port the real llama.cpp tiled MMQ decomposition next.
+
+## 2026-06-16 - llama.cpp HIP MMQ source audit for next port
+
+Audited the local llama.cpp HIP source at `/home/lhl/llama.cpp/llama.cpp-hip` commit `e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6` to identify what the rejected scalar Q8_1 prototype missed. Updated `docs/TUNING-gguf.md` with the concrete Q4_K MMQ tile path and next port target.
+
+Source findings:
+- `ggml/src/ggml-cuda/quantize.cu:277-415`: `quantize_mmq_q8_1` writes `block_q8_1_mmq` blocks and `quantize_mmq_q8_1_cuda` dispatches the DS layout chosen by source weight type. For Q4_K, `mmq_get_q8_1_ds_layout` maps to `MMQ_Q8_1_DS_LAYOUT_DS4` (`mmq.cuh:82-84`), i.e. scale+sum half2 pairs, not separate float arrays like the scalar prototype.
+- `ggml/src/ggml-cuda/mmq.cuh:28-58`: `block_q8_1_mmq` groups 128 activation values, stores four Q8_1 subblocks and four scale/sum records, and is size-equal to four `block_q8_1` blocks.
+- `ggml/src/ggml-cuda/mmq.cuh:2093-2165`: `load_tiles_q4_K` stages raw Q4_K rows into shared memory. On AMD WMMA it stores low/high nibbles as int matrices at `MMQ_MMA_TILE_X_K_Q8_1` stride and stores half2 `dm * (scale, min)` products next to them.
+- `ggml/src/ggml-cuda/mmq.cuh:3358-3363`: the Q4_K MMQ trait uses `load_tiles_q4_K` and, on AMD WMMA, `vec_dot_q8_1_q8_1_mma`; the DP4A Q4_K dot is only fallback.
+- `ggml/src/ggml-cuda/mmq.cuh:1330-1380`: `vec_dot_q8_1_q8_1_mma` loads 16x8 int tiles with `load_ldmatrix`, accumulates a 16x16 int tile, then applies Q4_K `dm` and Q8_1 `ds` terms. This is the key shape to port into the hipEngine microbench.
+- `ggml/src/ggml-cuda/mmq.cuh:3447-3518`: `mul_mat_q_process_tile` stages `mmq_x` activation columns and `mmq_y` weight rows in shared memory. For Q4_K, one 256-wide weight block is paired with two 128-value `block_q8_1_mmq` activation blocks and two `vec_dot` calls (`k00=0`, `k00=MMQ_TILE_NE_K`).
+- `ggml/src/ggml-cuda/mmq.cuh:3943-4138`: the launcher uses `mmq_y=get_mmq_y_host(cc)` (RDNA3 => 128) and chooses the largest `mmq_x` up to 128 that satisfies granularity/shared-memory constraints and minimizes output-column tiles.
+- Porting implication: the next useful hipEngine kernel should be a minimal Q4_K/DS4 shared-memory + WMMA-tile microbench path (probably no stream-k/fixup initially), not further tuning of `gguf_q4_k_selected_dual_q8_1_prefill_compact32_kernel`.
+
+Configured loop verification after the source audit:
+- Docs check: `git diff --check` passed.
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1879.334668 / 126.043052 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.685314 / 115.777082 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.777082 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a source-audit/docs-only iteration. Runtime code and dispatch were unchanged, no torch/llama.cpp hot-path dependency was added, generated IDs stayed stable, memory stayed flat, and the note explicitly keeps the scalar Q8_1 path rejected while narrowing the next kernel target.
+- Decision: log only. Next code iteration should implement the minimal shared-memory + WMMA tile kernel in the microbench harness.
