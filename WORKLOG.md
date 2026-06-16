@@ -99360,3 +99360,49 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. Existing
   KVLiveSpans execution-plan contract is strengthened and remains the only
   attention/KV-write ABI for future native paths.
+
+## 2026-06-16 - MTP-GGUF draft execution-plan payload validation
+
+Implemented `mtp-gguf` multiloop iteration 154: made serialized GGUF MTP draft
+execution-plan payloads self-validating before future native NextN attention/KV
+integration consumes B1-B4 artifacts.
+
+Scope note:
+- Torch-free metadata/validation change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This protects future draft execution artifacts from spoofed nested proposal or
+  KVLiveSpans contracts, mismatched top-level proposed tokens, proposal/KV token
+  position drift, or stale CPU-reference append/decode kwargs.
+
+RED/GREEN:
+- RED: added tests requiring `Qwen35GGUFMTPDraftExecutionPlan.contract()` and
+  `validate_payload()` plus malformed `proposal_contract`, `kvlivespans_contract`,
+  top-level `proposed_token_ids`, and nested `kv_live_spans.token_positions` cases;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py -q`
+  failed as expected because draft execution plans did not yet expose a payload
+  validator.
+- GREEN: added `Qwen35GGUFMTPDraftExecutionPlan.required_fields()` /
+  `validator_name()` / `contract()` / `missing_required_fields()` /
+  `validate_payload()`, plus nested proposal/KVLiveSpans contracts and validator
+  metadata in `as_dict()`.
+
+Validation:
+- Focused context/export/oracle-gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_oracle_gate.py` -> passed (41 tests).
+- Focused prompt-suite/context/export/oracle-gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_oracle_gate.py` -> passed (85 tests).
+- Real local B4 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` -> `status blocked`, `hipengine_metrics_contract_validation.passed True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Existing
+  KVLiveSpans execution-plan contract is strengthened and remains the only
+  attention/KV-write ABI for future native paths.

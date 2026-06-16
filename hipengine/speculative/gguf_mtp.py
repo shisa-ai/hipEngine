@@ -784,6 +784,126 @@ class Qwen35GGUFMTPDraftExecutionPlan:
         if positions != self.kv_live_spans.token_positions:
             raise ValueError("proposal positions must match KVLiveSpans token_positions")
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "attention_layer",
+            "proposed_token_ids",
+            "proposal_contract",
+            "kvlivespans_contract",
+            "proposal",
+            "kv_live_spans",
+            "cpu_reference_kwargs",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPDraftExecutionPlan.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "draft execution plan",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        if payload.get("proposal_contract") != Qwen35GGUFMTPDraftProposal.contract():
+            raise ValueError(f"{field_name} proposal_contract mismatch")
+        if payload.get("kvlivespans_contract") != Qwen35GGUFMTPKVLiveSpansPlan.contract():
+            raise ValueError(f"{field_name} kvlivespans_contract mismatch")
+        attention_layer = payload.get("attention_layer")
+        if not isinstance(attention_layer, str) or not attention_layer:
+            raise ValueError(f"{field_name} attention_layer must be non-empty")
+
+        proposal = payload.get("proposal")
+        kv_live_spans = payload.get("kv_live_spans")
+        cpu_reference_kwargs = payload.get("cpu_reference_kwargs")
+        if not isinstance(proposal, Mapping):
+            raise ValueError(f"{field_name} proposal must be a mapping")
+        if not isinstance(kv_live_spans, Mapping):
+            raise ValueError(f"{field_name} kv_live_spans must be a mapping")
+        if not isinstance(cpu_reference_kwargs, Mapping):
+            raise ValueError(f"{field_name} cpu_reference_kwargs must be a mapping")
+        Qwen35GGUFMTPDraftProposal.validate_payload(
+            proposal,
+            field_name=f"{field_name} proposal",
+        )
+        Qwen35GGUFMTPKVLiveSpansPlan.validate_payload(
+            kv_live_spans,
+            field_name=f"{field_name} kv_live_spans",
+        )
+
+        nested_proposed = proposal.get("proposed_token_ids")
+        proposed = payload.get("proposed_token_ids")
+        if not isinstance(nested_proposed, Sequence) or isinstance(nested_proposed, (str, bytes)):
+            raise ValueError(f"{field_name} proposal proposed_token_ids must be a sequence")
+        if not isinstance(proposed, Sequence) or isinstance(proposed, (str, bytes)):
+            raise ValueError(f"{field_name} proposed_token_ids must be a sequence")
+        if tuple(int(item) for item in proposed) != tuple(int(item) for item in nested_proposed):
+            raise ValueError(f"{field_name} proposed_token_ids mismatch")
+
+        batch = proposal.get("batch")
+        if not isinstance(batch, Mapping):
+            raise ValueError(f"{field_name} proposal batch must be a mapping")
+        rows = batch.get("rows")
+        if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+            raise ValueError(f"{field_name} proposal batch rows must be a sequence")
+        proposal_positions = tuple(int(row["position"]) for row in rows if isinstance(row, Mapping))
+        token_positions = kv_live_spans.get("token_positions")
+        if not isinstance(token_positions, Sequence) or isinstance(token_positions, (str, bytes)):
+            raise ValueError(f"{field_name} kv_live_spans token_positions must be a sequence")
+        if proposal_positions != tuple(int(item) for item in token_positions):
+            raise ValueError(f"{field_name} proposal positions must match KVLiveSpans token_positions")
+
+        evict_mask = kv_live_spans.get("evict_mask")
+        normalized_evict_mask = None
+        if evict_mask is not None:
+            if not isinstance(evict_mask, Sequence) or isinstance(evict_mask, (str, bytes)):
+                raise ValueError(f"{field_name} kv_live_spans evict_mask must be null or a sequence")
+            normalized_evict_mask = tuple(tuple(bool(item) for item in row) for row in evict_mask)
+        kv_plan = Qwen35GGUFMTPKVLiveSpansPlan(
+            rows=int(kv_live_spans["rows"]),
+            block_size=int(kv_live_spans["block_size"]),
+            logical_blocks=int(kv_live_spans["logical_blocks"]),
+            base_offsets=tuple(tuple(int(item) for item in row) for row in kv_live_spans["base_offsets"]),
+            append_live_counts=tuple(int(item) for item in kv_live_spans["append_live_counts"]),
+            decode_live_counts=tuple(int(item) for item in kv_live_spans["decode_live_counts"]),
+            token_positions=tuple(int(item) for item in kv_live_spans["token_positions"]),
+            evict_mask=normalized_evict_mask,
+            spans_mode=str(kv_live_spans["spans_mode"]),
+            storage_dtype=str(kv_live_spans["storage_dtype"]),
+        )
+        expected_cpu_reference_kwargs = {
+            "append": kv_plan.cpu_reference_kwargs(role="append"),
+            "decode": kv_plan.cpu_reference_kwargs(role="decode"),
+        }
+        if cpu_reference_kwargs != expected_cpu_reference_kwargs:
+            raise ValueError(f"{field_name} cpu_reference_kwargs mismatch")
+
     @property
     def proposed_token_ids(self) -> tuple[int, ...]:
         return self.proposal.proposed_token_ids
@@ -910,9 +1030,13 @@ class Qwen35GGUFMTPDraftExecutionPlan:
         return {
             "attention_layer": self.attention_layer,
             "proposed_token_ids": list(self.proposed_token_ids),
+            "proposal_contract": Qwen35GGUFMTPDraftProposal.contract(),
+            "kvlivespans_contract": Qwen35GGUFMTPKVLiveSpansPlan.contract(),
             "proposal": self.proposal.as_dict(),
             "kv_live_spans": self.kv_live_spans.as_dict(),
             "cpu_reference_kwargs": self.cpu_reference_kwargs(),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 

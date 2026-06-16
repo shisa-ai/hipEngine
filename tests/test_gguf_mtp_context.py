@@ -366,13 +366,36 @@ def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
     assert transaction.candidate_counts == (1,)
     assert not transaction.committed
     assert not transaction.rolled_back
-    assert plan.as_dict()["proposed_token_ids"] == [1]
-    assert plan.as_dict()["proposal"]["topk_kernel"] == [
+    payload = plan.as_dict()
+    assert payload["proposed_token_ids"] == [1]
+    assert payload["proposal"]["topk_kernel"] == [
         "cpu_reference",
         "mtp_draft_topk",
         "w4_gguf",
         "full_vocab_d2h",
     ]
+    assert payload["proposal_contract"] == Qwen35GGUFMTPDraftProposal.contract()
+    assert payload["kvlivespans_contract"] == Qwen35GGUFMTPKVLiveSpansPlan.contract()
+    assert Qwen35GGUFMTPDraftExecutionPlan.contract() == {
+        "required_fields": list(Qwen35GGUFMTPDraftExecutionPlan.required_fields()),
+        "validator": "Qwen35GGUFMTPDraftExecutionPlan.validate_payload",
+    }
+    Qwen35GGUFMTPDraftExecutionPlan.validate_payload(payload, field_name="execution plan")
+    bad_payload = {**payload, "proposal_contract": {}}
+    with pytest.raises(ValueError, match="proposal_contract mismatch"):
+        Qwen35GGUFMTPDraftExecutionPlan.validate_payload(bad_payload, field_name="execution plan")
+    bad_payload = {**payload, "kvlivespans_contract": {}}
+    with pytest.raises(ValueError, match="kvlivespans_contract mismatch"):
+        Qwen35GGUFMTPDraftExecutionPlan.validate_payload(bad_payload, field_name="execution plan")
+    bad_payload = {**payload, "proposed_token_ids": [99]}
+    with pytest.raises(ValueError, match="proposed_token_ids mismatch"):
+        Qwen35GGUFMTPDraftExecutionPlan.validate_payload(bad_payload, field_name="execution plan")
+    bad_payload = {
+        **payload,
+        "kv_live_spans": {**payload["kv_live_spans"], "token_positions": [99]},
+    }
+    with pytest.raises(ValueError, match="token_positions"):
+        Qwen35GGUFMTPDraftExecutionPlan.validate_payload(bad_payload, field_name="execution plan")
 
 
 def test_gguf_mtp_execution_plan_builds_target_accept_summary_from_top1() -> None:
