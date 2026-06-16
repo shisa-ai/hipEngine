@@ -190,21 +190,7 @@ def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
         "draft_max": candidate_budget,
         "candidate_budget": candidate_budget,
         "budget_label": f"B{candidate_budget}",
-        "required_fields": [
-            "cycle_count",
-            "candidate_budget",
-            "budget_label",
-            "draft_token_count",
-            "accepted_token_count",
-            "output_token_count",
-            "step_transaction_ids",
-            "step_candidate_token_counts",
-            "step_accepted_token_counts",
-            "step_rows",
-            "steps",
-            "accepted_per_draft",
-            "accepted_per_output",
-        ],
+        "required_fields": list(Qwen35GGUFMTPAcceptStepMetrics.required_fields()),
         "denominators": Qwen35GGUFMTPAcceptStepMetrics.denominator_labels(),
     }
 

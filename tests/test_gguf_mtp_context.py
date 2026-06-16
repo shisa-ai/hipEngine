@@ -584,6 +584,22 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     assert metrics.as_dict()["result_source"] == "Qwen35GGUFMTPAcceptStep"
     assert metrics.as_dict()["candidate_budget"] == 2
     assert metrics.as_dict()["budget_label"] == "B2"
+    assert list(Qwen35GGUFMTPAcceptStepMetrics.required_fields()) == [
+        "cycle_count",
+        "candidate_budget",
+        "budget_label",
+        "draft_token_count",
+        "accepted_token_count",
+        "output_token_count",
+        "step_transaction_ids",
+        "step_candidate_token_counts",
+        "step_accepted_token_counts",
+        "step_rows",
+        "steps",
+        "accepted_per_draft",
+        "accepted_per_output",
+    ]
+    assert set(Qwen35GGUFMTPAcceptStepMetrics.required_fields()).issubset(metrics.as_dict())
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
     assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]

@@ -697,6 +697,24 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "result_source": "Qwen35GGUFMTPAcceptStep",
         }
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "cycle_count",
+            "candidate_budget",
+            "budget_label",
+            "draft_token_count",
+            "accepted_token_count",
+            "output_token_count",
+            "step_transaction_ids",
+            "step_candidate_token_counts",
+            "step_accepted_token_counts",
+            "step_rows",
+            "steps",
+            "accepted_per_draft",
+            "accepted_per_output",
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             **self.artifact_labels(),
