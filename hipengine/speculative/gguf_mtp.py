@@ -715,6 +715,10 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "accepted_per_output",
         )
 
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPAcceptStepMetrics.validate_payload"
+
     @classmethod
     def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
         return tuple(field for field in cls.required_fields() if field not in payload)
@@ -737,6 +741,7 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "candidate_budget": budget,
             "budget_label": f"B{budget}",
             "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
             "denominators": cls.denominator_labels(),
         }
 

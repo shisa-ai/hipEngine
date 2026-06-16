@@ -611,6 +611,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "candidate_budget": 2,
         "budget_label": "B2",
         "required_fields": list(Qwen35GGUFMTPAcceptStepMetrics.required_fields()),
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_payload",
         "denominators": Qwen35GGUFMTPAcceptStepMetrics.denominator_labels(),
     }
     with pytest.raises(ValueError, match="candidate_budget"):

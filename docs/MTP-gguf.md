@@ -718,8 +718,9 @@ Deliverables:
   `Qwen35GGUFMTPContext.accept_target_top1_metrics()` feed per-cycle target top-1
   rows and verify seeds into one metrics artifact, and
   `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
-  self-identifying schema/kind/source payload, a centralized required-field list
-  with internal-consistency payload validation, inferred `B{candidate_budget}`
+  self-identifying schema/kind/source payload, explicit validator hook, a
+  centralized required-field list with internal-consistency payload validation,
+  inferred `B{candidate_budget}`
   label, compact per-step transaction/candidate/accepted rows, and the same
   accepted/draft and accepted/output denominator labels used for llama.cpp
   parity; the GGUF row
@@ -988,8 +989,8 @@ is now answered by the M1 required/optional table.)
       denominator for future parity rows, while the preflight artifact exposes
       the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` schema/kind/source,
       `candidate_budget` / `budget_label`, compact per-step row fields, full
-      serialized `steps`, and denominator contract from the centralized
-      `Qwen35GGUFMTPAcceptStepMetrics.blocked_contract()` /
+      serialized `steps`, validator hook, and denominator contract from the
+      centralized `Qwen35GGUFMTPAcceptStepMetrics.blocked_contract()` /
       `required_fields()` helpers; native runtime artifacts can be checked with
       `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
       for labels, required fields, compact step rows, aggregate counts, and

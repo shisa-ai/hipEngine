@@ -343,6 +343,7 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "candidate_budget": 1,
         "budget_label": "B1",
         "required_fields": list(suite.Qwen35GGUFMTPAcceptStepMetrics.required_fields()),
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_payload",
         "denominators": {
             "accepted_per_draft": "accepted_token_count / draft_token_count",
             "accepted_per_output": "accepted_token_count / output_token_count",
@@ -614,6 +615,11 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     ]
     assert all(
         item["hipengine_metrics_contract"]["kind"] == "hipengine_gguf_mtp_accept_step_metrics"
+        for item in matrix["artifacts"]
+    )
+    assert all(
+        item["hipengine_metrics_contract"]["validator"]
+        == "Qwen35GGUFMTPAcceptStepMetrics.validate_payload"
         for item in matrix["artifacts"]
     )
     assert all(
