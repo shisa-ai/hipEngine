@@ -683,6 +683,10 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_native_runtime_kernels_ready"] is False
     assert matrix["all_optimization_kernels_ready"] is True
+    assert matrix["runtime_kernel_precheck_by_budget"]["B1"] == matrix["artifacts"][0]["runtime_kernel_precheck"]
+    assert matrix["runtime_kernel_precheck_by_budget"]["B4"] == matrix["artifacts"][3]["runtime_kernel_precheck"]
+    for precheck in matrix["runtime_kernel_precheck_by_budget"].values():
+        suite.Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(precheck)
     assert matrix["all_performance_comparisons_ready"] is False
     assert matrix["performance_readiness_contract"] == Qwen35GGUFMTPPerformanceReadiness.contract()
     assert matrix["performance_readiness_contract"]["validator"] == (
@@ -866,6 +870,15 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["all_accepted_per_output_metrics_comparable"] is False
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_performance_comparisons_ready"] is False
+    assert matrix["runtime_kernel_precheck_by_budget"]["B1"]["backend"] == "hip_gfx1100"
+    assert matrix["runtime_kernel_precheck_by_budget"]["B4"]["native_runtime_kernels_ready"] is False
+    assert matrix["runtime_kernel_precheck_by_budget"]["B4"]["missing_native_runtime_keys"] == [
+        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
+        ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
+        ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
+    ]
+    for precheck in matrix["runtime_kernel_precheck_by_budget"].values():
+        suite.Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(precheck)
     assert matrix["performance_unready_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["performance_readiness_by_budget"]["B1"]["validator"] == (
         "Qwen35GGUFMTPPerformanceReadiness.validate_payload"
@@ -1729,10 +1742,16 @@ def test_b1_prompt_suite_cli_fail_on_optimization_missing_rejects_b1(
 
     def missing_optimization_precheck(**kwargs: object) -> dict[str, object]:
         payload = dict(original_precheck(**kwargs))
+        checks = [dict(check) for check in payload["checks"]]
+        for check in checks:
+            if check["name"] == "native_draft_topk_device":
+                check["registered"] = False
+        payload["checks"] = checks
         payload["optimization_kernels_ready"] = False
         payload["missing_optimization_keys"] = [
             ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
         ]
+        suite.Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(payload)
         return payload
 
     monkeypatch.setattr(suite, "_build_runtime_kernel_precheck", missing_optimization_precheck)
@@ -1773,10 +1792,16 @@ def test_b1_prompt_suite_cli_fail_on_optimization_missing_rejects_compact_matrix
 
     def missing_optimization_precheck(**kwargs: object) -> dict[str, object]:
         payload = dict(original_precheck(**kwargs))
+        checks = [dict(check) for check in payload["checks"]]
+        for check in checks:
+            if check["name"] == "native_draft_topk_device":
+                check["registered"] = False
+        payload["checks"] = checks
         payload["optimization_kernels_ready"] = False
         payload["missing_optimization_keys"] = [
             ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
         ]
+        suite.Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(payload)
         return payload
 
     monkeypatch.setattr(suite, "_build_runtime_kernel_precheck", missing_optimization_precheck)

@@ -786,6 +786,11 @@ def build_b1_b4_prompt_suite_matrix(
         "passed_budgets": hipengine_metrics_contract_valid_budgets,
         "failed_budgets": hipengine_metrics_contract_invalid_budgets,
     }
+    runtime_kernel_precheck_by_budget = {
+        item["budget"]: item["runtime_kernel_precheck"] for item in artifacts
+    }
+    for precheck in runtime_kernel_precheck_by_budget.values():
+        Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(precheck)
     trace_budget_coverage_by_budget = {
         budget: readiness["llamacpp_trace_budget_coverage"]
         for budget, readiness in readiness_by_budget.items()
@@ -885,6 +890,7 @@ def build_b1_b4_prompt_suite_matrix(
         "all_optimization_kernels_ready": all(
             item["runtime_kernel_precheck"]["optimization_kernels_ready"] for item in artifacts
         ),
+        "runtime_kernel_precheck_by_budget": runtime_kernel_precheck_by_budget,
         "all_performance_comparisons_ready": not performance_unready_budgets,
         "performance_readiness_contract": Qwen35GGUFMTPPerformanceReadiness.contract(),
         "performance_readiness_by_budget": performance_readiness_by_budget,

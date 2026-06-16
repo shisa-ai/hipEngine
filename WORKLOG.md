@@ -99984,3 +99984,50 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. KVLiveSpans
   runtime-kernel and execution-plan contracts remain the attention/KV-write ABI
   for future native paths; no benchmark row was retained.
+
+## 2026-06-16 - MTP-GGUF matrix runtime precheck payloads
+
+Implemented `mtp-gguf` multiloop iteration 168: B1-B4 GGUF MTP matrix
+artifacts now expose self-validating `runtime_kernel_precheck_by_budget` payloads
+for each draft budget, even when full child artifacts are omitted.
+
+Scope note:
+- Torch-free artifact/metadata change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This lets compact matrix consumers validate the exact native NextN plus
+  KVLiveSpans paged-KV append/decode registry blockers before using readiness
+  rollups or comparing accepted/output and decode performance.
+
+RED/GREEN:
+- RED: added matrix tests requiring `runtime_kernel_precheck_by_budget` B1/B4
+  payloads and validating each payload with
+  `Qwen35GGUFMTPRuntimeKernelPlan.validate_payload()`;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_builds_budget_matched_artifacts -q`
+  failed as expected with `KeyError: 'runtime_kernel_precheck_by_budget'`.
+- GREEN: `scripts/gguf_mtp_b1_prompt_suite.py` now collects per-budget
+  `runtime_kernel_precheck` payloads into `runtime_kernel_precheck_by_budget` and
+  validates them before returning the matrix artifact. Optimization-missing CLI
+  tests now mutate the nested runtime-check row before overriding derived missing
+  keys, so the mocked precheck remains self-consistent under validation.
+
+Validation:
+- Focused matrix/runtime-precheck tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_builds_budget_matched_artifacts tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_can_omit_child_artifacts tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_cli_fail_on_optimization_missing_rejects_compact_matrix` -> passed (3 tests).
+- Focused prompt-suite/context/export/oracle-gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_oracle_gate.py` -> passed (85 tests).
+- Real local B1-B4 compact matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` -> `status blocked`, `all_native_runtime_kernels_ready False`, precheck budgets `B1..B4`, B4 missing native keys include `mtp_nextn_layer/qwen35_dense_logits`, `paged_kv_write/mixed_bf16_spans`, and `paged_attn_decode/bf16_context_spans`, and B4 validator `Qwen35GGUFMTPRuntimeKernelPlan.validate_payload`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md WORKLOG.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: artifact/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. The exported
+  runtime prechecks are four-axis registry payloads; KVLiveSpans paged-KV
+  append/decode keys remain the attention/KV-write ABI for future native paths;
+  no benchmark row was retained.
