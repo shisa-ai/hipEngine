@@ -355,6 +355,51 @@ def test_gguf_mtp_execution_plan_builds_target_accept_summary_from_top1() -> Non
     assert full_budgeted.next_tokens == (None,)
 
 
+def test_gguf_mtp_context_applies_target_accept_summary_reseed_rule() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=2, position=7, hidden_ptr=0x3000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1, 2), seed_rows=seeds[:2])
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,), (2,)),
+        top_k_logits=((4.0,), (3.0,)),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+    context.record_verify_seeds(seeds)
+
+    partial = plan.target_accept_summary_from_top1((1, 9, 77), transaction_id=12)
+    full_budgeted = plan.target_accept_summary_from_top1((1, 2, 77), remaining_decode=(2,))
+
+    assert context.accept_target_summary(partial, request_id=7) == seeds[1]
+    assert context.pending_seed == seeds[1]
+    assert context.accept_target_summary(full_budgeted, request_id=7) == seeds[2]
+    assert context.pending_seed == seeds[2]
+
+    with pytest.raises(ValueError, match="request_id"):
+        context.accept_target_summary(partial, request_id=8)
+    with pytest.raises(RuntimeError, match="candidate rows plus"):
+        Qwen35GGUFMTPContext(target_session=object()).accept_target_summary(partial)
+    multi = TargetAcceptSummary(
+        request_ids=(7, 8),
+        accepted_counts=(0, 0),
+        accepted_tokens=((), ()),
+        commit_rows=(0, 1),
+        commit_tokens=(10, 20),
+        commit_positions=(5, 6),
+        full_accept=(False, False),
+        candidate_counts=(0, 0),
+    )
+    with pytest.raises(ValueError, match="one request"):
+        context.accept_target_summary(multi)
+
+
 def test_gguf_mtp_execution_plan_validates_positions_match_spans() -> None:
     context = Qwen35GGUFMTPContext(target_session=object())
     context.capture_pending_seed(_Seed(token_id=10, position=5, hidden_ptr=0x1000))

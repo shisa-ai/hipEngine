@@ -896,6 +896,32 @@ class Qwen35GGUFMTPContext:
         self.pending_seed = self.verify_seeds[index]
         return self.pending_seed
 
+    def accept_target_summary(
+        self,
+        summary: TargetAcceptSummary,
+        *,
+        request_id: int | None = None,
+    ) -> Qwen35GGUFMTPSeedRow:
+        """Apply a shared target accept summary to GGUF hidden-seed state.
+
+        The provider-neutral summary fixes the accepted count and commit row;
+        GGUF MTP still reseeds from the recorded verify hidden rows using the
+        llama.cpp rule ``verify_h[min(n_accepted, n_rows - 1)]``.  This context
+        owns a single pending seed, so multi-request summaries must be split by
+        the scheduler before calling this method.
+        """
+
+        if len(summary.request_ids) != 1:
+            raise ValueError("GGUF MTP context accepts one request summary at a time")
+        summary_request_id = summary.request_ids[0]
+        if request_id is not None and int(request_id) != summary_request_id:
+            raise ValueError("target accept summary request_id must match context request")
+        if summary.candidate_counts is not None:
+            candidate_count = summary.candidate_counts[0]
+            if len(self.verify_seeds) <= candidate_count:
+                raise RuntimeError("verify seeds must include candidate rows plus the next target row")
+        return self.accept(summary.accepted_counts[0])
+
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
         return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))
 

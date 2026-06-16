@@ -669,9 +669,10 @@ Current status:
   append/decode kwargs, can project GGUF-specific draft rows into the shared
   `DraftBatch`/`TargetVerifyBatch` verifier ABI while deriving root rows from
   depth-1 GGUF parent token/position metadata, keeping embedding-seed pointers
-  on GGUF rows, and producing a shared `TargetAcceptSummary` CPU oracle from
-  target top-1 rows, and can score proposed draft tokens against target
-  tokens while applying the llama.cpp verify-row reseed rule, plus an aggregate
+  on GGUF rows, producing a shared `TargetAcceptSummary` CPU oracle from target
+  top-1 rows, applying that summary back to GGUF hidden-seed reseed state, and
+  scoring proposed draft tokens against target tokens while applying the
+  llama.cpp verify-row reseed rule, plus an aggregate
   metrics contract for `accepted_per_draft` and `accepted_per_output`
   denominators. It does not allocate MTP KV buffers or run NextN draft kernels
   yet.
@@ -696,9 +697,11 @@ Deliverables:
   `hipengine/speculative/`, `loading/mtp.py`); the GGUF runner has none of it.
   `Qwen35GGUFMTPDraftBatch.to_shared_draft_batch()` now bridges candidate token
   topology into that shared ABI, `to_target_verify_batch()` derives root rows
-  from the depth-1 GGUF parent token/position metadata, and
+  from the depth-1 GGUF parent token/position metadata,
   `Qwen35GGUFMTPDraftExecutionPlan.target_accept_summary_from_top1()` builds the
-  shared accept-summary oracle from target top-1 rows; the GGUF row objects still
+  shared accept-summary oracle from target top-1 rows, and
+  `Qwen35GGUFMTPContext.accept_target_summary()` applies the accepted count back
+  to the llama.cpp verify-row hidden-seed reseed rule; the GGUF row objects still
   carry the extra embedding seed pointer until native MTP runtime buffers exist.
 
 Acceptance:
