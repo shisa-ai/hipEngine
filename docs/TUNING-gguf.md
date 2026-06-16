@@ -286,9 +286,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   /Q8_0/Q6_K plus `quantize_mmq_q8_1` taking `72.95%` of kernel time, while
   flash attention is only `1.63%`
   (`benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json`).
-  **Next test:** build a same-shape one-layer Q4_K_M/Q4_K_S microbench that runs
-  hipEngine selected-WMMA prefill vs a llama-style Q8_1-activation MMQ tile for
-  the attention/FFN/MoE shapes before more live-state tweaks.
+  The first hipEngine-side baseline for that comparison is
+  `scripts/gguf_q4_k_t16_selected_prefill_microbench.py`, which times the
+  current selected-dual Q4_K T16 WMMA prefill kernel on a synthetic compact-MoE
+  shape. Its qwen-like reduced-expert run (`hidden=2048`, gate/up `4096+4096`,
+  `compact_rows=4096`) measured `11.585 ms/call` (`11.86` logical TFLOP/s) with
+  finite output and `0.150 GiB` tracked scratch/fixture memory
+  (`benchmarks/results/2026-06-16-gpu1-gguf-q4k-t16-selected-prefill-microbench.json`).
+  **Next test:** add a llama-style Q8_1-activation MMQ tile to the same harness
+  for an apples-to-apples selected-WMMA vs MMQ comparison before more
+  selected-WMMA live-state tweaks.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
