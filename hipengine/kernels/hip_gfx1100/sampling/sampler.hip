@@ -601,6 +601,11 @@ __global__ void sampler_apply_processors_rows_kernel(
     const float* __restrict__ repetition_penalties,
     const float* __restrict__ presence_penalties,
     const float* __restrict__ frequency_penalties,
+    const int32_t* __restrict__ suppress_offsets,
+    const int32_t* __restrict__ suppress_token_ids,
+    const int32_t* __restrict__ min_tokens,
+    const int32_t* __restrict__ eos_token_ids,
+    const uint64_t* __restrict__ step_indices,
     int64_t rows,
     int64_t vocab_size) {
   const int tid = threadIdx.x;
@@ -650,6 +655,27 @@ __global__ void sampler_apply_processors_rows_kernel(
       value -= frequency_penalty * static_cast<float>(history_counts[item]);
     }
     processed[base + token] = value;
+  }
+  __syncthreads();
+
+  if (suppress_offsets != nullptr && suppress_token_ids != nullptr) {
+    const int32_t suppress_begin = suppress_offsets[row];
+    const int32_t suppress_end = suppress_offsets[row + 1];
+    for (int32_t item = suppress_begin + tid; item < suppress_end; item += blockDim.x) {
+      const int32_t token = suppress_token_ids[item];
+      if (token >= 0 && static_cast<int64_t>(token) < vocab_size) {
+        processed[base + token] = -INFINITY;
+      }
+    }
+  }
+
+  if (tid == 0 && min_tokens != nullptr && eos_token_ids != nullptr && step_indices != nullptr) {
+    const int32_t min_token_count = min_tokens[row];
+    const int32_t eos_token = eos_token_ids[row];
+    if (min_token_count > 0 && step_indices[row] < static_cast<uint64_t>(min_token_count) && eos_token >= 0 &&
+        static_cast<int64_t>(eos_token) < vocab_size) {
+      processed[base + eos_token] = -INFINITY;
+    }
   }
 }
 
@@ -717,12 +743,21 @@ extern "C" int hipengine_sampler_apply_processors_f32_rows(
     const float* repetition_penalties,
     const float* presence_penalties,
     const float* frequency_penalties,
+    const int32_t* suppress_offsets,
+    const int32_t* suppress_token_ids,
+    const int32_t* min_tokens,
+    const int32_t* eos_token_ids,
+    const uint64_t* step_indices,
     int64_t rows,
     int64_t vocab_size,
     int64_t threads,
     hipStream_t stream) {
   if (logits == nullptr || processed == nullptr || bias_offsets == nullptr || history_offsets == nullptr ||
       repetition_penalties == nullptr || presence_penalties == nullptr || frequency_penalties == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const bool has_min_token_processor = min_tokens != nullptr || eos_token_ids != nullptr || step_indices != nullptr;
+  if (has_min_token_processor && (min_tokens == nullptr || eos_token_ids == nullptr || step_indices == nullptr)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
@@ -745,6 +780,11 @@ extern "C" int hipengine_sampler_apply_processors_f32_rows(
       repetition_penalties,
       presence_penalties,
       frequency_penalties,
+      suppress_offsets,
+      suppress_token_ids,
+      min_tokens,
+      eos_token_ids,
+      step_indices,
       rows,
       vocab_size);
   return static_cast<int>(hipGetLastError());

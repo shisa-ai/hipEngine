@@ -97,8 +97,6 @@ def _native_gpu_sampler_guard_cases():
     return {
         "full_vocab_top_logprobs": _params(temperature=0.7, top_logprobs=1),
         "top_logprobs_exceed_top_k": _params(temperature=0.7, top_k=4, top_logprobs=5),
-        "suppress_token_ids": _params(temperature=0.7, suppress_token_ids=(7,)),
-        "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
         "forced_tokens_pending": _params(temperature=0.7, forced_tokens_pending=(10,)),
         "post_thinking_forced_tokens_pending": _params(
             temperature=0.7,
@@ -218,6 +216,9 @@ def test_sampler_plan_allows_native_gpu_sample_with_supported_processors() -> No
         temperature=0.7,
         top_k=4,
         logit_bias=((1, 2.0),),
+        suppress_token_ids=(3,),
+        min_tokens=2,
+        eos_token_id=4,
         repetition_penalty=1.2,
         presence_penalty=0.25,
         frequency_penalty=0.1,
@@ -231,6 +232,8 @@ def test_sampler_plan_allows_native_gpu_sample_with_supported_processors() -> No
         "repetition_penalty",
         "presence_penalty",
         "frequency_penalty",
+        "suppress_token_ids",
+        "min_tokens",
     )
 
 
@@ -240,8 +243,8 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_p=0.9)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_logprobs=1)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_logprobs=5)) is False
-    assert supports_native_gpu_sampling(_params(temperature=0.7, suppress_token_ids=(1,))) is False
-    assert supports_native_gpu_sampling(_params(temperature=0.7, min_tokens=1, eos_token_id=2)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, suppress_token_ids=(1,))) is True
+    assert supports_native_gpu_sampling(_params(temperature=0.7, min_tokens=1, eos_token_id=2)) is True
     assert supports_native_gpu_sampling(_params(temperature=0.7, forced_tokens_pending=(1,))) is False
     assert (
         supports_native_gpu_sampling(_params(temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)))

@@ -253,6 +253,12 @@ def _cpu_process_reference(
     repetition_penalties: np.ndarray,
     presence_penalties: np.ndarray,
     frequency_penalties: np.ndarray,
+    *,
+    suppress_offsets: np.ndarray | None = None,
+    suppress_token_ids: np.ndarray | None = None,
+    min_tokens: np.ndarray | None = None,
+    eos_token_ids: np.ndarray | None = None,
+    step_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     rows, vocab = logits.shape
     processed = logits.astype(np.float32, copy=True)
@@ -280,6 +286,15 @@ def _cpu_process_reference(
             if frequency != np.float32(0.0):
                 value = np.float32(value - frequency * np.float32(history_counts[item]))
             processed[row, token] = value
+        if suppress_offsets is not None and suppress_token_ids is not None:
+            for item in range(int(suppress_offsets[row]), int(suppress_offsets[row + 1])):
+                token = int(suppress_token_ids[item])
+                if 0 <= token < vocab:
+                    processed[row, token] = -np.inf
+        if min_tokens is not None and eos_token_ids is not None and step_indices is not None:
+            eos_token = int(eos_token_ids[row])
+            if int(min_tokens[row]) > 0 and int(step_indices[row]) < int(min_tokens[row]) and 0 <= eos_token < vocab:
+                processed[row, eos_token] = -np.inf
     return processed
 
 
@@ -307,6 +322,11 @@ def test_logits_processors_match_host_order() -> None:
     repetition_penalties = np.array([2.0, 1.0, 1.5], dtype=np.float32)
     presence_penalties = np.array([0.75, 0.0, -0.5], dtype=np.float32)
     frequency_penalties = np.array([0.25, 0.0, 0.1], dtype=np.float32)
+    suppress_offsets = np.array([0, 1, 2, 2], dtype=np.int32)
+    suppress_token_ids = np.array([7, 2], dtype=np.int32)
+    min_tokens = np.array([1, 0, 3], dtype=np.int32)
+    eos_token_ids = np.array([4, 0, 5], dtype=np.int32)
+    step_indices = np.array([0, 0, 2], dtype=np.uint64)
     expected = _cpu_process_reference(
         logits,
         bias_offsets,
@@ -318,6 +338,11 @@ def test_logits_processors_match_host_order() -> None:
         repetition_penalties,
         presence_penalties,
         frequency_penalties,
+        suppress_offsets=suppress_offsets,
+        suppress_token_ids=suppress_token_ids,
+        min_tokens=min_tokens,
+        eos_token_ids=eos_token_ids,
+        step_indices=step_indices,
     )
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
@@ -351,6 +376,11 @@ def test_logits_processors_match_host_order() -> None:
         repetition_d = upload(repetition_penalties)
         presence_d = upload(presence_penalties)
         frequency_d = upload(frequency_penalties)
+        suppress_offsets_d = upload(suppress_offsets)
+        suppress_ids_d = upload(suppress_token_ids)
+        min_tokens_d = upload(min_tokens)
+        eos_token_ids_d = upload(eos_token_ids)
+        step_indices_d = upload(step_indices)
 
         apply_processors_f32_rows(
             logits_d.ptr,
@@ -366,6 +396,11 @@ def test_logits_processors_match_host_order() -> None:
             frequency_d.ptr,
             rows,
             vocab_size,
+            suppress_offsets_i32_ptr=suppress_offsets_d.ptr,
+            suppress_token_ids_i32_ptr=suppress_ids_d.ptr,
+            min_tokens_i32_ptr=min_tokens_d.ptr,
+            eos_token_ids_i32_ptr=eos_token_ids_d.ptr,
+            step_indices_u64_ptr=step_indices_d.ptr,
             threads=128,
             library=lib,
         )
@@ -390,6 +425,9 @@ def _request_params(**overrides):
         "presence_penalty": 0.0,
         "frequency_penalty": 0.0,
         "logit_bias": (),
+        "suppress_token_ids": (),
+        "min_tokens": 0,
+        "eos_token_id": None,
         "logprobs": True,
         "top_logprobs": 0,
         "stop_token_ids": (),
@@ -541,6 +579,9 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
             temperature=0.75,
             top_k=4,
             logit_bias=((1, 3.0), (4, -2.0)),
+            suppress_token_ids=(5,),
+            min_tokens=4,
+            eos_token_id=4,
             repetition_penalty=1.2,
             presence_penalty=0.25,
             frequency_penalty=0.1,
@@ -557,6 +598,11 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
             np.array([1.2], dtype=np.float32),
             np.array([0.25], dtype=np.float32),
             np.array([0.1], dtype=np.float32),
+            suppress_offsets=np.array([0, 1], dtype=np.int32),
+            suppress_token_ids=np.array([5], dtype=np.int32),
+            min_tokens=np.array([4], dtype=np.int32),
+            eos_token_ids=np.array([4], dtype=np.int32),
+            step_indices=np.array([proc_step], dtype=np.uint64),
         )
         proc_expected = _cpu_reference(
             proc_logits,

@@ -72,6 +72,11 @@ def apply_processors_f32_rows(
     rows: int,
     vocab_size: int,
     *,
+    suppress_offsets_i32_ptr: int | None = None,
+    suppress_token_ids_i32_ptr: int | None = None,
+    min_tokens_i32_ptr: int | None = None,
+    eos_token_ids_i32_ptr: int | None = None,
+    step_indices_u64_ptr: int | None = None,
     threads: int = 128,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
@@ -80,10 +85,11 @@ def apply_processors_f32_rows(
     """Apply sampler logits processors row-wise on FP32 logits.
 
     ``processed`` receives a finite-clamped copy of ``logits`` followed by
-    logit-bias additions and history penalties in the documented host order:
-    repetition penalty, presence penalty, then frequency penalty. Bias and
-    history inputs use CSR-style ``offsets[rows + 1]`` arrays with compact token
-    id/value or token id/count payloads.
+    logit-bias additions, history penalties, and static suppression processors
+    in the documented host order: repetition penalty, presence penalty,
+    frequency penalty, suppress token ids, then min-token EOS suppression. Bias,
+    history, and suppression inputs use CSR-style ``offsets[rows + 1]`` arrays
+    with compact token id/value or token id/count payloads.
     """
 
     _check_rows_vocab(rows, vocab_size)
@@ -103,6 +109,11 @@ def apply_processors_f32_rows(
         ctypes.c_void_p,  # repetition penalties f32 [rows]
         ctypes.c_void_p,  # presence penalties f32 [rows]
         ctypes.c_void_p,  # frequency penalties f32 [rows]
+        ctypes.c_void_p,  # suppress offsets i32 [rows+1] (nullable)
+        ctypes.c_void_p,  # suppress token ids i32 (nullable)
+        ctypes.c_void_p,  # min tokens i32 [rows] (nullable)
+        ctypes.c_void_p,  # eos token ids i32 [rows] (nullable)
+        ctypes.c_void_p,  # step indices u64 [rows] (nullable)
         ctypes.c_int64,   # rows
         ctypes.c_int64,   # vocab size
         ctypes.c_int64,   # threads
@@ -121,6 +132,11 @@ def apply_processors_f32_rows(
         ctypes.c_void_p(repetition_penalties_f32_ptr),
         ctypes.c_void_p(presence_penalties_f32_ptr),
         ctypes.c_void_p(frequency_penalties_f32_ptr),
+        ctypes.c_void_p(suppress_offsets_i32_ptr) if suppress_offsets_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(suppress_token_ids_i32_ptr) if suppress_token_ids_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(min_tokens_i32_ptr) if min_tokens_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(eos_token_ids_i32_ptr) if eos_token_ids_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(step_indices_u64_ptr) if step_indices_u64_ptr is not None else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
         ctypes.c_int64(threads),

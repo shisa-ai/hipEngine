@@ -33,8 +33,6 @@ NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES: tuple[str, ...] = (
     "gguf",
     "full_vocab_top_logprobs",
     "top_logprobs_exceed_top_k",
-    "suppress_token_ids",
-    "min_tokens",
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
@@ -601,10 +599,6 @@ def supports_native_gpu_sampling(params: Any) -> bool:
 
     validate_sampling_params(params)
     if float(getattr(params, "temperature", 0.0)) <= 0.0:
-        return False
-    if _suppress_token_ids(params):
-        return False
-    if int(getattr(params, "min_tokens", 0)) > 0:
         return False
     if _forced_tokens_pending(params):
         return False

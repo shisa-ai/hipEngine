@@ -1269,6 +1269,8 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "repetition_penalty",
             "presence_penalty",
             "frequency_penalty",
+            "suppress_token_ids",
+            "min_tokens",
         ],
         "post_selection_controls": [
             "stop_token_ids",

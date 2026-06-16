@@ -93908,3 +93908,29 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth'` -> `1 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'bounded_top_logprobs or unsupported_full_vocab_top_logprobs'` -> `2 passed`.
 - `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+
+## 2026-06-16 - Native sampler suppress/min-token masks (#13)
+
+Promoted static suppress-token and min-token/EOS masks onto the scoped PARO
+native sampler route. The sampler processor kernel ABI now accepts optional
+suppression CSR inputs plus per-row `min_tokens`, `eos_token_id`, and
+`step_index` metadata, applying these masks after bias/history penalties and
+before full-vocab/top-k/top-p sampling. The planner no longer treats
+`suppress_token_ids` or `min_tokens` as native-unsupported, while forced-token
+queues, sequence repair, JSON close forcing, thinking-budget controls, GGUF, and
+true batched c>N still fall back explicitly.
+
+Runtime plumbing validates suppress/EOS ids against vocab size, caches
+request-constant suppress/min/EOS buffers, keeps the step-index buffer dynamic,
+and advertises the new native processors in the server capabilities manifest.
+Updated `docs/SAMPLING.md`, `docs/AGENTIC.md`, and `docs/KERNELS.md` so
+suppress/min-token masks are documented as native-supported rather than a
+promotion blocker.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py` -> passed.
+- `uv run ruff check hipengine/generation/sampling.py hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'native_gpu or suppressions_and_min_tokens'` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth'` -> `1 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'suppress_and_min_tokens or bounded_top_logprobs or unsupported_full_vocab_top_logprobs'` -> `3 passed`.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.

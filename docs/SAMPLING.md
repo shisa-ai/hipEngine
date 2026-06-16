@@ -54,9 +54,10 @@ route, and unsupported native shapes fail closed to host logits sampling:
   drafter/verifier diagnostics but not enough for normal user sampling.
 - `hipengine/kernels/hip_gfx1100/sampling/sampler.hip` adds standalone
   GPU-smoked row-wise native sampler pieces over FP32 logits: finite-clamping
-  logits processors for logit bias plus repetition/presence/frequency penalties,
-  full-vocab `top_k=0` temperature sampling, bounded `1 <= top_k <= 64`
-  sampling, and correctness-first exact full-vocab `top_p`/`min_p` filtering.
+  logits processors for logit bias, repetition/presence/frequency penalties,
+  suppress-token ids, and min-token/EOS suppression; full-vocab `top_k=0`
+  temperature sampling; bounded `1 <= top_k <= 64` sampling; and
+  correctness-first exact full-vocab `top_p`/`min_p` filtering.
   They support per-row temperature, per-row seed, counter-based RNG, selected
   token id/logprob, retained-count reporting, and optional bounded-candidate
   logprobs. Supported PARO c=1 temperature requests route through these kernels
@@ -78,8 +79,8 @@ route, and unsupported native shapes fail closed to host logits sampling:
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
 is fixed for the host-logits path. Remaining implementation work is true batched
-native GPU sampler c>N, GGUF native integration, and native parity for currently
-host-only processors/response shapes.
+native GPU sampler c>N, GGUF native integration, and native parity for remaining
+dynamic processor/response shapes.
 
 ## Native sampler promotion scope
 
@@ -94,7 +95,8 @@ guarded implementation already exists:
 - selected-token logprobs, logit bias, repetition/presence/frequency penalties,
   full-vocab temperature, bounded `1 <= top_k <= 64`, exact full-vocab
   `top_p`/`min_p` with `top_k=0`, bounded native `top_logprobs` when
-  `top_logprobs <= top_k <= 64`, and post-selection stop token ids/sequences.
+  `top_logprobs <= top_k <= 64`, suppress-token ids, min-token/EOS suppression,
+  and post-selection stop token ids/sequences.
 
 Promotion blockers closed in this pass:
 
@@ -111,9 +113,9 @@ the planner falls back before native execution:
 - true batched c>N token selection;
 - GGUF native sampler integration;
 - full-vocab `top_logprobs` and `top_logprobs > top_k`;
-- suppress-token ids, min-token/EOS suppression, forced-token queues,
-  sequence-completion repair, JSON object close forcing, thinking-budget dynamic
-  processors, `top_k > 64`, and combined `top_k` with `top_p` or `min_p`;
+- forced-token queues, sequence-completion repair, JSON object close forcing,
+  thinking-budget dynamic processors, `top_k > 64`, and combined `top_k` with
+  `top_p` or `min_p`;
 - broader retained benchmarks/profiler coverage beyond the first W7900 promotion
   smoke.
 
@@ -155,7 +157,7 @@ Unsupported native cases, ranked by likely ease and payoff:
 | Priority | Case | Why first / blocker |
 | --- | --- | --- |
 | Done | Native `top_logprobs` for bounded `top_k <= 64` | Planner/runtime/server tests now keep `top_logprobs <= top_k <= 64` on the native top-k route and return the existing sampler top-index/top-logprob outputs. Full-vocab `top_logprobs` and `top_logprobs > top_k` still fall back. |
-| P1 | `suppress_token_ids` and `min_tokens`/EOS suppression | These are simple mask processors after bias/penalties. Extending the processor kernel with suppress offsets unlocks common API shapes without changing RNG semantics. |
+| Done | `suppress_token_ids` and `min_tokens`/EOS suppression | The native processor kernel now applies suppress offsets and row step-indexed EOS masking after bias/penalties. Planner/runtime/server/GPU tests keep these shapes on the native route. |
 | P1 | Combined `top_k` with `top_p`/`min_p` | Host order already applies probability filters after top-k. The bounded top-k candidate list can apply the same filters without the full-vocab top-p selector. |
 | P2 | Forced-token queues when already pending | A per-step forced-token fast path can emit the queued token and metadata without host logits sampling. It needs careful interaction with sequence repair, JSON close, and thinking-budget queues. |
 | P2 | Request-constant native scalar buffer caching | Small performance cleanup for the promoted route. Useful after a profiler pass confirms Python/H2D scalar traffic is visible. |
@@ -239,8 +241,8 @@ models should either populate these fields or reject unsupported aliases.
 | `presence_penalty` | Public/server/runtime | Subtract once for tokens already present. | Medium |
 | `frequency_penalty` | Public/server/runtime | Subtract proportional to token count. | Medium |
 | `logit_bias` | Public/server/runtime | Token-id keyed bias map before filtering. | Medium |
-| `suppress_token_ids` | Public/server/runtime + scheduler state | Set listed token logits to `-inf` after bias/penalties and before argmax/sampling. Unsupported by the current native GPU route. | Medium |
-| `min_tokens` / `eos_token_id` | Public/server/runtime + scheduler state | Suppress `eos_token_id` until `RowSamplingState.step_index >= min_tokens`; `min_tokens > 0` requires `eos_token_id`. Unsupported by the current native GPU route. | Medium |
+| `suppress_token_ids` | Public/server/runtime + scheduler state | Set listed token logits to `-inf` after bias/penalties and before argmax/sampling. Supported by the scoped PARO native GPU route. | Medium |
+| `min_tokens` / `eos_token_id` | Public/server/runtime + scheduler state | Suppress `eos_token_id` until `RowSamplingState.step_index >= min_tokens`; `min_tokens > 0` requires `eos_token_id`. Supported by the scoped PARO native GPU route. | Medium |
 | `seed` / `row_seeds` | Public/server/runtime | Stable row RNG seed; `n > 1` rows diverge deterministically. | Low/Medium |
 | `stop` strings | Server post-trim + token lowering | Keep post-trim; lower one-token stops to `stop_token_ids` and multi-token stops to suffix-matched `stop_token_sequences`. | Medium |
 | `stop_token_ids` / `stop_token_sequences` | Public/runtime + scheduler state | Token stops finish PARO/GGUF host-sampled rows; PARO c=1 and serial per-slot c>N native sampling check the same stop metadata after selection. | Medium |
@@ -475,12 +477,12 @@ It should reuse the same `SamplerPlan` and processor order.
 
 A practical first native path can be split into small kernels:
 
-1. **Logits processors:** apply supported logit bias and penalties row-wise over
-   the full vocab. The standalone S6 processor kernel covers finite-clamping,
-   logit bias, repetition penalty, presence penalty, and frequency penalty from
-   compact per-row bias and token/count lists; generation routing can optimize
-   the compact-list ABI later. Suppress-token ids and min-token/EOS policy are
-   host processors today, so requests using them fall back from the native route.
+1. **Logits processors:** apply supported logit bias, penalties, suppressions,
+   and min-token/EOS masks row-wise over the full vocab. The standalone S6
+   processor kernel covers finite-clamping, logit bias, repetition penalty,
+   presence penalty, frequency penalty, suppress offsets, and per-row
+   step-indexed EOS suppression from compact per-row inputs; generation routing
+   can optimize the compact-list ABI later.
 2. **Top-k candidate selection:** select a bounded `k` candidate set. The
    legacy `lm_head` top-k helper remains capped at `k <= 8`; the S6 sampler
    bring-up adds a standalone `top_k <= 64` candidate path for user-sampling
@@ -575,7 +577,7 @@ fully vectorized at first:
 | S3: token-history/static processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, suppress-token ids, min-token/EOS policy, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | **Done for host sampler:** synthetic-logit processor tests, suppress/min-token fixtures, and fixed-seed generator fixtures pass. |
 | S4: token-level stop | Lower stop token IDs/sequences where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Done:** single-token IDs and multi-token server stop sequences finish PARO/GGUF host-sampled rows plus PARO c=1 and serial per-slot c>N native-sampled rows. |
 | S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Done for PARO host/native row samplers:** sampled prompt batches use scheduler-owned state, native packed prefill, and serial host-sampled decode or default serial per-slot native sampling when all rows are covered; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables native rows for rollback. GGUF remains serial by design until it gets a c>N resident scheduler. |
-| S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Promoted for scoped PARO default:** standalone FP32 logits processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` temperature samplers pass CPU-reference filtering/logprob parity and fixed-seed determinism; synthetic resident-session route smoke covers full-vocab, top-k+processor dispatch, and bounded top-k `top_logprobs`. Supported c=1 PARO requests and fully covered PARO c>N sampled rows use native sampling by default; native decode-state telemetry reports no full-vocab logits D2H (`full_vocab_logits_d2h=false`, `logits_d2h_bytes=0`) while host fallbacks report `full_vocab_logits_d2h=true` with known per-token vector bytes. Unsupported PARO rows fall back with `native_gpu_unsupported_request`; GGUF remains host-sampled unless explicitly requested for native fallback metadata; full-vocab `top_logprobs` still fall back. |
+| S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Promoted for scoped PARO default:** standalone FP32 logits processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` temperature samplers pass CPU-reference filtering/logprob parity and fixed-seed determinism; synthetic resident-session route smoke covers full-vocab, top-k+processor dispatch, suppress/min-token masks, and bounded top-k `top_logprobs`. Supported c=1 PARO requests and fully covered PARO c>N sampled rows use native sampling by default; native decode-state telemetry reports no full-vocab logits D2H (`full_vocab_logits_d2h=false`, `logits_d2h_bytes=0`) while host fallbacks report `full_vocab_logits_d2h=true` with known per-token vector bytes. Unsupported PARO rows fall back with `native_gpu_unsupported_request`; GGUF remains host-sampled unless explicitly requested for native fallback metadata; full-vocab `top_logprobs` still fall back. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | **Promoted for scoped PARO default:** standalone correctness-first GPU top-p/min-p sampler matches CPU retain counts, selected tokens, logprobs, tie order, and fixed-seed determinism on boundary fixtures; the synthetic resident-session route smoke covers top-p dispatch. Performance-oriented full-vocab nucleus selection remains future work. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Done for host-logits server/library paths:** completion/chat response tests pass for selected logprob/top-logprobs cases, completion `echo+logprobs`, and buffered streaming logprobs. |
 

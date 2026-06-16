@@ -47,9 +47,10 @@ Already available or recently added:
   scheduler-owned c>N serial per-slot decode when every row is GPU-sampler
   eligible. It supports logit bias/history-penalty processors, full-vocab
   temperature sampling, bounded `top_k <= 64`, exact full-vocab `top_p`/`min_p`,
-  selected-token logprobs, bounded `top_logprobs <= top_k <= 64`, and
-  post-accept token stops. It does not cover true batched c>N sampling, GGUF,
-  full-vocab `top_logprobs`, or `top_logprobs > top_k`.
+  suppress-token ids, min-token/EOS policy, selected-token logprobs, bounded
+  `top_logprobs <= top_k <= 64`, and post-accept token stops. It does not cover
+  true batched c>N sampling, GGUF, full-vocab `top_logprobs`, or
+  `top_logprobs > top_k`.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, suppress token ids,
   min-token/EOS policy, stop token ids, stop token sequences, `seed`, and
@@ -402,13 +403,13 @@ Current code reality:
   `logit_bias`, penalties, suppress tokens, min-token/EOS policy, stops, seeds,
   and temperature fields for scheduler integration.
 - Standalone GPU sampler-family kernels exist for logit bias, penalties,
-  full-vocab temperature sampling, bounded `top_k <= 64`, and exact full-vocab
-  `top_p`/`min_p`. Supported PARO c=1 sampled requests use this route by
+  suppress-token ids, min-token/EOS policy, full-vocab temperature sampling,
+  bounded `top_k <= 64`, and exact full-vocab `top_p`/`min_p`. Supported PARO
+  c=1 sampled requests use this route by
   default, and supported PARO c>N sampled batches can route each physical slot
   through the same native sampler state; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`
-  disables the native route for rollback;
-  suppress-token ids, min-token/EOS policy, true batched c>N sampling, GGUF,
-  full-vocab `top_logprobs`, `top_logprobs > top_k`, and full native processor
+  disables the native route for rollback. True batched c>N sampling, GGUF,
+  full-vocab `top_logprobs`, `top_logprobs > top_k`, and dynamic processor
   parity remain future work for the native route.
 
 Required pre-selection processors, in order:
@@ -466,12 +467,12 @@ Current code reality:
 - Current static processors are compatible with normal AR sampling:
   `logit_bias`, suppress-token ids, and min-token/EOS policy are normalized in
   `SamplingParams` / `GenerationRequest`, participate in the sampler plan, apply
-  on host logits, and flow through scheduler per-row sampler blocks. `logit_bias`
-  and penalty processors are also covered by standalone native sampler tests;
-  suppress-token ids and min-token/EOS policy make the native sampler route fall
-  back to host. Token-level thinking-budget hard close, token-sequence
-  completion repair, and JSON object close-suffix forcing now follow the same
-  planning contract: they bind to host row state, block native GPU sampling, and
+  on host logits, and flow through scheduler per-row sampler blocks. `logit_bias`,
+  penalty processors, suppress-token ids, and min-token/EOS policy are also
+  covered by standalone native sampler tests. Token-level thinking-budget hard
+  close, token-sequence completion repair, and JSON object close-suffix forcing
+  now follow the same planning contract: they bind to host row state, block
+  native GPU sampling, and
   are reported as speculative/MTP blockers. Explicit `eos_token_id` and
   `ignore_eos=true` are also MTP-only blockers because the current speculative
   accept path records accepted target tokens as unfinished until the decode
@@ -1330,13 +1331,13 @@ Current code reality:
   reasoning/tool/structured chunks still need lower-loop coverage before server
   streams can become fully
   backend-authoritative.
-- Host suppress-token ids and min-token/EOS policy are implemented as
-  pre-selection processors after static bias/history penalties and before the
-  forced-token override. They are exposed through public/server request fields,
-  scheduler per-row blocks, planner metadata, fast-path blockers, capabilities,
-  and MTP blocker lists. The native GPU sampler route falls back to host when
-  either processor is active. PARO and GGUF c=1 sampled streaming now emit the
-  planner's processor/blocker fields and fallback reason on live chunks. True
+- Suppress-token ids and min-token/EOS policy are implemented as pre-selection
+  processors after static bias/history penalties and before the forced-token
+  override. They are exposed through public/server request fields, scheduler
+  per-row blocks, planner metadata, fast-path blockers, capabilities, MTP
+  blocker lists, and the scoped PARO native GPU processor path. PARO and GGUF
+  c=1 sampled streaming now emit the planner's processor/blocker fields and
+  fallback reason on live chunks. True
   runtime-native c>N/scheduler streams, GGUF/native GPU sampler paths, dynamic
   thinking-budget processors beyond the host sampled stream path, and grammar
   masks still need the same lower-loop stream metadata before server streams can
@@ -2250,7 +2251,7 @@ Current state:
 - standalone GPU sampler kernels cover row-wise processor application,
   full-vocab temperature sampling, bounded `top_k <= 64`, exact full-vocab
   `top_p`/`min_p`, counter-based row/step RNG, selected-token logprob output,
-  and small-vocab GPU1 CPU-reference fixtures;
+  suppress-token/min-token masking, and small-vocab GPU1 CPU-reference fixtures;
 - supported PARO c=1 sampled requests route through those kernels by default;
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables the route for rollback. PARO c=1
   sampled telemetry reports

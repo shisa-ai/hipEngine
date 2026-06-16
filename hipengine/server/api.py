@@ -4468,6 +4468,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "repetition_penalty",
                         "presence_penalty",
                         "frequency_penalty",
+                        "suppress_token_ids",
+                        "min_tokens",
                     ],
                     "post_selection_controls": [
                         "stop_token_ids",

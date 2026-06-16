@@ -160,10 +160,19 @@ def _env_float(name: str, default: float) -> float:
 def _native_sampler_needs_processors(params: Any) -> bool:
     return (
         bool(normalize_logit_bias_pairs(getattr(params, "logit_bias", None)))
+        or bool(_native_sampler_suppress_token_ids(params))
+        or int(getattr(params, "min_tokens", 0)) > 0
         or float(getattr(params, "repetition_penalty", 1.0)) != 1.0
         or float(getattr(params, "presence_penalty", 0.0)) != 0.0
         or float(getattr(params, "frequency_penalty", 0.0)) != 0.0
     )
+
+
+def _native_sampler_suppress_token_ids(params: Any) -> tuple[int, ...]:
+    raw_ids = getattr(params, "suppress_token_ids", None)
+    if raw_ids is None:
+        raw_ids = getattr(params, "suppress_tokens", ())
+    return tuple(int(token) for token in (raw_ids or ()))
 
 
 def _env_int_set(name: str) -> set[int]:
@@ -8934,6 +8943,19 @@ class Qwen35ParoResidentSession:
             for token, count in sorted(state.history_counts().items())
             if 0 <= int(token) < self.vocab_size
         )
+        suppress_ids = _native_sampler_suppress_token_ids(params)
+        for token_id in suppress_ids:
+            if int(token_id) < 0 or int(token_id) >= self.vocab_size:
+                raise ValueError(f"suppress_token_ids token id {token_id} is outside vocab size {self.vocab_size}")
+        min_tokens = int(getattr(params, "min_tokens", 0))
+        eos_token_id = -1
+        if min_tokens > 0:
+            raw_eos_token_id = getattr(params, "eos_token_id", None)
+            if raw_eos_token_id is None:
+                raise ValueError("min_tokens requires eos_token_id")
+            eos_token_id = int(raw_eos_token_id)
+            if eos_token_id < 0 or eos_token_id >= self.vocab_size:
+                raise ValueError(f"eos_token_id {eos_token_id} is outside vocab size {self.vocab_size}")
         bias_offsets = self._native_sampler_cached_upload(
             ("bias_offsets_i32", len(bias_pairs)),
             np.asarray([0, len(bias_pairs)], dtype=np.int32),
@@ -8941,6 +8963,10 @@ class Qwen35ParoResidentSession:
         history_offsets = self._native_sampler_upload(
             "_native_sampler_history_offsets_i32",
             np.asarray([0, len(history_pairs)], dtype=np.int32),
+        )
+        suppress_offsets = self._native_sampler_cached_upload(
+            ("suppress_offsets_i32", len(suppress_ids)),
+            np.asarray([0, len(suppress_ids)], dtype=np.int32),
         )
         bias_ids = None
         bias_values = None
@@ -8963,6 +8989,22 @@ class Qwen35ParoResidentSession:
             history_counts = self._native_sampler_upload(
                 "_native_sampler_history_counts_i32",
                 np.asarray([count for _token, count in history_pairs], dtype=np.int32),
+            )
+        suppress_ids_buf = None
+        if suppress_ids:
+            suppress_ids_buf = self._native_sampler_cached_upload(
+                ("suppress_ids_i32", suppress_ids),
+                np.asarray(suppress_ids, dtype=np.int32),
+            )
+        min_tokens_buf = None
+        eos_token_ids_buf = None
+        step_indices_buf = None
+        if min_tokens > 0:
+            min_tokens_buf = self._native_sampler_cached_scalar(("min_tokens",), min_tokens, np.int32)
+            eos_token_ids_buf = self._native_sampler_cached_scalar(("eos_token_id",), eos_token_id, np.int32)
+            step_indices_buf = self._native_sampler_upload(
+                "_native_sampler_step_indices_u64",
+                np.asarray([int(state.step_index)], dtype=np.uint64),
             )
         repetition = self._native_sampler_cached_scalar(
             ("repetition",),
@@ -8993,6 +9035,11 @@ class Qwen35ParoResidentSession:
             frequency.ptr,
             1,
             self.vocab_size,
+            suppress_offsets_i32_ptr=suppress_offsets.ptr,
+            suppress_token_ids_i32_ptr=None if suppress_ids_buf is None else suppress_ids_buf.ptr,
+            min_tokens_i32_ptr=None if min_tokens_buf is None else min_tokens_buf.ptr,
+            eos_token_ids_i32_ptr=None if eos_token_ids_buf is None else eos_token_ids_buf.ptr,
+            step_indices_u64_ptr=None if step_indices_buf is None else step_indices_buf.ptr,
             threads=128,
             library=self._native_sampler_library_handle(),
             runtime=self.runtime,
