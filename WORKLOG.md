@@ -94027,3 +94027,25 @@ Validation:
 - Both JSON artifacts parse cleanly.
 - `bash -n scripts/run_w7900_readme_refresh.sh` -> no syntax errors.
 - `git diff --check` -> clean.
+
+### Follow-up: llama.cpp Vulkan Q4_K_M (same W7900/GPU0)
+
+Ran the Vulkan backend sweep with `GGML_VK_VISIBLE_DEVICES=0`, same model and
+workloads. Vulkan is the strongest llama.cpp backend on this hardware:
+
+| Workload | hipEngine | llama HIP | llama Vulkan |
+| --- | ---: | ---: | ---: |
+| 512/128 DC | 106.6 | 79.6 | 106.2 |
+| 4K/128 DC | 97.5 | 78.7 | 102.6 |
+| 32K/128 DC | 84.9 | 71.8 | 91.6 |
+| 128K/128 DC | 57.3 | 57.7 | 70.5 |
+| 512/128 PF | 2182 | 2516 | 2823 |
+| 4K/128 PF | 2491 | 2303 | 2582 |
+| 32K/128 PF | 1840 | 1685 | 1969 |
+| 128K/128 PF | 989 | 918 | 1082 |
+
+hipEngine decode beats Vulkan only at 64K/128 (+13.7%) and is tied at 512/128.
+Vulkan decode wins at 1K-4K (+9-11%) and 32K-128K (+7-23%). Vulkan prefill
+wins everywhere except 4K/128 where hipEngine is +3.7%.
+
+Artifact: `benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json`
