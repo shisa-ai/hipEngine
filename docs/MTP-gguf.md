@@ -354,8 +354,10 @@ full child artifacts for compact benchmark evidence. Use
 matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
 Each single-budget or matrix artifact embeds `cli_gate_exit_codes` with the
-stable CLI gate names and exit codes. Use `--fail-on-exactness-fail` to return
-exit code `10` when the CPU-reference or llama.cpp trace exactness gate fails.
+stable CLI gate names and exit codes. Use `--fail-on-precheck-fail` to return
+exit code `11` when token/sampling/budget/hidden-seed prechecks fail. Use
+`--fail-on-exactness-fail` to return exit code `10` when the CPU-reference or
+llama.cpp trace exactness gate fails.
 Use `--fail-on-kvlivespans-smoke-fail` to return exit code `9` when the
 CPU-reference dense-vs-paged KVLiveSpans smoke fails. Use
 `--fail-on-noncomparable-accepted-output` to return exit code `4`
@@ -960,7 +962,9 @@ is now answered by the M1 required/optional table.)
       comparability (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
-      trace provenance, `--fail-on-exactness-fail` exits `10` when the CPU-reference
+      trace provenance, `--fail-on-precheck-fail` exits `11` when token,
+      sampling, budget, or hidden-seed prechecks fail,
+      `--fail-on-exactness-fail` exits `10` when the CPU-reference
       or llama.cpp trace exactness gate fails,
       `--fail-on-kvlivespans-smoke-fail` exits `9` when the CPU-reference
       dense-vs-paged KVLiveSpans smoke fails,

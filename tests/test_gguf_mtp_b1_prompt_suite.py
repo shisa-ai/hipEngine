@@ -21,6 +21,7 @@ EXPECTED_CLI_GATE_EXIT_CODES = {
     "optimization_missing": 8,
     "kvlivespans_smoke_fail": 9,
     "exactness_failed": 10,
+    "precheck_failed": 11,
 }
 
 
@@ -696,6 +697,124 @@ def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_rejects_compact_matrix
     assert rc == 3
     matrix = json.loads(out.read_text())
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+
+
+def test_b1_prompt_suite_cli_fail_on_precheck_allows_default_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-precheck-fail",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert artifact["draft_budget_precheck"]["passed"] is True
+
+
+def test_b1_prompt_suite_cli_fail_on_precheck_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "_build_draft_budget_precheck",
+        lambda **kwargs: {
+            "passed": False,
+            "expected": {"budget": "B1", "draft_max": 1},
+            "observed": {"draft_max": 0},
+            "mismatches": ["draft_max"],
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-precheck-fail",
+        ]
+    )
+
+    assert rc == 11
+    artifact = json.loads(out.read_text())
+    assert artifact["draft_budget_precheck"]["passed"] is False
+    assert artifact["blockers"][0]["code"] == "draft_budget_mismatch"
+
+
+def test_b1_prompt_suite_cli_fail_on_precheck_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "_build_draft_budget_precheck",
+        lambda **kwargs: {
+            "passed": False,
+            "expected": {"budget": "B1", "draft_max": 1},
+            "observed": {"draft_max": 0},
+            "mismatches": ["draft_max"],
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-precheck-fail",
+        ]
+    )
+
+    assert rc == 11
+    matrix = json.loads(out.read_text())
+    assert matrix["all_budget_prechecks_pass"] is False
 
 
 def test_b1_prompt_suite_cli_fail_on_exactness_allows_default_b1(

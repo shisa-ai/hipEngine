@@ -87,6 +87,7 @@ CLI_GATE_EXIT_CODES = {
     "optimization_missing": 8,
     "kvlivespans_smoke_fail": 9,
     "exactness_failed": 10,
+    "precheck_failed": 11,
 }
 
 
@@ -837,6 +838,38 @@ def build_b1_b4_prompt_suite_matrix(
     return matrix
 
 
+def _has_failed_preflight_prechecks(artifact: dict[str, Any]) -> bool:
+    matrix_keys = (
+        "all_parity_prechecks_pass",
+        "all_budget_prechecks_pass",
+        "all_sampling_contract_prechecks_pass",
+        "all_hidden_seed_contract_prechecks_pass",
+    )
+    matrix_values = [artifact.get(key) for key in matrix_keys]
+    if any(isinstance(value, bool) for value in matrix_values):
+        return any(isinstance(value, bool) and not value for value in matrix_values)
+    parity_precheck = artifact.get("parity_precheck")
+    draft_budget_precheck = artifact.get("draft_budget_precheck")
+    sampling_contract_precheck = artifact.get("draft_sampling_contract_precheck")
+    hidden_seed_contract_precheck = artifact.get("hidden_seed_contract_precheck")
+    return any(
+        (
+            isinstance(parity_precheck, dict)
+            and isinstance(parity_precheck.get("all_pass"), bool)
+            and not parity_precheck["all_pass"],
+            isinstance(draft_budget_precheck, dict)
+            and isinstance(draft_budget_precheck.get("passed"), bool)
+            and not draft_budget_precheck["passed"],
+            isinstance(sampling_contract_precheck, dict)
+            and isinstance(sampling_contract_precheck.get("passed"), bool)
+            and not sampling_contract_precheck["passed"],
+            isinstance(hidden_seed_contract_precheck, dict)
+            and isinstance(hidden_seed_contract_precheck.get("passed"), bool)
+            and not hidden_seed_contract_precheck["passed"],
+        )
+    )
+
+
 def _has_failed_exactness_gate(artifact: dict[str, Any]) -> bool:
     all_pass = artifact.get("all_exactness_gates_pass")
     if isinstance(all_pass, bool):
@@ -986,6 +1019,11 @@ def main(argv: list[str] | None = None) -> int:
         help="return exit code 10 when the CPU-reference or llama.cpp trace exactness gate fails",
     )
     parser.add_argument(
+        "--fail-on-precheck-fail",
+        action="store_true",
+        help="return exit code 11 when token/sampling/budget/hidden-seed prechecks fail",
+    )
+    parser.add_argument(
         "--fail-on-kvlivespans-smoke-fail",
         action="store_true",
         help="return exit code 9 when the KVLiveSpans paged-cache smoke fails",
@@ -1058,6 +1096,8 @@ def main(argv: list[str] | None = None) -> int:
         return 3
     if args.fail_on_exactness_fail and _has_failed_exactness_gate(artifact):
         return 10
+    if args.fail_on_precheck_fail and _has_failed_preflight_prechecks(artifact):
+        return 11
     if args.fail_on_kvlivespans_smoke_fail and _has_failed_kvlivespans_paged_cache_smoke(
         artifact
     ):
