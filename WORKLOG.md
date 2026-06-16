@@ -94127,3 +94127,23 @@ Validation and outcome:
 - Guard rerun is still the standard targeted bundle from the prior entry: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Artifact/rollup updated in-place to the final safe numbers: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
 - Decision: retain the safe half-seq kernel as the default selected-WMMA prefill path for primary GPU1 gates. The 128K final-promotion blocker from the prior entry remains: GPU1 24GB-class OOM during session construction, so final long-context promotion needs W7900 fallback evidence or G-P4 memory-policy work.
+
+## 2026-06-16 - GGUF G-D2 Q8T16 decode ISA audit
+
+Audited the active Q8_0 T16 GEMV decode code object after the selected-WMMA
+half-seq prefill promotion. This is a diagnostic/docs iteration, not a runtime
+path change. The goal was to determine whether the still-dominant dense Q8 decode
+bucket has an obvious pressure/scratch issue before trying more Q8 launch-bound
+or data-load variants.
+
+Validation and outcome:
+- Build artifact: `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-4e393c8a22cdef00/gguf_q8_0_t16_gemv.so` (`build_gguf_q8_0_t16_gemv(load=False, require_cached=True)`).
+- Extraction: dumped `.hip_fatbin`, unbundled `hipv4-amdgcn-amd-amdhsa--gfx1100`, then ran `llvm-readobj --notes` and `llvm-objdump -d --mcpu=gfx1100` under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q8t16-gemv-isa`.
+- Compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-isa-audit.json`.
+- Code-object result: all nine Q8T16 decode kernels are scratch-free and spill-free: `private_segment_fixed_size=0`, `vgpr_count=56/57`, `sgpr_count=28/31/33/41`, `vgpr_spill_count=0`, `group_segment_fixed_size=256 B`, and disassembly count `0` scratch ops.
+- Current profile context from the half-seq 4K/16 trace: dense Q8_0 T16 decode remains the largest decode bucket at `50.638 ms` (`35.31%`) over `2720` dispatches, with rocprof resource summary `VGPR=64`, scratch `0`, LDS `512 B`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8t16-isa-audit.json`.
+- Gate result: `512/128` median prefill/decode `1874.005150 / 126.155284 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.216240 / 115.746497 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`. No runtime path changed, so this is variance/context only.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Prompt verifier: passed for a diagnostic/no-runtime-change iteration. Generated IDs stayed deterministic, tracked peak stayed at `21.334858 GiB`, no torch/llama.cpp hot-path dependency or raw+packed residency change was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. Do not repeat blind Q8T16 launch-bound or scale-load tweaks without a new algorithmic/dispatch reason; the active Q8 decode code object is already clean. Next decode work should look at dispatch/graph overhead, full-attention decode, or a true algorithmic Q8 reduction. The final 128K promotion blocker remains G-P4/G-M4 memory policy or W7900 fallback evidence.

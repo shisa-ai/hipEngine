@@ -158,6 +158,18 @@ the original per-lane store bounds guard, reducing the metadata to
 Further selected-WMMA work should now target the remaining 256-VGPR cap or a
 true 16-column code-object variant without giving back the prefill win.
 
+G-D2 ISA/code-object audit for the active Q8_0 T16 GEMV decode family is
+recorded in
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-isa-audit.json`.
+The active code object contains nine Q8T16 decode kernels and all are
+scratch-free with no VGPR spills: `private_segment_fixed_size=0`,
+`vgpr_count=56/57`, `sgpr_count=28/31/33/41`, and `group_segment_fixed_size=256 B`.
+Disassembly found zero scratch ops. In the current half-seq 4K/16 decode profile,
+the dense Q8_0 T16 bucket remains the largest decode bucket (`50.638 ms`,
+`35.31%`, `2720` dispatches), but the pressure profile is already clean; do not
+repeat blind Q8 launch-bound or scale-load tweaks without a new algorithmic or
+dispatch-level reason.
+
 Retained notes:
 
 - **G-P1 selected-WMMA half-sequential rewrite retained (2026-06-16).** The
@@ -195,9 +207,11 @@ Retained notes:
 
 Current focused lanes from evidence:
 
-1. **G-D2 first for decode:** dense Q8_0 T16 GEMV is the dominant decode bucket
-   on both gates (`~36-38%` of decode kernel time), so launch-bound/tile-shape
-   tuning has the cleanest same-suite decode upside.
+1. **Decode work should move above blind Q8 launch-bound tweaks:** dense Q8_0
+   T16 GEMV is still the largest decode bucket (`~35-38%`), but the active code
+   object is scratch-free and low-VGPR and prior Q8 launch-bound/load variants
+   no-held. Prefer dispatch/graph/full-attention or an algorithmic Q8 reduction
+   over more occupancy pokes.
 2. **G-P4/G-M4 before final long-context promotion:** the primary gates fit at
    `21.335 GiB`, but GPU1 `128K/128` currently fails with HIP OOM during session
    construction, so long-context claims need W7900 fallback evidence or lower
