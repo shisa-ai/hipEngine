@@ -98238,3 +98238,47 @@ Validation:
   allocation, GPU kernel, attention/KV runtime path, or performance claim.
   Existing KVLiveSpans execution-plan contract is unchanged and future native
   attention/KV-write remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF prompt-suite metrics artifact labels
+
+Implemented `mtp-gguf` multiloop iteration 126: synchronized prompt-suite
+blocked hipEngine metrics contracts with the serialized accept-step metrics
+artifact labels and B-budget fields.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- The blocked prompt-suite artifact now advertises the same schema/kind/source/
+  result-source identity plus `candidate_budget` / `budget_label` fields that
+  `Qwen35GGUFMTPAcceptStepMetrics.as_dict()` will emit once native runtime
+  produces target-top1 accept steps.
+
+Changes:
+- Updated `scripts/gguf_mtp_b1_prompt_suite.py` to build the blocked
+  `hipengine_metrics_contract` from
+  `Qwen35GGUFMTPAcceptStepMetrics.artifact_labels()`.
+- Added `candidate_budget`, `budget_label`, and their required-field entries to
+  the prompt-suite hipEngine metrics contract.
+- Updated prompt-suite tests for the single-budget artifact and B1-B4 matrix
+  child artifacts.
+- Updated `docs/MTP-gguf.md` M5 checklist to mention schema/kind/source and
+  B-budget contract fields in preflight artifacts.
+
+Validation:
+- Focused prompt-suite/context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> `78` passed.
+- Real local B4 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` -> `status blocked`, `schema/kind 1 hipengine_gguf_mtp_accept_step_metrics`, `source Qwen35GGUFMTPAcceptStepMetrics`, `result_source Qwen35GGUFMTPAcceptStep`, `candidate_budget 4`, `budget_label B4`, and required fields include `candidate_budget` / `budget_label`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Existing
+  KVLiveSpans execution-plan contract is unchanged and future native attention/
+  KV-write remains KVLiveSpans-gated.

@@ -963,8 +963,9 @@ is now answered by the M1 required/optional table.)
       precheck backed by `Qwen35GGUFMTPRuntimeKernelPlan` (including the native
       NextN composite key and the KVLiveSpans paged-KV append/decode component
       keys), CPU-reference oracle
-      gate output, a hipEngine metrics contract with explicit
-      accepted-per-draft/output denominator labels, and captured
+      gate output, a hipEngine metrics contract with schema/kind/source labels,
+      B-budget fields, explicit accepted-per-draft/output denominator labels,
+      and captured
       llama.cpp draft-trace oracle provenance/denominator checks; B1 runtime
       execution remains in the next backlog row.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
@@ -983,8 +984,9 @@ is now answered by the M1 required/optional table.)
       seed contract. The llama.cpp comparison helper now reports
       `accepted_per_output` with explicit `draft_n_accepted / predicted_n`
       denominator for future parity rows, while the preflight artifact exposes
-      the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` denominator contract
-      that native runtime must fill from serialized target-top1 accept steps.
+      the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` schema/kind/source,
+      `candidate_budget` / `budget_label`, and denominator contract that native
+      runtime must fill from serialized target-top1 accept steps.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,

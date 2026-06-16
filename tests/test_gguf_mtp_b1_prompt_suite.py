@@ -335,11 +335,17 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["hipengine_metrics_contract"] == {
         "status": "not_run",
         "blocked_until": "native_gguf_mtp_runtime",
+        "schema": 1,
+        "kind": "hipengine_gguf_mtp_accept_step_metrics",
         "source": "Qwen35GGUFMTPAcceptStepMetrics",
         "result_source": "Qwen35GGUFMTPAcceptStep",
         "draft_max": 1,
+        "candidate_budget": 1,
+        "budget_label": "B1",
         "required_fields": [
             "cycle_count",
+            "candidate_budget",
+            "budget_label",
             "draft_token_count",
             "accepted_token_count",
             "output_token_count",
@@ -603,6 +609,22 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         {"budget": "B4", "draft_max": 4},
     ]
     assert [item["hipengine_metrics_contract"]["draft_max"] for item in matrix["artifacts"]] == [1, 2, 3, 4]
+    assert [item["hipengine_metrics_contract"]["candidate_budget"] for item in matrix["artifacts"]] == [
+        1,
+        2,
+        3,
+        4,
+    ]
+    assert [item["hipengine_metrics_contract"]["budget_label"] for item in matrix["artifacts"]] == [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+    ]
+    assert all(
+        item["hipengine_metrics_contract"]["kind"] == "hipengine_gguf_mtp_accept_step_metrics"
+        for item in matrix["artifacts"]
+    )
 
 
 def test_b1_prompt_suite_matrix_can_omit_child_artifacts(

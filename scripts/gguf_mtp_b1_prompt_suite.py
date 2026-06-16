@@ -181,14 +181,19 @@ def _build_runtime_kernel_precheck(*, backend: str, draft_topk: dict[str, Any]) 
 
 
 def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
+    candidate_budget = int(draft_max)
+    artifact_labels = Qwen35GGUFMTPAcceptStepMetrics.artifact_labels()
     return {
         "status": "not_run",
         "blocked_until": "native_gguf_mtp_runtime",
-        "source": "Qwen35GGUFMTPAcceptStepMetrics",
-        "result_source": "Qwen35GGUFMTPAcceptStep",
-        "draft_max": int(draft_max),
+        **artifact_labels,
+        "draft_max": candidate_budget,
+        "candidate_budget": candidate_budget,
+        "budget_label": f"B{candidate_budget}",
         "required_fields": [
             "cycle_count",
+            "candidate_budget",
+            "budget_label",
             "draft_token_count",
             "accepted_token_count",
             "output_token_count",
