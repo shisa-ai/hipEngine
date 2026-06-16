@@ -732,7 +732,9 @@ Deliverables:
   contract for nested execution plans, target top-1 rows, transaction IDs, and
   verify-seed rows;
   `Qwen35GGUFMTPContext.accept_target_top1_metrics()` feeds those per-cycle target
-  top-1 rows and verify seeds into one metrics artifact, and
+  top-1 rows and verify seeds into one metrics artifact; each serialized
+  `Qwen35GGUFMTPAcceptStep` now validates its commit-plan fields, nested
+  seed-row contract, and reseed row before aggregation; and
   `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
   self-identifying schema/kind/source payload, explicit validator hook, a
   centralized required-field list with internal-consistency payload validation,

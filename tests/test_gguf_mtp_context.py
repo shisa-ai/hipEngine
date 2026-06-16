@@ -591,9 +591,25 @@ def test_gguf_mtp_context_accepts_target_top1_with_commit_plan_reseed() -> None:
     assert partial_step.as_dict()["accepted_counts"] == [1]
     assert partial_step.as_dict()["commit_rows"] == [1]
     assert partial_step.as_dict()["next_tokens"] == [9]
-    assert partial_step.as_dict()["candidate_counts"] == [2]
-    assert partial_step.as_dict()["tree_shape"] == [0, 1]
-    assert partial_step.as_dict()["reseed"] == seeds[1].as_dict()
+    partial_payload = partial_step.as_dict()
+    assert partial_payload["candidate_counts"] == [2]
+    assert partial_payload["tree_shape"] == [0, 1]
+    assert partial_payload["reseed"] == seeds[1].as_dict()
+    assert partial_payload["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
+    assert Qwen35GGUFMTPAcceptStep.contract() == {
+        "required_fields": list(Qwen35GGUFMTPAcceptStep.required_fields()),
+        "validator": "Qwen35GGUFMTPAcceptStep.validate_payload",
+    }
+    Qwen35GGUFMTPAcceptStep.validate_payload(partial_payload)
+    bad_payload = {**partial_payload, "seed_row_contract": {}}
+    with pytest.raises(ValueError, match="seed_row_contract mismatch"):
+        Qwen35GGUFMTPAcceptStep.validate_payload(bad_payload)
+    bad_payload = {**partial_payload, "accepted_counts": [3]}
+    with pytest.raises(ValueError, match="accepted_counts"):
+        Qwen35GGUFMTPAcceptStep.validate_payload(bad_payload)
+    bad_payload = {**partial_payload, "reseed": {**partial_payload["reseed"], "hidden_ptr": 0}}
+    with pytest.raises(ValueError, match="reseed"):
+        Qwen35GGUFMTPAcceptStep.validate_payload(bad_payload)
     assert partial_commit.accepted_counts == (1,)
     assert partial_commit.commit_rows == (1,)
     assert partial_commit.next_tokens == (9,)

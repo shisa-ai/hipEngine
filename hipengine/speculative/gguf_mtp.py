@@ -1051,6 +1051,104 @@ class Qwen35GGUFMTPAcceptStep:
         yield self.commit_plan
         yield self.reseed
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "transaction_id",
+            "request_ids",
+            "accepted_counts",
+            "commit_rows",
+            "commit_tokens",
+            "commit_positions",
+            "next_tokens",
+            "candidate_counts",
+            "draft_depth",
+            "tree_shape",
+            "mode",
+            "seed_row_contract",
+            "reseed",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPAcceptStep.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "accept step",
+    ) -> None:
+        def int_sequence(name: str) -> tuple[int, ...]:
+            value = payload.get(name)
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+                raise ValueError(f"{field_name} {name} must be a sequence")
+            return tuple(int(item) for item in value)
+
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
+            raise ValueError(f"{field_name} seed_row_contract mismatch")
+        Qwen35GGUFMTPSeedRow.validate_payload(
+            payload.get("reseed"),
+            field_name=f"{field_name} reseed",
+        )
+
+        next_tokens_payload = payload.get("next_tokens")
+        next_tokens = None
+        if next_tokens_payload is not None:
+            if not isinstance(next_tokens_payload, Sequence) or isinstance(next_tokens_payload, (str, bytes)):
+                raise ValueError(f"{field_name} next_tokens must be null or a sequence")
+            next_tokens = tuple(None if item is None else int(item) for item in next_tokens_payload)
+        candidate_counts_payload = payload.get("candidate_counts")
+        candidate_counts = None
+        if candidate_counts_payload is not None:
+            if not isinstance(candidate_counts_payload, Sequence) or isinstance(candidate_counts_payload, (str, bytes)):
+                raise ValueError(f"{field_name} candidate_counts must be null or a sequence")
+            candidate_counts = tuple(int(item) for item in candidate_counts_payload)
+        tree_shape_payload = payload.get("tree_shape")
+        tree_shape = None
+        if tree_shape_payload is not None:
+            if not isinstance(tree_shape_payload, Sequence) or isinstance(tree_shape_payload, (str, bytes)):
+                raise ValueError(f"{field_name} tree_shape must be null or a sequence")
+            tree_shape = tuple(int(item) for item in tree_shape_payload)
+        TargetCommitPlan(
+            transaction_id=int(payload["transaction_id"]),
+            request_ids=int_sequence("request_ids"),
+            accepted_counts=int_sequence("accepted_counts"),
+            commit_rows=int_sequence("commit_rows"),
+            commit_tokens=int_sequence("commit_tokens"),
+            commit_positions=int_sequence("commit_positions"),
+            next_tokens=next_tokens,
+            candidate_counts=candidate_counts,
+            draft_depth=None if payload.get("draft_depth") is None else int(payload["draft_depth"]),
+            tree_shape=tree_shape,
+            mode=str(payload["mode"]),
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "transaction_id": self.commit_plan.transaction_id,
@@ -1066,7 +1164,10 @@ class Qwen35GGUFMTPAcceptStep:
             "draft_depth": self.commit_plan.draft_depth,
             "tree_shape": None if self.commit_plan.tree_shape is None else list(self.commit_plan.tree_shape),
             "mode": self.commit_plan.mode,
+            "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
             "reseed": self.reseed.as_dict(),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 
