@@ -905,6 +905,92 @@ def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_draft_allows_compact
     assert matrix["noncomparable_accepted_per_draft_budgets"] == []
 
 
+def test_b1_prompt_suite_cli_fail_on_native_runtime_missing_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-native-runtime-missing",
+        ]
+    )
+
+    assert rc == 7
+    artifact = json.loads(out.read_text())
+    assert artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"] is False
+
+
+def test_b1_prompt_suite_cli_fail_on_native_runtime_missing_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-native-runtime-missing",
+        ]
+    )
+
+    assert rc == 7
+    matrix = json.loads(out.read_text())
+    assert matrix["all_native_runtime_kernels_ready"] is False
+
+
+def test_b1_prompt_suite_native_runtime_missing_helper_allows_ready_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    artifact = suite.build_b1_prompt_suite_artifact(**inputs)
+    artifact["runtime_kernel_precheck"] = dict(artifact["runtime_kernel_precheck"])
+    artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"] = True
+    matrix = suite.build_b1_b4_prompt_suite_matrix(
+        model=inputs["model"],
+        prompts_file=inputs["prompts_file"],
+        hipengine_token_inventory=inputs["hipengine_token_inventory"],
+        llamacpp_token_inventory=inputs["llamacpp_token_inventory"],
+        include_artifacts=False,
+    )
+    matrix["all_native_runtime_kernels_ready"] = True
+
+    assert suite._has_missing_native_runtime_kernels(artifact) is False
+    assert suite._has_missing_native_runtime_kernels(matrix) is False
+
+
 def test_b1_prompt_suite_cli_fail_on_performance_unready_rejects_b1_until_runtime_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

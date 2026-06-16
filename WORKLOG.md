@@ -97292,3 +97292,44 @@ Validation:
   native MTP execution, actual KV allocation, GPU kernel, attention/KV runtime
   path, or performance claim. Future native attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF native runtime CLI gate
+
+Implemented `mtp-gguf` multiloop iteration 102: added an explicit CLI gate for
+missing native GGUF MTP runtime kernels.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This complements the generic blocked/performance gates with a specific M3/M4
+  readiness exit for the missing native NextN and KVLiveSpans component keys.
+
+Changes:
+- Added `_has_missing_native_runtime_kernels()` to
+  `scripts/gguf_mtp_b1_prompt_suite.py`.
+- Added `--fail-on-native-runtime-missing`, returning exit code `7` when a
+  single artifact or B1-B4 matrix reports missing native runtime kernel keys.
+- Extended prompt-suite tests to cover B1 rejection, compact matrix rejection,
+  and helper allow behavior for manually-ready artifacts.
+- Updated `docs/MTP-gguf.md` to document the native-runtime missing CLI gate.
+
+Validation:
+- Focused prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `29` passed.
+- Real local compact B1-B4 matrix gate smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --fail-on-native-runtime-missing --out <tmp>` ->
+  exit code `7`, `native_ready False`, and B1 missing native keys
+  `mtp_nextn_layer/qwen35_dense_logits`, `paged_kv_write/mixed_bf16_spans`, and
+  `paged_attn_decode/bf16_context_spans`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Future native attention/KV-write execution remains KVLiveSpans-gated.
