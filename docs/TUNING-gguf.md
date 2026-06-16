@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **GGUF linear dispatch resolve cache rejected (2026-06-16).** Adding an
+  `lru_cache`-backed base-dispatch resolver passed focused dispatch tests and
+  the `154`-test GGUF guard with stable IDs and flat memory, but measured gate
+  movement was mixed/noisy: `4K/128` decode improved (`114.991 -> 115.253
+  tok/s`) while `512/128` regressed (`1958.536 / 127.263 -> 1953.288 / 126.952
+  tok/s`). Code/test changes were reverted; do not add dispatch-object caching
+  without a Python-profiled host bottleneck. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-dispatch-resolve-cache-rejected.json`.
+
 - **Q8_0 T16 row512 out8192 TM32 rejected (2026-06-16).** Changing resident
   Q8_0 T16 WMMA prefill for 512-row `in<=2048,out>=8192` projections from
   `TM64/TN32` to `TM32/TN32` passed the focused tile-policy smoke and `154`-test
