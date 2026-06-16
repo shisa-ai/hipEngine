@@ -806,6 +806,13 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         if missing:
             joined = ", ".join(missing)
             raise ValueError(f"accept-step metrics artifact missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError("accept-step metrics artifact required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError("accept-step metrics artifact required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError("accept-step metrics artifact validator mismatch")
         if payload.get("denominators") != cls.denominator_labels():
             raise ValueError("accept-step metrics artifact denominator labels mismatch")
 
@@ -901,6 +908,8 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "accepted_per_draft": self.accepted_per_draft,
             "accepted_per_output": self.accepted_per_output,
             "denominators": self.denominator_labels(),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
             "steps": [step.as_dict() for step in self.steps],
         }
 

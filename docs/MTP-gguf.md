@@ -1002,8 +1002,9 @@ is now answered by the M1 required/optional table.)
       artifacts self-validate the blocked contract at construction time, and
       native runtime artifacts can be checked with
       `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
-      for labels, required fields, compact step rows, aggregate counts, and
-      ratio consistency before parity comparison. The draft-token verification
+      for labels, the advertised required-field list, validator hook, compact
+      step rows, aggregate counts, and ratio consistency before parity
+      comparison. The draft-token verification
       aggregate (`Qwen35GGUFMTPVerificationMetrics`) now carries the same
       schema/kind/source, `candidate_budget` / `budget_label`, required-field,
       validator, and ratio-consistency contract so B1-B4 parity rows can reject

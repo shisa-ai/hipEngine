@@ -643,6 +643,12 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     missing_step_rows.pop("step_rows")
     with pytest.raises(ValueError, match="missing required fields: step_rows"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(missing_step_rows)
+    bad_required_fields = {**metrics.as_dict(), "required_fields": []}
+    with pytest.raises(ValueError, match="required_fields mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_required_fields)
+    bad_validator = {**metrics.as_dict(), "validator": "wrong"}
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_validator)
     bad_denominators = {**metrics.as_dict(), "denominators": {}}
     with pytest.raises(ValueError, match="denominator labels mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_denominators)
