@@ -349,6 +349,10 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             "accepted_per_output": "accepted_token_count / output_token_count",
         },
     }
+    suite.Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(
+        artifact["hipengine_metrics_contract"],
+        candidate_budget=1,
+    )
     assert artifact["execution"] == {
         "implemented": False,
         "exactness_gate": "passed",
@@ -622,6 +626,11 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         == "Qwen35GGUFMTPAcceptStepMetrics.validate_payload"
         for item in matrix["artifacts"]
     )
+    for item in matrix["artifacts"]:
+        suite.Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(
+            item["hipengine_metrics_contract"],
+            candidate_budget=item["draft_max"],
+        )
     assert all(
         "step_rows" in item["hipengine_metrics_contract"]["required_fields"]
         for item in matrix["artifacts"]

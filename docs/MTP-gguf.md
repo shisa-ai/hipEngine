@@ -991,8 +991,8 @@ is now answered by the M1 required/optional table.)
       `candidate_budget` / `budget_label`, compact per-step row fields, full
       serialized `steps`, validator hook, and denominator contract from the
       centralized `Qwen35GGUFMTPAcceptStepMetrics.blocked_contract()` /
-      `required_fields()` helpers; native runtime artifacts can be checked with
-      `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
+      `validate_blocked_contract()` / `required_fields()` helpers; native runtime
+      artifacts can be checked with `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
       for labels, required fields, compact step rows, aggregate counts, and
       ratio consistency before parity comparison.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts

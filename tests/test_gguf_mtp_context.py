@@ -614,6 +614,20 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_payload",
         "denominators": Qwen35GGUFMTPAcceptStepMetrics.denominator_labels(),
     }
+    Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(blocked_contract, candidate_budget=2)
+    bad_blocked_status = {**blocked_contract, "status": "ready"}
+    with pytest.raises(ValueError, match="status mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(bad_blocked_status)
+    bad_blocked_budget = {**blocked_contract, "candidate_budget": 3}
+    with pytest.raises(ValueError, match="candidate_budget mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(bad_blocked_budget, candidate_budget=2)
+    bad_blocked_validator = {**blocked_contract, "validator": "wrong"}
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(bad_blocked_validator)
+    missing_blocked_kind = dict(blocked_contract)
+    missing_blocked_kind.pop("kind")
+    with pytest.raises(ValueError, match="missing fields: kind"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(missing_blocked_kind)
     with pytest.raises(ValueError, match="candidate_budget"):
         Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=0)
     assert set(Qwen35GGUFMTPAcceptStepMetrics.required_fields()).issubset(metrics.as_dict())

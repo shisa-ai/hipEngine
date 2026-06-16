@@ -746,6 +746,52 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         }
 
     @classmethod
+    def validate_blocked_contract(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        candidate_budget: int | None = None,
+        blocked_until: str | None = "native_gguf_mtp_runtime",
+    ) -> None:
+        expected_fields = {
+            "status",
+            "blocked_until",
+            *cls.artifact_labels().keys(),
+            "draft_max",
+            "candidate_budget",
+            "budget_label",
+            "required_fields",
+            "validator",
+            "denominators",
+        }
+        missing = tuple(field for field in expected_fields if field not in payload)
+        if missing:
+            joined = ", ".join(sorted(missing))
+            raise ValueError(f"blocked accept-step metrics contract missing fields: {joined}")
+        if payload.get("status") != "not_run":
+            raise ValueError("blocked accept-step metrics contract status mismatch")
+        if blocked_until is not None and payload.get("blocked_until") != blocked_until:
+            raise ValueError("blocked accept-step metrics contract blocked_until mismatch")
+        for key, expected in cls.artifact_labels().items():
+            if payload.get(key) != expected:
+                raise ValueError(f"blocked accept-step metrics contract {key} mismatch")
+        budget = int(payload["candidate_budget"])
+        if budget <= 0:
+            raise ValueError("blocked accept-step metrics contract candidate_budget must be positive")
+        if candidate_budget is not None and budget != int(candidate_budget):
+            raise ValueError("blocked accept-step metrics contract candidate_budget mismatch")
+        if int(payload["draft_max"]) != budget:
+            raise ValueError("blocked accept-step metrics contract draft_max mismatch")
+        if payload.get("budget_label") != f"B{budget}":
+            raise ValueError("blocked accept-step metrics contract budget_label mismatch")
+        if tuple(payload.get("required_fields", ())) != cls.required_fields():
+            raise ValueError("blocked accept-step metrics contract required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError("blocked accept-step metrics contract validator mismatch")
+        if payload.get("denominators") != cls.denominator_labels():
+            raise ValueError("blocked accept-step metrics contract denominator labels mismatch")
+
+    @classmethod
     def validate_payload(cls, payload: Mapping[str, object]) -> None:
         def int_sequence(name: str) -> tuple[int, ...]:
             value = payload.get(name)
