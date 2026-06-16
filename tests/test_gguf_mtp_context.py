@@ -600,6 +600,21 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "accepted_per_output",
     ]
     assert set(Qwen35GGUFMTPAcceptStepMetrics.required_fields()).issubset(metrics.as_dict())
+    assert Qwen35GGUFMTPAcceptStepMetrics.missing_required_fields({}) == tuple(
+        Qwen35GGUFMTPAcceptStepMetrics.required_fields()
+    )
+    assert Qwen35GGUFMTPAcceptStepMetrics.missing_required_fields(metrics.as_dict()) == ()
+    Qwen35GGUFMTPAcceptStepMetrics.validate_payload(metrics.as_dict())
+    bad_kind = {**metrics.as_dict(), "kind": "wrong"}
+    with pytest.raises(ValueError, match="kind mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_kind)
+    missing_step_rows = dict(metrics.as_dict())
+    missing_step_rows.pop("step_rows")
+    with pytest.raises(ValueError, match="missing required fields: step_rows"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(missing_step_rows)
+    bad_denominators = {**metrics.as_dict(), "denominators": {}}
+    with pytest.raises(ValueError, match="denominator labels mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_denominators)
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
     assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]

@@ -8,7 +8,7 @@ the native GGUF NextN runtime can be wired in.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache.policy import KVTransaction
@@ -714,6 +714,22 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "accepted_per_draft",
             "accepted_per_output",
         )
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(cls, payload: Mapping[str, object]) -> None:
+        for key, expected in cls.artifact_labels().items():
+            if payload.get(key) != expected:
+                raise ValueError(f"accept-step metrics artifact {key} mismatch")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"accept-step metrics artifact missing required fields: {joined}")
+        if payload.get("denominators") != cls.denominator_labels():
+            raise ValueError("accept-step metrics artifact denominator labels mismatch")
 
     def as_dict(self) -> dict[str, object]:
         return {

@@ -718,10 +718,10 @@ Deliverables:
   `Qwen35GGUFMTPContext.accept_target_top1_metrics()` feed per-cycle target top-1
   rows and verify seeds into one metrics artifact, and
   `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
-  self-identifying schema/kind/source payload, a centralized required-field list,
-  inferred `B{candidate_budget}` label, compact per-step transaction/candidate/
-  accepted rows, and the same accepted/draft and accepted/output denominator
-  labels used for llama.cpp parity; the GGUF row
+  self-identifying schema/kind/source payload, a centralized required-field list
+  with payload validation, inferred `B{candidate_budget}` label, compact per-step
+  transaction/candidate/accepted rows, and the same accepted/draft and
+  accepted/output denominator labels used for llama.cpp parity; the GGUF row
   objects still carry the extra embedding seed pointer
   until native MTP runtime buffers exist.
 
@@ -988,8 +988,9 @@ is now answered by the M1 required/optional table.)
       the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` schema/kind/source,
       `candidate_budget` / `budget_label`, compact per-step row fields, full
       serialized `steps`, and denominator contract from the centralized
-      `Qwen35GGUFMTPAcceptStepMetrics.required_fields()` list that native runtime
-      must fill from serialized target-top1 accept steps.
+      `Qwen35GGUFMTPAcceptStepMetrics.required_fields()` list; native runtime
+      artifacts can be checked with `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
+      before parity comparison.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
