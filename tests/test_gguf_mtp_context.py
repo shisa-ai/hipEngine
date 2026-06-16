@@ -1013,14 +1013,24 @@ def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:
     assert metrics.cycle_count == 2
     assert metrics.draft_token_count == 4
     assert metrics.accepted_token_count == 3
+    assert metrics.candidate_budget == 2
+    assert metrics.budget_label == "B2"
     assert metrics.accepted_per_draft == 0.75
     assert metrics.accepted_per_output == 0.6
-    assert metrics.as_dict()["accepted_per_output"] == 0.6
-    assert metrics.as_dict()["denominators"] == {
+    payload = metrics.as_dict()
+    assert payload["schema"] == 1
+    assert payload["kind"] == "hipengine_gguf_mtp_verification_metrics"
+    assert payload["candidate_budget"] == 2
+    assert payload["budget_label"] == "B2"
+    assert payload["result_draft_token_counts"] == [2, 2]
+    assert payload["result_accepted_token_counts"] == [1, 2]
+    assert payload["accepted_per_output"] == 0.6
+    assert payload["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
         "accepted_per_output": "accepted_token_count / output_token_count",
     }
-    assert metrics.as_dict()["results"][0]["first_mismatch_index"] == 1
+    assert payload["results"][0]["first_mismatch_index"] == 1
+    Qwen35GGUFMTPVerificationMetrics.validate_payload(payload)
 
 
 def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
@@ -1038,6 +1048,20 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
         Qwen35GGUFMTPVerificationMetrics.from_results((result,), output_token_count=0)
     with pytest.raises(ValueError, match="visible output"):
         Qwen35GGUFMTPVerificationMetrics.from_results((result, result), output_token_count=1)
+
+    payload = Qwen35GGUFMTPVerificationMetrics.from_results(
+        (result,),
+        output_token_count=1,
+    ).as_dict()
+    broken = dict(payload)
+    broken["accepted_per_output"] = 0.25
+    with pytest.raises(ValueError, match="accepted_per_output"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+    broken = dict(payload)
+    broken["candidate_budget"] = 2
+    broken["budget_label"] = "B2"
+    with pytest.raises(ValueError, match="candidate_budget"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
 
 
 def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:

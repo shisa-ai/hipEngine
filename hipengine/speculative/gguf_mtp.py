@@ -1190,6 +1190,22 @@ class Qwen35GGUFMTPVerificationMetrics:
         return sum(result.n_accepted for result in self.results)
 
     @property
+    def candidate_budget(self) -> int:
+        return max(len(result.proposed_token_ids) for result in self.results)
+
+    @property
+    def budget_label(self) -> str:
+        return f"B{self.candidate_budget}"
+
+    @property
+    def result_draft_token_counts(self) -> tuple[int, ...]:
+        return tuple(len(result.proposed_token_ids) for result in self.results)
+
+    @property
+    def result_accepted_token_counts(self) -> tuple[int, ...]:
+        return tuple(result.n_accepted for result in self.results)
+
+    @property
     def accepted_per_draft(self) -> float:
         return float(self.accepted_token_count) / float(self.draft_token_count)
 
@@ -1204,15 +1220,148 @@ class Qwen35GGUFMTPVerificationMetrics:
             "accepted_per_output": "accepted_token_count / output_token_count",
         }
 
+    @staticmethod
+    def artifact_labels() -> dict[str, object]:
+        return {
+            "schema": 1,
+            "kind": "hipengine_gguf_mtp_verification_metrics",
+            "source": "Qwen35GGUFMTPVerificationMetrics",
+            "result_source": "Qwen35GGUFMTPVerificationResult",
+        }
+
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "cycle_count",
+            "candidate_budget",
+            "budget_label",
+            "draft_token_count",
+            "accepted_token_count",
+            "output_token_count",
+            "result_draft_token_counts",
+            "result_accepted_token_counts",
+            "accepted_per_draft",
+            "accepted_per_output",
+            "denominators",
+            "results",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPVerificationMetrics.validate_payload"
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(cls, payload: Mapping[str, object]) -> None:
+        def int_sequence(name: str) -> tuple[int, ...]:
+            value = payload.get(name)
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+                raise ValueError(f"verification metrics artifact {name} must be a sequence")
+            return tuple(int(item) for item in value)
+
+        for key, expected in cls.artifact_labels().items():
+            if payload.get(key) != expected:
+                raise ValueError(f"verification metrics artifact {key} mismatch")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"verification metrics artifact missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError("verification metrics artifact required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError("verification metrics artifact required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError("verification metrics artifact validator mismatch")
+        if payload.get("denominators") != cls.denominator_labels():
+            raise ValueError("verification metrics artifact denominator labels mismatch")
+
+        cycle_count = int(payload["cycle_count"])
+        candidate_budget = int(payload["candidate_budget"])
+        draft_token_count = int(payload["draft_token_count"])
+        accepted_token_count = int(payload["accepted_token_count"])
+        output_token_count = int(payload["output_token_count"])
+        if cycle_count <= 0:
+            raise ValueError("verification metrics artifact cycle_count must be positive")
+        if candidate_budget <= 0:
+            raise ValueError("verification metrics artifact candidate_budget must be positive")
+        if draft_token_count <= 0:
+            raise ValueError("verification metrics artifact draft_token_count must be positive")
+        if accepted_token_count < 0:
+            raise ValueError("verification metrics artifact accepted_token_count must be non-negative")
+        if output_token_count <= 0:
+            raise ValueError("verification metrics artifact output_token_count must be positive")
+        if accepted_token_count > output_token_count:
+            raise ValueError("verification metrics artifact accepted draft tokens cannot exceed visible output tokens")
+        if payload.get("budget_label") != f"B{candidate_budget}":
+            raise ValueError("verification metrics artifact budget_label mismatch")
+
+        result_draft_counts = int_sequence("result_draft_token_counts")
+        result_accepted_counts = int_sequence("result_accepted_token_counts")
+        for name, values in (
+            ("result_draft_token_counts", result_draft_counts),
+            ("result_accepted_token_counts", result_accepted_counts),
+        ):
+            if len(values) != cycle_count:
+                raise ValueError(f"verification metrics artifact {name} length mismatch")
+        if any(count <= 0 for count in result_draft_counts):
+            raise ValueError("verification metrics artifact result_draft_token_counts must be positive")
+        if any(count < 0 for count in result_accepted_counts):
+            raise ValueError("verification metrics artifact result_accepted_token_counts must be non-negative")
+        if any(accepted > draft for accepted, draft in zip(result_accepted_counts, result_draft_counts, strict=True)):
+            raise ValueError("verification metrics artifact accepted counts cannot exceed draft counts")
+        if draft_token_count != sum(result_draft_counts):
+            raise ValueError("verification metrics artifact draft_token_count mismatch")
+        if accepted_token_count != sum(result_accepted_counts):
+            raise ValueError("verification metrics artifact accepted_token_count mismatch")
+        if candidate_budget != max(result_draft_counts):
+            raise ValueError("verification metrics artifact candidate_budget mismatch")
+
+        results = payload.get("results")
+        if not isinstance(results, Sequence) or isinstance(results, (str, bytes)):
+            raise ValueError("verification metrics artifact results must be a sequence")
+        if len(results) != cycle_count:
+            raise ValueError("verification metrics artifact results length mismatch")
+        for index, result in enumerate(results):
+            if not isinstance(result, Mapping):
+                raise ValueError("verification metrics artifact results entries must be mappings")
+            proposed = result.get("proposed_token_ids")
+            accepted = result.get("accepted_token_ids")
+            if not isinstance(proposed, Sequence) or isinstance(proposed, (str, bytes)):
+                raise ValueError("verification metrics artifact results proposed_token_ids must be sequences")
+            if not isinstance(accepted, Sequence) or isinstance(accepted, (str, bytes)):
+                raise ValueError("verification metrics artifact results accepted_token_ids must be sequences")
+            if len(proposed) != result_draft_counts[index]:
+                raise ValueError("verification metrics artifact results draft count mismatch")
+            if len(accepted) != result_accepted_counts[index]:
+                raise ValueError("verification metrics artifact results accepted count mismatch")
+            if int(result.get("n_accepted")) != result_accepted_counts[index]:
+                raise ValueError("verification metrics artifact results n_accepted mismatch")
+
+        if abs(float(payload["accepted_per_draft"]) - (accepted_token_count / draft_token_count)) > 1e-12:
+            raise ValueError("verification metrics artifact accepted_per_draft mismatch")
+        if abs(float(payload["accepted_per_output"]) - (accepted_token_count / output_token_count)) > 1e-12:
+            raise ValueError("verification metrics artifact accepted_per_output mismatch")
+
     def as_dict(self) -> dict[str, object]:
         return {
+            **self.artifact_labels(),
             "cycle_count": self.cycle_count,
+            "candidate_budget": self.candidate_budget,
+            "budget_label": self.budget_label,
             "draft_token_count": self.draft_token_count,
             "accepted_token_count": self.accepted_token_count,
             "output_token_count": self.output_token_count,
+            "result_draft_token_counts": list(self.result_draft_token_counts),
+            "result_accepted_token_counts": list(self.result_accepted_token_counts),
             "accepted_per_draft": self.accepted_per_draft,
             "accepted_per_output": self.accepted_per_output,
             "denominators": self.denominator_labels(),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
             "results": [result.as_dict() for result in self.results],
         }
 

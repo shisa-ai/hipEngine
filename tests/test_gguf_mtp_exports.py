@@ -84,6 +84,8 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
     )
 
     assert plan.as_dict()["token_positions"] == [3]
+    assert metrics.as_dict()["kind"] == "hipengine_gguf_mtp_verification_metrics"
+    assert metrics.as_dict()["budget_label"] == "B1"
     assert metrics.as_dict()["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
         "accepted_per_output": "accepted_token_count / output_token_count",
