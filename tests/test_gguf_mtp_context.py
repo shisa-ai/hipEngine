@@ -675,6 +675,20 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     ]
     with pytest.raises(ValueError, match="step_rows candidate_token_count mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_step_rows)
+    bad_steps = dict(metrics.as_dict())
+    bad_steps["steps"] = [
+        {**metrics.as_dict()["steps"][0], "transaction_id": 99},
+        metrics.as_dict()["steps"][1],
+    ]
+    with pytest.raises(ValueError, match="steps transaction_id mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
+    bad_steps = dict(metrics.as_dict())
+    bad_steps["steps"] = [
+        {**metrics.as_dict()["steps"][0], "candidate_counts": [1, 1, 1]},
+        metrics.as_dict()["steps"][1],
+    ]
+    with pytest.raises(ValueError, match="steps candidate_counts mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
     assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]

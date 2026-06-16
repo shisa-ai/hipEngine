@@ -860,15 +860,22 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         if len(step_rows) != cycle_count:
             raise ValueError("accept-step metrics artifact step_rows length mismatch")
         max_row_candidate_budget = 0
+        row_request_ids_by_step: list[tuple[int, ...]] = []
+        row_candidate_counts_by_step: list[tuple[int, ...]] = []
+        row_accepted_counts_by_step: list[tuple[int, ...]] = []
         for index, row in enumerate(step_rows):
             if not isinstance(row, Mapping):
                 raise ValueError("accept-step metrics artifact step_rows entries must be mappings")
+            request_ids = row.get("request_ids")
             candidate_counts = row.get("candidate_counts")
             accepted_counts = row.get("accepted_counts")
+            if not isinstance(request_ids, Sequence) or isinstance(request_ids, (str, bytes)):
+                raise ValueError("accept-step metrics artifact step_rows request_ids must be sequences")
             if not isinstance(candidate_counts, Sequence) or isinstance(candidate_counts, (str, bytes)):
                 raise ValueError("accept-step metrics artifact step_rows candidate_counts must be sequences")
             if not isinstance(accepted_counts, Sequence) or isinstance(accepted_counts, (str, bytes)):
                 raise ValueError("accept-step metrics artifact step_rows accepted_counts must be sequences")
+            row_request_ids = tuple(int(item) for item in request_ids)
             row_candidate_counts = tuple(int(item) for item in candidate_counts)
             row_accepted_counts = tuple(int(item) for item in accepted_counts)
             if not row_candidate_counts:
@@ -884,6 +891,9 @@ class Qwen35GGUFMTPAcceptStepMetrics:
                 raise ValueError("accept-step metrics artifact step_rows candidate_counts mismatch")
             if sum(row_accepted_counts) != step_accepted_counts[index]:
                 raise ValueError("accept-step metrics artifact step_rows accepted_counts mismatch")
+            row_request_ids_by_step.append(row_request_ids)
+            row_candidate_counts_by_step.append(row_candidate_counts)
+            row_accepted_counts_by_step.append(row_accepted_counts)
         if max_row_candidate_budget != candidate_budget:
             raise ValueError("accept-step metrics artifact candidate_budget mismatch")
 
@@ -892,6 +902,26 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             raise ValueError("accept-step metrics artifact steps must be a sequence")
         if len(steps) != cycle_count:
             raise ValueError("accept-step metrics artifact steps length mismatch")
+        for index, step in enumerate(steps):
+            if not isinstance(step, Mapping):
+                raise ValueError("accept-step metrics artifact steps entries must be mappings")
+            request_ids = step.get("request_ids")
+            candidate_counts = step.get("candidate_counts")
+            accepted_counts = step.get("accepted_counts")
+            if not isinstance(request_ids, Sequence) or isinstance(request_ids, (str, bytes)):
+                raise ValueError("accept-step metrics artifact steps request_ids must be sequences")
+            if not isinstance(candidate_counts, Sequence) or isinstance(candidate_counts, (str, bytes)):
+                raise ValueError("accept-step metrics artifact steps candidate_counts must be sequences")
+            if not isinstance(accepted_counts, Sequence) or isinstance(accepted_counts, (str, bytes)):
+                raise ValueError("accept-step metrics artifact steps accepted_counts must be sequences")
+            if int(step.get("transaction_id")) != step_transaction_ids[index]:
+                raise ValueError("accept-step metrics artifact steps transaction_id mismatch")
+            if tuple(int(item) for item in request_ids) != row_request_ids_by_step[index]:
+                raise ValueError("accept-step metrics artifact steps request_ids mismatch")
+            if tuple(int(item) for item in candidate_counts) != row_candidate_counts_by_step[index]:
+                raise ValueError("accept-step metrics artifact steps candidate_counts mismatch")
+            if tuple(int(item) for item in accepted_counts) != row_accepted_counts_by_step[index]:
+                raise ValueError("accept-step metrics artifact steps accepted_counts mismatch")
         if abs(float(payload["accepted_per_draft"]) - (accepted_token_count / draft_token_count)) > 1e-12:
             raise ValueError("accept-step metrics artifact accepted_per_draft mismatch")
         if abs(float(payload["accepted_per_output"]) - (accepted_token_count / output_token_count)) > 1e-12:

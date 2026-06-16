@@ -1003,8 +1003,9 @@ is now answered by the M1 required/optional table.)
       native runtime artifacts can be checked with
       `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
       for labels, the advertised required-field list, validator hook, compact
-      step rows, aggregate counts, visible-output bounds, and ratio consistency
-      before parity comparison. The draft-token verification
+      step rows, full serialized step cross-checks, aggregate counts,
+      visible-output bounds, and ratio consistency before parity comparison. The
+      draft-token verification
       aggregate (`Qwen35GGUFMTPVerificationMetrics`) now carries the same
       schema/kind/source, `candidate_budget` / `budget_label`, required-field,
       validator, and ratio-consistency contract so B1-B4 parity rows can reject
