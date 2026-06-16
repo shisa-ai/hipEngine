@@ -93883,3 +93883,28 @@ Validation:
 - `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
 - Retained diagnostic command above -> completed and wrote
   `benchmarks/results/2026-06-16-native-sampler-scalar-cache.json`.
+
+## 2026-06-16 - Native sampler bounded top-logprobs (#12)
+
+Promoted bounded native `top_logprobs` for the PARO native top-k route. The
+planner now keeps requests on GPU sampling only when `temperature > 0`,
+`1 <= top_k <= 64`, and `top_logprobs <= top_k`; full-vocab `top_logprobs`,
+`top_logprobs > top_k`, and combined top-k with top-p/min-p still fall back with
+`native_gpu_unsupported_request`. The runtime now passes the top-k sampler's
+optional top-index/top-logprob buffers, downloads the bounded candidate metadata
+only when requested, and returns it through the existing
+`Qwen35ParoAutoregressiveStepResult.top_logprobs` field.
+
+Updated server capabilities from `top_logprobs=false` to bounded-top-k support:
+`{"bounded_top_k": true, "requires_top_k": true, "max": 64,
+"constraint": "top_logprobs <= top_k <= 64"}`. Updated `docs/SAMPLING.md` and
+`docs/AGENTIC.md` so only full-vocab/native-beyond-top-k top-logprobs remain a
+native gap.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py` -> passed.
+- `uv run ruff check hipengine/generation/sampling.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'native_gpu or top_logprobs'` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth'` -> `1 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'bounded_top_logprobs or unsupported_full_vocab_top_logprobs'` -> `2 passed`.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.

@@ -8810,6 +8810,22 @@ class Qwen35ParoResidentSession:
         top_k = int(getattr(params, "top_k", 0))
         top_p = float(getattr(params, "top_p", 1.0))
         min_p = float(getattr(params, "min_p", 0.0))
+        requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
+        if requested_top_logprobs > 0 and (
+            top_k <= 0 or requested_top_logprobs > top_k or top_p < 1.0 or min_p > 0.0
+        ):
+            raise RuntimeError("native bounded top_logprobs require top_k > 0, top_logprobs <= top_k, and no top_p/min_p")
+        out_top_indices = None
+        out_top_logprobs = None
+        if requested_top_logprobs > 0:
+            out_top_indices = self._native_sampler_buffer(
+                "_native_sampler_top_indices_i32",
+                top_k * DType.INT32.itemsize,
+            )
+            out_top_logprobs = self._native_sampler_buffer(
+                "_native_sampler_top_logprobs_f32",
+                top_k * DType.FP32.itemsize,
+            )
         if top_p < 1.0 or min_p > 0.0:
             top_p_buf = self._native_sampler_cached_scalar(("top_p",), top_p, np.float32)
             min_p_buf = self._native_sampler_cached_scalar(("min_p",), min_p, np.float32)
@@ -8839,8 +8855,8 @@ class Qwen35ParoResidentSession:
                 seed_buf.ptr,
                 out_indices.ptr,
                 out_logprobs.ptr,
-                None,
-                None,
+                None if out_top_indices is None else out_top_indices.ptr,
+                None if out_top_logprobs is None else out_top_logprobs.ptr,
                 1,
                 self.vocab_size,
                 top_k,
@@ -8877,12 +8893,29 @@ class Qwen35ParoResidentSession:
             raise RuntimeError(f"native sampler selected invalid token id {token_id}")
         value_host = np.empty((1,), dtype=np.float32)
         copy_device_to_host(host_array_ptr(value_host), self.lm_out_value, runtime=self.runtime)
+        top_logprobs: tuple[tuple[int, float], ...] = ()
+        if requested_top_logprobs > 0 and out_top_indices is not None and out_top_logprobs is not None:
+            top_indices_host = np.empty((top_k,), dtype=np.int32)
+            top_logprobs_host = np.empty((top_k,), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(top_indices_host), out_top_indices, runtime=self.runtime)
+            copy_device_to_host(host_array_ptr(top_logprobs_host), out_top_logprobs, runtime=self.runtime)
+            pairs: list[tuple[int, float]] = []
+            for candidate_id, candidate_logprob in zip(top_indices_host, top_logprobs_host, strict=True):
+                if len(pairs) >= requested_top_logprobs:
+                    break
+                token = int(candidate_id)
+                logprob = float(candidate_logprob)
+                if token < 0 or token >= self.vocab_size or not np.isfinite(logprob):
+                    continue
+                pairs.append((token, logprob))
+            top_logprobs = tuple(pairs)
         state.observe(token_id)
         return Qwen35ParoAutoregressiveStepResult(
             token_id=token_id,
             token_text=_decode_token_cached(self.tokenizer, token_id),
             logit=float(value_host[0]),
             logprob=float(logprob_host[0]),
+            top_logprobs=top_logprobs,
         )
 
     def _native_sampler_logits_ptr(self, params: Any, state: RowSamplingState) -> int:

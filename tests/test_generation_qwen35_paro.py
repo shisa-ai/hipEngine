@@ -1209,6 +1209,74 @@ def test_qwen35_paro_generator_default_routes_supported_c1_request_to_native_sam
     }
 
 
+def test_qwen35_paro_native_default_routes_bounded_top_logprobs_to_native_sampler(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: None,
+            decode=lambda ids: {100: "A", 101: "B"}.get(int(ids[0]), ""),
+        )
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            pass
+
+        def configure_native_sampler(self, params, state):
+            calls.append(
+                (
+                    "configure_native_sampler",
+                    None if params is None else params.top_k,
+                    None if params is None else params.top_logprobs,
+                    None if state is None else state.prompt_tokens,
+                )
+            )
+
+        def configure_host_sampler(self, params, state):  # pragma: no cover - this path must not be used
+            calls.append(("configure_host_sampler", params is None))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A", logprob=-0.1, top_logprobs=((100, -0.1),)) if sample else None
+
+        def step(self, token_id: int, *, position: int, sample: bool = True):
+            calls.append(("step", token_id, position, sample))
+            return _result(101, "B", logprob=-0.2, top_logprobs=((101, -0.2),)) if sample else None
+
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = object()
+
+    out = generator.generate(_request(max_tokens=2, temperature=0.7, top_k=4, top_logprobs=1, seed=5))
+
+    assert out == ["AB"]
+    assert calls[0] == ("configure_native_sampler", 4, 1, (10, 11))
+    assert not any(call[0] == "configure_host_sampler" for call in calls)
+    assert calls[-1] == ("configure_native_sampler", None, None, None)
+    output = generator.last_generation_outputs[0]
+    assert [token.top_logprobs for token in output.token_logprobs] == [
+        ((100, "A", -0.1),),
+        ((101, "B", -0.2),),
+    ]
+    assert _decode_state(output) == {
+        "row_index": 0,
+        "step_index": 2,
+        "prompt_tokens": 2,
+        "generated_tokens": 2,
+        "phase": "done",
+        "continuation_eligible": False,
+        "sampler_fast_path_blockers": ["temperature", "top_logprobs"],
+        "sampler_mode": "gpu_sample",
+        "full_vocab_logits_d2h": False,
+        "logits_d2h_bytes": 0,
+    }
+
+
 def test_qwen35_paro_native_sampler_honors_stop_sequence_after_selection(monkeypatch) -> None:
     calls = []
 
@@ -1280,7 +1348,7 @@ def test_qwen35_paro_native_sampler_honors_stop_sequence_after_selection(monkeyp
     }
 
 
-def test_qwen35_paro_native_default_reports_unsupported_top_logprobs_fallback(monkeypatch) -> None:
+def test_qwen35_paro_native_default_reports_unsupported_full_vocab_top_logprobs_fallback(monkeypatch) -> None:
     calls = []
 
     class FakeSession:

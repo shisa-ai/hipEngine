@@ -4457,7 +4457,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "top_k_max": 64,
                     "top_p_min_p": "exact_full_vocab_top_k_0",
                     "selected_logprobs": True,
-                    "top_logprobs": False,
+                    "top_logprobs": {
+                        "bounded_top_k": True,
+                        "requires_top_k": True,
+                        "max": 64,
+                        "constraint": "top_logprobs <= top_k <= 64",
+                    },
                     "processors": [
                         "logit_bias",
                         "repetition_penalty",

@@ -446,7 +446,14 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
         session.tokenizer = SimpleNamespace(decode=lambda ids: f"T{int(ids[0])}")
         session._project_logits_device_from_hidden = MethodType(lambda self, hidden: None, session)
 
-        def run_case(params, state, expected_id: int, expected_logprob: np.float32, expected_logit: np.float32):
+        def run_case(
+            params,
+            state,
+            expected_id: int,
+            expected_logprob: np.float32,
+            expected_logit: np.float32,
+            expected_top_logprobs: tuple[tuple[int, np.float32], ...] = (),
+        ):
             copy_host_to_device(session.lm_logits, host_array_ptr(logits), logits.nbytes, runtime=runtime)
             session.configure_native_sampler(params, state)
             result = session._sample_from_hidden(SimpleNamespace())
@@ -459,6 +466,15 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
             assert result.token_text == f"T{int(expected_id)}"
             np.testing.assert_allclose(np.array([result.logprob], dtype=np.float32), np.array([expected_logprob], dtype=np.float32), rtol=0, atol=2e-5)
             np.testing.assert_allclose(np.array([result.logit], dtype=np.float32), np.array([expected_logit], dtype=np.float32), rtol=0, atol=1e-6)
+            assert tuple(token_id for token_id, _logprob in result.top_logprobs) == tuple(
+                int(token_id) for token_id, _logprob in expected_top_logprobs
+            )
+            np.testing.assert_allclose(
+                np.array([logprob for _token_id, logprob in result.top_logprobs], dtype=np.float32),
+                np.array([logprob for _token_id, logprob in expected_top_logprobs], dtype=np.float32),
+                rtol=0,
+                atol=2e-5,
+            )
             assert int(observed_index[0]) == int(expected_id)
             np.testing.assert_allclose(observed_value, np.array([expected_logit], dtype=np.float32), rtol=0, atol=1e-6)
             assert state.generated_tokens[-1] == int(expected_id)
@@ -490,6 +506,34 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
         )
         assert full_second.token_id == full_first.token_id
         assert full_state.step_index == step_index + 1
+
+        top_logprobs_seed = 0x180
+        top_logprobs_step = 2
+        top_logprobs_params = _request_params(temperature=0.85, top_k=4, top_logprobs=3)
+        top_logprobs_state = RowSamplingState(prompt_tokens=(0,), seed=top_logprobs_seed, step_index=top_logprobs_step)
+        top_logprobs_expected = _cpu_reference(
+            logits,
+            np.array([0.85], dtype=np.float32),
+            np.array([top_logprobs_seed], dtype=np.uint64),
+            top_k=4,
+            step_index=top_logprobs_step,
+        )
+        run_case(
+            top_logprobs_params,
+            top_logprobs_state,
+            int(top_logprobs_expected[0][0]),
+            top_logprobs_expected[1][0],
+            logits[0, int(top_logprobs_expected[0][0])],
+            tuple(
+                (int(token_id), np.float32(logprob))
+                for token_id, logprob in zip(
+                    top_logprobs_expected[2][0, :3],
+                    top_logprobs_expected[3][0, :3],
+                    strict=True,
+                )
+            ),
+        )
+        assert top_logprobs_state.step_index == top_logprobs_step + 1
 
         proc_seed = 0x200
         proc_step = 3

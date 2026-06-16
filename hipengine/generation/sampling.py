@@ -31,7 +31,8 @@ _MAX_NATIVE_GPU_TOP_K = 64
 NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES: tuple[str, ...] = (
     "true_batched_c_gt_1",
     "gguf",
-    "top_logprobs",
+    "full_vocab_top_logprobs",
+    "top_logprobs_exceed_top_k",
     "suppress_token_ids",
     "min_tokens",
     "forced_tokens_pending",
@@ -593,14 +594,13 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     """Return whether current standalone GPU sampler kernels cover ``params``.
 
     The native route is intentionally narrower than the host sampler: selected
-    logprobs are available, but top-logprobs summaries and combined bounded
-    top-k + top-p/min-p filtering are not wired yet.
+    logprobs are available, bounded top-k top-logprobs are available when
+    ``top_logprobs <= top_k <= 64``, but full-vocab top-logprobs and combined
+    bounded top-k + top-p/min-p filtering are not wired yet.
     """
 
     validate_sampling_params(params)
     if float(getattr(params, "temperature", 0.0)) <= 0.0:
-        return False
-    if int(getattr(params, "top_logprobs", 0)) > 0:
         return False
     if _suppress_token_ids(params):
         return False
@@ -618,6 +618,9 @@ def supports_native_gpu_sampling(params: Any) -> bool:
         return False
     top_k = int(getattr(params, "top_k", 0))
     if top_k > _MAX_NATIVE_GPU_TOP_K:
+        return False
+    top_logprobs = int(getattr(params, "top_logprobs", 0))
+    if top_logprobs > 0 and (top_k <= 0 or top_logprobs > top_k):
         return False
     uses_probability_filter = float(getattr(params, "top_p", 1.0)) < 1.0 or float(getattr(params, "min_p", 0.0)) > 0.0
     if top_k > 0 and uses_probability_filter:

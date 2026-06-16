@@ -95,7 +95,8 @@ def _speculative_mtp_blocker_cases():
 
 def _native_gpu_sampler_guard_cases():
     return {
-        "top_logprobs": _params(temperature=0.7, top_logprobs=1),
+        "full_vocab_top_logprobs": _params(temperature=0.7, top_logprobs=1),
+        "top_logprobs_exceed_top_k": _params(temperature=0.7, top_k=4, top_logprobs=5),
         "suppress_token_ids": _params(temperature=0.7, suppress_token_ids=(7,)),
         "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
         "forced_tokens_pending": _params(temperature=0.7, forced_tokens_pending=(10,)),
@@ -203,6 +204,15 @@ def test_sampler_plan_uses_gpu_sample_for_native_supported_request() -> None:
     assert plan.fallback_reason is None
 
 
+def test_sampler_plan_uses_gpu_sample_for_bounded_top_logprobs() -> None:
+    params = _params(temperature=0.7, top_k=4, top_logprobs=2)
+    plan = plan_sampler(params, native_gpu_available=True)
+
+    assert supports_native_gpu_sampling(params) is True
+    assert plan.mode is SamplingMode.GPU_SAMPLE
+    assert plan.fast_path_blockers == ("temperature", "top_logprobs")
+
+
 def test_sampler_plan_allows_native_gpu_sample_with_supported_processors() -> None:
     params = _params(
         temperature=0.7,
@@ -229,6 +239,7 @@ def test_native_gpu_sampler_support_rejects_unwired_shapes() -> None:
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=65)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_p=0.9)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, top_logprobs=1)) is False
+    assert supports_native_gpu_sampling(_params(temperature=0.7, top_k=4, top_logprobs=5)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, suppress_token_ids=(1,))) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, min_tokens=1, eos_token_id=2)) is False
     assert supports_native_gpu_sampling(_params(temperature=0.7, forced_tokens_pending=(1,))) is False
