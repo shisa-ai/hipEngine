@@ -790,6 +790,9 @@ def build_b1_b4_prompt_suite_matrix(
         item["budget"]: item["hidden_seed_contract_precheck"] for item in artifacts
     }
     oracle_gate_by_budget = {item["budget"]: item["oracle_gate"] for item in artifacts}
+    llamacpp_trace_oracle_by_budget = {
+        item["budget"]: item["llamacpp_trace_oracle"] for item in artifacts
+    }
     runtime_kernel_precheck_by_budget = {
         item["budget"]: item["runtime_kernel_precheck"] for item in artifacts
     }
@@ -884,6 +887,7 @@ def build_b1_b4_prompt_suite_matrix(
         "kvlivespans_paged_cache_max_abs_diff_by_budget": kvlivespans_paged_cache_max_abs_diff_by_budget,
         "all_llamacpp_trace_budgets_full": not partial_trace_budget_budgets,
         "llamacpp_trace_budget_coverage_by_budget": trace_budget_coverage_by_budget,
+        "llamacpp_trace_oracle_by_budget": llamacpp_trace_oracle_by_budget,
         "partial_llamacpp_trace_budget_budgets": partial_trace_budget_budgets,
         "all_accepted_per_draft_metrics_comparable": not noncomparable_accepted_per_draft_budgets,
         "accepted_per_draft_status_by_budget": accepted_per_draft_status_by_budget,

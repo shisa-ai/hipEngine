@@ -677,6 +677,12 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "B3": "partial_trace_did_not_exercise_full_budget",
         "B4": "partial_trace_did_not_exercise_full_budget",
     }
+    assert matrix["llamacpp_trace_oracle_by_budget"]["B1"] == matrix["artifacts"][0]["llamacpp_trace_oracle"]
+    assert matrix["llamacpp_trace_oracle_by_budget"]["B4"] == matrix["artifacts"][3]["llamacpp_trace_oracle"]
+    assert matrix["llamacpp_trace_oracle_by_budget"]["B1"]["denominator_metrics"]["accepted_per_draft"] == 0.0
+    assert matrix["llamacpp_trace_oracle_by_budget"]["B4"]["budget_coverage"] == (
+        "partial_trace_did_not_exercise_full_budget"
+    )
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
     assert matrix["all_accepted_per_draft_metrics_comparable"] is True
     assert matrix["accepted_per_draft_status_by_budget"] == {
@@ -892,6 +898,13 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"]["B1"] == 0.0
     assert matrix["all_llamacpp_trace_budgets_full"] is False
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+    assert matrix["llamacpp_trace_oracle_by_budget"]["B1"]["budget_coverage"] == (
+        "full_requested_budget_exercised"
+    )
+    assert matrix["llamacpp_trace_oracle_by_budget"]["B4"]["denominator_metrics"][
+        "accepted_per_output_status"
+    ] == suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE
+    assert "artifacts" not in matrix["llamacpp_trace_oracle_by_budget"]["B1"]
     assert matrix["all_accepted_per_draft_metrics_comparable"] is True
     assert matrix["noncomparable_accepted_per_draft_budgets"] == []
     assert matrix["all_accepted_per_output_metrics_comparable"] is False
