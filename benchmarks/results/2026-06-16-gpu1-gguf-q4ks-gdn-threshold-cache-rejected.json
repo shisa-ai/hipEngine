@@ -1,0 +1,171 @@
+{
+  "artifact_name": "gpu1-gguf-q4ks-gdn-threshold-cache-rejected",
+  "base_commit": "50a536225bc3545044f4cbe8d2e4c106a9f6c0ae",
+  "baseline_retained_reference": {
+    "4K/128": {
+      "decode_tok_s": 114.991,
+      "peak_gib": 21.335,
+      "prefill_tok_s": 2292.684,
+      "stable_id": 570
+    },
+    "512/128": {
+      "decode_tok_s": 127.263,
+      "peak_gib": 21.335,
+      "prefill_tok_s": 1958.536,
+      "stable_id": 220
+    },
+    "artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-decode-policy-cache-gate.json",
+    "primary_metric_min_decode_tok_s": 114.990789
+  },
+  "change": {
+    "files": [
+      "hipengine/runtime/qwen35_gguf_runner.py",
+      "tests/test_qwen35_gguf_gdn_prefill_routing.py"
+    ],
+    "final_action": "Rejected and code/test changes reverted after prompt verifier failed.",
+    "summary": "Candidate cached HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD once on Qwen35GGUFFullStackRunner and used the cached value in _run_gdn_prefill, leaving object.__new__ tests on the dynamic helper fallback."
+  },
+  "checks": [
+    {
+      "name": "focused tests",
+      "result": "3 passed",
+      "status": "passed"
+    },
+    {
+      "name": "primary gate",
+      "result": "Stable IDs 220/570 and flat memory; candidate primary min decode 115.043965 tok/s.",
+      "status": "passed"
+    },
+    {
+      "name": "guard",
+      "result": "154 passed",
+      "status": "passed"
+    },
+    {
+      "name": "prompt verifier",
+      "result": "Prefill regressed versus retained decode-policy cache baseline: 512/128 1958.536 -> 1930.867 tok/s and 4K/128 2292.684 -> 2285.353 tok/s; 512 decode also moved lower 127.263 -> 127.050 tok/s despite a small 4K decode nudge.",
+      "status": "failed"
+    }
+  ],
+  "commands": {
+    "focused_tests": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_gdn_prefill_routing.py && python3 -m pytest tests/test_qwen35_gguf_gdn_prefill_routing.py::test_run_gdn_prefill_uses_cached_segment_threshold tests/test_qwen35_gguf_gdn_prefill_routing.py::test_run_gdn_prefill_uses_segments_above_threshold tests/test_qwen35_gguf_gdn_prefill_routing.py::test_segment_threshold_env_override_invalid_values_fall_back_to_default -q",
+    "guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "primary": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json"
+  },
+  "date": "2026-06-16",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX / gfx1100 (24GB class)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The 128K/128 final promotion check was not run because the primary prompt verifier failed.",
+    "This was an exact host-cache-only candidate with no kernel/math/memory changes; measured full-model prefill noise/regression was enough to reject rather than retain a default cache."
+  ],
+  "per_run_metrics": {
+    "4K/128": [
+      {
+        "decode_tok_s": 112.284932,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": false,
+        "prefill_tok_s": 2283.390583,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 115.05762,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 2294.486425,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 115.043965,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 2282.565429,
+        "run_index": 2,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 115.031395,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 2285.353491,
+        "run_index": 3,
+        "tracked_peak_allocated_gib": 21.334842
+      }
+    ],
+    "512/128": [
+      {
+        "decode_tok_s": 122.39305,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": false,
+        "prefill_tok_s": 1601.995861,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 127.0886,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 1861.813518,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 127.006621,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 1930.866662,
+        "run_index": 2,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 127.050204,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 1957.017983,
+        "run_index": 3,
+        "tracked_peak_allocated_gib": 21.334842
+      }
+    ]
+  },
+  "performance_claim": false,
+  "primary_metric_min_decode_tok_s": 115.043965,
+  "quant": "gguf_q4_k_s",
+  "repo": "/home/lhl/hipEngine-gguf-tuning",
+  "schema": "hipengine_benchmark_result/v1",
+  "software": "TheRock ROCm 7.13; /home/lhl/mambaforge/envs/therock/bin/python3.12; cached hipcc builds via /tmp/hipengine-hipcc-version-713.txt",
+  "status": "rejected",
+  "summary_by_workload": {
+    "4K/128": {
+      "decode_tok_s_median": 115.043965,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2285.353491,
+      "tracked_peak_allocated_gib_median": 21.334842
+    },
+    "512/128": {
+      "decode_tok_s_median": 127.050204,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1930.866662,
+      "tracked_peak_allocated_gib_median": 21.334842
+    }
+  }
+}

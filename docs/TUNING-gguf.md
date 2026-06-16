@@ -479,6 +479,17 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **GDN segment-threshold runner cache rejected (2026-06-16).** Caching
+  `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` once on the full-stack runner
+  instead of reparsing it in every GDN prefill chunk passed the focused routing
+  smoke and `154`-test GGUF guard with stable IDs and flat memory. It was not
+  retained because the primary gate regressed prefill versus the decode-policy
+  cache baseline (`512/128` `1958.536 / 127.263 -> 1930.867 / 127.050 tok/s`,
+  `4K/128` `2292.684 / 114.991 -> 2285.353 / 115.044 tok/s`). Code and test
+  changes were reverted; keep the dynamic helper until a host profile shows this
+  parse is material. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-gdn-threshold-cache-rejected.json`.
+
 - **GDN segment threshold=769 rejected (2026-06-16).** Lowering the GGUF GDN
   prefill recurrent-segments threshold from `1025` to `769` so 1024-row chunks
   use `segments_k2` passed the focused routing smoke and `154`-test GGUF guard
