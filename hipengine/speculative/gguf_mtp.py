@@ -1464,6 +1464,129 @@ class Qwen35GGUFMTPTop1AcceptSpec:
         object.__setattr__(self, "remaining_decode", remaining_decode)
         object.__setattr__(self, "request_id", request_id)
         object.__setattr__(self, "mode", str(self.mode))
+        min_target_rows = len(self.plan.proposed_token_ids) + len(self.plan.proposal.batch.request_ids)
+        if len(target_top1) < min_target_rows:
+            raise ValueError("target_top1 must cover target verify rows")
+        if self.verify_seeds and len(self.verify_seeds) < min_target_rows:
+            raise ValueError("verify_seeds must cover target verify rows")
+
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "plan",
+            "execution_plan_contract",
+            "target_top1",
+            "transaction_id",
+            "verify_seeds",
+            "remaining_decode",
+            "request_id",
+            "mode",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPTop1AcceptSpec.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "top1 accept spec",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        if payload.get("execution_plan_contract") != Qwen35GGUFMTPDraftExecutionPlan.contract():
+            raise ValueError(f"{field_name} execution_plan_contract mismatch")
+
+        plan = payload.get("plan")
+        target_top1 = payload.get("target_top1")
+        verify_seeds = payload.get("verify_seeds")
+        remaining_decode = payload.get("remaining_decode")
+        if not isinstance(plan, Mapping):
+            raise ValueError(f"{field_name} plan must be a mapping")
+        if not isinstance(target_top1, Sequence) or isinstance(target_top1, (str, bytes)):
+            raise ValueError(f"{field_name} target_top1 must be a sequence")
+        if not target_top1:
+            raise ValueError(f"{field_name} target_top1 must be non-empty")
+        if not isinstance(verify_seeds, Sequence) or isinstance(verify_seeds, (str, bytes)):
+            raise ValueError(f"{field_name} verify_seeds must be a sequence")
+        if remaining_decode is not None and (
+            not isinstance(remaining_decode, Sequence) or isinstance(remaining_decode, (str, bytes))
+        ):
+            raise ValueError(f"{field_name} remaining_decode must be null or a sequence")
+        Qwen35GGUFMTPDraftExecutionPlan.validate_payload(
+            plan,
+            field_name=f"{field_name} plan",
+        )
+        transaction_id = int(payload["transaction_id"])
+        if transaction_id < 0:
+            raise ValueError(f"{field_name} transaction_id must be non-negative")
+        request_id = payload.get("request_id")
+        if request_id is not None and int(request_id) < 0:
+            raise ValueError(f"{field_name} request_id must be non-negative")
+        mode = payload.get("mode")
+        if not isinstance(mode, str) or not mode:
+            raise ValueError(f"{field_name} mode must be non-empty")
+
+        proposed_token_ids = plan.get("proposed_token_ids")
+        proposal = plan.get("proposal")
+        if not isinstance(proposed_token_ids, Sequence) or isinstance(proposed_token_ids, (str, bytes)):
+            raise ValueError(f"{field_name} plan proposed_token_ids must be a sequence")
+        if not isinstance(proposal, Mapping):
+            raise ValueError(f"{field_name} plan proposal must be a mapping")
+        batch = proposal.get("batch")
+        if not isinstance(batch, Mapping):
+            raise ValueError(f"{field_name} plan proposal batch must be a mapping")
+        request_ids = batch.get("request_ids")
+        if not isinstance(request_ids, Sequence) or isinstance(request_ids, (str, bytes)):
+            raise ValueError(f"{field_name} plan request_ids must be a sequence")
+        min_target_rows = len(proposed_token_ids) + len(request_ids)
+        if len(target_top1) < min_target_rows:
+            raise ValueError(f"{field_name} target_top1 must cover target verify rows")
+        if verify_seeds and len(verify_seeds) < min_target_rows:
+            raise ValueError(f"{field_name} verify_seeds must cover target verify rows")
+        for index, seed in enumerate(verify_seeds):
+            Qwen35GGUFMTPSeedRow.validate_payload(
+                seed,
+                field_name=f"{field_name} verify_seeds[{index}]",
+            )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "plan": self.plan.as_dict(),
+            "execution_plan_contract": Qwen35GGUFMTPDraftExecutionPlan.contract(),
+            "target_top1": list(self.target_top1),
+            "transaction_id": self.transaction_id,
+            "verify_seeds": [seed.as_dict() for seed in self.verify_seeds],
+            "remaining_decode": None if self.remaining_decode is None else list(self.remaining_decode),
+            "request_id": self.request_id,
+            "mode": self.mode,
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
+        }
 
 
 @dataclass(frozen=True, slots=True)

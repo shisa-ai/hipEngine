@@ -864,6 +864,22 @@ def test_gguf_mtp_context_accepts_top1_specs_into_metrics() -> None:
 
     assert specs[0].target_top1 == (1, 9, 77)
     assert specs[1].remaining_decode == (2,)
+    spec_payload = specs[0].as_dict()
+    assert spec_payload["execution_plan_contract"] == Qwen35GGUFMTPDraftExecutionPlan.contract()
+    assert Qwen35GGUFMTPTop1AcceptSpec.contract() == {
+        "required_fields": list(Qwen35GGUFMTPTop1AcceptSpec.required_fields()),
+        "validator": "Qwen35GGUFMTPTop1AcceptSpec.validate_payload",
+    }
+    Qwen35GGUFMTPTop1AcceptSpec.validate_payload(spec_payload)
+    bad_payload = {**spec_payload, "execution_plan_contract": {}}
+    with pytest.raises(ValueError, match="execution_plan_contract mismatch"):
+        Qwen35GGUFMTPTop1AcceptSpec.validate_payload(bad_payload)
+    bad_payload = {**spec_payload, "target_top1": [1]}
+    with pytest.raises(ValueError, match="target_top1"):
+        Qwen35GGUFMTPTop1AcceptSpec.validate_payload(bad_payload)
+    bad_payload = {**spec_payload, "verify_seeds": [{**spec_payload["verify_seeds"][0], "hidden_ptr": 0}]}
+    with pytest.raises(ValueError, match="verify_seeds"):
+        Qwen35GGUFMTPTop1AcceptSpec.validate_payload(bad_payload)
     assert metrics.accepted_token_count == 3
     assert metrics.draft_token_count == 4
     assert metrics.candidate_budget == 2

@@ -728,9 +728,11 @@ Deliverables:
   count back to the llama.cpp verify-row hidden-seed reseed rule;
   `accept_target_top1()` returns a serializable `Qwen35GGUFMTPAcceptStep` while
   still supporting tuple unpacking as `(commit_plan, reseed)`, and
-  `Qwen35GGUFMTPTop1AcceptSpec` plus
-  `Qwen35GGUFMTPContext.accept_target_top1_metrics()` feed per-cycle target top-1
-  rows and verify seeds into one metrics artifact, and
+  `Qwen35GGUFMTPTop1AcceptSpec` now exposes a self-validating per-cycle payload
+  contract for nested execution plans, target top-1 rows, transaction IDs, and
+  verify-seed rows;
+  `Qwen35GGUFMTPContext.accept_target_top1_metrics()` feeds those per-cycle target
+  top-1 rows and verify seeds into one metrics artifact, and
   `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
   self-identifying schema/kind/source payload, explicit validator hook, a
   centralized required-field list with internal-consistency payload validation,
