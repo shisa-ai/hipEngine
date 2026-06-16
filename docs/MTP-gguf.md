@@ -334,8 +334,9 @@ preflight child can pick a budget-matched fixture for `--draft-max {1,2,3,4}` by
 default or emit a consolidated B1-B4 blocked matrix with `--all-budgets`. The
 matrix includes a compact `readiness_by_budget` section for precheck booleans,
 missing native keys, exactness status, KVLiveSpans paged-cache smoke status,
-llama.cpp trace budget coverage, metrics-contract status, self-validating
-per-budget `runtime_kernel_precheck_by_budget` payloads, per-budget
+llama.cpp trace budget coverage, metrics-contract status, a matrix-level
+`target_context_contract`, self-validating per-budget
+`runtime_kernel_precheck_by_budget` payloads, per-budget
 `hipengine_metrics_contract_by_budget`, per-budget
 `hipengine_metrics_contract_validation_by_budget`, a compact
 `hipengine_metrics_contract_validation_summary`, and blocker codes without
@@ -1043,7 +1044,8 @@ is now answered by the M1 required/optional table.)
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
-      `readiness_by_budget` parity/preflight/native-key status, self-validating
+      `readiness_by_budget` parity/preflight/native-key status, a matrix-level
+      `target_context_contract`, self-validating
       `runtime_kernel_precheck_by_budget` payloads, current CLI
       failure-to-exit-code maps, plus per-budget and matrix-level KVLiveSpans
       paged-cache smoke status, llama.cpp trace budget coverage, and

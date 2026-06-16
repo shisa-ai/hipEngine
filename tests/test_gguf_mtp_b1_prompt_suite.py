@@ -555,6 +555,8 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
 
     assert matrix["kind"] == "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix"
     assert matrix["status"] == "blocked"
+    assert matrix["target_context_contract"] == Qwen35GGUFMTPContext.contract()
+    assert matrix["target_context_contract"]["validator"] == "Qwen35GGUFMTPContext.validate_payload"
     assert matrix["cli_gate_exit_codes"] == EXPECTED_CLI_GATE_EXIT_CODES
     assert matrix["cli_gate_failures"] == [
         "blocked",
@@ -833,6 +835,8 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is False
     assert "artifacts" not in matrix
+    assert matrix["target_context_contract"] == Qwen35GGUFMTPContext.contract()
+    assert matrix["target_context_contract"]["validator"] == "Qwen35GGUFMTPContext.validate_payload"
     assert matrix["hipengine_metrics_contract_by_budget"]["B1"]["budget_label"] == "B1"
     assert matrix["hipengine_metrics_contract_by_budget"]["B4"]["candidate_budget"] == 4
     for budget, contract in matrix["hipengine_metrics_contract_by_budget"].items():

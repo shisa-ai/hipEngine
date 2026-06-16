@@ -848,6 +848,7 @@ def build_b1_b4_prompt_suite_matrix(
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
         "mode": "preflight",
         "status": "blocked" if any(item["status"] == "blocked" for item in artifacts) else "ready",
+        "target_context_contract": Qwen35GGUFMTPContext.contract(),
         "cli_gate_exit_codes": dict(CLI_GATE_EXIT_CODES),
         "cli_gate_failures_by_budget": cli_gate_failures_by_budget,
         "cli_gate_failure_exit_codes_by_budget": cli_gate_failure_exit_codes_by_budget,
