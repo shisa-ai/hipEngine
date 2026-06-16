@@ -789,6 +789,12 @@ def build_b1_b4_prompt_suite_matrix(
     parity_precheck_by_budget = {
         item["budget"]: item["parity_precheck"] for item in artifacts
     }
+    draft_budget_precheck_by_budget = {
+        item["budget"]: item["draft_budget_precheck"] for item in artifacts
+    }
+    draft_sampling_contract_precheck_by_budget = {
+        item["budget"]: item["draft_sampling_contract_precheck"] for item in artifacts
+    }
     hidden_seed_contract_precheck_by_budget = {
         item["budget"]: item["hidden_seed_contract_precheck"] for item in artifacts
     }
@@ -876,9 +882,11 @@ def build_b1_b4_prompt_suite_matrix(
         "all_parity_prechecks_pass": all(item["parity_precheck"]["all_pass"] for item in artifacts),
         "parity_precheck_by_budget": parity_precheck_by_budget,
         "all_budget_prechecks_pass": all(item["draft_budget_precheck"]["passed"] for item in artifacts),
+        "draft_budget_precheck_by_budget": draft_budget_precheck_by_budget,
         "all_sampling_contract_prechecks_pass": all(
             item["draft_sampling_contract_precheck"]["passed"] for item in artifacts
         ),
+        "draft_sampling_contract_precheck_by_budget": draft_sampling_contract_precheck_by_budget,
         "all_hidden_seed_contract_prechecks_pass": all(
             item["hidden_seed_contract_precheck"]["passed"] for item in artifacts
         ),

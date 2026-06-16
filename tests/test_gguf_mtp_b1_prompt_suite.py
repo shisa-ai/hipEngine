@@ -647,7 +647,18 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["parity_precheck_by_budget"]["B1"]["all_pass"] is True
     assert matrix["parity_precheck_by_budget"]["B4"]["sampling"]["passed"] is True
     assert matrix["all_budget_prechecks_pass"] is True
+    assert matrix["draft_budget_precheck_by_budget"]["B1"] == matrix["artifacts"][0]["draft_budget_precheck"]
+    assert matrix["draft_budget_precheck_by_budget"]["B4"] == matrix["artifacts"][3]["draft_budget_precheck"]
+    assert matrix["draft_budget_precheck_by_budget"]["B1"]["expected"] == {"budget": "B1", "draft_max": 1}
+    assert matrix["draft_budget_precheck_by_budget"]["B4"]["expected"] == {"budget": "B4", "draft_max": 4}
     assert matrix["all_sampling_contract_prechecks_pass"] is True
+    assert matrix["draft_sampling_contract_precheck_by_budget"]["B1"] == matrix["artifacts"][0][
+        "draft_sampling_contract_precheck"
+    ]
+    assert matrix["draft_sampling_contract_precheck_by_budget"]["B4"] == matrix["artifacts"][3][
+        "draft_sampling_contract_precheck"
+    ]
+    assert matrix["draft_sampling_contract_precheck_by_budget"]["B4"]["expected"]["top_k"] == 10
     assert matrix["all_hidden_seed_contract_prechecks_pass"] is True
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B1"] == matrix["artifacts"][0]["hidden_seed_contract_precheck"]
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"] == matrix["artifacts"][3]["hidden_seed_contract_precheck"]
@@ -867,6 +878,12 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["parity_precheck_by_budget"]["B1"]["all_pass"] is True
     assert matrix["parity_precheck_by_budget"]["B4"]["token_ids"]["all_match"] is True
     assert "artifacts" not in matrix["parity_precheck_by_budget"]["B1"]
+    assert matrix["draft_budget_precheck_by_budget"]["B1"]["expected"] == {"budget": "B1", "draft_max": 1}
+    assert matrix["draft_budget_precheck_by_budget"]["B4"]["passed"] is True
+    assert matrix["draft_sampling_contract_precheck_by_budget"]["B1"]["passed"] is True
+    assert matrix["draft_sampling_contract_precheck_by_budget"]["B4"]["expected"]["top_k"] == 10
+    assert "artifacts" not in matrix["draft_budget_precheck_by_budget"]["B1"]
+    assert "artifacts" not in matrix["draft_sampling_contract_precheck_by_budget"]["B1"]
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B1"]["passed"] is True
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["hidden_size"] == 2048
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["dynamic_input"] == {

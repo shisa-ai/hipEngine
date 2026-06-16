@@ -100291,3 +100291,49 @@ Validation:
   now remains visible without child artifacts; KVLiveSpans runtime-kernel and
   execution-plan contracts remain the attention/KV-write ABI for future native
   paths; no benchmark row was retained.
+
+## 2026-06-16 - MTP-GGUF matrix draft precheck payloads
+
+Implemented `mtp-gguf` multiloop iteration 175: B1-B4 GGUF MTP matrix
+artifacts now expose per-budget `draft_budget_precheck_by_budget` and
+`draft_sampling_contract_precheck_by_budget` payloads, including compact matrices
+that omit full child artifacts.
+
+Scope note:
+- Torch-free artifact/metadata change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This preserves draft-budget and llama.cpp sampler/top-k contract evidence per
+  draft budget before native execution and performance comparison are
+  implemented.
+
+RED/GREEN:
+- RED: added matrix tests requiring `draft_budget_precheck_by_budget` and
+  `draft_sampling_contract_precheck_by_budget` B1/B4 payloads in full and compact
+  matrix artifacts;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_builds_budget_matched_artifacts -q`
+  failed as expected with `KeyError: 'draft_budget_precheck_by_budget'`.
+- GREEN: `scripts/gguf_mtp_b1_prompt_suite.py` now collects each child
+  `draft_budget_precheck` and `draft_sampling_contract_precheck` into per-budget
+  matrix payloads before returning the matrix artifact.
+
+Validation:
+- Focused matrix tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_builds_budget_matched_artifacts tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_can_omit_child_artifacts` -> passed (2 tests).
+- Focused prompt-suite/context/export/oracle-gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_oracle_gate.py` -> passed (85 tests).
+- Real local B1-B4 compact matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` -> `status blocked`, `artifacts_included False`, draft-budget and draft-sampling by-budget payloads present, B1 expected budget `{budget: B1, draft_max: 1}`, B4 sampler `top_k 10`, and B4 sampling `passed True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md WORKLOG.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: artifact/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Draft budget/top-k
+  evidence now remains visible without child artifacts; KVLiveSpans runtime-kernel
+  and execution-plan contracts remain the attention/KV-write ABI for future native
+  paths; no benchmark row was retained.
