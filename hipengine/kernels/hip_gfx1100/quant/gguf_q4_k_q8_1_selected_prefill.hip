@@ -83,6 +83,24 @@ __device__ inline uint8_t gguf_q4_k_quant(
   return (subblock & 1) ? (packed >> 4) : (packed & 0x0Fu);
 }
 
+__device__ inline int pack_i8x4(const int8_t* ptr) {
+  uint32_t out = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    out |= static_cast<uint32_t>(static_cast<uint8_t>(ptr[i])) << (8 * i);
+  }
+  return static_cast<int>(out);
+}
+
+__device__ inline int pack_u8x4(const uint8_t* ptr) {
+  uint32_t out = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    out |= static_cast<uint32_t>(ptr[i]) << (8 * i);
+  }
+  return static_cast<int>(out);
+}
+
 bool valid_q8_1_selected_dual_common(
     const void* x_qs,
     const void* x_d,
@@ -276,6 +294,61 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
   }
 }
 
+__launch_bounds__(32, 1)
+__global__ void gguf_q4_k_q8_1_wmma_i8_probe_16x16_kernel(
+    const int8_t* __restrict__ a_rows,
+    const uint8_t* __restrict__ b_cols,
+    int32_t* __restrict__ out) {
+  const int tid = threadIdx.x;
+  const int lane16 = tid & 15;
+  const int half_id = tid >> 4;
+
+  typedef int int32x4_t __attribute__((__vector_size__(4 * sizeof(int))));
+  typedef int int32x8_t __attribute__((__vector_size__(8 * sizeof(int))));
+
+  int32x4_t a_vec = {
+      pack_i8x4(a_rows + lane16 * 16 + 0),
+      pack_i8x4(a_rows + lane16 * 16 + 4),
+      pack_i8x4(a_rows + lane16 * 16 + 8),
+      pack_i8x4(a_rows + lane16 * 16 + 12),
+  };
+  int32x4_t b_vec = {
+      pack_u8x4(b_cols + lane16 * 16 + 0),
+      pack_u8x4(b_cols + lane16 * 16 + 4),
+      pack_u8x4(b_cols + lane16 * 16 + 8),
+      pack_u8x4(b_cols + lane16 * 16 + 12),
+  };
+  int32x8_t acc = {0, 0, 0, 0, 0, 0, 0, 0};
+  acc = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+      true, a_vec, true, b_vec, acc, false);
+
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int row = half_id + j * 2;
+    out[row * 16 + lane16] = acc[j];
+  }
+}
+
+int launch_wmma_i8_probe_16x16(
+    const int8_t* a_rows,
+    const uint8_t* b_cols,
+    int32_t* out,
+    hipStream_t stream) {
+  if (a_rows == nullptr || b_cols == nullptr || out == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gguf_q4_k_q8_1_wmma_i8_probe_16x16_kernel,
+      dim3(1),
+      dim3(32),
+      0,
+      stream,
+      a_rows,
+      b_cols,
+      out);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_selected_dual_q8_1_compact32(
     const int8_t* x_qs,
     const float* x_d,
@@ -403,6 +476,14 @@ int launch_selected_dual_q8_1_ds4_compact32(
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16(
+    const int8_t* a_rows,
+    const uint8_t* b_cols,
+    int32_t* out,
+    hipStream_t stream) {
+  return launch_wmma_i8_probe_16x16(a_rows, b_cols, out, stream);
+}
 
 extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(
     const int8_t* x_qs,

@@ -18,6 +18,7 @@ _SOURCE = Path(__file__).with_name("gguf_q4_k_q8_1_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_q8_1_selected_prefill.so"
 _SYMBOL_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out"
+_SYMBOL_WMMA_I8_PROBE = "hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16"
 _Q4_K_BLOCK = 256
 
 
@@ -59,6 +60,42 @@ def build_gguf_q4_k_q8_1_selected_prefill(
         load=load,
         require_cached=require_cached,
     )
+
+
+def gguf_q4_k_q8_1_wmma_i8_probe_16x16(
+    a_rows_ptr: int,
+    b_cols_ptr: int,
+    out_ptr: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch a diagnostic RDNA3 int8/uint8 WMMA 16x16 probe.
+
+    ``a_rows`` is row-major ``int8[16, 16]`` and ``b_cols`` is row-major
+    ``uint8[16, 16]`` where each row represents one logical output column over
+    K. The kernel writes ``int32[16, 16]`` equal to ``a_rows @ b_cols.T``.
+    """
+
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_WMMA_I8_PROBE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(a_rows_ptr),
+        ctypes.c_void_p(b_cols_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(

@@ -9,6 +9,7 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
+    gguf_q4_k_q8_1_wmma_i8_probe_16x16,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
     plan_gguf_q4_k_q8_1_selected_prefill_build,
@@ -206,6 +207,41 @@ def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> 
 # ---------------------------------------------------------------------------
 # HIP correctness fixtures.
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_wmma_i8_probe_16x16_matches_cpu_matmul() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    a_rows = ((np.arange(16 * 16, dtype=np.int16).reshape(16, 16) % 17) - 8).astype(np.int8)
+    b_cols = ((np.arange(16 * 16, dtype=np.uint16).reshape(16, 16) * 3 + 5) % 16).astype(np.uint8)
+    actual = np.zeros((16, 16), dtype=np.int32)
+    expected = a_rows.astype(np.int32) @ b_cols.astype(np.int32).T
+
+    bufs = []
+    try:
+        a_dev = malloc(a_rows.nbytes, runtime=runtime)
+        b_dev = malloc(b_cols.nbytes, runtime=runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        bufs.extend((a_dev, b_dev, out_dev))
+        copy_host_to_device(a_dev, host_array_ptr(np.ascontiguousarray(a_rows)), runtime=runtime)
+        copy_host_to_device(b_dev, host_array_ptr(np.ascontiguousarray(b_cols)), runtime=runtime)
+        gguf_q4_k_q8_1_wmma_i8_probe_16x16(
+            a_dev.ptr,
+            b_dev.ptr,
+            out_dev.ptr,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 def _run_q8_1_selected_dual_gpu(fixture) -> np.ndarray:

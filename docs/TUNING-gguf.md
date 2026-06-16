@@ -326,8 +326,11 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-selected-prefill-prototype.json`.
   A host-side `GGUFQ4KMMQTile16Preview` scaffold now centralizes DS4 activation
   packing plus the 16-column Q4_K nibble/scale/min operands and has an exact
-  CPU oracle test that reconstructs raw Q4_K values. **Next code test:** port
-  the actual shared-memory + WMMA/MMA tile path (`load_tiles_q4_K` +
+  CPU oracle test that reconstructs raw Q4_K values. A tiny RDNA3
+  `wmma_i8_probe_16x16` kernel now verifies the key
+  `__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32` fragment/store mapping against
+  CPU int32 matmul and has a rocprof kernel-trace smoke. **Next code test:**
+  port the actual shared-memory + WMMA/MMA tile path (`load_tiles_q4_K` +
   `vec_dot_q8_1_q8_1_mma`) for this microbench shape; layout-only scalar
   variants are rejected.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
