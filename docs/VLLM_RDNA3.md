@@ -16,8 +16,10 @@ and imported `vllm._C` / `vllm._rocm_C`, but the target GPTQ server path is stil
 blocked. `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4` non-text-only startup hit a
 ViT SDPA 256 GiB allocation, while text-only/language-only attempts loaded all
 seven shards (~342 s, ~20.15 GiB model memory) and then never bound port `8008`.
-The kyuz0 Strix Halo toolbox looks like the next best reproduction path, but it
-has not been run here yet because no local container runtime is available.
+The kyuz0 Strix Halo toolbox looks like the next best reproduction path. As of
+2026-06-15, rootless Podman `5.8.3` is installed and a minimal Alpine container
+can see `/dev/kfd` and `/dev/dri`, but the kyuz0 image/model smoke has not been
+run yet.
 
 For the detailed build log/recipe, also see `/home/lhl/vllm/BUILD-gfx1100.md`.
 This file keeps the hipEngine-facing summary, model table, and benchmark notes.
@@ -107,13 +109,27 @@ What differs from our first `gfx1151` attempt:
   the attention path was wrong.
 
 Container smoke status: **not run yet**. Preflight on this host found accessible
-`/dev/kfd` and `/dev/dri/renderD128`, plus a populated Hugging Face cache, but
-none of `podman`, `docker`, `toolbox`, or `distrobox` is installed/on `PATH`.
-Once a runtime is available, use the kyuz0 `latest` image first and test AWQ
-before retrying GPTQ:
+`/dev/kfd` and `/dev/dri/renderD128`, plus a populated Hugging Face cache. Task
+#17 installed rootless Podman `5.8.3` via `sudo pacman -S --needed podman` and
+validated a minimal Alpine container with ROCm device passthrough
+(`--device /dev/kfd --device /dev/dri --group-add keep-groups`); `/dev/kfd`,
+`/dev/dri/renderD128`, and `/dev/dri/card1`
+were readable/writable inside the container. `toolbox`/`distrobox` are still not
+installed, so use direct Podman unless a toolbox workflow is installed later.
+Use the kyuz0 `latest` image first and test AWQ before retrying GPTQ:
 
 ```bash
-# Fedora/toolbox-style path from kyuz0 README.
+# Direct Podman path available on this host.
+podman run --rm -it \
+  --device /dev/dri --device /dev/kfd \
+  --group-add keep-groups \
+  --security-opt seccomp=unconfined \
+  -v /home/lhl/.cache/huggingface:/root/.cache/huggingface:Z \
+  -p 8008:8000 \
+  docker.io/kyuz0/vllm-therock-gfx1151:latest \
+  start-vllm
+
+# Fedora/toolbox-style path from kyuz0 README, if toolbox is installed later.
 toolbox create vllm \
   --image docker.io/kyuz0/vllm-therock-gfx1151:latest \
   -- --device /dev/dri --device /dev/kfd \

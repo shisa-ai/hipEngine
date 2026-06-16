@@ -93417,3 +93417,30 @@ Next action once a runtime is available: run the kyuz0 `latest` toolbox/containe
 with ROCm device passthrough, smoke `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`, then
 retry `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, and only add a README vLLM row if
 `/health` binds and the 512/128 OpenAI concurrency sweep completes.
+
+## 2026-06-15 - Podman runtime installed for kyuz0 vLLM smoke
+
+Installed a local container runtime for the kyuz0 Strix Halo vLLM toolbox path on
+CachyOS/Arch:
+
+```bash
+sudo pacman -S --needed --noconfirm podman
+```
+
+Installed packages included Podman `5.8.3`, `crun`, `conmon`, `netavark`, and
+`aardvark-dns`. Rootless Podman is available for user `lhl` with existing
+`/etc/subuid` and `/etc/subgid` ranges.
+
+Validation:
+- `podman --version` -> `podman version 5.8.3`.
+- `podman info` reports `rootless=true`, graph driver `overlay`, OCI runtime
+  `crun`.
+- `podman run --rm docker.io/library/alpine:latest sh -c 'echo container-ok'`
+  completed.
+- Device passthrough smoke completed with:
+  `podman run --rm --device /dev/kfd --device /dev/dri --group-add keep-groups docker.io/library/alpine:latest ...`;
+  `/dev/kfd`, `/dev/dri/renderD128`, and `/dev/dri/card1` were readable/writable
+  inside the container.
+
+This unblocks a direct Podman kyuz0 image smoke. `toolbox`/`distrobox` remain
+uninstalled, so use `podman run` unless a toolbox workflow is added later.
