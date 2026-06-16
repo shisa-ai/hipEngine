@@ -20,6 +20,10 @@ DEFAULT_NEXTN_CPU_REFERENCE_KERNEL = ("cpu_reference", "mtp_nextn_layer", "w4_gg
 DEFAULT_NEXTN_LAYER = "mtp_nextn_layer"
 DEFAULT_NEXTN_QUANT = "w4_gguf"
 DEFAULT_NEXTN_VARIANT = "qwen35_dense_logits"
+DEFAULT_NEXTN_KV_WRITE_LAYER = "paged_kv_write"
+DEFAULT_NEXTN_KV_WRITE_VARIANT = "mixed_bf16_spans"
+DEFAULT_NEXTN_ATTN_DECODE_LAYER = "paged_attn_decode"
+DEFAULT_NEXTN_ATTN_DECODE_VARIANT = "bf16_context_spans"
 DEFAULT_DRAFT_TOPK_DEVICE_VARIANT = "topk_device"
 GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
 GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
@@ -527,6 +531,18 @@ class Qwen35GGUFMTPRuntimeKernelPlan:
             Qwen35GGUFMTPRuntimeKernelCheck.from_key(
                 name="native_nextn_runtime",
                 key=(target, DEFAULT_NEXTN_LAYER, DEFAULT_NEXTN_QUANT, DEFAULT_NEXTN_VARIANT),
+                required_for="native_runtime",
+                missing_is_blocker=False,
+            ),
+            Qwen35GGUFMTPRuntimeKernelCheck.from_key(
+                name="native_nextn_paged_kv_write",
+                key=(target, DEFAULT_NEXTN_KV_WRITE_LAYER, DEFAULT_NEXTN_QUANT, DEFAULT_NEXTN_KV_WRITE_VARIANT),
+                required_for="native_runtime",
+                missing_is_blocker=False,
+            ),
+            Qwen35GGUFMTPRuntimeKernelCheck.from_key(
+                name="native_nextn_paged_attn_decode",
+                key=(target, DEFAULT_NEXTN_ATTN_DECODE_LAYER, DEFAULT_NEXTN_QUANT, DEFAULT_NEXTN_ATTN_DECODE_VARIANT),
                 required_for="native_runtime",
                 missing_is_blocker=False,
             ),

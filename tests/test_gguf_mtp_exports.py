@@ -5,6 +5,10 @@ from hipengine.speculative import (
     DEFAULT_DRAFT_SELECTION,
     DEFAULT_DRAFT_TOPK,
     DEFAULT_DRAFT_TOPK_KERNEL,
+    DEFAULT_NEXTN_ATTN_DECODE_LAYER,
+    DEFAULT_NEXTN_ATTN_DECODE_VARIANT,
+    DEFAULT_NEXTN_KV_WRITE_LAYER,
+    DEFAULT_NEXTN_KV_WRITE_VARIANT,
     GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
     GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
     GGUF_MTP_METRICS_CONTRACT_READY,
@@ -26,6 +30,10 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
     assert DEFAULT_DRAFT_TOPK == 10
     assert DEFAULT_DRAFT_SELECTION == "greedy_top1_from_topk"
     assert DEFAULT_DRAFT_TOPK_KERNEL == ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
+    assert DEFAULT_NEXTN_KV_WRITE_LAYER == "paged_kv_write"
+    assert DEFAULT_NEXTN_KV_WRITE_VARIANT == "mixed_bf16_spans"
+    assert DEFAULT_NEXTN_ATTN_DECODE_LAYER == "paged_attn_decode"
+    assert DEFAULT_NEXTN_ATTN_DECODE_VARIANT == "bf16_context_spans"
 
     seed = Qwen35GGUFMTPSeedRow(token_id=1, position=2, hidden_ptr=0x1000, hidden_size=8)
     plan = Qwen35GGUFMTPKVLiveSpansPlan.from_draft_batch(

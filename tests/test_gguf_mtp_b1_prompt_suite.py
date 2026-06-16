@@ -271,7 +271,9 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is True
     assert artifact["runtime_kernel_precheck"]["missing_exactness_oracle_keys"] == []
     assert artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"] == [
-        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
+        ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
+        ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
     ]
     assert artifact["runtime_kernel_precheck"]["missing_optimization_keys"] == []
     assert artifact["oracle_gate"]["passed"] is True
@@ -329,7 +331,9 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
                 "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
             ),
             "missing_native_runtime_keys": [
-                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
+                ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
+                ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
             ],
             "missing_optimization_keys": [],
         }
@@ -359,7 +363,9 @@ def test_b1_prompt_suite_preflight_can_request_b4_when_sampling_matches(
                 "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
             ),
             "missing_native_runtime_keys": [
-                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
+                ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
+                ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
             ],
             "missing_optimization_keys": [],
         }
@@ -469,7 +475,9 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "native_runtime_kernels_ready": False,
         "optimization_kernels_ready": True,
         "missing_native_runtime_keys": [
-            ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
+            ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
+            ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
+            ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
         ],
         "missing_optimization_keys": [],
         "metrics_contract_status": "not_run",

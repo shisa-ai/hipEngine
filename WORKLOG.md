@@ -97019,3 +97019,51 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. Future MTP attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF native KVLiveSpans runtime component keys
+
+Implemented `mtp-gguf` multiloop iteration 96: expanded the GGUF MTP runtime
+preflight to enumerate native KVLiveSpans append/decode component keys in
+addition to the composite NextN runtime key.
+
+Scope note:
+- Shared contract/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- This tightens the blocked artifact evidence: B1-B4 now list the exact native
+  `paged_kv_write` append and `paged_attn_decode` decode registry gaps required
+  by the KVLiveSpans ABI instead of only the composite `mtp_nextn_layer` gap.
+
+Changes:
+- Added shared default native component constants for GGUF MTP KV write and
+  attention decode keys to `hipengine/speculative/gguf_mtp.py` and exported them
+  through `hipengine.speculative`.
+- `Qwen35GGUFMTPRuntimeKernelPlan.from_registry(...)` now checks three native
+  runtime keys for each backend: `mtp_nextn_layer/qwen35_dense_logits`,
+  `paged_kv_write/mixed_bf16_spans`, and `paged_attn_decode/bf16_context_spans`
+  under `quant='w4_gguf'`.
+- Updated runtime-plan/export/prompt-suite tests and blocked artifact
+  expectations for the expanded `missing_native_runtime_keys` list.
+- Updated `docs/MTP-gguf.md` to document that runtime preflight now names the
+  KVLiveSpans paged-KV append/decode component gaps.
+
+Validation:
+- Focused shared-contract/prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py` -> `48` passed.
+- Real local compact B1-B4 matrix smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `native_ready False`, B1 missing native keys `mtp_nextn_layer`,
+  `paged_kv_write/mixed_bf16_spans`, `paged_attn_decode/bf16_context_spans`, and
+  `optimization_ready True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: shared contract/docs/tests only; no torch import; no
+  runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. The runtime preflight now explicitly names the future
+  KVLiveSpans append/decode registry keys.

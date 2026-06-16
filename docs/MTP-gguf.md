@@ -893,13 +893,19 @@ is now answered by the M1 required/optional table.)
       NextN logits oracle, and `Qwen35GGUFMTPContext` covers the B1-B4
       seed/batch/proposal/verification state scaffold plus metadata-only
       KVLiveSpans and execution-plan contracts exported through
-      `hipengine.speculative`, but HIP/runtime registration under
-      `KernelKey(backend, layer, quant='w4_gguf', variant)` remains open.
+      `hipengine.speculative`; `Qwen35GGUFMTPRuntimeKernelPlan` now enumerates
+      the missing native composite NextN runtime key plus the KVLiveSpans-shaped
+      `paged_kv_write/mixed_bf16_spans` append and
+      `paged_attn_decode/bf16_context_spans` decode keys under
+      `quant='w4_gguf'`, but HIP/runtime registration for those keys remains
+      open.
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
       specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
-      precheck backed by `Qwen35GGUFMTPRuntimeKernelPlan`, CPU-reference oracle
+      precheck backed by `Qwen35GGUFMTPRuntimeKernelPlan` (including the native
+      NextN composite key and the KVLiveSpans paged-KV append/decode component
+      keys), CPU-reference oracle
       gate output, a hipEngine metrics contract with explicit
       accepted-per-draft/output denominator labels, and captured
       llama.cpp draft-trace oracle provenance/denominator checks; B1 runtime
