@@ -64,6 +64,17 @@ def test_gguf_mtp_oracle_gate_passes_committed_fixture() -> None:
         "kv_evict_mask": None,
         "block_size": 256,
     }
+    assert result["kvlivespans_paged_cache_smoke"] == {
+        "passed": True,
+        "max_abs_diff": 0.0,
+        "dense_shape": [1, 4],
+        "paged_shape": [1, 4],
+        "cache_tokens": 2,
+        "block_size": 2,
+        "kv_base_offsets": [[0]],
+        "kv_live_counts": [2],
+        "kv_token_positions": [1],
+    }
 
 
 def test_gguf_mtp_oracle_gate_fails_tampered_expected_logits(tmp_path: Path) -> None:

@@ -596,9 +596,11 @@ Current status:
   reusable mechanical artifact with KL/top-1 metrics before any performance
   comparison is allowed, uses the registered
   `KernelKey("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")`
-  unfused top-k fallback/oracle for draft token selection, and embeds the
+  unfused top-k fallback/oracle for draft token selection, embeds the
   metadata-only `draft_execution_plan` contract that ties selected token rows to
-  KVLiveSpans-shaped append/decode kwargs.
+  KVLiveSpans-shaped append/decode kwargs, and now runs a dense-vs-paged
+  KVLiveSpans cache smoke (`kvlivespans_paged_cache_smoke`) against the same
+  fixture.
 - llama.cpp verbose `draft-mtp` candidate fixture
   `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` captures a
   short `explain_concept` prompt trace: 2 draft calls, top-3 candidates per call,
@@ -886,7 +888,8 @@ is now answered by the M1 required/optional table.)
       with a deterministic fixture:
       `benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`.
       The oracle gate now embeds the metadata-only draft execution-plan summary
-      derived from those exact logits.
+      derived from those exact logits and a dense-vs-KVLiveSpans paged-cache
+      smoke over the same fixture.
 - [ ] Implement draft-only NextN forward (full attn+MoE) with a KVLiveSpans
       attention path and dense fallback; CPU-reference coverage and call specs
       now include dense and KVLiveSpans-shaped paged-cache paths through the full

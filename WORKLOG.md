@@ -97067,3 +97067,48 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. The runtime preflight now explicitly names the future
   KVLiveSpans append/decode registry keys.
+
+## 2026-06-16 - MTP-GGUF oracle gate KVLiveSpans smoke
+
+Implemented `mtp-gguf` multiloop iteration 97: extended the GGUF MTP
+CPU-reference oracle gate with a dense-vs-KVLiveSpans paged-cache smoke over the
+committed NextN fixture.
+
+Scope note:
+- CPU-reference oracle/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- The new smoke exercises the NumPy KVLiveSpans-shaped paged-cache path against
+  the dense CPU-cache path before native paged-KV/attention kernels exist.
+
+Changes:
+- `scripts/gguf_mtp_oracle_gate.py` now emits
+  `kvlivespans_paged_cache_smoke` with dense/paged logits shapes, max abs diff,
+  block size, base offsets, live counts, and token positions.
+- Refactored fixture kwargs handling so the oracle can run the same NextN fixture
+  with extra dense or paged cache kwargs.
+- Updated oracle-gate tests to assert the KVLiveSpans smoke passes with
+  `max_abs_diff=0.0` on the committed fixture.
+- Updated `docs/MTP-gguf.md` to document that the oracle gate now embeds the
+  dense-vs-paged KVLiveSpans smoke.
+
+Validation:
+- Focused oracle/CPU-reference tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_cpu_reference.py` -> `24` passed.
+- Oracle gate CLI smoke passed:
+  `scripts/gguf_mtp_oracle_gate.py --out <tmp> --fail-on-fail` -> `passed True`,
+  `kvlivespans_paged_cache_smoke.passed True`, `max_abs_diff 0.0`, dense/paged
+  shape `[1,4]`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_oracle_gate.py` and
+  `git diff --check -- scripts/gguf_mtp_oracle_gate.py tests/test_gguf_mtp_oracle_gate.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: CPU-reference oracle/docs/tests only; no torch import;
+  no runtime backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance claim. The oracle gate now mechanically exercises the KVLiveSpans
+  paged-cache CPU path while future native MTP attention/KV-write execution
+  remains KVLiveSpans-gated.

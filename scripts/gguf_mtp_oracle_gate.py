@@ -55,6 +55,7 @@ def run_oracle_gate(
     fixture = json.loads(fixture_path.read_text())
     actual_logits = _run_nextn_fixture(fixture)
     expected_logits = _f32(fixture["expected"]["logits"])
+    kvlivespans_smoke = _run_kvlivespans_paged_cache_smoke(fixture)
     if actual_logits.shape != expected_logits.shape:
         raise ValueError(
             f"actual logits shape {actual_logits.shape} did not match expected {expected_logits.shape}"
@@ -108,6 +109,7 @@ def run_oracle_gate(
         "actual_top_k_logits": actual_top_k_logits.astype(float).tolist(),
         "expected_top_k_token_ids": expected_top_k.astype(int).tolist(),
         "draft_execution_plan": draft_execution_plan,
+        "kvlivespans_paged_cache_smoke": kvlivespans_smoke,
         "passed": bool(passed),
     }
 
@@ -143,7 +145,7 @@ def _build_draft_execution_plan_summary(
     return plan.as_dict()
 
 
-def _run_nextn_fixture(fixture: dict[str, Any]) -> np.ndarray:
+def _run_nextn_fixture(fixture: dict[str, Any], extra_kwargs: dict[str, Any] | None = None) -> np.ndarray:
     backend, layer, quant, variant = fixture["cpu_reference_kernel"]
     kernel = resolve(backend=backend, layer=layer, quant=quant, variant=variant)
     inputs = fixture["inputs"]
@@ -175,9 +177,75 @@ def _run_nextn_fixture(fixture: dict[str, Any]) -> np.ndarray:
         GGMLQuantizationType[str(inputs["shared_qtype"])],
         _f32(inputs["shared_head_norm_weight"]),
         _f32(inputs["shared_head_weight"]),
-        **fixture["kwargs"],
+        **_fixture_kwargs(fixture, extra_kwargs),
     )
     return np.asarray(logits, dtype=np.float32)
+
+
+def _fixture_kwargs(fixture: dict[str, Any], extra_kwargs: dict[str, Any] | None = None) -> dict[str, Any]:
+    kwargs = dict(fixture["kwargs"])
+    if extra_kwargs:
+        kwargs.update(extra_kwargs)
+    return kwargs
+
+
+def _run_kvlivespans_paged_cache_smoke(fixture: dict[str, Any]) -> dict[str, Any]:
+    inputs = fixture["inputs"]
+    hidden_seed = _f32(inputs["hidden_seed"])
+    q_norm = _f32(inputs["q_norm_weight"])
+    if hidden_seed.ndim != 2 or hidden_seed.shape[0] < 1:
+        raise ValueError("hidden_seed must have shape [rows, hidden_size]")
+    if q_norm.ndim != 1 or q_norm.shape[0] < 1:
+        raise ValueError("q_norm_weight must have shape [qk_head_dim]")
+    rows = int(hidden_seed.shape[0])
+    kv_heads = int(fixture["kwargs"]["num_kv_heads"])
+    qk_head_dim = int(q_norm.shape[0])
+    cache_tokens = max(2, rows)
+    block_size = cache_tokens
+    cache_values = np.arange(cache_tokens * kv_heads * qk_head_dim, dtype=np.float32).reshape(
+        cache_tokens, kv_heads, qk_head_dim
+    )
+    key_dense = np.sin(cache_values + 1.0).astype(np.float32)
+    value_dense = np.cos(cache_values + 1.0).astype(np.float32)
+    positions = np.arange(cache_tokens - rows, cache_tokens, dtype=np.int64)
+    context_counts = np.full((rows,), cache_tokens, dtype=np.int64)
+    dense_logits = _run_nextn_fixture(
+        fixture,
+        {
+            "key_cache": key_dense,
+            "value_cache": value_dense,
+            "positions": positions,
+            "context_counts": context_counts,
+        },
+    )
+    paged_logits = _run_nextn_fixture(
+        fixture,
+        {
+            "key_cache": key_dense.reshape(1, cache_tokens, kv_heads, qk_head_dim),
+            "value_cache": value_dense.reshape(1, cache_tokens, kv_heads, qk_head_dim),
+            "kv_base_offsets": np.zeros((rows, 1), dtype=np.int32),
+            "kv_live_counts": context_counts,
+            "kv_token_positions": positions,
+            "block_size": block_size,
+        },
+    )
+    if dense_logits.shape != paged_logits.shape:
+        raise ValueError(
+            f"dense logits shape {dense_logits.shape} did not match paged logits shape {paged_logits.shape}"
+        )
+    abs_diff = np.abs(dense_logits - paged_logits)
+    max_abs_diff = float(np.max(abs_diff)) if abs_diff.size else 0.0
+    return {
+        "passed": bool(max_abs_diff <= 1.0e-6),
+        "max_abs_diff": max_abs_diff,
+        "dense_shape": list(dense_logits.shape),
+        "paged_shape": list(paged_logits.shape),
+        "cache_tokens": cache_tokens,
+        "block_size": block_size,
+        "kv_base_offsets": [[0] for _ in range(rows)],
+        "kv_live_counts": context_counts.astype(int).tolist(),
+        "kv_token_positions": positions.astype(int).tolist(),
+    }
 
 
 def _f32(value: Any) -> np.ndarray:
