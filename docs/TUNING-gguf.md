@@ -479,6 +479,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q8_0 T16 large-input TM16 rejected (2026-06-16).** Changing the resident
+  Q8_0 T16 WMMA prefill tile policy for `in>=4096,out>=2048` projections from
+  `TM32/TN32` to `TM16/TN32` passed the focused tile-policy smoke and `154`-test
+  GGUF guard with stable IDs and flat memory, but it regressed both retained
+  gates (`512/128` `1958.536 / 127.263 -> 1938.859 / 127.166 tok/s`, `4K/128`
+  `2292.684 / 114.991 -> 2270.846 / 114.832 tok/s`). Code and test changes
+  were reverted; keep the large-input Q8_0 T16 default at `TM32` rather than
+  under-tiling it. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-largein-tm16-rejected.json`.
+
 - **Selected Q4_K WMMA default tile 16x16 rejected (2026-06-16).** Changing the
   selected dual Q4_K WMMA compact prefill default from `32x16` to `16x16`
   passed the focused tile smoke and `154`-test GGUF guard with stable IDs and
