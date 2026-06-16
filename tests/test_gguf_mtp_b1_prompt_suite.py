@@ -645,6 +645,12 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["all_budget_prechecks_pass"] is True
     assert matrix["all_sampling_contract_prechecks_pass"] is True
     assert matrix["all_hidden_seed_contract_prechecks_pass"] is True
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B1"] == matrix["artifacts"][0]["hidden_seed_contract_precheck"]
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"] == matrix["artifacts"][3]["hidden_seed_contract_precheck"]
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B1"]["passed"] is True
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["required_contract"]["dtype"] == "FP32"
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["required_contract"]["provenance"] == "post_output_norm"
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["required_contract"]["ready_for_mtp"] is True
     assert matrix["all_exactness_gates_pass"] is True
     assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
     assert matrix["kvlivespans_paged_cache_smoke_by_budget"] == {
@@ -837,6 +843,14 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert "artifacts" not in matrix
     assert matrix["target_context_contract"] == Qwen35GGUFMTPContext.contract()
     assert matrix["target_context_contract"]["validator"] == "Qwen35GGUFMTPContext.validate_payload"
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B1"]["passed"] is True
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["hidden_size"] == 2048
+    assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["dynamic_input"] == {
+        "argument": "hidden_seed",
+        "required": True,
+        "shape": ["tokens", 2048],
+    }
+    assert "artifacts" not in matrix["hidden_seed_contract_precheck_by_budget"]["B1"]
     assert matrix["hipengine_metrics_contract_by_budget"]["B1"]["budget_label"] == "B1"
     assert matrix["hipengine_metrics_contract_by_budget"]["B4"]["candidate_budget"] == 4
     for budget, contract in matrix["hipengine_metrics_contract_by_budget"].items():
