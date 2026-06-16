@@ -1,0 +1,167 @@
+{
+  "date": "2026-06-16",
+  "lane": "G-P4",
+  "kind": "gguf_128k_memory_policy",
+  "status": "retained_memory_policy_primary_gate_nonregressive_128k_construct_smoke",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "hardware": "GPU1/gfx1100",
+  "change_summary": [
+    "Lower 24GB low-memory prefill threshold to 128K-class contexts (131072 tokens) so 128K/128 resolves to 256-token chunks.",
+    "Use a single full-sequence prefill hidden buffer plus a chunk staging buffer for low-memory prefill; copy staged chunk outputs back in-place after each chunk.",
+    "Compact bulk-prefill dense block_table metadata to scratch rows because every prefill row maps the same contiguous physical block IDs."
+  ],
+  "commands": {
+    "primary_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "128k_construct_smoke": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<PY ... Qwen35GGUFResidentSession(max_sequence_length=131072+1+128+1, require_cached_build=True, use_wmma_prefill=True, use_gemv_decode=True) ...",
+    "staging_correctness_probe": "Forced low-memory threshold to 1 for max_sequence_length=2048 and compared staged low-memory output against manual 256-token full-hidden prefill on a 512-token prompt.",
+    "guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q"
+  },
+  "primary_gate": {
+    "512/128": {
+      "prefill_tok_s_median": 1845.9588631318102,
+      "decode_tok_s_median": 126.6406888816837,
+      "tracked_peak_allocated_gib_median": 21.334841787815094,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2153.0506595735465,
+      "decode_tok_s_median": 115.7516307837925,
+      "tracked_peak_allocated_gib_median": 21.334841787815094,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.7516307837925,
+  "primary_persistent_memory": {
+    "tracked_peak_allocated_bytes": 22908111936,
+    "tracked_peak_allocated_gib": 21.334841787815094,
+    "tracked_current_allocated_bytes_before_close": 22908111936,
+    "tracked_current_allocated_gib_before_close": 21.334841787815094,
+    "tracked_current_allocated_bytes_after_close": 0,
+    "tracked_current_allocated_gib_after_close": 0.0,
+    "owned_session_peak_bytes": 22908111936,
+    "owned_session_peak_gib": 21.334841787815094,
+    "hip_used_peak_sampled_bytes": 23526514688,
+    "hip_used_peak_sampled_gib": 21.91077423095703,
+    "notes": [
+      "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+      "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+      "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+    ]
+  },
+  "primary_before_close_breakdown": {
+    "total_bytes": 22908111936,
+    "total_gib": 21.334841787815094,
+    "families": {
+      "weights": {
+        "total_bytes": 21322787328,
+        "total_gib": 19.85839319229126,
+        "allocation_count": 733,
+        "by_quant_key_bytes": {
+          "gguf_q8_0": 540344320,
+          "f32": 4639232,
+          "gguf_q6_k_t16_v1": 1077780480,
+          "bf16": 49971200,
+          "gguf_q4_k_t16_v1": 18157142016,
+          "gguf_q8_0_t16_v1": 1492910080
+        },
+        "by_layout_bytes": {
+          "raw_gguf": 540344320,
+          "dense_f32": 4639232,
+          "gguf_q6_k_t16_v1": 1077780480,
+          "dense_bf16": 49971200,
+          "gguf_q4_k_t16_v1": 18157142016,
+          "gguf_q8_0_t16_v1": 1492910080
+        },
+        "by_quant_layout_bytes": {
+          "gguf_q8_0:raw_gguf": 540344320,
+          "f32:dense_f32": 4639232,
+          "gguf_q6_k_t16_v1:gguf_q6_k_t16_v1": 1077780480,
+          "bf16:dense_bf16": 49971200,
+          "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 18157142016,
+          "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 1492910080
+        },
+        "by_allocation_name_bytes": {
+          "raw": 594954752,
+          "tiles": 20727832576
+        }
+      },
+      "decode_scratch": {
+        "total_bytes": 158746412,
+        "total_gib": 0.1478441171348095,
+        "max_positions": 4352,
+        "block_table_len": 17,
+        "by_component_bytes": {
+          "full_attention_kv_cache": 89128960,
+          "linear_attention_state": 66846720,
+          "metadata_tables": 2228308,
+          "decode_workspace_other": 542424
+        }
+      },
+      "session_buffers": {
+        "total_bytes": 1426578196,
+        "total_gib": 1.3286044783890247,
+        "by_component_bytes": {
+          "decode_logits_and_lm_head": 1007312,
+          "prefill_token_buffer": 34816,
+          "prefill_full_sequence_hidden": 35651584,
+          "bulk_prefill_scratch": 1389884484,
+          "session_buffer_other": 0
+        },
+        "prefill_hidden_b_rows": 4352,
+        "bulk_prefill_scratch_rows": 4096,
+        "bulk_prefill_scratch_capacity": 4352
+      }
+    },
+    "notes": [
+      "weights counts unique resident GGUF allocations that own their device buffer; tied aliases are not double-counted.",
+      "decode_scratch is the persistent c=1 decode workspace, including full-attention KV cache and linear-attention recurrent state.",
+      "session_buffers includes logits/lm-head temporaries, full-sequence prefill token/hidden buffers, and the bulk-prefill scratch workspace."
+    ]
+  },
+  "construct_128k_smoke": {
+    "passed": true,
+    "max_sequence_length_requested": 131202,
+    "scratch_max_positions": 131328,
+    "chunk_sizes": {
+      "linear": 256,
+      "moe": 256,
+      "full_attn_query": 256,
+      "full_attn_post": 256,
+      "full_attn_rope": 256
+    },
+    "tuning_reason": "low_memory_full_context_24gb",
+    "owned_session_gib": 23.145987,
+    "hip_used_sampled_gib": 23.658203,
+    "weights_gib": 19.858393,
+    "decode_scratch_gib": 2.637895,
+    "session_buffers_gib": 0.649698,
+    "bulk_prefill_scratch_gib": 0.145828,
+    "prefill_hidden_gib": 0.501953,
+    "prefill_hidden_b_rows": 256,
+    "previous_projected_owned_gib_before_policy": 25.107746,
+    "owned_gib_delta_vs_previous_projection": -1.9617589999999971
+  },
+  "staging_correctness_probe": {
+    "passed": true,
+    "manual_256_full_hidden_token": 25088,
+    "staged_low_memory_token": 25088,
+    "manual_256_full_hidden_logit": 9.275147438049316,
+    "staged_low_memory_logit": 9.275147438049316,
+    "kl_manual_256_vs_staged": 0.0,
+    "note": "A separate forced comparison against the normal 1024/4096 chunk policy changed KL (~0.171) while preserving top-1, matching the existing low-memory 256-token chunk behavior rather than the new staging copy."
+  },
+  "limitations": [
+    "Full 128K/128 throughput/correctness gate was not run in this iteration; only 128K session construction and memory were checked."
+  ]
+}

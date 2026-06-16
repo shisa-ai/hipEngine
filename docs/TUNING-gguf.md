@@ -177,11 +177,23 @@ GPU1 gate, owned resident memory remains `21.335 GiB`, split as `19.858 GiB`
 weights/T16 tiles, `0.148 GiB` decode scratch, and `1.329 GiB` session buffers
 (`1.295 GiB` bulk-prefill scratch plus `0.033 GiB` full-sequence prefill hidden
 for the 4K capacity). A static projection matching the resident-session scratch
-formulas puts `128K/128` at `25.108 GiB` (`19.858 GiB` weights, `2.638 GiB`
-decode scratch including `2.505 GiB` full-attention KV, and `2.611 GiB` session
-buffers including `1.608 GiB` bulk-prefill scratch and `1.002 GiB` full-sequence
-prefill hidden). GPU1 reports `23.984 GiB` total, so the 128K blocker is a real
-`~1.12 GiB` capacity shortfall rather than hidden raw+packed duplicate residency.
+formulas put pre-policy `128K/128` at `25.108 GiB` (`19.858 GiB` weights,
+`2.638 GiB` decode scratch including `2.505 GiB` full-attention KV, and
+`2.611 GiB` session buffers including `1.608 GiB` bulk-prefill scratch and
+`1.002 GiB` full-sequence prefill hidden). GPU1 reports `23.984 GiB` total, so
+that blocker was a real `~1.12 GiB` capacity shortfall rather than hidden
+raw+packed duplicate residency.
+
+G-P4 128K memory policy is recorded in
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-memory-policy.json`. The
+24GB low-memory chunk policy now triggers at 128K-class contexts and the
+low-memory prefill path uses one full-sequence hidden buffer plus a chunk staging
+buffer; bulk-prefill dense block-table metadata is also compacted to scratch
+rows. A GPU1 `128K/128` session-construction smoke now succeeds at
+`23.146 GiB` owned / `23.658 GiB` sampled HIP-used with `256`-token chunks,
+`0.146 GiB` bulk-prefill scratch, and `prefill_hidden_b_rows=256` (pre-policy
+projection was `25.108 GiB`). The full `128K/128` throughput/correctness run is
+still pending before final long-context promotion.
 
 Retained notes:
 
@@ -225,11 +237,11 @@ Current focused lanes from evidence:
    object is scratch-free and low-VGPR and prior Q8 launch-bound/load variants
    no-held. Prefer dispatch/graph/full-attention or an algorithmic Q8 reduction
    over more occupancy pokes.
-2. **G-P4 before final long-context promotion:** G-M4 now attributes the memory
-   blocker: the primary gates fit at `21.335 GiB`, while the projected GPU1
-   `128K/128` resident footprint is `25.108 GiB` on a `23.984 GiB` device. Long
-   context claims need W7900 fallback evidence or a real reduction in KV,
-   full-sequence prefill hidden, or bulk-prefill scratch residency.
+2. **G-P4 before final long-context promotion:** 128K session construction now
+   fits on GPU1 (`23.146 GiB` owned / `23.658 GiB` sampled HIP-used), but a full
+   `128K/128` throughput/correctness run is still required before final
+   long-context promotion. If it is too slow or regresses, next targets are KV
+   cache residency and lower-overhead long-context prefill staging.
 3. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
    WMMA is no longer the dominant 4K prefill bucket; GDN prefill recurrent and
    dense Q8_0 WMMA are now comparable follow-up targets, and any further G-P1
@@ -679,7 +691,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-P1 | Follow up the retained selected-MoE half-seq WMMA rewrite only if a 16-column/codegen variant can reduce the remaining 256-VGPR cap. | Half-seq moved the 4K/16 target bucket `800.455 -> 454.370 ms`; remaining upside is smaller and must not trade back decode stability. | Target bucket moves materially beyond half-seq without >24 GiB duplicate storage or decode noise. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
-| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | Same throughput class with lower peak, or clear W7900-only label. |
+| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | 128K session construction now fits on GPU1 via 256-token low-memory chunks and chunk-staged prefill hidden (`23.146 GiB` owned); full `128K/128` throughput/correctness still pending. |
 
 ### H lane — Host/runtime and graph replay
 

@@ -1005,6 +1005,7 @@ def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, A
         "total_bytes": total,
         "total_gib": _bytes_to_gib(total),
         "by_component_bytes": named,
+        "prefill_hidden_b_rows": _maybe_int(getattr(session, "_prefill_hidden_b_rows", None)),
     }
     if bulk_scratch_obj is not None:
         payload["bulk_prefill_scratch_rows"] = _maybe_int(getattr(bulk_scratch_obj, "rows", None))

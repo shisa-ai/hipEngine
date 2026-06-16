@@ -10,7 +10,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
@@ -2769,6 +2769,7 @@ class Qwen35GGUFResidentSession:
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
+    _prefill_hidden_b_rows: int = field(default=0, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
@@ -2850,9 +2851,11 @@ class Qwen35GGUFResidentSession:
         self._lm_out_value = malloc(DType.FP32.itemsize, runtime=runtime)
         prefill_capacity = int(self.scratch.max_positions)
         self._prefill_token_buf = malloc(prefill_capacity * DType.INT64.itemsize, runtime=runtime)
-        self._prefill_hidden_a = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
-        self._prefill_hidden_b = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
         prefill_rows = self._prefill_scratch_rows(prefill_capacity)
+        low_memory_prefill = self.prefill_chunk_tuning.get("reason") == "low_memory_full_context_24gb"
+        self._prefill_hidden_a = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
+        self._prefill_hidden_b_rows = prefill_rows if low_memory_prefill else prefill_capacity
+        self._prefill_hidden_b = malloc(self._prefill_hidden_b_rows * hidden_bytes, runtime=runtime)
         self._bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
             self.runner,
             rows=prefill_rows,
@@ -3028,6 +3031,8 @@ class Qwen35GGUFResidentSession:
         )
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
+        hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+        use_chunk_staging = int(self._prefill_hidden_b_rows) < int(self.scratch.max_positions)
         use_wmma_prefill = gguf_wmma_prefill_enabled(None)
         linear_min_rows = int(self.runner.weights.config.ssm_conv_kernel)
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
@@ -3050,8 +3055,12 @@ class Qwen35GGUFResidentSession:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 for start, end in ranges:
                     chunk_rows = end - start
-                    src_chunk_ptr = src.ptr + start * self.runner.hidden_size * 2
-                    dst_chunk_ptr = dst.ptr + start * self.runner.hidden_size * 2
+                    if use_chunk_staging and chunk_rows > int(self._prefill_hidden_b_rows):
+                        raise RuntimeError(
+                            f"GGUF prefill chunk rows {chunk_rows} exceed staging rows {self._prefill_hidden_b_rows}"
+                        )
+                    src_chunk_ptr = src.ptr + start * hidden_row_nbytes
+                    dst_chunk_ptr = dst.ptr if use_chunk_staging else dst.ptr + start * hidden_row_nbytes
                     bulk_scratch = self._bulk_prefill_scratch.for_chunk(
                         start, chunk_rows, total_tokens=rows, runtime=runtime, stream=stream
                     )
@@ -3090,10 +3099,19 @@ class Qwen35GGUFResidentSession:
                         )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    if use_chunk_staging:
+                        runtime.memcpy_async(
+                            src.ptr + start * hidden_row_nbytes,
+                            dst.ptr,
+                            chunk_rows * hidden_row_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
             finally:
                 if expert_sidecar is not None:
                     expert_sidecar.free(runtime=runtime)
-            src, dst = dst, src
+            if not use_chunk_staging:
+                src, dst = dst, src
         last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
             rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
         )
@@ -3507,6 +3525,7 @@ class Qwen35GGUFResidentSession:
         self._prefill_token_buf = None
         self._prefill_hidden_a = None
         self._prefill_hidden_b = None
+        self._prefill_hidden_b_rows = 0
         self._bulk_prefill_scratch = None
         self._logits_host = None
         self._expert_sidecar_host_layers = None
@@ -3735,7 +3754,12 @@ class _GGUFFullAttentionPrefillScratch:
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
         prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
-        block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (capacity, 1))
+        # Every dense prefill row maps logical KV blocks to the same contiguous
+        # physical block IDs.  Keep only enough duplicate rows for the largest
+        # scratch chunk instead of ``capacity`` rows; ``for_chunk`` reuses this
+        # compact table with per-row token positions below.  This avoids a
+        # quadratic-ish capacity*blocks metadata allocation at 128K contexts.
+        block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
         positions_arr = np.arange(capacity, dtype=np.int64)
         context_arr = positions_arr + np.int64(1)
         cu_arr = np.asarray([0, rows], dtype=np.int32)
@@ -3831,8 +3855,8 @@ class _GGUFFullAttentionPrefillScratch:
             runtime=runtime,
         )
         block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
-        positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
-        context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
+        positions_tensor = Tensor.from_handle(fields["positions"].ptr, (rows,), DType.INT64, device)
+        context_tensor = Tensor.from_handle(fields["context_counts"].ptr, (rows,), DType.INT64, device)
         append_spans = KVLiveSpans.paged_uniform(
             block_table=block_table_tensor,
             live_counts=positions_tensor,
@@ -3878,6 +3902,8 @@ class _GGUFFullAttentionPrefillScratch:
         total_tokens = int(total_tokens)
         if start < 0 or rows <= 0 or start + rows > self.max_positions:
             raise ValueError(f"chunk bounds [{start}, {start+rows}) must be within [0, {self.max_positions})")
+        if rows > self.rows:
+            raise ValueError(f"chunk rows {rows} exceed scratch row capacity {self.rows}")
         if total_tokens <= 0 or total_tokens > self.max_positions or start + rows > total_tokens:
             raise ValueError(
                 f"chunk bounds [{start}, {start+rows}) must be within total_tokens={total_tokens} and max_positions={self.max_positions}"
@@ -3893,7 +3919,7 @@ class _GGUFFullAttentionPrefillScratch:
         )
         _ = stream
         block_table = Tensor.from_handle(
-            self.block_table.ptr + start * self.blocks * DType.INT32.itemsize,
+            self.block_table.ptr,
             (rows, self.blocks),
             DType.INT32,
             self.block_table_tensor.device,
