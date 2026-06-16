@@ -4455,7 +4455,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "true_batched_c_gt_1": False,
                     "default_path": True,
                     "top_k_max": 64,
-                    "top_p_min_p": "exact_full_vocab_top_k_0",
+                    "top_p_min_p": "exact_full_vocab_top_k_0_and_bounded_top_k",
                     "selected_logprobs": True,
                     "top_logprobs": {
                         "bounded_top_k": True,

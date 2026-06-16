@@ -8820,10 +8820,8 @@ class Qwen35ParoResidentSession:
         top_p = float(getattr(params, "top_p", 1.0))
         min_p = float(getattr(params, "min_p", 0.0))
         requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
-        if requested_top_logprobs > 0 and (
-            top_k <= 0 or requested_top_logprobs > top_k or top_p < 1.0 or min_p > 0.0
-        ):
-            raise RuntimeError("native bounded top_logprobs require top_k > 0, top_logprobs <= top_k, and no top_p/min_p")
+        if requested_top_logprobs > 0 and (top_k <= 0 or requested_top_logprobs > top_k):
+            raise RuntimeError("native bounded top_logprobs require top_k > 0 and top_logprobs <= top_k")
         out_top_indices = None
         out_top_logprobs = None
         if requested_top_logprobs > 0:
@@ -8835,7 +8833,31 @@ class Qwen35ParoResidentSession:
                 "_native_sampler_top_logprobs_f32",
                 top_k * DType.FP32.itemsize,
             )
-        if top_p < 1.0 or min_p > 0.0:
+        uses_probability_filter = top_p < 1.0 or min_p > 0.0
+        if top_k > 0:
+            top_p_buf = self._native_sampler_cached_scalar(("top_p",), top_p, np.float32) if uses_probability_filter else None
+            min_p_buf = self._native_sampler_cached_scalar(("min_p",), min_p, np.float32) if uses_probability_filter else None
+            sample_topk_temperature_f32_rows_i32(
+                logits_ptr,
+                temperature_buf.ptr,
+                seed_buf.ptr,
+                out_indices.ptr,
+                out_logprobs.ptr,
+                None if out_top_indices is None else out_top_indices.ptr,
+                None if out_top_logprobs is None else out_top_logprobs.ptr,
+                1,
+                self.vocab_size,
+                top_k,
+                top_ps_f32_ptr=None if top_p_buf is None else top_p_buf.ptr,
+                min_ps_f32_ptr=None if min_p_buf is None else min_p_buf.ptr,
+                out_indices_i64_ptr=self.lm_out_index.ptr,
+                out_values_f32_ptr=self.lm_out_value.ptr,
+                step_index=state.step_index,
+                threads=128,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif uses_probability_filter:
             top_p_buf = self._native_sampler_cached_scalar(("top_p",), top_p, np.float32)
             min_p_buf = self._native_sampler_cached_scalar(("min_p",), min_p, np.float32)
             retained_counts = self._native_sampler_buffer("_native_sampler_retained_counts_i32", DType.INT32.itemsize)
@@ -8850,25 +8872,6 @@ class Qwen35ParoResidentSession:
                 retained_counts.ptr,
                 1,
                 self.vocab_size,
-                out_indices_i64_ptr=self.lm_out_index.ptr,
-                out_values_f32_ptr=self.lm_out_value.ptr,
-                step_index=state.step_index,
-                threads=128,
-                library=library,
-                runtime=self.runtime,
-            )
-        elif top_k > 0:
-            sample_topk_temperature_f32_rows_i32(
-                logits_ptr,
-                temperature_buf.ptr,
-                seed_buf.ptr,
-                out_indices.ptr,
-                out_logprobs.ptr,
-                None if out_top_indices is None else out_top_indices.ptr,
-                None if out_top_logprobs is None else out_top_logprobs.ptr,
-                1,
-                self.vocab_size,
-                top_k,
                 out_indices_i64_ptr=self.lm_out_index.ptr,
                 out_values_f32_ptr=self.lm_out_value.ptr,
                 step_index=state.step_index,

@@ -38,7 +38,6 @@ NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES: tuple[str, ...] = (
     "force_sequence_completion_token_sequences",
     "json_object_close_forcing",
     "thinking_budget",
-    "combined_top_k_with_top_p_or_min_p",
 )
 SPECULATIVE_MTP_INCOMPATIBLE_FIELDS: tuple[str, ...] = (
     "temperature",
@@ -593,8 +592,8 @@ def supports_native_gpu_sampling(params: Any) -> bool:
 
     The native route is intentionally narrower than the host sampler: selected
     logprobs are available, bounded top-k top-logprobs are available when
-    ``top_logprobs <= top_k <= 64``, but full-vocab top-logprobs and combined
-    bounded top-k + top-p/min-p filtering are not wired yet.
+    ``top_logprobs <= top_k <= 64``, but full-vocab top-logprobs are not wired
+    yet.
     """
 
     validate_sampling_params(params)
@@ -615,9 +614,6 @@ def supports_native_gpu_sampling(params: Any) -> bool:
         return False
     top_logprobs = int(getattr(params, "top_logprobs", 0))
     if top_logprobs > 0 and (top_k <= 0 or top_logprobs > top_k):
-        return False
-    uses_probability_filter = float(getattr(params, "top_p", 1.0)) < 1.0 or float(getattr(params, "min_p", 0.0)) > 0.0
-    if top_k > 0 and uses_probability_filter:
         return False
     return True
 

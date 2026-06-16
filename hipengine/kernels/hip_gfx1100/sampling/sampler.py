@@ -299,6 +299,8 @@ def sample_topk_temperature_f32_rows_i32(
     vocab_size: int,
     top_k: int,
     *,
+    top_ps_f32_ptr: int | None = None,
+    min_ps_f32_ptr: int | None = None,
     out_indices_i64_ptr: int | None = None,
     out_values_f32_ptr: int | None = None,
     step_index: int = 0,
@@ -312,7 +314,9 @@ def sample_topk_temperature_f32_rows_i32(
     ``logits`` is a row-major FP32 ``[rows, vocab_size]`` device buffer.
     ``temperatures`` and ``row_seeds`` are device arrays with one entry per row.
     ``top_k`` is common for the launch and currently limited to ``1 <= k <= 64``;
-    exact full-vocab / top-p sampling remains a separate native sampler track.
+    Optional ``top_ps`` / ``min_ps`` apply host-order probability filtering over
+    the bounded top-k candidate set before the draw. Full-vocab top-p/min-p
+    sampling remains a separate native sampler track for public ``top_k=0``.
 
     Outputs:
     - ``out_indices_i32[rows]`` receives selected token ids.
@@ -333,6 +337,8 @@ def sample_topk_temperature_f32_rows_i32(
         ctypes.c_void_p,  # logits f32
         ctypes.c_void_p,  # temperatures f32
         ctypes.c_void_p,  # row seeds u64
+        ctypes.c_void_p,  # top ps f32 [rows] (nullable)
+        ctypes.c_void_p,  # min ps f32 [rows] (nullable)
         ctypes.c_void_p,  # out selected indices i32
         ctypes.c_void_p,  # out selected logprobs f32 (nullable)
         ctypes.c_void_p,  # out top indices i32 (nullable)
@@ -351,6 +357,8 @@ def sample_topk_temperature_f32_rows_i32(
         ctypes.c_void_p(logits_f32_ptr),
         ctypes.c_void_p(temperatures_f32_ptr),
         ctypes.c_void_p(row_seeds_u64_ptr),
+        ctypes.c_void_p(top_ps_f32_ptr) if top_ps_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(min_ps_f32_ptr) if min_ps_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_indices_i32_ptr),
         ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_top_indices_i32_ptr) if out_top_indices_i32_ptr is not None else ctypes.c_void_p(),

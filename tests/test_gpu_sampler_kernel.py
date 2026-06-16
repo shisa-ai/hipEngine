@@ -194,7 +194,16 @@ def _uniform01(row_seed: int, step_index: int, row: int) -> np.float32:
     return np.float32((bits >> 11) * (1.0 / 9007199254740992.0))
 
 
-def _cpu_reference(logits: np.ndarray, temperatures: np.ndarray, seeds: np.ndarray, *, top_k: int, step_index: int):
+def _cpu_reference(
+    logits: np.ndarray,
+    temperatures: np.ndarray,
+    seeds: np.ndarray,
+    *,
+    top_k: int,
+    step_index: int,
+    top_p: float = 1.0,
+    min_p: float = 0.0,
+):
     rows, _vocab = logits.shape
     selected = np.full((rows,), -1, dtype=np.int32)
     selected_logprobs = np.full((rows,), _NEG_INF, dtype=np.float32)
@@ -224,14 +233,33 @@ def _cpu_reference(logits: np.ndarray, temperatures: np.ndarray, seeds: np.ndarr
             weight = np.float32(np.exp(np.float32(value - max_scaled)))
             weights[idx] = weight
             weight_sum = np.float32(weight_sum + weight)
-        log_denom = np.float32(np.log(weight_sum) + max_scaled)
-        logprobs = (scaled - log_denom).astype(np.float32)
-        top_logprobs[row, : candidates.size] = logprobs
+        retained_count = candidates.size
+        top_p_value = np.float32(top_p)
+        if top_p_value < np.float32(1.0):
+            if top_p_value <= np.float32(0.0):
+                retained_count = 1
+            else:
+                target = np.float32(top_p_value * weight_sum)
+                cumulative_full = np.float32(0.0)
+                for idx, weight in enumerate(weights):
+                    cumulative_full = np.float32(cumulative_full + weight)
+                    if cumulative_full >= target:
+                        retained_count = idx + 1
+                        break
+        min_p_value = np.float32(min_p)
+        if min_p_value > np.float32(0.0):
+            min_p_count = int(np.count_nonzero(weights[:retained_count] >= min_p_value))
+            retained_count = min_p_count if min_p_count > 0 else 1
+        retained_weights = weights[:retained_count]
+        retained_sum = np.float32(retained_weights.sum(dtype=np.float32))
+        log_denom = np.float32(np.log(retained_sum) + max_scaled)
+        logprobs = (scaled[:retained_count] - log_denom).astype(np.float32)
+        top_logprobs[row, :retained_count] = logprobs
 
-        threshold = np.float32(_uniform01(int(seeds[row]), step_index, row) * weight_sum)
+        threshold = np.float32(_uniform01(int(seeds[row]), step_index, row) * retained_sum)
         cumulative = np.float32(0.0)
-        selected_pos = candidates.size - 1
-        for idx, weight in enumerate(weights):
+        selected_pos = retained_count - 1
+        for idx, weight in enumerate(retained_weights):
             cumulative = np.float32(cumulative + weight)
             if threshold <= cumulative:
                 selected_pos = idx
@@ -572,6 +600,44 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
             ),
         )
         assert top_logprobs_state.step_index == top_logprobs_step + 1
+
+        bounded_filter_seed = 0x190
+        bounded_filter_step = 1
+        bounded_filter_params = _request_params(
+            temperature=0.85,
+            top_k=5,
+            top_p=0.75,
+            min_p=0.12,
+            top_logprobs=4,
+        )
+        bounded_filter_state = RowSamplingState(prompt_tokens=(0,), seed=bounded_filter_seed, step_index=bounded_filter_step)
+        bounded_filter_expected = _cpu_reference(
+            logits,
+            np.array([0.85], dtype=np.float32),
+            np.array([bounded_filter_seed], dtype=np.uint64),
+            top_k=5,
+            step_index=bounded_filter_step,
+            top_p=0.75,
+            min_p=0.12,
+        )
+        bounded_expected_pairs = tuple(
+            (int(token_id), np.float32(logprob))
+            for token_id, logprob in zip(
+                bounded_filter_expected[2][0, :4],
+                bounded_filter_expected[3][0, :4],
+                strict=True,
+            )
+            if np.isfinite(logprob)
+        )
+        run_case(
+            bounded_filter_params,
+            bounded_filter_state,
+            int(bounded_filter_expected[0][0]),
+            bounded_filter_expected[1][0],
+            logits[0, int(bounded_filter_expected[0][0])],
+            bounded_expected_pairs,
+        )
+        assert bounded_filter_state.step_index == bounded_filter_step + 1
 
         proc_seed = 0x200
         proc_step = 3

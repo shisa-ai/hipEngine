@@ -46,11 +46,11 @@ Already available or recently added:
   covers c=1 and
   scheduler-owned c>N serial per-slot decode when every row is GPU-sampler
   eligible. It supports logit bias/history-penalty processors, full-vocab
-  temperature sampling, bounded `top_k <= 64`, exact full-vocab `top_p`/`min_p`,
-  suppress-token ids, min-token/EOS policy, selected-token logprobs, bounded
-  `top_logprobs <= top_k <= 64`, and post-accept token stops. It does not cover
-  true batched c>N sampling, GGUF, full-vocab `top_logprobs`, or
-  `top_logprobs > top_k`.
+  temperature sampling, bounded `top_k <= 64`, full-vocab and bounded top-k
+  `top_p`/`min_p`, suppress-token ids, min-token/EOS policy, selected-token
+  logprobs, bounded `top_logprobs <= top_k <= 64`, and post-accept token stops.
+  It does not cover true batched c>N sampling, GGUF, full-vocab `top_logprobs`,
+  or `top_logprobs > top_k`.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, suppress token ids,
   min-token/EOS policy, stop token ids, stop token sequences, `seed`, and
@@ -404,8 +404,8 @@ Current code reality:
   and temperature fields for scheduler integration.
 - Standalone GPU sampler-family kernels exist for logit bias, penalties,
   suppress-token ids, min-token/EOS policy, full-vocab temperature sampling,
-  bounded `top_k <= 64`, and exact full-vocab `top_p`/`min_p`. Supported PARO
-  c=1 sampled requests use this route by
+  bounded `top_k <= 64`, exact full-vocab `top_p`/`min_p`, and bounded top-k
+  `top_p`/`min_p` filters. Supported PARO c=1 sampled requests use this route by
   default, and supported PARO c>N sampled batches can route each physical slot
   through the same native sampler state; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`
   disables the native route for rollback. True batched c>N sampling, GGUF,
@@ -2250,8 +2250,9 @@ Current state:
 
 - standalone GPU sampler kernels cover row-wise processor application,
   full-vocab temperature sampling, bounded `top_k <= 64`, exact full-vocab
-  `top_p`/`min_p`, counter-based row/step RNG, selected-token logprob output,
-  suppress-token/min-token masking, and small-vocab GPU1 CPU-reference fixtures;
+  `top_p`/`min_p`, bounded top-k probability filters, counter-based row/step
+  RNG, selected-token logprob output, suppress-token/min-token masking, and
+  small-vocab GPU1 CPU-reference fixtures;
 - supported PARO c=1 sampled requests route through those kernels by default;
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables the route for rollback. PARO c=1
   sampled telemetry reports

@@ -93934,3 +93934,28 @@ Validation:
 - `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth'` -> `1 passed`.
 - `python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'suppress_and_min_tokens or bounded_top_logprobs or unsupported_full_vocab_top_logprobs'` -> `3 passed`.
 - `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+
+## 2026-06-16 - Native sampler bounded top-k probability filters (#14)
+
+Promoted combined bounded `top_k` plus `top_p`/`min_p` filtering onto the scoped
+PARO native sampler route. The top-k native sampler now accepts optional
+per-row `top_p`/`min_p` buffers, applies host-order probability filters over the
+bounded top-k candidate set, renormalizes the retained distribution before the
+draw, and marks non-retained bounded top-logprob entries as unavailable. Public
+`top_k=0` top-p/min-p requests still use the existing exact full-vocab native
+top-p kernel.
+
+The planner no longer advertises combined top-k probability filters as a native
+unsupported capability. Runtime routing now dispatches `top_k > 0` requests to
+the bounded top-k kernel even when `top_p < 1` or `min_p > 0`; full-vocab
+`top_logprobs` and `top_logprobs > top_k` remain explicit fallback cases.
+Updated server capabilities and `docs/SAMPLING.md`, `docs/AGENTIC.md`, and
+`docs/KERNELS.md` to mark bounded top-k probability filters done.
+
+Validation:
+- `python3 -m py_compile hipengine/generation/sampling.py hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py` -> passed.
+- `uv run ruff check hipengine/generation/sampling.py hipengine/kernels/hip_gfx1100/sampling/sampler.py hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py tests/test_sampling.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_gpu_sampler_kernel.py` -> `All checks passed!`.
+- `python3 -m pytest tests/test_sampling.py -q -k 'native_gpu or bounded_top_k_probability_filters'` -> `5 passed`.
+- `python3 -m pytest tests/test_server_api.py -q -k 'capabilities_endpoint_reports_manifest_and_auth'` -> `1 passed`.
+- `python3 -m pytest tests/test_generation_qwen35_paro.py -q -k 'bounded_top_k_probability_filters or suppress_and_min_tokens or bounded_top_logprobs or unsupported_full_vocab_top_logprobs'` -> `4 passed`.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.

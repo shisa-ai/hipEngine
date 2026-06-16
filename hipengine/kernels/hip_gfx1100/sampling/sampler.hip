@@ -68,6 +68,8 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
     const float* __restrict__ logits,
     const float* __restrict__ temperatures,
     const uint64_t* __restrict__ row_seeds,
+    const float* __restrict__ top_ps,
+    const float* __restrict__ min_ps,
     int32_t* __restrict__ out_indices,
     float* __restrict__ out_logprobs,
     int32_t* __restrict__ out_top_indices,
@@ -186,22 +188,77 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
 
   int selected_pos = 0;
   if (weight_sum > 0.0f && isfinite(weight_sum)) {
-    const float log_denom = logf(weight_sum) + max_scaled;
-    for (int pos = 0; pos < top_count; ++pos) {
+    int retained_count = top_count;
+    const float top_p = top_ps != nullptr ? top_ps[row] : 1.0f;
+    if (top_p < 1.0f) {
+      if (top_p <= 0.0f) {
+        retained_count = 1;
+      } else {
+        const float top_p_target = top_p * weight_sum;
+        float cumulative_full = 0.0f;
+        retained_count = top_count;
+        for (int pos = 0; pos < top_count; ++pos) {
+          if (final_indices[pos] == INT32_MAX) {
+            retained_count = pos;
+            break;
+          }
+          cumulative_full += candidate_weights[pos];
+          if (cumulative_full >= top_p_target) {
+            retained_count = pos + 1;
+            break;
+          }
+        }
+      }
+    }
+    if (retained_count <= 0) {
+      retained_count = 1;
+    }
+    const float min_p = min_ps != nullptr ? min_ps[row] : 0.0f;
+    if (min_p > 0.0f) {
+      int min_p_count = 0;
+      for (int pos = 0; pos < retained_count; ++pos) {
+        if (final_indices[pos] == INT32_MAX) {
+          break;
+        }
+        if (candidate_weights[pos] >= min_p) {
+          ++min_p_count;
+        }
+      }
+      retained_count = min_p_count > 0 ? min_p_count : 1;
+    }
+
+    float retained_weight_sum = 0.0f;
+    for (int pos = 0; pos < retained_count; ++pos) {
+      if (final_indices[pos] == INT32_MAX) {
+        retained_count = pos;
+        break;
+      }
+      retained_weight_sum += candidate_weights[pos];
+    }
+    if (retained_count <= 0 || !(retained_weight_sum > 0.0f) || !isfinite(retained_weight_sum)) {
+      candidate_logprobs[0] = 0.0f;
+      selected_pos = 0;
+    } else {
+      const float log_denom = logf(retained_weight_sum) + max_scaled;
+      for (int pos = 0; pos < retained_count; ++pos) {
+        candidate_logprobs[pos] = final_values[pos] / temperature - log_denom;
+      }
+      const float threshold = sampler_uniform01(row_seeds[row], step_index, row) * retained_weight_sum;
+      float cumulative = 0.0f;
+      selected_pos = retained_count - 1;
+      for (int pos = 0; pos < retained_count; ++pos) {
+        cumulative += candidate_weights[pos];
+        if (threshold <= cumulative) {
+          selected_pos = pos;
+          break;
+        }
+      }
+    }
+    for (int pos = retained_count; pos < top_count; ++pos) {
       if (final_indices[pos] == INT32_MAX) {
         break;
       }
-      candidate_logprobs[pos] = final_values[pos] / temperature - log_denom;
-    }
-    const float threshold = sampler_uniform01(row_seeds[row], step_index, row) * weight_sum;
-    float cumulative = 0.0f;
-    selected_pos = top_count - 1;
-    for (int pos = 0; pos < top_count; ++pos) {
-      cumulative += candidate_weights[pos];
-      if (threshold <= cumulative) {
-        selected_pos = pos;
-        break;
-      }
+      candidate_logprobs[pos] = kNegInf;
     }
   } else {
     candidate_logprobs[0] = 0.0f;
@@ -834,6 +891,8 @@ extern "C" int hipengine_sampler_topk_temperature_f32_rows_i32(
     const float* logits,
     const float* temperatures,
     const uint64_t* row_seeds,
+    const float* top_ps,
+    const float* min_ps,
     int32_t* out_indices,
     float* out_logprobs,
     int32_t* out_top_indices,
@@ -864,6 +923,8 @@ extern "C" int hipengine_sampler_topk_temperature_f32_rows_i32(
       logits,
       temperatures,
       row_seeds,
+      top_ps,
+      min_ps,
       out_indices,
       out_logprobs,
       out_top_indices,
