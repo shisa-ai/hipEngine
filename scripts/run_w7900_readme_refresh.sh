@@ -14,7 +14,7 @@ usage() {
 Usage: scripts/run_w7900_readme_refresh.sh <phase>
 
 Phases:
-  hipengine       hipEngine PARO + GGUF Q4_K_S resident README sweeps
+  hipengine       hipEngine PARO + GGUF Q4_K_M resident README sweeps
   llamacpp        llama.cpp HIP + Vulkan Q4_K_M split prefill/decode sweeps
   concurrency     hipEngine + llama.cpp Vulkan concurrency sweeps
   vllm-server     start the pinned local vLLM W7900 server and wait for readiness
@@ -64,7 +64,7 @@ THEROCK_ROOT="${THEROCK_ROOT:-$("$THEROCK_PY" -m rocm_sdk path --root)}"
 HIPCC_VERSION_FILE="${HIPCC_VERSION_FILE:-$LOGDIR/hipcc-version-713.txt}"
 
 PARO_MODEL="${PARO_MODEL:-/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1}"
-GGUF_Q4KS_MODEL="${GGUF_Q4KS_MODEL:-/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf}"
+GGUF_Q4KM_MODEL="${GGUF_Q4KM_MODEL:-/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf}"
 DEFAULT_LLAMACPP_Q4KM_MODEL="$REPO_ROOT/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 if [[ ! -e "$DEFAULT_LLAMACPP_Q4KM_MODEL" && -e /home/lhl/hipEngine/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf ]]; then
   # Clean detached worktrees usually do not contain the large untracked GGUF;
@@ -107,7 +107,7 @@ therock_root=$THEROCK_ROOT
 hip_visible_devices=$HIP_VISIBLE_DEVICES_W7900
 amdgpu_card=$AMDGPU_CARD_NAME_W7900
 paro_model=$PARO_MODEL
-gguf_q4ks_model=$GGUF_Q4KS_MODEL
+gguf_q4km_model=$GGUF_Q4KM_MODEL
 llamacpp_q4km_model=$LLAMACPP_Q4KM_MODEL
 llamacpp_hip_bench=$LLAMACPP_HIP_BENCH
 llamacpp_vulkan_bench=$LLAMACPP_VULKAN_BENCH
@@ -227,7 +227,7 @@ run_prebuild_hipengine() {
 
   echo "[prebuild] hipEngine GGUF cache" | tee -a "$LOGDIR/run.log"
   "${THEROCK_ENV[@]}" HIPENGINE_GGUF_DECODE_REPACK=1 timeout "$TIMEOUT_SHORT" "$THEROCK_PY" "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
-    --engine gguf --model "$GGUF_Q4KS_MODEL" --quant gguf_q4_k_s \
+    --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
     --workloads 512/1 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 \
     --force-bulk-prefill --bulk-prefill-attention-mode bulk \
     --use-wmma-prefill --use-gemv-decode --compiler-version-file "$HIPCC_VERSION_FILE" \
@@ -237,7 +237,7 @@ run_prebuild_hipengine() {
 run_hipengine() {
   run_prebuild_hipengine
   local paro_json="$OUTDIR/${DATE_PREFIX}-hipengine-paro-packed-5run.json"
-  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4ks-5run.json"
+  local gguf_json="$OUTDIR/${DATE_PREFIX}-hipengine-gguf-q4km-5run.json"
   echo "[run] hipEngine PARO -> $paro_json" | tee -a "$LOGDIR/run.log"
   "${THEROCK_ENV[@]}" timeout "$TIMEOUT_LONG" "$THEROCK_PY" "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
     --engine paro --model "$PARO_MODEL" --backend hip_gfx1100 \
@@ -249,9 +249,9 @@ run_hipengine() {
     --json "$paro_json" > "$LOGDIR/hipengine-paro.log" 2>&1
   compact_readme_sweep_json "$paro_json"
 
-  echo "[run] hipEngine GGUF Q4_K_S -> $gguf_json" | tee -a "$LOGDIR/run.log"
+  echo "[run] hipEngine GGUF Q4_K_M -> $gguf_json" | tee -a "$LOGDIR/run.log"
   "${THEROCK_ENV[@]}" HIPENGINE_GGUF_DECODE_REPACK=1 timeout "$TIMEOUT_LONG" "$THEROCK_PY" "$REPO_ROOT/scripts/qwen35_readme_sweep.py" \
-    --engine gguf --model "$GGUF_Q4KS_MODEL" --quant gguf_q4_k_s \
+    --engine gguf --model "$GGUF_Q4KM_MODEL" --quant gguf_q4_k_m \
     --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
     --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
     --force-bulk-prefill --bulk-prefill-attention-mode bulk \
@@ -311,7 +311,7 @@ run_concurrency() {
   PYTHONPATH="$REPO_ROOT" timeout "$TIMEOUT_LONG" python3 "$REPO_ROOT/scripts/llamacpp_vulkan_concurrency_sweep.py" \
     --repo "$LLAMACPP_VULKAN_REPO" \
     --server-bin "$LLAMACPP_VULKAN_SERVER" \
-    --model "$GGUF_Q4KS_MODEL" \
+    --model "$GGUF_Q4KM_MODEL" \
     --fixture "$FIXTURE" \
     --gpu 0 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
     --concurrencies 1,2,4,8 --reps 3 \
