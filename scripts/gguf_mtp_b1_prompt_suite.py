@@ -38,6 +38,7 @@ from hipengine.speculative import (  # noqa: E402
     GGUF_MTP_METRICS_CONTRACT_READY,
     GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
     Qwen35GGUFMTPAcceptStepMetrics,
+    Qwen35GGUFMTPContext,
     Qwen35GGUFMTPPerformanceReadiness,
     Qwen35GGUFMTPRuntimeKernelPlan,
 )
@@ -649,6 +650,7 @@ def build_b1_prompt_suite_artifact(
         "draft_budget_precheck": draft_budget_precheck,
         "draft_sampling_contract_precheck": draft_sampling_contract_precheck,
         "hidden_seed_contract_precheck": hidden_seed_contract_precheck,
+        "target_context_contract": Qwen35GGUFMTPContext.contract(),
         "runtime_kernel_precheck": runtime_kernel_precheck,
         "oracle_gate": oracle_gate,
         "llamacpp_trace_oracle": llamacpp_trace_oracle,

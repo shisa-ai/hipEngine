@@ -988,7 +988,8 @@ is now answered by the M1 required/optional table.)
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
-      specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
+      specs, hidden-seed dtype/provenance precheck, exported target-context
+      snapshot contract, exact runtime-kernel registry
       precheck backed by a self-validating `Qwen35GGUFMTPRuntimeKernelPlan`
       payload (including self-describing nested registry checks, the native NextN
       composite key, and the KVLiveSpans paged-KV append/decode component keys),
@@ -1011,7 +1012,9 @@ is now answered by the M1 required/optional table.)
       `draft_sampling_contract_precheck`, and `hidden_seed_contract_precheck`
       sections so a requested B1-B4 artifact cannot silently reuse mismatched
       budget, stale draft `top_k=1` sampling, or a non-fp32/non-post-`output_norm`
-      seed contract. The llama.cpp comparison helper now reports
+      seed contract. It also exposes the self-validating `target_context_contract`
+      that future pending/verify hidden-seed snapshots must satisfy. The
+      llama.cpp comparison helper now reports
       `accepted_per_output` with explicit `draft_n_accepted / predicted_n`
       denominator for future parity rows, while the preflight artifact exposes
       the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` schema/kind/source,

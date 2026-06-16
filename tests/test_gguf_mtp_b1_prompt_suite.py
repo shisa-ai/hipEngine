@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.speculative import Qwen35GGUFMTPContext
 from scripts import gguf_mtp_b1_prompt_suite as suite
 
 
@@ -393,6 +394,8 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "required": True,
         "shape": ["tokens", 2048],
     }
+    assert artifact["target_context_contract"] == Qwen35GGUFMTPContext.contract()
+    assert artifact["target_context_contract"]["validator"] == "Qwen35GGUFMTPContext.validate_payload"
     assert artifact["runtime_kernel_precheck"]["backend"] == "hip_gfx1100"
     assert artifact["runtime_kernel_precheck"]["exactness_oracles_ready"] is True
     assert artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"] is False
