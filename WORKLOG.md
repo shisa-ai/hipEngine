@@ -100369,3 +100369,13 @@ Validation:
 2. The log clearly shows `Falling back to Moe WNA16 kernels` for every layer's `mlp.experts`.
 3. Shortly after falling back and loading the layers, the container crashed/hung and died without bringing up the server endpoints.
 **Conclusion:** Testing the target MoE model in the unpatched `kyuz0` container confirms that the container image suffers from the exact same L1 vector cache Triton deadlock. To run MoE models smoothly on Strix Halo `gfx1151`, users must use a vLLM runtime that incorporates our native `moe_q_gemm_rdna3` C++ patch for AWQ/GPTQ, which we are currently compiling on the host.
+
+### Completed gfx1151 concurrency testing (Task #4)
+**Context:** The goal was to run the concurrency diagnostics for `gfx1151` Strix Halo analogous to the `gfx1100` README evidence.
+**Actions:**
+- Set `HIPENGINE_HIP_ARCH=gfx1151` and executed `scripts/qwen35_concurrency_decode_sweep.py` for the hipEngine PARO models.
+- Since we unblocked the Triton deadlock for vLLM, also executed the vLLM OpenAI concurrency diagnostics.
+- Aggregated the newly collected `c=1/2/4/8` data points:
+  - hipEngine (PARO 35B): `66.98 / 69.86 / 88.10 / 96.03` tok/s
+  - vLLM (GPTQ 35B): `19.39 / 37.53 / 72.96 / 115.96` tok/s
+- Propagated the result tables to `/home/lhl/hipEngine-main/README.md` and `benchmarks/README.md`, removing the "blocked" caveat for vLLM!
