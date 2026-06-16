@@ -469,6 +469,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q8_0 T16 decode block64 rejected (2026-06-16).** Reducing all resident
+  Q8_0 T16 GEMV decode kernels from `blockDim/launch_bounds=128` to `64` passed
+  unit tests but changed deterministic generated IDs on both primary gates
+  (`512/128` `220 -> 97799`, `4K/128` `570 -> 28944`) and regressed decode
+  (`126.924 -> 122.694 tok/s`, `114.991 -> 111.998 tok/s`). Code was reverted;
+  do not repeat Q8 decode block-size pokes without a reduction-order fix and a
+  correctness oracle. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-block64-rejected.json`.
+
 - **Full-attention query chunk 2048 rejected (2026-06-16).** Splitting the
   mid-context auto-tuned full-attention query chunk from `4096` to `2048`
   reduced tracked primary-gate peak (`21.335 -> 20.689 GiB`) and nudged decode
