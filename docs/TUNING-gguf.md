@@ -488,6 +488,17 @@ No-hold notes:
   keep the mid-context linear-attention chunk at `1024`. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-linear-chunk512-rejected.json`.
 
+- **GGUF MoE chunk=512 rejected (2026-06-16).** Lowering only the auto-tuned
+  mid-context MoE prefill chunk from `1024` to `512` rows, while leaving linear
+  attention at `1024` and full-attention query/post/RoPE at `4096/1024/1024`,
+  passed the prefill-config smoke and `154`-test GGUF guard with stable IDs and
+  flat memory. It regressed primary prefill sharply versus the retained
+  decode-policy-cache baseline (`512/128` `1958.536 -> 1892.253 tok/s`,
+  `4K/128` `2292.684 -> 2121.682 tok/s`), so code/test changes were reverted.
+  Keep the mid-context MoE chunk at `1024`; both smaller and larger MoE-only
+  probes are now no-hold. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-moe-chunk512-rejected.json`.
+
 - **GGUF linear dispatch resolve cache rejected (2026-06-16).** Adding an
   `lru_cache`-backed base-dispatch resolver passed focused dispatch tests and
   the `154`-test GGUF guard with stable IDs and flat memory, but measured gate
