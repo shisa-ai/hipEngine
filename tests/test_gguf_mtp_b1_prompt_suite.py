@@ -790,6 +790,121 @@ def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_output_rejects_matri
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
 
 
+def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_draft_allows_default_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-noncomparable-accepted-draft",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert (
+        artifact["llamacpp_trace_oracle"]["denominator_metrics"]["accepted_per_draft_status"]
+        == suite.ACCEPTED_DRAFT_COMPARABLE
+    )
+
+
+def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_draft_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    trace_payload = json.loads(suite.DEFAULT_LLAMACPP_TRACE_FIXTURE.read_text())
+    for call in trace_payload["calls"]:
+        call["generated"] = 0
+        call["accepted"] = 0
+        call["accept_generated"] = 0
+    for metrics in (trace_payload["summary"], trace_payload["llamacpp_timing_summary"]):
+        metrics["draft_n"] = 0
+        metrics["draft_n_accepted"] = 0
+        metrics["draft_acceptance"] = None
+    trace_fixture = _write_json(tmp_path / "llamacpp-zero-draft-trace.json", trace_payload)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--llamacpp-trace-fixture",
+            str(trace_fixture),
+            "--out",
+            str(out),
+            "--fail-on-noncomparable-accepted-draft",
+        ]
+    )
+
+    assert rc == 6
+    artifact = json.loads(out.read_text())
+    assert (
+        artifact["llamacpp_trace_oracle"]["denominator_metrics"]["accepted_per_draft_status"]
+        == suite.ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE
+    )
+
+
+def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_draft_allows_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-noncomparable-accepted-draft",
+        ]
+    )
+
+    assert rc == 0
+    matrix = json.loads(out.read_text())
+    assert matrix["noncomparable_accepted_per_draft_budgets"] == []
+
+
 def test_b1_prompt_suite_cli_fail_on_performance_unready_rejects_b1_until_runtime_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

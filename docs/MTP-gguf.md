@@ -355,7 +355,9 @@ matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
 Use `--fail-on-noncomparable-accepted-output` to return exit code `4` when the
 trace artifact lacks visible output-token counts and therefore cannot support
-`accepted_per_output` comparisons. Matrix artifacts also carry an M6
+`accepted_per_output` comparisons. Use
+`--fail-on-noncomparable-accepted-draft` to return exit code `6` when the trace
+cannot support `accepted_per_draft` comparisons. Matrix artifacts also carry an M6
 performance-comparison readiness rollup (`performance_comparison_ready_by_budget`,
 `performance_comparison_blockers_by_budget`, `performance_unready_budgets`, and
 `all_performance_comparisons_ready`). The blocker derivation is shared through
@@ -950,8 +952,10 @@ is now answered by the M1 required/optional table.)
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
       trace provenance, `--fail-on-noncomparable-accepted-output` exits `4`
-      when accepted/output denominators are not comparable, and
-      `--fail-on-performance-unready` exits `5` until the combined M6 readiness
+      when accepted/output denominators are not comparable,
+      `--fail-on-noncomparable-accepted-draft` exits `6` when accepted/draft
+      denominators are not comparable, and `--fail-on-performance-unready` exits
+      `5` until the combined M6 readiness
       rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean, including
       accepted/draft comparability, the KVLiveSpans smoke, and
       optimization-kernel readiness bits); actual B2-B4

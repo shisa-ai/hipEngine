@@ -835,6 +835,20 @@ def _has_partial_llamacpp_trace_budget_coverage(artifact: dict[str, Any]) -> boo
     return isinstance(coverage, str) and coverage != FULL_TRACE_BUDGET_COVERAGE
 
 
+def _has_noncomparable_accepted_draft_metrics(artifact: dict[str, Any]) -> bool:
+    noncomparable_budgets = artifact.get("noncomparable_accepted_per_draft_budgets")
+    if isinstance(noncomparable_budgets, list):
+        return bool(noncomparable_budgets)
+    trace_oracle = artifact.get("llamacpp_trace_oracle")
+    if not isinstance(trace_oracle, dict):
+        return False
+    denominator_metrics = trace_oracle.get("denominator_metrics")
+    if not isinstance(denominator_metrics, dict):
+        return False
+    status = denominator_metrics.get("accepted_per_draft_status")
+    return isinstance(status, str) and status != ACCEPTED_DRAFT_COMPARABLE
+
+
 def _has_noncomparable_accepted_output_metrics(artifact: dict[str, Any]) -> bool:
     noncomparable_budgets = artifact.get("noncomparable_accepted_per_output_budgets")
     if isinstance(noncomparable_budgets, list):
@@ -913,6 +927,11 @@ def main(argv: list[str] | None = None) -> int:
         help="return exit code 4 when accepted_per_output denominators are not comparable",
     )
     parser.add_argument(
+        "--fail-on-noncomparable-accepted-draft",
+        action="store_true",
+        help="return exit code 6 when accepted_per_draft denominators are not comparable",
+    )
+    parser.add_argument(
         "--fail-on-performance-unready",
         action="store_true",
         help="return exit code 5 when M6 performance comparison readiness is incomplete",
@@ -962,6 +981,10 @@ def main(argv: list[str] | None = None) -> int:
         artifact
     ):
         return 4
+    if args.fail_on_noncomparable_accepted_draft and _has_noncomparable_accepted_draft_metrics(
+        artifact
+    ):
+        return 6
     if args.fail_on_performance_unready and _has_unready_performance_comparisons(artifact):
         return 5
     if args.fail_on_blocked and artifact["status"] == "blocked":
