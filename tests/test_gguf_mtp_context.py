@@ -569,6 +569,8 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     )
 
     assert metrics.cycle_count == 2
+    assert metrics.candidate_budget == 2
+    assert metrics.budget_label == "B2"
     assert metrics.draft_token_count == 4
     assert metrics.accepted_token_count == 3
     assert metrics.accepted_per_draft == 0.75
@@ -577,6 +579,8 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     assert metrics.as_dict()["kind"] == "hipengine_gguf_mtp_accept_step_metrics"
     assert metrics.as_dict()["source"] == "Qwen35GGUFMTPAcceptStepMetrics"
     assert metrics.as_dict()["result_source"] == "Qwen35GGUFMTPAcceptStep"
+    assert metrics.as_dict()["candidate_budget"] == 2
+    assert metrics.as_dict()["budget_label"] == "B2"
     assert metrics.as_dict()["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
         "accepted_per_output": "accepted_token_count / output_token_count",
@@ -644,6 +648,10 @@ def test_gguf_mtp_context_accepts_top1_specs_into_metrics() -> None:
     assert specs[1].remaining_decode == (2,)
     assert metrics.accepted_token_count == 3
     assert metrics.draft_token_count == 4
+    assert metrics.candidate_budget == 2
+    assert metrics.budget_label == "B2"
+    assert metrics.as_dict()["candidate_budget"] == 2
+    assert metrics.as_dict()["budget_label"] == "B2"
     assert metrics.as_dict()["steps"][0]["transaction_id"] == 12
     assert metrics.as_dict()["steps"][1]["transaction_id"] == 13
     assert context.pending_seed == seeds[2]

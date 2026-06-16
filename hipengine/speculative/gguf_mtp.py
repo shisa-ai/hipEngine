@@ -630,6 +630,14 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         return sum(sum(step.commit_plan.candidate_counts or ()) for step in self.steps)
 
     @property
+    def candidate_budget(self) -> int:
+        return max(count for step in self.steps for count in (step.commit_plan.candidate_counts or ()))
+
+    @property
+    def budget_label(self) -> str:
+        return f"B{self.candidate_budget}"
+
+    @property
     def accepted_token_count(self) -> int:
         return sum(sum(step.commit_plan.accepted_counts) for step in self.steps)
 
@@ -661,6 +669,8 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         return {
             **self.artifact_labels(),
             "cycle_count": self.cycle_count,
+            "candidate_budget": self.candidate_budget,
+            "budget_label": self.budget_label,
             "draft_token_count": self.draft_token_count,
             "accepted_token_count": self.accepted_token_count,
             "output_token_count": self.output_token_count,
