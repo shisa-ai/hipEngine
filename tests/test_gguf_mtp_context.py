@@ -431,6 +431,50 @@ def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_summary() -> Non
         plan.target_commit_plan_from_summary(summary, wrong_txn)
 
 
+def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_top1() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1, 2), seed_rows=seeds)
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,), (2,)),
+        top_k_logits=((4.0,), (3.0,)),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+
+    partial = plan.target_commit_plan_from_top1((1, 9, 77), transaction_id=12)
+    full_budgeted = plan.target_commit_plan_from_top1(
+        (1, 2, 77),
+        transaction_id=13,
+        remaining_decode=(2,),
+    )
+
+    assert partial.transaction_id == 12
+    assert partial.request_ids == (7,)
+    assert partial.accepted_counts == (1,)
+    assert partial.commit_rows == (1,)
+    assert partial.commit_tokens == (1,)
+    assert partial.commit_positions == (6,)
+    assert partial.next_tokens == (9,)
+    assert partial.candidate_counts == (2,)
+    assert partial.draft_depth == 2
+    assert partial.tree_shape == (0, 1)
+    assert partial.mode == "verify_chain"
+    assert full_budgeted.transaction_id == 13
+    assert full_budgeted.accepted_counts == (2,)
+    assert full_budgeted.commit_rows == (2,)
+    assert full_budgeted.commit_tokens == (2,)
+    assert full_budgeted.commit_positions == (7,)
+    assert full_budgeted.next_tokens == (None,)
+    assert full_budgeted.candidate_counts == (2,)
+
+
 def test_gguf_mtp_context_applies_target_commit_plan_reseed_rule() -> None:
     context = Qwen35GGUFMTPContext(target_session=object())
     seeds = (

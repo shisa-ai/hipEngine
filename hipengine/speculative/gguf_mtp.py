@@ -523,6 +523,31 @@ class Qwen35GGUFMTPDraftExecutionPlan:
                 raise ValueError("accept summary commit token/position must match target row")
         return TargetCommitPlan.from_summary(summary, transaction)
 
+    def target_commit_plan_from_top1(
+        self,
+        target_top1: Sequence[int],
+        *,
+        transaction_id: int,
+        remaining_decode: Sequence[int] | None = None,
+        mode: str = "verify_chain",
+    ) -> TargetCommitPlan:
+        """Build a validated commit plan directly from target top-1 rows.
+
+        This is the metadata-only equivalent of the future native target verify
+        handoff: derive the KV transaction shape, compute the shared accept
+        summary from target top-1 rows, then validate/build the provider-neutral
+        commit plan against the GGUF-derived verifier rows.
+        """
+
+        summary = self.target_accept_summary_from_top1(
+            target_top1,
+            transaction_id=int(transaction_id),
+            remaining_decode=remaining_decode,
+            mode=mode,
+        )
+        transaction = self.target_verify_transaction(transaction_id, mode=mode)
+        return self.target_commit_plan_from_summary(summary, transaction)
+
     def cpu_reference_kwargs(self) -> dict[str, object]:
         return {
             "append": self.kv_live_spans.cpu_reference_kwargs(role="append"),
