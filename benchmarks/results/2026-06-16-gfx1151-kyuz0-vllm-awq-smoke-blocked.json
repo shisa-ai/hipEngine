@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "kind": "kyuz0_vllm_container_smoke",
+  "created_at": "2026-06-16T04:40:00+00:00",
+  "status": "blocked",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "Strix Halo"
+  },
+  "container_runtime": {
+    "runtime": "podman",
+    "version": "podman version 5.8.3",
+    "image": "docker.io/kyuz0/vllm-therock-gfx1151:latest",
+    "image_id": "fbcc3eaf06bff18c14feab17ef0293effbd2e858a7ac9b9537d675e57b56fdeb",
+    "image_digest": "docker.io/kyuz0/vllm-therock-gfx1151@sha256:25fd294fde9f729d1e75f109022ab4496c78190c0a6dc0142440529f7af20e4d",
+    "image_size_bytes": 35204861475
+  },
+  "container_sanity": {
+    "torch": "2.13.0a0+rocm7.14.0a20260608",
+    "torch_hip": "7.14.60850",
+    "vllm": "0.22.1rc1.dev499+g470229c37.d20260613",
+    "torch_detected_device": "Radeon 8060S Graphics / gfx1151",
+    "rocm_smi_showid": "AMD Radeon 8060S Graphics 0x1586 rev 0xc1",
+    "passed": true
+  },
+  "model": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+  "served_model_name": "qwen36-awq",
+  "health_endpoint": "http://127.0.0.1:8008/health",
+  "health_result": {
+    "bound": true,
+    "healthy": false,
+    "http_code": 0,
+    "evidence": "curl received connection reset while API process was still starting/failed; after cleanup port 8008 was closed."
+  },
+  "attempts": [
+    {
+      "name": "awq-float16-ipc-host",
+      "bg_task": "bg-16",
+      "log": "/tmp/vstack-pi-bg/bg-16-1781581760825.log",
+      "container": "kyuz0-vllm-awq",
+      "command_summary": "podman run --device /dev/kfd --device /dev/dri --group-add keep-groups --ipc=host -p 8008:8000 ... vllm serve cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit --dtype float16 --max-model-len 1024 --max-num-seqs 1 --max-num-batched-tokens 1024 --enforce-eager --attention-backend TRITON_ATTN --mm-encoder-attn-backend TRITON_ATTN",
+      "outcome": "blocked_unhealthy",
+      "evidence": [
+        "Container torch/vLLM stack detected Radeon 8060S gfx1151.",
+        "vLLM used TRITON_ATTN for ViT and MMEncoderAttention.",
+        "AWQ MoE experts fell back to Moe WNA16 kernels.",
+        "bg notifications showed model loading took ~23.064 GiB / 761.0 s, then EngineCore failed to start; /health never returned HTTP 200.",
+        "Container required SIGKILL during cleanup."
+      ]
+    },
+    {
+      "name": "awq-auto-dtype-start-vllm-like",
+      "bg_task": "bg-17",
+      "log": "/tmp/hipengine-kyuz0-vllm-smoke/20260615-awq-auto/podman-run.log",
+      "container": "kyuz0-vllm-awq-auto",
+      "command_summary": "podman run --device /dev/kfd --device /dev/dri --group-add keep-groups --shm-size=16g -p 8008:8000 ... vllm serve cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit --dtype auto --max-model-len 1024 --max-num-seqs 1 --trust-remote-code --enforce-eager --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 --attention-backend TRITON_ATTN --mm-encoder-attn-backend TRITON_ATTN",
+      "outcome": "blocked_unhealthy",
+      "evidence": [
+        "Started API process and EngineCore, selected dtype bfloat16.",
+        "vLLM used TRITON_ATTN for ViT and MMEncoderAttention.",
+        "AWQ MoE experts fell back to Moe WNA16 kernels.",
+        "bg notifications showed final model loading took ~23.064 GiB / 974.2 s, then EngineCore failed to start; /health never returned HTTP 200.",
+        "Container required SIGKILL during cleanup."
+      ]
+    },
+    {
+      "name": "invalid-ipc-shm-combination",
+      "bg_task": "bg-15",
+      "log": "/tmp/vstack-pi-bg/bg-15-1781581724056.log",
+      "outcome": "invalid_podman_config",
+      "evidence": [
+        "Podman rejected --ipc=host with --shm-size=16g."
+      ]
+    }
+  ],
+  "hf_cache_after_attempts": {
+    "path": "/home/lhl/.cache/huggingface/hub/models--cyankiwi--Qwen3.6-35B-A3B-AWQ-4bit",
+    "exists": true,
+    "du_summary": "25G\t/home/lhl/.cache/huggingface/hub/models--cyankiwi--Qwen3.6-35B-A3B-AWQ-4bit",
+    "model_shard_symlinks": [
+      "model-00004-of-00006.safetensors",
+      "model-00006-of-00006.safetensors"
+    ],
+    "incomplete_file_count": 8,
+    "incomplete_total_bytes": 21802485787
+  },
+  "post_cleanup": {
+    "podman_ps_matching": "none",
+    "kfd_processes": "none observed after podman rm -f",
+    "port_8008_listening": false
+  },
+  "next_steps": [
+    "Resume with a complete AWQ Hugging Face cache or pre-download the AWQ checkpoint, then retry the start-vllm-like command.",
+    "If AWQ reaches /health, run the 512/128 OpenAI concurrency sweep before adding README rows.",
+    "Do not retry GPTQ until AWQ binds /health or the EngineCore failure root cause is captured."
+  ]
+}

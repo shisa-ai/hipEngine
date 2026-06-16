@@ -108,15 +108,29 @@ What differs from our first `gfx1151` attempt:
   users also saw flash-attention flakiness, GPU hangs, and poor token rate when
   the attention path was wrong.
 
-Container smoke status: **not run yet**. Preflight on this host found accessible
-`/dev/kfd` and `/dev/dri/renderD128`, plus a populated Hugging Face cache. Task
-#17 installed rootless Podman `5.8.3` via `sudo pacman -S --needed podman` and
-validated a minimal Alpine container with ROCm device passthrough
-(`--device /dev/kfd --device /dev/dri --group-add keep-groups`); `/dev/kfd`,
-`/dev/dri/renderD128`, and `/dev/dri/card1`
-were readable/writable inside the container. `toolbox`/`distrobox` are still not
-installed, so use direct Podman unless a toolbox workflow is installed later.
-Use the kyuz0 `latest` image first and test AWQ before retrying GPTQ:
+Container smoke status: **blocked after AWQ smoke attempts**. Preflight on this
+host found accessible `/dev/kfd` and `/dev/dri/renderD128`, plus a populated
+Hugging Face cache. Task #17 installed rootless Podman `5.8.3` via
+`sudo pacman -S --needed podman` and validated a minimal Alpine container with
+ROCm device passthrough (`--device /dev/kfd --device /dev/dri --group-add
+keep-groups`); `/dev/kfd`, `/dev/dri/renderD128`, and `/dev/dri/card1` were
+readable/writable inside the container. The kyuz0 image itself also passed a
+sanity import: torch `2.13.0a0+rocm7.14.0a20260608`, HIP `7.14.60850`, vLLM
+`0.22.1rc1.dev499+g470229c37.d20260613`, and torch saw Radeon 8060S `gfx1151`.
+
+The AWQ server smoke did not produce a healthy endpoint. Two direct Podman
+`vllm serve cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` attempts selected `TRITON_ATTN`
+for ViT/MM encoder attention, loaded the model to ~23.064 GiB, then reported
+`EngineCore failed to start`; `/health` never returned HTTP 200 and both
+containers required SIGKILL during cleanup. The first attempt used
+`--dtype float16`; the second used the `start-vllm`-style `--dtype auto` plus
+Qwen tool/reasoning parser flags. Both showed AWQ MoE expert layers falling back
+to Moe WNA16 kernels. See compact artifact
+[`2026-06-16-gfx1151-kyuz0-vllm-awq-smoke-blocked.json`](../benchmarks/results/2026-06-16-gfx1151-kyuz0-vllm-awq-smoke-blocked.json).
+
+`toolbox`/`distrobox` are still not installed, so use direct Podman unless a
+toolbox workflow is installed later. If retrying after pre-downloading or fixing
+the AWQ checkpoint/cache, start from:
 
 ```bash
 # Direct Podman path available on this host.
@@ -140,7 +154,7 @@ toolbox enter vllm
 start-vllm
 ```
 
-Suggested smoke order inside the toolbox/container:
+Suggested smoke order inside the toolbox/container after AWQ binds `/health`:
 
 1. `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` with `VLLM_USE_TRITON_AWQ=1`,
    `--attention-backend TRITON_ATTN`, `--mm-encoder-attn-backend TRITON_ATTN`,
@@ -151,6 +165,8 @@ Suggested smoke order inside the toolbox/container:
 
 If the AWQ container path binds `/health`, repeat the exact 512/128 OpenAI
 concurrency sweep used by the README table before claiming a vLLM comparison row.
+Do not spend time retrying the GPTQ model until the AWQ smoke either succeeds or
+the EngineCore startup failure root cause is captured with full logs.
 
 ## Native TheRock source-build recipe
 

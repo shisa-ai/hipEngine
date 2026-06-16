@@ -93444,3 +93444,52 @@ Validation:
 
 This unblocks a direct Podman kyuz0 image smoke. `toolbox`/`distrobox` remain
 uninstalled, so use `podman run` unless a toolbox workflow is added later.
+
+## 2026-06-16 - kyuz0 Strix Halo vLLM container AWQ smoke blocked
+
+Ran the kyuz0 `docker.io/kyuz0/vllm-therock-gfx1151:latest` image through
+rootless Podman after task #17 installed the runtime.
+
+Sanity check passed:
+
+```bash
+podman run --rm --pull=never \
+  --device /dev/kfd --device /dev/dri --group-add keep-groups \
+  --security-opt seccomp=unconfined \
+  -v /home/lhl/.cache/huggingface:/root/.cache/huggingface:rw \
+  docker.io/kyuz0/vllm-therock-gfx1151:latest \
+  bash -lc 'python - <<PY
+import torch, vllm
+print(torch.__version__, torch.version.hip, torch.cuda.get_device_name(0), torch.cuda.get_device_properties(0).gcnArchName)
+print(vllm.__version__)
+PY'
+```
+
+Observed torch `2.13.0a0+rocm7.14.0a20260608`, HIP `7.14.60850`, vLLM
+`0.22.1rc1.dev499+g470229c37.d20260613`, and Radeon 8060S `gfx1151`.
+
+AWQ smoke attempts:
+- `bg-15`: invalid Podman config (`--ipc=host` cannot be combined with
+  `--shm-size=16g`).
+- `bg-16`: `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`, `--dtype float16`,
+  `--max-model-len 1024`, `--max-num-seqs 1`, `VLLM_USE_TRITON_AWQ=1`,
+  `--attention-backend TRITON_ATTN`, `--mm-encoder-attn-backend TRITON_ATTN`.
+  The model reached TRITON ViT/MM encoder attention and Moe WNA16 fallback for
+  AWQ MoE experts. bg notifications showed model loading at ~23.064 GiB / 761 s,
+  then `EngineCore failed to start`; `/health` never returned HTTP 200.
+- `bg-17`: retried start-vllm-like flags with `--dtype auto`, Qwen tool/reasoning
+  parser flags, no `--max-num-batched-tokens`, and `--shm-size=16g` instead of
+  `--ipc=host`. It again reached TRITON ViT/MM encoder attention and Moe WNA16
+  fallback. bg notifications showed model loading at ~23.064 GiB / 974 s, then
+  `EngineCore failed to start`; `/health` never returned HTTP 200.
+
+Cleanup:
+- Removed the AWQ containers with `podman rm -f`; both needed SIGKILL after
+  SIGTERM timeout.
+- `rocm-smi --showpids` reported no KFD processes afterwards.
+- Port 8008 was closed after cleanup.
+
+Result: kyuz0 container runtime and image are usable, but the AWQ 35B smoke did
+not bind a healthy server on this host. GPTQ was not retried because the known
+AWQ path did not reach `/health`. Compact artifact:
+`benchmarks/results/2026-06-16-gfx1151-kyuz0-vllm-awq-smoke-blocked.json`.
