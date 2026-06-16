@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
-from hipengine.speculative.interfaces import DraftBatch
+from hipengine.speculative.interfaces import DraftBatch, TargetVerifyBatch
 
 
 DEFAULT_DRAFT_TOPK_KERNEL = ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
@@ -262,6 +262,30 @@ class Qwen35GGUFMTPDraftBatch:
             mode=target_mode,
         )
 
+    def to_target_verify_batch(self, *, mode: str = "verify_chain") -> TargetVerifyBatch:
+        """Build the shared target-verifier row layout for this GGUF MTP batch.
+
+        Depth-1 GGUF rows already carry the committed root token/position in
+        ``parent_token_id`` and ``parent_position``.  Deriving roots here keeps
+        future GGUF verify/accept integration from passing duplicate root
+        metadata that could drift from the draft-row embedding seed contract.
+        """
+
+        root_by_request: dict[int, tuple[int, int]] = {}
+        for row in self.rows:
+            if row.draft_depth == 1:
+                root_by_request[row.request_id] = (row.parent_token_id, row.parent_position)
+        missing = [request_id for request_id in self.request_ids if request_id not in root_by_request]
+        if missing:
+            raise ValueError("GGUF MTP target verify batch requires one depth-1 root row per request")
+        root_tokens = tuple(root_by_request[request_id][0] for request_id in self.request_ids)
+        root_positions = tuple(root_by_request[request_id][1] for request_id in self.request_ids)
+        return TargetVerifyBatch.from_draft(
+            self.to_shared_draft_batch(mode=mode),
+            root_tokens=root_tokens,
+            root_positions=root_positions,
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "mode": self.mode,
@@ -410,6 +434,9 @@ class Qwen35GGUFMTPDraftExecutionPlan:
     @property
     def proposed_token_ids(self) -> tuple[int, ...]:
         return self.proposal.proposed_token_ids
+
+    def to_target_verify_batch(self, *, mode: str = "verify_chain") -> TargetVerifyBatch:
+        return self.proposal.batch.to_target_verify_batch(mode=mode)
 
     def cpu_reference_kwargs(self) -> dict[str, object]:
         return {

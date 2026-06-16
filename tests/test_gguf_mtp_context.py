@@ -229,13 +229,10 @@ def test_gguf_mtp_draft_batch_projects_to_shared_verifier_batch() -> None:
     batch = Qwen35GGUFMTPDraftBatch(rows=rows)
 
     shared = batch.to_shared_draft_batch()
-    verify = TargetVerifyBatch.from_draft(
-        shared,
-        root_tokens=(100, 200),
-        root_positions=(5, 7),
-    )
+    verify = batch.to_target_verify_batch()
 
     assert isinstance(shared, DraftBatch)
+    assert isinstance(verify, TargetVerifyBatch)
     assert shared.request_ids == (10, 20)
     assert shared.candidate_tokens == (101, 201, 102, 202)
     assert shared.parent_positions == (5, 7, 6, 8)
@@ -267,6 +264,8 @@ def test_gguf_mtp_draft_batch_rejects_missing_shared_parent_row() -> None:
 
     with pytest.raises(ValueError, match="parent before child"):
         batch.to_shared_draft_batch()
+    with pytest.raises(ValueError, match="depth-1 root row"):
+        batch.to_target_verify_batch()
 
 
 def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
@@ -302,6 +301,10 @@ def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
             "block_size": 4,
         },
     }
+    verify = plan.to_target_verify_batch()
+    assert verify.tokens == (10, 1)
+    assert verify.positions == (5, 6)
+    assert verify.parent_rows == (-1, 0)
     assert plan.as_dict()["proposed_token_ids"] == [1]
     assert plan.as_dict()["proposal"]["topk_kernel"] == [
         "cpu_reference",
