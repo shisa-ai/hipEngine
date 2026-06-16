@@ -1026,9 +1026,10 @@ is now answered by the M1 required/optional table.)
       ratio consistency before parity comparison. The draft-token verification
       aggregate (`Qwen35GGUFMTPVerificationMetrics`) now carries the same
       schema/kind/source, `candidate_budget` / `budget_label`, required-field,
-      validator, nested seed-row contract, token-prefix, mismatch-metadata,
-      reseed-row metadata, and ratio-consistency contract so B1-B4 parity rows
-      can reject malformed hipEngine payloads before llama.cpp comparison.
+      validator, nested verification-result contract, nested seed-row contract,
+      token-prefix, mismatch-metadata, reseed-row metadata, and ratio-consistency
+      contract so B1-B4 parity rows can reject malformed hipEngine payloads
+      before llama.cpp comparison.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts
       `--draft-max {1,2,3,4}` for budget-aware blocked artifacts, selects the
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,

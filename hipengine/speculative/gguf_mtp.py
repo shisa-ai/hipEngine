@@ -1747,6 +1747,103 @@ class Qwen35GGUFMTPVerificationResult:
     def accepted_per_draft(self) -> float:
         return float(self.n_accepted) / float(len(self.proposed_token_ids))
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "proposed_token_ids",
+            "target_token_ids",
+            "accepted_token_ids",
+            "n_accepted",
+            "draft_count",
+            "accepted_per_draft",
+            "first_mismatch_index",
+            "rejected_proposal_token_id",
+            "target_token_id_at_mismatch",
+            "verify_seed_count",
+            "seed_row_contract",
+            "reseed",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPVerificationResult.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "verification result",
+    ) -> None:
+        def int_sequence(name: str) -> tuple[int, ...]:
+            value = payload.get(name)
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+                raise ValueError(f"{field_name} {name} must be a sequence")
+            return tuple(int(item) for item in value)
+
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
+            raise ValueError(f"{field_name} seed_row_contract mismatch")
+        Qwen35GGUFMTPSeedRow.validate_payload(
+            payload.get("reseed"),
+            field_name=f"{field_name} reseed",
+        )
+        proposed_token_ids = int_sequence("proposed_token_ids")
+        target_token_ids = int_sequence("target_token_ids")
+        accepted_token_ids = int_sequence("accepted_token_ids")
+        first_mismatch_index = payload.get("first_mismatch_index")
+        rejected_proposal_token_id = payload.get("rejected_proposal_token_id")
+        target_token_id_at_mismatch = payload.get("target_token_id_at_mismatch")
+        result = cls(
+            proposed_token_ids=proposed_token_ids,
+            target_token_ids=target_token_ids,
+            n_accepted=int(payload["n_accepted"]),
+            first_mismatch_index=None if first_mismatch_index is None else int(first_mismatch_index),
+            rejected_proposal_token_id=None
+            if rejected_proposal_token_id is None
+            else int(rejected_proposal_token_id),
+            target_token_id_at_mismatch=None
+            if target_token_id_at_mismatch is None
+            else int(target_token_id_at_mismatch),
+            verify_seed_count=int(payload["verify_seed_count"]),
+            reseed=Qwen35GGUFMTPSeedRow(
+                token_id=int(payload["reseed"]["token_id"]),
+                position=int(payload["reseed"]["position"]),
+                hidden_ptr=int(payload["reseed"]["hidden_ptr"]),
+                hidden_size=int(payload["reseed"]["hidden_size"]),
+                source=str(payload["reseed"]["source"]),
+            ),
+        )
+        if accepted_token_ids != result.accepted_token_ids:
+            raise ValueError(f"{field_name} accepted_token_ids mismatch")
+        if int(payload["draft_count"]) != len(result.proposed_token_ids):
+            raise ValueError(f"{field_name} draft_count mismatch")
+        if abs(float(payload["accepted_per_draft"]) - result.accepted_per_draft) > 1e-12:
+            raise ValueError(f"{field_name} accepted_per_draft mismatch")
+
     def as_dict(self) -> dict[str, object]:
         return {
             "proposed_token_ids": list(self.proposed_token_ids),
@@ -1759,7 +1856,10 @@ class Qwen35GGUFMTPVerificationResult:
             "rejected_proposal_token_id": self.rejected_proposal_token_id,
             "target_token_id_at_mismatch": self.target_token_id_at_mismatch,
             "verify_seed_count": self.verify_seed_count,
+            "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
             "reseed": self.reseed.as_dict(),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 
@@ -2146,6 +2246,7 @@ class Qwen35GGUFMTPVerificationMetrics:
             "accepted_per_output",
             "denominators",
             "seed_row_contract",
+            "verification_result_contract",
             "results",
         )
 
@@ -2183,6 +2284,8 @@ class Qwen35GGUFMTPVerificationMetrics:
             raise ValueError("verification metrics artifact denominator labels mismatch")
         if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
             raise ValueError("verification metrics artifact seed_row_contract mismatch")
+        if payload.get("verification_result_contract") != Qwen35GGUFMTPVerificationResult.contract():
+            raise ValueError("verification metrics artifact verification_result_contract mismatch")
 
         cycle_count = int(payload["cycle_count"])
         candidate_budget = int(payload["candidate_budget"])
@@ -2233,6 +2336,10 @@ class Qwen35GGUFMTPVerificationMetrics:
         for index, result in enumerate(results):
             if not isinstance(result, Mapping):
                 raise ValueError("verification metrics artifact results entries must be mappings")
+            Qwen35GGUFMTPVerificationResult.validate_payload(
+                result,
+                field_name=f"verification metrics artifact results[{index}]",
+            )
             proposed = result.get("proposed_token_ids")
             target = result.get("target_token_ids")
             accepted = result.get("accepted_token_ids")
@@ -2315,6 +2422,7 @@ class Qwen35GGUFMTPVerificationMetrics:
             "required_fields": list(self.required_fields()),
             "validator": self.validator_name(),
             "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
+            "verification_result_contract": Qwen35GGUFMTPVerificationResult.contract(),
             "results": [result.as_dict() for result in self.results],
         }
 

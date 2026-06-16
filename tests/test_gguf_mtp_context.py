@@ -1204,19 +1204,37 @@ def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:
     assert payload["result_draft_token_counts"] == [2, 2]
     assert payload["result_accepted_token_counts"] == [1, 2]
     assert payload["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
+    assert payload["verification_result_contract"] == Qwen35GGUFMTPVerificationResult.contract()
     assert payload["accepted_per_output"] == 0.6
     assert payload["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
         "accepted_per_output": "accepted_token_count / output_token_count",
     }
     assert payload["results"][0]["first_mismatch_index"] == 1
+    result_payload = accepted_one.as_dict()
+    assert result_payload["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
+    assert Qwen35GGUFMTPVerificationResult.contract() == {
+        "required_fields": list(Qwen35GGUFMTPVerificationResult.required_fields()),
+        "validator": "Qwen35GGUFMTPVerificationResult.validate_payload",
+    }
+    Qwen35GGUFMTPVerificationResult.validate_payload(result_payload)
+    broken_result = {**result_payload, "validator": "wrong"}
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPVerificationResult.validate_payload(broken_result)
     Qwen35GGUFMTPVerificationMetrics.validate_payload(payload)
+    broken = dict(payload)
+    broken["results"] = [
+        {**payload["results"][0], "validator": "wrong"},
+        payload["results"][1],
+    ]
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
     broken = dict(payload)
     broken["results"] = [
         {**payload["results"][0], "rejected_proposal_token_id": 99},
         payload["results"][1],
     ]
-    with pytest.raises(ValueError, match="mismatch token ids mismatch"):
+    with pytest.raises(ValueError, match="mismatch token ids"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
 
 
@@ -1254,6 +1272,10 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
     with pytest.raises(ValueError, match="seed_row_contract mismatch"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
     broken = dict(payload)
+    broken["verification_result_contract"] = {}
+    with pytest.raises(ValueError, match="verification_result_contract mismatch"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+    broken = dict(payload)
     broken["results"] = [{**payload["results"][0], "accepted_token_ids": [9]}]
     with pytest.raises(ValueError, match="accepted_token_ids mismatch"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
@@ -1265,7 +1287,7 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
     broken["results"] = [
         {**payload["results"][0], "reseed": {**payload["results"][0]["reseed"], "hidden_size": 0}}
     ]
-    with pytest.raises(ValueError, match="results reseed"):
+    with pytest.raises(ValueError, match=r"results\[0\] reseed"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
 
 
