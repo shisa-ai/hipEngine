@@ -514,6 +514,13 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         ],
     }
     assert matrix["budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["hipengine_metrics_contract_by_budget"]["B1"]["budget_label"] == "B1"
+    assert matrix["hipengine_metrics_contract_by_budget"]["B4"]["candidate_budget"] == 4
+    for budget, contract in matrix["hipengine_metrics_contract_by_budget"].items():
+        suite.Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(
+            contract,
+            candidate_budget=int(budget[1:]),
+        )
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is True
@@ -684,6 +691,13 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is False
     assert "artifacts" not in matrix
+    assert matrix["hipengine_metrics_contract_by_budget"]["B1"]["budget_label"] == "B1"
+    assert matrix["hipengine_metrics_contract_by_budget"]["B4"]["candidate_budget"] == 4
+    for budget, contract in matrix["hipengine_metrics_contract_by_budget"].items():
+        suite.Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(
+            contract,
+            candidate_budget=int(budget[1:]),
+        )
     assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
     assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"]["B1"] == 0.0
     assert matrix["all_llamacpp_trace_budgets_full"] is False
