@@ -97783,3 +97783,44 @@ Validation:
   allocation, GPU kernel, attention/KV runtime path, or performance claim.
   Existing KVLiveSpans execution-plan contract is unchanged and future native
   attention/KV-write remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF target commit-plan bridge
+
+Implemented `mtp-gguf` multiloop iteration 114: bridged GGUF MTP accept summaries
+into the shared `TargetCommitPlan` metadata contract.
+
+Scope note:
+- Metadata/state plumbing only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- The bridge validates the shared accept summary against the GGUF-derived
+  `TargetVerifyBatch` row layout before delegating to the provider-neutral
+  `TargetCommitPlan.from_summary()` helper.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftExecutionPlan.target_commit_plan_from_summary()`.
+- The method checks request ids, candidate counts, draft depth, tree shape,
+  commit-row ownership, root-vs-candidate commit row selection, row depth, and
+  commit token/position metadata before building a `TargetCommitPlan`.
+- Added a B1 metadata test covering commit-plan construction, commit field
+  propagation, bad commit-token rejection, and transaction-id mismatch rejection.
+- Updated `docs/MTP-gguf.md` M4 status/deliverables to record the
+  accept-summary-to-commit-plan bridge.
+
+Validation:
+- Focused GGUF MTP context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> `32` passed.
+- Prompt-suite regression passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `41` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/state/tests/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no native MTP execution, actual KV
+  allocation, GPU kernel, attention/KV runtime path, or performance claim.
+  Existing KVLiveSpans execution-plan contract is unchanged and future native
+  attention/KV-write remains KVLiveSpans-gated.

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
-from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
+from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch
 
 
 DEFAULT_DRAFT_TOPK_KERNEL = ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
@@ -461,6 +461,48 @@ class Qwen35GGUFMTPDraftExecutionPlan:
             remaining_decode=remaining_decode,
         )
         return TargetAcceptSummary.from_accept_result(target_batch, accept_result)
+
+    def target_commit_plan_from_summary(self, summary: TargetAcceptSummary, transaction) -> TargetCommitPlan:
+        """Validate a GGUF MTP accept summary and build the shared commit plan.
+
+        The GGUF runner does not own scheduler/KV transactions yet, but future
+        native integration must commit the same target rows that this execution
+        plan verified.  This bridge mirrors the provider-neutral scheduler
+        checks before delegating to ``TargetCommitPlan.from_summary``.
+        """
+
+        target_batch = self.to_target_verify_batch(mode=summary.mode)
+        if summary.request_ids != target_batch.request_ids:
+            raise ValueError("accept summary request_ids must match GGUF MTP target batch")
+        if summary.candidate_counts is not None and summary.candidate_counts != target_batch.candidate_counts:
+            raise ValueError("accept summary candidate_counts must match GGUF MTP target batch")
+        if summary.draft_depth is not None and summary.draft_depth != target_batch.draft_depth:
+            raise ValueError("accept summary draft_depth must match GGUF MTP target batch")
+        if summary.tree_shape is not None and summary.tree_shape != target_batch.tree_shape:
+            raise ValueError("accept summary tree_shape must match GGUF MTP target batch")
+        root_rows = set(target_batch.root_rows)
+        candidate_rows = set(target_batch.candidate_rows)
+        for request_id, count, row, token, position in zip(
+            summary.request_ids,
+            summary.accepted_counts,
+            summary.commit_rows,
+            summary.commit_tokens,
+            summary.commit_positions,
+            strict=True,
+        ):
+            if row < 0 or row >= target_batch.rows:
+                raise ValueError("accept summary commit row must be in GGUF MTP target batch")
+            if target_batch.row_to_request[row] != request_id:
+                raise ValueError("accept summary commit row must belong to its request")
+            if count == 0 and row not in root_rows:
+                raise ValueError("zero accepted candidates must commit the request root row")
+            if count > 0 and row not in candidate_rows:
+                raise ValueError("accepted candidates must commit a candidate row")
+            if target_batch.draft_depths[row] != count:
+                raise ValueError("accept summary commit row depth must match accepted count")
+            if target_batch.tokens[row] != token or target_batch.positions[row] != position:
+                raise ValueError("accept summary commit token/position must match target row")
+        return TargetCommitPlan.from_summary(summary, transaction)
 
     def cpu_reference_kwargs(self) -> dict[str, object]:
         return {

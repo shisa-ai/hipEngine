@@ -7,7 +7,8 @@ import pytest
 
 from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
 from hipengine.kernels.hip_gfx1100.sampling.sampler import register_sampler_kernels
-from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
+from hipengine.kvcache.policy import KVTransaction
+from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch
 from hipengine.speculative.gguf_mtp import (
     GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
     GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
@@ -353,6 +354,72 @@ def test_gguf_mtp_execution_plan_builds_target_accept_summary_from_top1() -> Non
     assert full_budgeted.commit_positions == (7,)
     assert full_budgeted.full_accept == (True,)
     assert full_budgeted.next_tokens == (None,)
+
+
+def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_summary() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1,), seed_rows=seeds[:1])
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,),),
+        top_k_logits=((4.0,),),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+    summary = plan.target_accept_summary_from_top1((1, 99), transaction_id=12, remaining_decode=(1,))
+    transaction = KVTransaction(
+        transaction_id=12,
+        request_ids=(7,),
+        draft_rows=1,
+        role="verify_chain",
+        candidate_counts=(1,),
+    )
+
+    commit = plan.target_commit_plan_from_summary(summary, transaction)
+
+    assert isinstance(commit, TargetCommitPlan)
+    assert commit.transaction_id == 12
+    assert commit.request_ids == (7,)
+    assert commit.accepted_counts == (1,)
+    assert commit.commit_rows == (1,)
+    assert commit.commit_tokens == (1,)
+    assert commit.commit_positions == (6,)
+    assert commit.next_tokens == (None,)
+    assert commit.candidate_counts == (1,)
+    assert commit.draft_depth == 1
+    assert commit.tree_shape == (0,)
+    assert commit.mode == "verify_chain"
+
+    wrong_token = TargetAcceptSummary(
+        request_ids=(7,),
+        accepted_counts=(1,),
+        accepted_tokens=((1,),),
+        commit_rows=(1,),
+        commit_tokens=(2,),
+        commit_positions=(6,),
+        full_accept=(True,),
+        candidate_counts=(1,),
+        transaction_id=12,
+        draft_depth=1,
+        tree_shape=(0,),
+    )
+    with pytest.raises(ValueError, match="token/position"):
+        plan.target_commit_plan_from_summary(wrong_token, transaction)
+    wrong_txn = KVTransaction(
+        transaction_id=13,
+        request_ids=(7,),
+        draft_rows=1,
+        role="verify_chain",
+        candidate_counts=(1,),
+    )
+    with pytest.raises(ValueError, match="transaction_id"):
+        plan.target_commit_plan_from_summary(summary, wrong_txn)
 
 
 def test_gguf_mtp_context_applies_target_accept_summary_reseed_rule() -> None:
