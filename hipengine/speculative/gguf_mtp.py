@@ -720,6 +720,27 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         return tuple(field for field in cls.required_fields() if field not in payload)
 
     @classmethod
+    def blocked_contract(
+        cls,
+        *,
+        candidate_budget: int,
+        blocked_until: str = "native_gguf_mtp_runtime",
+    ) -> dict[str, object]:
+        budget = int(candidate_budget)
+        if budget <= 0:
+            raise ValueError("candidate_budget must be positive")
+        return {
+            "status": "not_run",
+            "blocked_until": str(blocked_until),
+            **cls.artifact_labels(),
+            "draft_max": budget,
+            "candidate_budget": budget,
+            "budget_label": f"B{budget}",
+            "required_fields": list(cls.required_fields()),
+            "denominators": cls.denominator_labels(),
+        }
+
+    @classmethod
     def validate_payload(cls, payload: Mapping[str, object]) -> None:
         def int_sequence(name: str) -> tuple[int, ...]:
             value = payload.get(name)

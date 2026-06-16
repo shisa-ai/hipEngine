@@ -989,8 +989,9 @@ is now answered by the M1 required/optional table.)
       the hipEngine-side `Qwen35GGUFMTPAcceptStepMetrics` schema/kind/source,
       `candidate_budget` / `budget_label`, compact per-step row fields, full
       serialized `steps`, and denominator contract from the centralized
-      `Qwen35GGUFMTPAcceptStepMetrics.required_fields()` list; native runtime
-      artifacts can be checked with `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
+      `Qwen35GGUFMTPAcceptStepMetrics.blocked_contract()` /
+      `required_fields()` helpers; native runtime artifacts can be checked with
+      `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
       for labels, required fields, compact step rows, aggregate counts, and
       ratio consistency before parity comparison.
 - [ ] Extend to B2-B4 after B1 is exact. The preflight child accepts

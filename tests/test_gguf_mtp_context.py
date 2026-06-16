@@ -599,6 +599,22 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "accepted_per_draft",
         "accepted_per_output",
     ]
+    blocked_contract = Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=2)
+    assert blocked_contract == {
+        "status": "not_run",
+        "blocked_until": "native_gguf_mtp_runtime",
+        "schema": 1,
+        "kind": "hipengine_gguf_mtp_accept_step_metrics",
+        "source": "Qwen35GGUFMTPAcceptStepMetrics",
+        "result_source": "Qwen35GGUFMTPAcceptStep",
+        "draft_max": 2,
+        "candidate_budget": 2,
+        "budget_label": "B2",
+        "required_fields": list(Qwen35GGUFMTPAcceptStepMetrics.required_fields()),
+        "denominators": Qwen35GGUFMTPAcceptStepMetrics.denominator_labels(),
+    }
+    with pytest.raises(ValueError, match="candidate_budget"):
+        Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=0)
     assert set(Qwen35GGUFMTPAcceptStepMetrics.required_fields()).issubset(metrics.as_dict())
     assert Qwen35GGUFMTPAcceptStepMetrics.missing_required_fields({}) == tuple(
         Qwen35GGUFMTPAcceptStepMetrics.required_fields()
