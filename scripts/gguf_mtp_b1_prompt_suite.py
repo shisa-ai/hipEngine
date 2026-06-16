@@ -604,7 +604,7 @@ def build_b1_prompt_suite_artifact(
             }
         )
 
-    return {
+    artifact = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_b1_prompt_suite",
         "mode": "preflight",
@@ -651,6 +651,8 @@ def build_b1_prompt_suite_artifact(
         },
         "blockers": blockers,
     }
+    artifact["cli_gate_failures"] = _cli_gate_failures(artifact)
+    return artifact
 
 
 def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
@@ -835,6 +837,7 @@ def build_b1_b4_prompt_suite_matrix(
     }
     if include_artifacts:
         matrix["artifacts"] = artifacts
+    matrix["cli_gate_failures"] = _cli_gate_failures(matrix)
     return matrix
 
 
@@ -962,6 +965,27 @@ def _has_unready_performance_comparisons(artifact: dict[str, Any]) -> bool:
     if "llamacpp_trace_oracle" not in artifact:
         return False
     return bool(_matrix_budget_readiness(artifact)["performance_comparison_blockers"])
+
+
+def _cli_gate_failures(artifact: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if artifact.get("status") == "blocked":
+        failures.append("blocked")
+    checks = (
+        ("partial_trace_budget", _has_partial_llamacpp_trace_budget_coverage),
+        ("exactness_failed", _has_failed_exactness_gate),
+        ("precheck_failed", _has_failed_preflight_prechecks),
+        ("kvlivespans_smoke_fail", _has_failed_kvlivespans_paged_cache_smoke),
+        ("noncomparable_accepted_output", _has_noncomparable_accepted_output_metrics),
+        ("noncomparable_accepted_draft", _has_noncomparable_accepted_draft_metrics),
+        ("native_runtime_missing", _has_missing_native_runtime_kernels),
+        ("optimization_missing", _has_missing_optimization_kernels),
+        ("performance_unready", _has_unready_performance_comparisons),
+    )
+    for name, check in checks:
+        if check(artifact):
+            failures.append(name)
+    return failures
 
 
 def main(argv: list[str] | None = None) -> int:

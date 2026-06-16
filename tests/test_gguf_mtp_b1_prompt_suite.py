@@ -221,6 +221,12 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["mode"] == "preflight"
     assert artifact["status"] == "blocked"
     assert artifact["cli_gate_exit_codes"] == EXPECTED_CLI_GATE_EXIT_CODES
+    assert artifact["cli_gate_failures"] == [
+        "blocked",
+        "noncomparable_accepted_output",
+        "native_runtime_missing",
+        "performance_unready",
+    ]
     assert suite.CLI_GATE_EXIT_CODES == EXPECTED_CLI_GATE_EXIT_CODES
     assert artifact["backend"] == "hip_gfx1100"
     assert artifact["budget"] == "B1"
@@ -444,6 +450,13 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["kind"] == "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix"
     assert matrix["status"] == "blocked"
     assert matrix["cli_gate_exit_codes"] == EXPECTED_CLI_GATE_EXIT_CODES
+    assert matrix["cli_gate_failures"] == [
+        "blocked",
+        "partial_trace_budget",
+        "noncomparable_accepted_output",
+        "native_runtime_missing",
+        "performance_unready",
+    ]
     assert matrix["budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
     assert matrix["artifact_count"] == 4
@@ -1771,6 +1784,10 @@ def test_b1_prompt_suite_preflight_reports_oracle_gate_blocker_before_runtime_bl
             "passed": False,
             "fixture": str(fixture),
             "metrics": {"max_kl": 0.25, "top1_agreement": 0.0},
+            "kvlivespans_paged_cache_smoke": {
+                "passed": True,
+                "max_abs_diff": 0.0,
+            },
         },
     )
 
