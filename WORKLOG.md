@@ -100337,3 +100337,17 @@ Validation:
   evidence now remains visible without child artifacts; KVLiveSpans runtime-kernel
   and execution-plan contracts remain the attention/KV-write ABI for future native
   paths; no benchmark row was retained.
+
+## 2026-06-17
+
+### Debugging MoE WNA16 Kernels on gfx1151
+**Context:** Qwen3.6-35B-A3B-GPTQ-Int4 was hanging during initialization on `gfx1151` when running via vLLM, but worked fine on `gfx1100`.
+**Findings:**
+1. `AutoGPTQ` forces `MarlinExperts` which relies on `gptq_marlin_repack` (a CUDA-only C++ op), resulting in an `AttributeError` on ROCm.
+2. Bypassing `MarlinExperts` forces a fallback to `MoeWNA16Method`, which uses a Triton kernel (`invoke_fused_moe_wna16_triton_kernel`).
+3. The Triton kernel does `tl.load(b_ptrs)` with duplicate pointers along the K dimension (to extract two W4A16 elements per uint8 byte). On Strix Halo (`gfx1151`), this specific access pattern deadlocks the L1 vector cache, causing a silent GPU hang during dummy memory profiling. `gfx1100` does not trigger this deadlock due to a different cache topology.
+4. The most robust solution is to bypass Triton and use the native RDNA3 C++ kernel `moe_q_gemm_rdna3.cu`. However, `CMakeLists.txt` restricted this kernel to `gfx1100` only, and `AutoGPTQ` didn't use it.
+**Actions:**
+- Patched `CMakeLists.txt` to compile `moe_q_gemm_rdna3.cu` for `gfx1151`.
+- Patched `vllm/model_executor/layers/quantization/auto_gptq.py` (`AutoGPTQMoEMethod`) to explicitly detect `gfx1151`, shuffle the weights with `ops.gptq_shuffle(..., 4)`, and route the GEMMs directly to `ops.moe_gptq_gemm_rdna3`, matching the `CompressedTensors` backend logic but supporting `AutoGPTQ` checkpoints natively.
+- Triggered `pip install -e .` rebuild in the background. Once finished, GPTQ MoE generation will use the fast C++ kernel and bypass the Triton deadlock entirely.
