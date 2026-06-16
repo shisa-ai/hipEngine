@@ -100351,3 +100351,13 @@ Validation:
 - Patched `CMakeLists.txt` to compile `moe_q_gemm_rdna3.cu` for `gfx1151`.
 - Patched `vllm/model_executor/layers/quantization/auto_gptq.py` (`AutoGPTQMoEMethod`) to explicitly detect `gfx1151`, shuffle the weights with `ops.gptq_shuffle(..., 4)`, and route the GEMMs directly to `ops.moe_gptq_gemm_rdna3`, matching the `CompressedTensors` backend logic but supporting `AutoGPTQ` checkpoints natively.
 - Triggered `pip install -e .` rebuild in the background. Once finished, GPTQ MoE generation will use the fast C++ kernel and bypass the Triton deadlock entirely.
+
+### Validated kyuz0 container smoke on Strix Halo
+**Context:** Wanted to verify if the podman `kyuz0` container works with a known-good AWQ model on `gfx1151`, since the MoE target models were hanging.
+**Findings:**
+1. Ran `docker.io/kyuz0/vllm-therock-gfx1151:latest` via `podman run` with `/dev/kfd` and `/dev/dri` passthrough.
+2. Target model: `Qwen/Qwen1.5-0.5B-Chat-AWQ` (dense).
+3. The server successfully loaded the model using the `TritonW4A16LinearKernel` for AWQ Marlin fallback.
+4. Bound to port 8000 successfully. `/health` returned 200 OK.
+5. `/v1/completions` endpoint successfully streamed text (`...little girl named Lily...`).
+**Conclusion:** The kyuz0 podman environment is fully functional for ROCm passthrough on `gfx1151`, and dense Triton AWQ kernels do not trigger the L1 vector cache deadlock that the MoE Triton kernels hit. The MoE bug is kernel-specific.
