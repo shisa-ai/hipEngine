@@ -469,6 +469,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Full-attention query chunk 2048 rejected (2026-06-16).** Splitting the
+  mid-context auto-tuned full-attention query chunk from `4096` to `2048`
+  reduced tracked primary-gate peak (`21.335 -> 20.689 GiB`) and nudged decode
+  up, but it changed the deterministic `4K/128` final token from `570` to `15`
+  and regressed 4K prefill (`2293.994 -> 2233.790 tok/s`). Code was reverted;
+  keep the retained `4096` full-attention query chunk unless the chunked full-
+  attention equivalence bug is fixed and covered by a gate. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-query2048-rejected.json`.
+
 - **Q8_0 T16 4K shared-gate/up TM64 rejected (2026-06-16).** A 4K-oriented
   resident Q8_0 T16 tile override changed shared-expert gate/up shapes
   (`out<=512`, rows `>=2048`) from `TM32/TN16` to `TM64/TN16`, after synthetic

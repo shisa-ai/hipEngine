@@ -1,0 +1,181 @@
+{
+  "candidate_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.12230725247981,
+      "final_token_ids": [
+        15,
+        15,
+        15
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        151531,
+        82995,
+        15
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 2048,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2233.7898760191224,
+      "tracked_peak_allocated_gib_median": 20.688700735569
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.81737597309383,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 2048,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1957.174513900999,
+      "tracked_peak_allocated_gib_median": 20.688700735569
+    }
+  },
+  "change": "Candidate changed the mid-context auto-tuned full_attn_query chunk size from 4096 to 2048 while leaving linear/MoE/post/RoPE chunks unchanged at 1024 and low-memory 128K policy unchanged at 768.",
+  "checks": {
+    "guard_passed": true,
+    "memory_reduced": true,
+    "prefill_config_tests_passed": true,
+    "primary_ids_match_previous_default": false,
+    "primary_ids_stable": true,
+    "prompt_verifier_passed": false
+  },
+  "commands": {
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "prefill_config_tests": "cd /home/lhl/hipEngine-gguf-tuning && python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget tests/test_qwen35_resident_batch_layout.py::test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native -q",
+    "primary_gate": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json"
+  },
+  "comparisons": {
+    "4K/128": {
+      "candidate_final_token_ids": [
+        15,
+        15,
+        15
+      ],
+      "decode_delta_vs_previous_default_pct": 0.11451548689269675,
+      "final_token_id_matches_previous_default": false,
+      "peak_gib_delta_vs_previous_default": -0.6461410522460938,
+      "prefill_delta_vs_previous_default_pct": -2.624439920363786,
+      "previous_final_token_ids": [
+        570,
+        570,
+        570
+      ]
+    },
+    "512/128": {
+      "candidate_final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "decode_delta_vs_previous_default_pct": -0.08436734581824812,
+      "final_token_id_matches_previous_default": true,
+      "peak_gib_delta_vs_previous_default": -0.6461410522460938,
+      "prefill_delta_vs_previous_default_pct": -0.07752055750002151,
+      "previous_final_token_ids": [
+        220,
+        220,
+        220
+      ]
+    }
+  },
+  "date_utc": "2026-06-16",
+  "hardware": "GPU1 gfx1100 / AMD Radeon RX 7900 XTX class, TheRock HIP 7.13",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The smaller full-attention query chunk lowered tracked peak from 21.335 GiB to 20.689 GiB on the primary gates, indicating less full-sequence prefill scratch residency.",
+    "The candidate is a correctness blocker for the 4K gate because deterministic output changed to token 15.",
+    "The 128K final gate was not run because the primary correctness/prompt verifier failed.",
+    "The code/test changes were reverted before committing this rejected-attempt artifact."
+  ],
+  "performance_claim": false,
+  "previous_default_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-smallshape-tiles-gate.json",
+  "previous_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 114.99062517817606,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        179495,
+        570
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2293.994380306796,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.92445877015238,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1958.6929035595517,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.12230725247981,
+  "quant": "gguf_q4_k_s",
+  "rejection_reason": "The 4K/128 generated final token changed from the retained-default 570 to stable ID 15 and 4K prefill regressed; the candidate was not promoted despite lower tracked peak memory and a small decode gain.",
+  "status": "rejected",
+  "workloads": [
+    "512/128",
+    "4K/128"
+  ]
+}
