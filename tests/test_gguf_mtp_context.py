@@ -98,6 +98,21 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
             "parent_position": 17,
         }
     ]
+    row_payload = batch.as_dict()["rows"][0]
+    assert Qwen35GGUFMTPDraftRow.contract() == {
+        "required_fields": list(Qwen35GGUFMTPDraftRow.required_fields()),
+        "validator": "Qwen35GGUFMTPDraftRow.validate_payload",
+    }
+    Qwen35GGUFMTPDraftRow.validate_payload(row_payload, field_name="draft row")
+    with pytest.raises(ValueError, match="draft row embedding_seed_ptr"):
+        Qwen35GGUFMTPDraftRow.validate_payload(
+            {**row_payload, "embedding_seed_ptr": 0},
+            field_name="draft row",
+        )
+    missing = dict(row_payload)
+    missing.pop("parent_position")
+    with pytest.raises(ValueError, match="missing fields: parent_position"):
+        Qwen35GGUFMTPDraftRow.validate_payload(missing, field_name="draft row")
 
 
 def test_gguf_mtp_context_builds_b1_proposal_from_registered_topk_logits() -> None:

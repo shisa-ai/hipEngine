@@ -730,9 +730,10 @@ Deliverables:
   inferred `B{candidate_budget}`
   label, compact per-step transaction/candidate/accepted rows, and the same
   accepted/draft and accepted/output denominator labels used for llama.cpp
-  parity; the GGUF row
-  objects still carry the extra embedding seed pointer
-  until native MTP runtime buffers exist.
+  parity; the GGUF draft-row objects still carry the extra embedding seed
+  pointer until native MTP runtime buffers exist and now expose their own
+  required-field/validator contract so serialized B1-B4 proposal rows can reject
+  malformed embedding-seed metadata before native NextN execution is wired in.
 
 Acceptance:
 

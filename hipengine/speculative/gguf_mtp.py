@@ -165,6 +165,57 @@ class Qwen35GGUFMTPDraftRow:
         if self.embedding_hidden_size <= 0:
             raise ValueError("embedding_hidden_size must be positive")
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "request_id",
+            "token_id",
+            "position",
+            "draft_depth",
+            "embedding_seed_ptr",
+            "embedding_hidden_size",
+            "parent_token_id",
+            "parent_position",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPDraftRow.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "draft row",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = tuple(field for field in cls.required_fields() if field not in payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing fields: {joined}")
+        try:
+            cls(
+                request_id=int(payload["request_id"]),
+                token_id=int(payload["token_id"]),
+                position=int(payload["position"]),
+                draft_depth=int(payload["draft_depth"]),
+                embedding_seed_ptr=int(payload["embedding_seed_ptr"]),
+                embedding_hidden_size=int(payload["embedding_hidden_size"]),
+                parent_token_id=int(payload["parent_token_id"]),
+                parent_position=int(payload["parent_position"]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} {exc}") from exc
+
     def as_dict(self) -> dict[str, object]:
         return {
             "request_id": self.request_id,
