@@ -94467,3 +94467,19 @@ Configured loop verification after the prototype:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a diagnostic-only prototype. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a full runtime path is promoted.
 - Decision: log only. Next code iteration should add shared-memory Q4_K tile staging / wider MMQ tiling to reduce raw global loads before any full-model wiring.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 WMMA32 prototype
+
+Added a diagnostic `q8-1-ds4-wmma32` variant that packs two independent 16-column RDNA3 integer-WMMA waves into one 64-thread block. The math is identical to the one-wave DS4 WMMA prototype; the change halves the x-dimension block count for the synthetic selected-prefill shape. The path is exposed through the microbench and registry diagnostics, but it is not used by the model runtime/default path.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `12 passed` (including two WMMA32 cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma32-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma32-trace/epyc/2956726_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel` (`22240 ns`, `35440 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma32`: `8.191302 ms/call`, `16.779` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma`: `8.250445 ms/call`, `16.658` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.573812 ms/call`, `11.875` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.802224 ms/call`, `6.304` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`.
+- Interpretation: widening to 32 columns helps only `~0.7%` over the one-wave DS4 WMMA prototype, while remaining `1.41x` faster than selected-WMMA on this synthetic shape. The next limiter is likely raw Q4_K global loads, so the next useful code step is shared-memory `load_tiles_q4_K`-style staging rather than more block-count tuning.

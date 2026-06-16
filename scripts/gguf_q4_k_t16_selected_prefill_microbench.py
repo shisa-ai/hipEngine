@@ -14,6 +14,9 @@ It builds a synthetic compact-selected MoE fixture and can time either:
 * ``q8-1-ds4-wmma``: a first wave32 integer-WMMA prototype over the DS4 layout
   and raw Q4_K nibbles. It validates the MMA decomposition before a wider
   shared-memory tiled MMQ port.
+* ``q8-1-ds4-wmma32``: the same integer-WMMA math with two independent 16-column
+  waves per block, reducing block-count overhead while preserving the one-wave
+  fragment mapping.
 
 The script does not load a full GGUF model and does not validate model quality;
 it is a same-shape kernel-design baseline/prototype harness.
@@ -129,7 +132,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument(
         "--mode",
-        choices=("selected-wmma", "q8-1-dot", "q8-1-ds4-dot", "q8-1-ds4-wmma"),
+        choices=("selected-wmma", "q8-1-dot", "q8-1-ds4-dot", "q8-1-ds4-wmma", "q8-1-ds4-wmma32"),
         default="selected-wmma",
     )
     parser.add_argument("--hidden", type=int, default=2048)
@@ -240,6 +243,7 @@ def main() -> None:
                 build_gguf_q4_k_q8_1_selected_prefill,
                 gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
+                gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
             )
 
@@ -296,12 +300,13 @@ def main() -> None:
                 q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(x_host)
                 q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
                 bufs.append(q8_ds4_dev)
-                use_wmma = args.mode == "q8-1-ds4-wmma"
-                ds4_launcher = (
-                    gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out
-                    if use_wmma
-                    else gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out
-                )
+                use_wmma = args.mode in {"q8-1-ds4-wmma", "q8-1-ds4-wmma32"}
+                if args.mode == "q8-1-ds4-wmma32":
+                    ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out
+                elif args.mode == "q8-1-ds4-wmma":
+                    ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out
+                else:
+                    ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out
                 variant_extra = {
                     "host_q8_ds4_mib": q8_ds4.nbytes / (1 << 20),
                     "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
