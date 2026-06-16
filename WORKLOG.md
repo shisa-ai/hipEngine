@@ -100361,3 +100361,11 @@ Validation:
 4. Bound to port 8000 successfully. `/health` returned 200 OK.
 5. `/v1/completions` endpoint successfully streamed text (`...little girl named Lily...`).
 **Conclusion:** The kyuz0 podman environment is fully functional for ROCm passthrough on `gfx1151`, and dense Triton AWQ kernels do not trigger the L1 vector cache deadlock that the MoE Triton kernels hit. The MoE bug is kernel-specific.
+
+### Validated project target MoE model in kyuz0 container on Strix Halo
+**Context:** The user requested checking the project target model (`cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`) in the prebuilt `kyuz0` container on `gfx1151` using `--language-model-only`.
+**Findings:**
+1. As expected, since the `kyuz0` container image (`vllm-therock-gfx1151`) is precompiled without the native C++ bypass patch we applied locally to the host, it still falls back to the Triton `Moe WNA16` kernels.
+2. The log clearly shows `Falling back to Moe WNA16 kernels` for every layer's `mlp.experts`.
+3. Shortly after falling back and loading the layers, the container crashed/hung and died without bringing up the server endpoints.
+**Conclusion:** Testing the target MoE model in the unpatched `kyuz0` container confirms that the container image suffers from the exact same L1 vector cache Triton deadlock. To run MoE models smoothly on Strix Halo `gfx1151`, users must use a vLLM runtime that incorporates our native `moe_q_gemm_rdna3` C++ patch for AWQ/GPTQ, which we are currently compiling on the host.
