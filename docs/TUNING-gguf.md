@@ -479,6 +479,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **README sweep graph steps/replay=2 rejected (2026-06-16).** Changing
+  `scripts/qwen35_readme_sweep.py` default `--graph-steps-per-replay` from `1`
+  to `2` passed the CLI divisibility smoke and `154`-test GGUF guard, but it
+  changed the deterministic `512/128` final token (`220 -> 148536`) and regressed
+  decode versus the retained decode-policy cache baseline (`512/128` `127.263 ->
+  126.838 tok/s`, `4K/128` `114.991 -> 114.693 tok/s`). Keep the README sweep
+  default at one step per replay until GGUF decode graph capture stops baking
+  fixed position/context scalar arguments. Code was reverted. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-readme-graphsteps2-rejected.json`.
+
 - **Full-attention post/RoPE chunk=2048 rejected (2026-06-16).** Raising the
   mid-context full-attention post/RoPE prefill chunks from `1024` to `2048`
   while keeping query chunks at `4096` passed the config smoke and `154`-test

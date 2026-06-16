@@ -1,0 +1,186 @@
+{
+  "artifact_name": "gpu1-gguf-q4ks-readme-graphsteps2-rejected",
+  "base_commit": "dc4771a345b13f47c6e2a95a2857fbaf72356807",
+  "baseline_retained_reference": {
+    "4K/128": {
+      "decode_tok_s": 114.991,
+      "peak_gib": 21.335,
+      "prefill_tok_s": 2292.684,
+      "stable_id": 570
+    },
+    "512/128": {
+      "decode_tok_s": 127.263,
+      "peak_gib": 21.335,
+      "prefill_tok_s": 1958.536,
+      "stable_id": 220
+    },
+    "artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-decode-policy-cache-gate.json",
+    "primary_metric_min_decode_tok_s": 114.990789
+  },
+  "change": {
+    "files": [
+      "scripts/qwen35_readme_sweep.py"
+    ],
+    "final_action": "Rejected and code change reverted after prompt verifier failed.",
+    "summary": "Candidate changed scripts/qwen35_readme_sweep.py default --graph-steps-per-replay from 1 to 2, halving graph launches for 128-token decode windows when divisibility holds."
+  },
+  "checks": [
+    {
+      "name": "focused tests",
+      "result": "py_compile passed; invalid 512/127 workload failed divisibility validation under candidate default graph_steps_per_replay=2.",
+      "status": "passed"
+    },
+    {
+      "name": "primary gate",
+      "result": "512/128 stable final ID changed 220 -> 148536; 4K/128 ID stayed 570; memory stayed flat; candidate primary min decode 114.692653 tok/s.",
+      "status": "failed_correctness"
+    },
+    {
+      "name": "guard",
+      "result": "154 passed",
+      "status": "passed"
+    },
+    {
+      "name": "prompt verifier",
+      "result": "Deterministic output changed on 512/128 and decode regressed versus retained decode-policy cache baseline.",
+      "status": "failed"
+    }
+  ],
+  "commands": {
+    "focused_tests": "python3 -m py_compile scripts/qwen35_readme_sweep.py && python3 - <<'PY'\nimport subprocess, sys\ncmd = [sys.executable, 'scripts/qwen35_readme_sweep.py', '--engine', 'gguf', '--workloads', '512/127', '--measured-runs', '1']\nproc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)\nassert proc.returncode != 0\nassert 'must be divisible by --graph-steps-per-replay' in (proc.stderr + proc.stdout)\nPY",
+    "guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "primary": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json"
+  },
+  "date": "2026-06-16",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX / gfx1100 (24GB class)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The 128K/128 final promotion check was not run because the primary correctness/prompt verifier failed.",
+    "This confirms multi-step GGUF graph replay is not a safe default with the current capture because some decode arguments are captured for fixed positions/context lengths."
+  ],
+  "per_run_metrics": {
+    "4K/128": [
+      {
+        "decode_graph_reused": false,
+        "decode_tok_s": 110.093798,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.169735,
+        "measured": false,
+        "prefill_tok_s": 2282.842714,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_graph_reused": true,
+        "decode_tok_s": 114.692653,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.0,
+        "measured": true,
+        "prefill_tok_s": 2285.719874,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_graph_reused": true,
+        "decode_tok_s": 114.788333,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.0,
+        "measured": true,
+        "prefill_tok_s": 2248.849155,
+        "run_index": 2,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_graph_reused": true,
+        "decode_tok_s": 114.601842,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.0,
+        "measured": true,
+        "prefill_tok_s": 2294.178757,
+        "run_index": 3,
+        "tracked_peak_allocated_gib": 21.334842
+      }
+    ],
+    "512/128": [
+      {
+        "decode_graph_reused": false,
+        "decode_tok_s": 126.325322,
+        "final_token_id": 148536,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.17362,
+        "measured": false,
+        "prefill_tok_s": 1572.756163,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_graph_reused": true,
+        "decode_tok_s": 126.846212,
+        "final_token_id": 148536,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.0,
+        "measured": true,
+        "prefill_tok_s": 1958.221491,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_graph_reused": true,
+        "decode_tok_s": 126.837569,
+        "final_token_id": 148536,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.0,
+        "measured": true,
+        "prefill_tok_s": 1953.900996,
+        "run_index": 2,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_graph_reused": true,
+        "decode_tok_s": 126.712916,
+        "final_token_id": 148536,
+        "finite_final_logits": true,
+        "graph_capture_seconds": 0.0,
+        "measured": true,
+        "prefill_tok_s": 1968.471145,
+        "run_index": 3,
+        "tracked_peak_allocated_gib": 21.334842
+      }
+    ]
+  },
+  "performance_claim": false,
+  "primary_metric_min_decode_tok_s": 114.692653,
+  "quant": "gguf_q4_k_s",
+  "repo": "/home/lhl/hipEngine-gguf-tuning",
+  "schema": "hipengine_benchmark_result/v1",
+  "software": "TheRock ROCm 7.13; /home/lhl/mambaforge/envs/therock/bin/python3.12; cached hipcc builds via /tmp/hipengine-hipcc-version-713.txt",
+  "status": "rejected",
+  "summary_by_workload": {
+    "4K/128": {
+      "decode_tok_s_median": 114.692653,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2285.719874,
+      "tracked_peak_allocated_gib_median": 21.334842
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.837569,
+      "final_token_ids": [
+        148536,
+        148536,
+        148536
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1958.221491,
+      "tracked_peak_allocated_gib_median": 21.334842
+    }
+  }
+}
