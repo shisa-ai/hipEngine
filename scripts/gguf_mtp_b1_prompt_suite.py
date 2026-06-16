@@ -641,6 +641,7 @@ def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
             draft_sampling_contract_precheck=bool(readiness["draft_sampling_contract_precheck"]),
             hidden_seed_contract_precheck=bool(readiness["hidden_seed_contract_precheck"]),
             exactness_gate=str(readiness["exactness_gate"]),
+            kvlivespans_paged_cache_smoke=bool(readiness["kvlivespans_paged_cache_smoke"]),
             llamacpp_trace_budget_coverage=str(readiness["llamacpp_trace_budget_coverage"]),
             accepted_per_output_status=str(readiness["accepted_per_output_status"]),
             native_runtime_kernels_ready=bool(readiness["native_runtime_kernels_ready"]),

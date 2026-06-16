@@ -683,6 +683,7 @@ class Qwen35GGUFMTPPerformanceReadiness:
         draft_sampling_contract_precheck: bool,
         hidden_seed_contract_precheck: bool,
         exactness_gate: str,
+        kvlivespans_paged_cache_smoke: bool,
         llamacpp_trace_budget_coverage: str,
         accepted_per_output_status: str,
         native_runtime_kernels_ready: bool,
@@ -700,6 +701,8 @@ class Qwen35GGUFMTPPerformanceReadiness:
             blockers.append("hidden_seed_contract_precheck_failed")
         if exactness_gate != "passed":
             blockers.append("exactness_gate_failed")
+        if not kvlivespans_paged_cache_smoke:
+            blockers.append("kvlivespans_paged_cache_smoke_failed")
         if llamacpp_trace_budget_coverage != GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE:
             blockers.append("partial_llamacpp_trace_budget_coverage")
         if accepted_per_output_status != GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE:
