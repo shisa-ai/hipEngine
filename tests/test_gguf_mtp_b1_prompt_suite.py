@@ -682,6 +682,129 @@ def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_rejects_compact_matrix
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
 
 
+def test_b1_prompt_suite_cli_fail_on_kvlivespans_smoke_allows_default_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-kvlivespans-smoke-fail",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert artifact["oracle_gate"]["kvlivespans_paged_cache_smoke"]["passed"] is True
+
+
+def test_b1_prompt_suite_cli_fail_on_kvlivespans_smoke_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "run_oracle_gate",
+        lambda fixture: {
+            "passed": True,
+            "fixture": str(fixture),
+            "metrics": {"max_kl": 0.0, "top1_agreement": 1.0},
+            "kvlivespans_paged_cache_smoke": {
+                "passed": False,
+                "max_abs_diff": 1.0,
+            },
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-kvlivespans-smoke-fail",
+        ]
+    )
+
+    assert rc == 9
+    artifact = json.loads(out.read_text())
+    assert artifact["oracle_gate"]["kvlivespans_paged_cache_smoke"]["passed"] is False
+
+
+def test_b1_prompt_suite_cli_fail_on_kvlivespans_smoke_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "run_oracle_gate",
+        lambda fixture: {
+            "passed": True,
+            "fixture": str(fixture),
+            "metrics": {"max_kl": 0.0, "top1_agreement": 1.0},
+            "kvlivespans_paged_cache_smoke": {
+                "passed": False,
+                "max_abs_diff": 1.0,
+            },
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-kvlivespans-smoke-fail",
+        ]
+    )
+
+    assert rc == 9
+    matrix = json.loads(out.read_text())
+    assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is False
+
+
 def test_b1_prompt_suite_cli_fail_on_noncomparable_accepted_output_rejects_b1(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

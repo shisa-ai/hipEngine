@@ -353,7 +353,9 @@ full child artifacts for compact benchmark evidence. Use
 `--fail-on-partial-trace-budget` to return exit code `3` when a single-budget or
 matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
-Use `--fail-on-noncomparable-accepted-output` to return exit code `4` when the
+Use `--fail-on-kvlivespans-smoke-fail` to return exit code `9` when the
+CPU-reference dense-vs-paged KVLiveSpans smoke fails. Use
+`--fail-on-noncomparable-accepted-output` to return exit code `4` when the
 trace artifact lacks visible output-token counts and therefore cannot support
 `accepted_per_output` comparisons. Use
 `--fail-on-noncomparable-accepted-draft` to return exit code `6` when the trace
@@ -955,8 +957,10 @@ is now answered by the M1 required/optional table.)
       comparability (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
-      trace provenance, `--fail-on-noncomparable-accepted-output` exits `4`
-      when accepted/output denominators are not comparable,
+      trace provenance, `--fail-on-kvlivespans-smoke-fail` exits `9` when the
+      CPU-reference dense-vs-paged KVLiveSpans smoke fails,
+      `--fail-on-noncomparable-accepted-output` exits `4` when
+      accepted/output denominators are not comparable,
       `--fail-on-noncomparable-accepted-draft` exits `6` when accepted/draft
       denominators are not comparable,
       `--fail-on-native-runtime-missing` exits `7` when native NextN/KVLiveSpans

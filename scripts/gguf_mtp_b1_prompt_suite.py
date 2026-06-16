@@ -835,6 +835,20 @@ def _has_partial_llamacpp_trace_budget_coverage(artifact: dict[str, Any]) -> boo
     return isinstance(coverage, str) and coverage != FULL_TRACE_BUDGET_COVERAGE
 
 
+def _has_failed_kvlivespans_paged_cache_smoke(artifact: dict[str, Any]) -> bool:
+    all_pass = artifact.get("all_kvlivespans_paged_cache_smokes_pass")
+    if isinstance(all_pass, bool):
+        return not all_pass
+    oracle_gate = artifact.get("oracle_gate")
+    if not isinstance(oracle_gate, dict):
+        return False
+    smoke = oracle_gate.get("kvlivespans_paged_cache_smoke")
+    if not isinstance(smoke, dict):
+        return False
+    passed = smoke.get("passed")
+    return isinstance(passed, bool) and not passed
+
+
 def _has_noncomparable_accepted_draft_metrics(artifact: dict[str, Any]) -> bool:
     noncomparable_budgets = artifact.get("noncomparable_accepted_per_draft_budgets")
     if isinstance(noncomparable_budgets, list):
@@ -944,6 +958,11 @@ def main(argv: list[str] | None = None) -> int:
         help="return exit code 3 when the llama.cpp trace did not exercise the requested draft budget",
     )
     parser.add_argument(
+        "--fail-on-kvlivespans-smoke-fail",
+        action="store_true",
+        help="return exit code 9 when the KVLiveSpans paged-cache smoke fails",
+    )
+    parser.add_argument(
         "--fail-on-noncomparable-accepted-output",
         action="store_true",
         help="return exit code 4 when accepted_per_output denominators are not comparable",
@@ -1009,6 +1028,10 @@ def main(argv: list[str] | None = None) -> int:
         print(payload, end="")
     if args.fail_on_partial_trace_budget and _has_partial_llamacpp_trace_budget_coverage(artifact):
         return 3
+    if args.fail_on_kvlivespans_smoke_fail and _has_failed_kvlivespans_paged_cache_smoke(
+        artifact
+    ):
+        return 9
     if args.fail_on_noncomparable_accepted_output and _has_noncomparable_accepted_output_metrics(
         artifact
     ):
