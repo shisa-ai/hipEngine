@@ -43,6 +43,31 @@ def _prompt_suite(path: Path) -> Path:
     )
 
 
+def test_hipengine_metrics_contract_builder_self_validates(monkeypatch: pytest.MonkeyPatch) -> None:
+    contract = suite._build_hipengine_metrics_contract(draft_max=2)
+    suite.Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(contract, candidate_budget=2)
+
+    original = suite.Qwen35GGUFMTPAcceptStepMetrics.blocked_contract
+
+    def fake_blocked_contract(
+        cls,
+        *,
+        candidate_budget: int,
+        blocked_until: str = "native_gguf_mtp_runtime",
+    ) -> dict[str, object]:
+        payload = original(candidate_budget=candidate_budget, blocked_until=blocked_until)
+        payload["candidate_budget"] = int(candidate_budget) + 1
+        return payload
+
+    monkeypatch.setattr(
+        suite.Qwen35GGUFMTPAcceptStepMetrics,
+        "blocked_contract",
+        classmethod(fake_blocked_contract),
+    )
+    with pytest.raises(ValueError, match="candidate_budget mismatch"):
+        suite._build_hipengine_metrics_contract(draft_max=2)
+
+
 def _token_inventory(path: Path, *, token_ids: list[int] | None = None) -> Path:
     tokens = [1, 2, 3] if token_ids is None else token_ids
     return _write_json(

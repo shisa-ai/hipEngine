@@ -98647,3 +98647,43 @@ Validation:
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Existing KVLiveSpans execution-plan contract is unchanged and future
   native attention/KV-write remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF self-validating blocked metrics contracts
+
+Implemented `mtp-gguf` multiloop iteration 136: prompt-suite blocked hipEngine
+metrics contracts now self-validate during artifact construction.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- `_build_hipengine_metrics_contract()` now validates the blocked contract before
+  returning it, so preflight artifacts fail fast if the centralized
+  `blocked_contract()` helper drifts before native accept-step metrics exist.
+
+Changes:
+- Updated `scripts/gguf_mtp_b1_prompt_suite.py` to call
+  `Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract()` immediately after
+  constructing the blocked contract.
+- Added a prompt-suite unit test that verifies the normal contract validates and
+  a monkeypatched bad contract fails artifact construction.
+- Updated `docs/MTP-gguf.md` M5 checklist text to record construction-time
+  blocked-contract self-validation.
+
+Validation:
+- Focused prompt-suite/context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> `79` passed.
+- Real local B4 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` plus `Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(contract, candidate_budget=4)` -> `status blocked`, `candidate_budget 4`, `budget_label B4`, validator hook present, self-validating contract true.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Existing
+  KVLiveSpans execution-plan contract is unchanged and future native attention/
+  KV-write remains KVLiveSpans-gated.

@@ -181,7 +181,13 @@ def _build_runtime_kernel_precheck(*, backend: str, draft_topk: dict[str, Any]) 
 
 
 def _build_hipengine_metrics_contract(*, draft_max: int) -> dict[str, Any]:
-    return Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=int(draft_max))
+    candidate_budget = int(draft_max)
+    contract = Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=candidate_budget)
+    Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(
+        contract,
+        candidate_budget=candidate_budget,
+    )
+    return contract
 
 
 def _sampling_draft_budget(settings: dict[str, Any]) -> dict[str, Any]:
