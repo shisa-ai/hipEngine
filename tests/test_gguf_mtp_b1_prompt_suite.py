@@ -11,6 +11,18 @@ import pytest
 from scripts import gguf_mtp_b1_prompt_suite as suite
 
 
+EXPECTED_CLI_GATE_EXIT_CODES = {
+    "blocked": 2,
+    "partial_trace_budget": 3,
+    "noncomparable_accepted_output": 4,
+    "performance_unready": 5,
+    "noncomparable_accepted_draft": 6,
+    "native_runtime_missing": 7,
+    "optimization_missing": 8,
+    "kvlivespans_smoke_fail": 9,
+}
+
+
 def _write_json(path: Path, payload: object) -> Path:
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -206,6 +218,8 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["kind"] == "hipengine_gguf_mtp_b1_prompt_suite"
     assert artifact["mode"] == "preflight"
     assert artifact["status"] == "blocked"
+    assert artifact["cli_gate_exit_codes"] == EXPECTED_CLI_GATE_EXIT_CODES
+    assert suite.CLI_GATE_EXIT_CODES == EXPECTED_CLI_GATE_EXIT_CODES
     assert artifact["backend"] == "hip_gfx1100"
     assert artifact["budget"] == "B1"
     assert artifact["draft_max"] == 1
@@ -427,6 +441,7 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
 
     assert matrix["kind"] == "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix"
     assert matrix["status"] == "blocked"
+    assert matrix["cli_gate_exit_codes"] == EXPECTED_CLI_GATE_EXIT_CODES
     assert matrix["budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
     assert matrix["artifact_count"] == 4

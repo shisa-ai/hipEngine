@@ -353,10 +353,11 @@ full child artifacts for compact benchmark evidence. Use
 `--fail-on-partial-trace-budget` to return exit code `3` when a single-budget or
 matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
-Use `--fail-on-kvlivespans-smoke-fail` to return exit code `9` when the
-CPU-reference dense-vs-paged KVLiveSpans smoke fails. Use
-`--fail-on-noncomparable-accepted-output` to return exit code `4` when the
-trace artifact lacks visible output-token counts and therefore cannot support
+Each single-budget or matrix artifact embeds `cli_gate_exit_codes` with the
+stable CLI gate names and exit codes. Use `--fail-on-kvlivespans-smoke-fail` to
+return exit code `9` when the CPU-reference dense-vs-paged KVLiveSpans smoke
+fails. Use `--fail-on-noncomparable-accepted-output` to return exit code `4`
+when the trace artifact lacks visible output-token counts and therefore cannot support
 `accepted_per_output` comparisons. Use
 `--fail-on-noncomparable-accepted-draft` to return exit code `6` when the trace
 cannot support `accepted_per_draft` comparisons. Use

@@ -77,6 +77,16 @@ ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE = GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARAB
 ACCEPTED_OUTPUT_COMPARABLE = GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE
 ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE
 METRICS_CONTRACT_READY = GGUF_MTP_METRICS_CONTRACT_READY
+CLI_GATE_EXIT_CODES = {
+    "blocked": 2,
+    "partial_trace_budget": 3,
+    "noncomparable_accepted_output": 4,
+    "performance_unready": 5,
+    "noncomparable_accepted_draft": 6,
+    "native_runtime_missing": 7,
+    "optimization_missing": 8,
+    "kvlivespans_smoke_fail": 9,
+}
 
 
 class B1PromptSuitePreflightError(RuntimeError):
@@ -597,6 +607,7 @@ def build_b1_prompt_suite_artifact(
         "kind": "hipengine_gguf_mtp_b1_prompt_suite",
         "mode": "preflight",
         "status": "blocked" if blockers else "ready",
+        "cli_gate_exit_codes": dict(CLI_GATE_EXIT_CODES),
         "model": str(model),
         "backend": target,
         "model_metadata": {
@@ -775,6 +786,7 @@ def build_b1_b4_prompt_suite_matrix(
         "kind": "hipengine_gguf_mtp_b1_b4_prompt_suite_matrix",
         "mode": "preflight",
         "status": "blocked" if any(item["status"] == "blocked" for item in artifacts) else "ready",
+        "cli_gate_exit_codes": dict(CLI_GATE_EXIT_CODES),
         "model": str(model),
         "backend": str(backend),
         "budgets": [item["budget"] for item in artifacts],
