@@ -479,6 +479,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Selected Q4_K WMMA default tile 16x16 rejected (2026-06-16).** Changing the
+  selected dual Q4_K WMMA compact prefill default from `32x16` to `16x16`
+  passed the focused tile smoke and `154`-test GGUF guard with stable IDs and
+  flat memory, but the full gate was mixed/regressive versus the decode-policy
+  cache baseline (`512/128` `1958.536 / 127.263 -> 1965.114 / 126.910 tok/s`,
+  `4K/128` `2292.684 / 114.991 -> 2288.047 / 114.999 tok/s`). Code and test
+  changes were reverted; keep the selected dual Q4_K default at `32x16` unless a
+  code-object/ISA variant reduces the remaining VGPR cap without the gate tradeoff.
+  Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q4selected-tile16-rejected.json`.
+
 - **Q8_0 T16 768/1024-row out8192 TM64 rejected (2026-06-16).** Extending the
   resident Q8_0 T16 WMMA prefill tile policy so 768/1024-row
   `in<=2048,out>=8192` projections use `TM64/TN32` instead of `TM32/TN32`
