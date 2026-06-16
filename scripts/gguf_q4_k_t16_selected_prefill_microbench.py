@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Microbench the current GGUF Q4_K T16 selected-dual WMMA prefill kernel.
+"""Microbench GGUF Q4_K selected-dual prefill kernel variants.
 
-This is a diagnostic baseline for the llama.cpp MMQ/Q8_1 prefill detour.  It
-builds a synthetic compact-selected MoE fixture with Q4_K gate/up expert weights
-repacked to the resident T16 layout, launches the current hipEngine selected
-WMMA prefill kernel repeatedly, and emits a compact JSON artifact.
+This diagnostic harness was created for the llama.cpp MMQ/Q8_1 prefill detour.
+It builds a synthetic compact-selected MoE fixture and can time either:
+
+* ``selected-wmma``: the current hipEngine Q4T16 selected-dual WMMA prefill.
+* ``q8-1-dot``: a standalone raw-Q4_K x prequantized-Q8_1 integer-dot
+  prototype.  This is deliberately simple and does not include activation
+  quantization time in the measured loop.
 
 The script does not load a full GGUF model and does not validate model quality;
-it is a same-shape kernel baseline to beat with a future Q8_1-activation/MMQ
-prototype.
+it is a same-shape kernel-design baseline/prototype harness.
 """
 
 from __future__ import annotations
@@ -21,12 +23,13 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
 
 _GIB = 1 << 30
+_Q8_1_BLOCK = 32
 
 
 def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
@@ -41,6 +44,27 @@ def _bf16_u16_to_f32(arr: np.ndarray) -> np.ndarray:
     return (u16.astype(np.uint32) << 16).view(np.float32).reshape(u16.shape).copy()
 
 
+def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return Q8_1-style ``(qs, d, sum)`` for BF16 activation rows.
+
+    ``qs`` has shape ``[rows, hidden / 32, 32]`` and dtype ``int8``.  ``d`` and
+    ``sum`` are float32 arrays with shape ``[rows, hidden / 32]``.  ``sum`` is
+    the dequantized block sum ``d * sum(qs)`` used by Q4_K's min term.
+    """
+
+    x = _bf16_u16_to_f32(x_bf16).astype(np.float32, copy=False)
+    if x.shape[-1] % _Q8_1_BLOCK:
+        raise ValueError("hidden dimension must be divisible by 32 for Q8_1")
+    blocks = x.reshape(x.shape[0], x.shape[1] // _Q8_1_BLOCK, _Q8_1_BLOCK)
+    max_abs = np.max(np.abs(blocks), axis=-1)
+    d = (max_abs / 127.0).astype(np.float32)
+    safe_d = np.where(d > 0.0, d, 1.0).astype(np.float32)
+    qs = np.rint(blocks / safe_d[..., None]).clip(-127, 127).astype(np.int8)
+    qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
+    sums = (qs.astype(np.float32).sum(axis=-1) * d).astype(np.float32)
+    return np.ascontiguousarray(qs), np.ascontiguousarray(d), np.ascontiguousarray(sums)
+
+
 def _make_activation(rows: int, hidden: int, *, seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
     # Keep magnitudes modest so output finiteness is a useful sanity check and
@@ -48,7 +72,9 @@ def _make_activation(rows: int, hidden: int, *, seed: int) -> np.ndarray:
     return _f32_to_bf16_u16((rng.standard_normal((rows, hidden)) * 0.02).astype(np.float32))
 
 
-def _make_uniform_compact_metadata(experts: int, rows_per_expert: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
+def _make_uniform_compact_metadata(
+    experts: int, rows_per_expert: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
     counts = np.full(experts, rows_per_expert, dtype=np.int64)
     expert_start_compact = np.zeros(experts + 1, dtype=np.int64)
     expert_start_compact[1:] = np.cumsum(counts)
@@ -93,6 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--mode", choices=("selected-wmma", "q8-1-dot"), default="selected-wmma")
     parser.add_argument("--hidden", type=int, default=2048)
     parser.add_argument("--out-features-a", type=int, default=4096)
     parser.add_argument("--out-features-b", type=int, default=4096)
@@ -120,18 +147,9 @@ def main() -> None:
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import copy_device_to_host, free, host_array_ptr, malloc, memory_stats, reset_memory_stats
-    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
-        build_gguf_q4_k_t16_selected_prefill,
-        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
-    )
-    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
     from tests._gguf_synthetic_weights import make_q4_k_weight
 
     runtime = get_hip_runtime()
-    library = build_gguf_q4_k_t16_selected_prefill(
-        load=True,
-        require_cached=args.require_cached_build,
-    )
     reset_memory_stats()
 
     expert_start_compact, expert_start_wmma, tile_expert, compact_rows, wmma_total_rows = _make_uniform_compact_metadata(
@@ -147,39 +165,114 @@ def main() -> None:
     qweight_b = np.ascontiguousarray(
         np.stack([np.roll(base_b, shift=expert + 3, axis=0) for expert in range(args.experts)], axis=0)
     )
-    tiles_a = repack_gguf_q4_k_tile16(qweight_a).tiles
-    tiles_b = repack_gguf_q4_k_tile16(qweight_b).tiles
     out_host = np.zeros((compact_rows, args.out_features_a + args.out_features_b), dtype=np.uint16)
 
     bufs = []
     stream = runtime.stream_create()
+    variant_extra: dict[str, Any] = {}
+    launch: Callable[[], None]
     try:
-        for arr in (x_host, expert_start_compact, expert_start_wmma, tile_expert, tiles_a, tiles_b):
-            dev, _ = _copy_to_device(arr, runtime=runtime)
-            bufs.append(dev)
-        x_dev, start_compact_dev, start_wmma_dev, tile_expert_dev, tiles_a_dev, tiles_b_dev = bufs
-        out_dev = malloc(out_host.nbytes, runtime=runtime)
-        bufs.append(out_dev)
+        start_compact_dev, _ = _copy_to_device(expert_start_compact, runtime=runtime)
+        start_wmma_dev, _ = _copy_to_device(expert_start_wmma, runtime=runtime)
+        tile_expert_dev, _ = _copy_to_device(tile_expert, runtime=runtime)
+        bufs.extend((start_compact_dev, start_wmma_dev, tile_expert_dev))
 
-        def launch() -> None:
-            gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
-                x_dev.ptr,
-                start_compact_dev.ptr,
-                start_wmma_dev.ptr,
-                tile_expert_dev.ptr,
-                tiles_a_dev.ptr,
-                tiles_b_dev.ptr,
-                out_dev.ptr,
-                compact_rows,
-                args.hidden,
-                args.out_features_a,
-                args.out_features_b,
-                args.experts,
-                wmma_total_rows,
-                stream=stream,
-                library=library,
-                runtime=runtime,
+        if args.mode == "selected-wmma":
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+                build_gguf_q4_k_t16_selected_prefill,
+                gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
             )
+            from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+
+            library = build_gguf_q4_k_t16_selected_prefill(
+                load=True,
+                require_cached=args.require_cached_build,
+            )
+            tiles_a = repack_gguf_q4_k_tile16(qweight_a).tiles
+            tiles_b = repack_gguf_q4_k_tile16(qweight_b).tiles
+            x_dev, _ = _copy_to_device(x_host, runtime=runtime)
+            tiles_a_dev, _ = _copy_to_device(tiles_a, runtime=runtime)
+            tiles_b_dev, _ = _copy_to_device(tiles_b, runtime=runtime)
+            out_dev = malloc(out_host.nbytes, runtime=runtime)
+            bufs.extend((x_dev, tiles_a_dev, tiles_b_dev, out_dev))
+            variant_extra = {
+                "host_input_mib": x_host.nbytes / (1 << 20),
+                "host_tiles_a_mib": tiles_a.nbytes / (1 << 20),
+                "host_tiles_b_mib": tiles_b.nbytes / (1 << 20),
+                "activation_quantization_in_loop": False,
+                "weight_layout": "gguf_q4_k_t16_v1",
+            }
+
+            def launch() -> None:
+                gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+                    x_dev.ptr,
+                    start_compact_dev.ptr,
+                    start_wmma_dev.ptr,
+                    tile_expert_dev.ptr,
+                    tiles_a_dev.ptr,
+                    tiles_b_dev.ptr,
+                    out_dev.ptr,
+                    compact_rows,
+                    args.hidden,
+                    args.out_features_a,
+                    args.out_features_b,
+                    args.experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    library=library,
+                    runtime=runtime,
+                )
+
+        else:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+                build_gguf_q4_k_q8_1_selected_prefill,
+                gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
+            )
+
+            library = build_gguf_q4_k_q8_1_selected_prefill(
+                load=True,
+                require_cached=args.require_cached_build,
+            )
+            q8_qs, q8_d, q8_sum = _quantize_q8_1_blocks(x_host)
+            q8_qs_dev, _ = _copy_to_device(q8_qs, runtime=runtime)
+            q8_d_dev, _ = _copy_to_device(q8_d, runtime=runtime)
+            q8_sum_dev, _ = _copy_to_device(q8_sum, runtime=runtime)
+            qweight_a_dev, _ = _copy_to_device(qweight_a, runtime=runtime)
+            qweight_b_dev, _ = _copy_to_device(qweight_b, runtime=runtime)
+            out_dev = malloc(out_host.nbytes, runtime=runtime)
+            bufs.extend((q8_qs_dev, q8_d_dev, q8_sum_dev, qweight_a_dev, qweight_b_dev, out_dev))
+            variant_extra = {
+                "host_q8_qs_mib": q8_qs.nbytes / (1 << 20),
+                "host_q8_scale_mib": q8_d.nbytes / (1 << 20),
+                "host_q8_sum_mib": q8_sum.nbytes / (1 << 20),
+                "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
+                "host_raw_qweight_b_mib": qweight_b.nbytes / (1 << 20),
+                "activation_quantization_in_loop": False,
+                "weight_layout": "raw_gguf_q4_k",
+                "prototype_note": "Prequantized activation scalar integer-dot prototype; not a tiled MMQ implementation.",
+            }
+
+            def launch() -> None:
+                gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(
+                    q8_qs_dev.ptr,
+                    q8_d_dev.ptr,
+                    q8_sum_dev.ptr,
+                    start_compact_dev.ptr,
+                    start_wmma_dev.ptr,
+                    tile_expert_dev.ptr,
+                    qweight_a_dev.ptr,
+                    qweight_b_dev.ptr,
+                    out_dev.ptr,
+                    compact_rows,
+                    args.hidden,
+                    args.out_features_a,
+                    args.out_features_b,
+                    args.experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    library=library,
+                    runtime=runtime,
+                )
 
         for _ in range(args.warmup):
             launch()
@@ -203,12 +296,13 @@ def main() -> None:
         logical_fma = int(compact_rows * out_features_total * args.hidden)
         logical_tflops = (2.0 * logical_fma) / (ms_per_call / 1e3) / 1e12
         result: dict[str, Any] = {
-            "schema": 1,
+            "schema": 2,
             "status": "diagnostic_retained",
             "performance_claim": False,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "run_tag": "gguf_q4_k_t16_selected_prefill_microbench",
-            "reason_not_promoted": "Synthetic kernel microbench baseline only; no runtime dispatch/default change.",
+            "run_tag": f"gguf_q4_k_selected_prefill_microbench_{args.mode}",
+            "kernel_mode": args.mode,
+            "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
             "software": {
                 "hipengine_commit": _git_commit(),
                 "hipengine_dirty_files": _git_dirty(),
@@ -236,9 +330,7 @@ def main() -> None:
                 "logical_tflops": logical_tflops,
             },
             "memory": {
-                "host_input_mib": x_host.nbytes / (1 << 20),
-                "host_tiles_a_mib": tiles_a.nbytes / (1 << 20),
-                "host_tiles_b_mib": tiles_b.nbytes / (1 << 20),
+                **variant_extra,
                 "host_output_mib": out_host.nbytes / (1 << 20),
                 "tracked_peak_allocated_gib": memory_stats()["peak_allocated_bytes"] / _GIB,
             },

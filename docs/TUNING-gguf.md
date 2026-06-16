@@ -293,9 +293,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `compact_rows=4096`) measured `11.585 ms/call` (`11.86` logical TFLOP/s) with
   finite output and `0.150 GiB` tracked scratch/fixture memory
   (`benchmarks/results/2026-06-16-gpu1-gguf-q4k-t16-selected-prefill-microbench.json`).
-  **Next test:** add a llama-style Q8_1-activation MMQ tile to the same harness
-  for an apples-to-apples selected-WMMA vs MMQ comparison before more
-  selected-WMMA live-state tweaks.
+  A first `q8-1-dot` prototype now runs in that same harness using raw Q4_K
+  weights and prequantized Q8_1 activations. It is intentionally scalar (not a
+  tiled llama.cpp MMQ clone) and is slower on the same shape: `21.879 ms/call`
+  (`6.28` logical TFLOP/s) vs a same-run selected-WMMA comparison of
+  `11.933 ms/call` (`11.52` logical TFLOP/s), with finite output and lower
+  tracked fixture memory (`0.143 GiB`). Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-selected-prefill-prototype.json`.
+  **Next test:** inspect/port the actual llama.cpp tiled MMQ work decomposition;
+  the naive scalar Q8_1 dot is not a promotion candidate.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
