@@ -94483,3 +94483,25 @@ Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`,
 - `--mode q8-1-ds4-dot`: `21.802224 ms/call`, `6.304` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
 - Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`.
 - Interpretation: widening to 32 columns helps only `~0.7%` over the one-wave DS4 WMMA prototype, while remaining `1.41x` faster than selected-WMMA on this synthetic shape. The next limiter is likely raw Q4_K global loads, so the next useful code step is shared-memory `load_tiles_q4_K`-style staging rather than more block-count tuning.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 WMMA32 LDS staging probe
+
+Added a diagnostic `q8-1-ds4-wmma32-lds` selected-prefill variant that keeps the two-wave/32-column integer-WMMA mapping but has the half-0 lanes unpack each Q4_K column tile into LDS before both half-waves consume it. This is intentionally microbench-only and not wired into the model runtime/default path.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `14 passed` (including two WMMA32-LDS cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma32-lds-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma32-lds-trace/epyc/2972404_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_kernel` (`35920 ns`, `61561 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma32-lds`: `18.257292 ms/call`, `7.528` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.210021 ms/call`, `16.740` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma`: `8.231761 ms/call`, `16.696` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.591099 ms/call`, `11.857` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.827885 ms/call`, `6.296` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`.
+- Interpretation: naive expanded-Q4 LDS staging is rejected (`2.22x` slower than raw WMMA32 and slower than current selected-WMMA). The extra unpack/store/synchronization/LDS-read work outweighs the saved duplicate global Q4 loads. Future MMQ work should either mimic llama.cpp's packed `load_tiles_q4_K`/`load_ldmatrix` staging more closely or widen the tile to reuse staged data across more work, not keep this exact staging shape.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1850.918774 / 126.986741 tok/s`, stable IDs true; `4K/128` median prefill/decode `2154.550156 / 115.198696 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.198696 tok/s` (same default path/no runtime wiring; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a rejected diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a runtime path is promoted.

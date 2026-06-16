@@ -335,13 +335,18 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   on the synthetic qwen-like shape, faster than same-script selected-WMMA
   `11.581 ms/call` and DS4 scalar `21.842 ms/call`. A two-wave/32-column block
   variant (`q8-1-ds4-wmma32`) nudges this to `8.191 ms/call` (`16.78` logical
-  TFLOP/s), only `+0.7%` over the one-wave variant, so raw Q4_K global loads are
-  likely the next limiter. These remain diagnostic because they still use raw
-  global Q4_K loads rather than llama.cpp-style shared-memory tile staging.
+  TFLOP/s), only `+0.7%` over the one-wave variant. A naive expanded-Q4 LDS
+  staging variant (`q8-1-ds4-wmma32-lds`) regressed to `18.257 ms/call`, `2.22x`
+  slower than raw WMMA32 and slower than current selected-WMMA, so do **not**
+  promote that staging shape. The remaining useful MMQ direction is closer to
+  llama.cpp's packed `load_tiles_q4_K`/`load_ldmatrix` path rather than
+  unpack-every-column-to-LDS plus two full-block barriers.
   Artifacts:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`,
-  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`.
-  **Next code test:** add the actual shared-memory `load_tiles_q4_K` staging.
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`,
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`.
+  **Next code test:** try a packed/ldmatrix-style shared-memory tile or move to
+  a full 16x32/16x64 MMQ tile that reuses staged data across more columns/rows.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
