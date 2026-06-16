@@ -642,6 +642,10 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["artifacts_included"] is True
     assert len(matrix["artifacts"]) == 4
     assert matrix["all_parity_prechecks_pass"] is True
+    assert matrix["parity_precheck_by_budget"]["B1"] == matrix["artifacts"][0]["parity_precheck"]
+    assert matrix["parity_precheck_by_budget"]["B4"] == matrix["artifacts"][3]["parity_precheck"]
+    assert matrix["parity_precheck_by_budget"]["B1"]["all_pass"] is True
+    assert matrix["parity_precheck_by_budget"]["B4"]["sampling"]["passed"] is True
     assert matrix["all_budget_prechecks_pass"] is True
     assert matrix["all_sampling_contract_prechecks_pass"] is True
     assert matrix["all_hidden_seed_contract_prechecks_pass"] is True
@@ -860,6 +864,9 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert "artifacts" not in matrix
     assert matrix["target_context_contract"] == Qwen35GGUFMTPContext.contract()
     assert matrix["target_context_contract"]["validator"] == "Qwen35GGUFMTPContext.validate_payload"
+    assert matrix["parity_precheck_by_budget"]["B1"]["all_pass"] is True
+    assert matrix["parity_precheck_by_budget"]["B4"]["token_ids"]["all_match"] is True
+    assert "artifacts" not in matrix["parity_precheck_by_budget"]["B1"]
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B1"]["passed"] is True
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["hidden_size"] == 2048
     assert matrix["hidden_seed_contract_precheck_by_budget"]["B4"]["dynamic_input"] == {

@@ -335,6 +335,7 @@ default or emit a consolidated B1-B4 blocked matrix with `--all-budgets`. The
 matrix includes a compact `readiness_by_budget` section for precheck booleans,
 missing native keys, exactness status, KVLiveSpans paged-cache smoke status,
 llama.cpp trace budget coverage, metrics-contract status, per-budget
+`parity_precheck_by_budget` token/sampler parity evidence, per-budget
 `hidden_seed_contract_precheck_by_budget` seed-contract evidence, per-budget
 `execution_by_budget` exactness/next-action stubs, per-budget
 `oracle_gate_by_budget` KL/top-1 plus KVLiveSpans oracle evidence, per-budget
@@ -1049,6 +1050,7 @@ is now answered by the M1 required/optional table.)
       matching `gguf_mtp_bN_sampling_greedy_seed12345.json` fixture by default,
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
       `readiness_by_budget` parity/preflight/native-key status, per-budget
+      `parity_precheck_by_budget` token/sampler parity evidence, per-budget
       `hidden_seed_contract_precheck_by_budget` seed-contract evidence,
       per-budget `execution_by_budget` exactness/next-action stubs, per-budget
       `oracle_gate_by_budget` KL/top-1 plus KVLiveSpans oracle
