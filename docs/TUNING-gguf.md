@@ -273,6 +273,16 @@ Retained notes:
   `21.335 GiB`, and moved the GPU1 gate medians to `1647.390 / 127.012 tok/s`
   (`512/128`) and `1855.806 / 115.805 tok/s` (`4K/128`). Final promotion still
   needs the `128K/128` memory/throughput check.
+- **G-H1/G-D4 decode-policy cache retained (2026-06-16).** Resident GGUF
+  `_FullStackScratch` now snapshots the full-attention split threshold plus
+  grouped-GQA/warp-split decode policy at allocation, so decode full-attention
+  layers avoid repeated env parsing while preserving the fake-scratch dynamic-env
+  fallback used by dispatch tests. GPU1 primary gate with the retained
+  small-shape tile baseline moved to `1958.536 / 127.263 tok/s` (`512/128`) and
+  `2292.684 / 114.991 tok/s` (`4K/128`) with stable IDs `220/570` and flat
+  `21.335 GiB`; the required `128K/128` promotion check measured
+  `745.977 / 67.326 tok/s`, stable ID `[220]`, peak `23.310 GiB`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-decode-policy-cache-gate.json`.
 
 Current focused lanes from evidence:
 

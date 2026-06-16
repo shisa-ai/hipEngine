@@ -1840,15 +1840,15 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         active_context = int(position) + 1
-        if _use_gguf_full_attention_split_decode(active_context):
+        if _use_gguf_full_attention_split_decode_for_scratch(scratch, active_context):
             chunk_size = int(scratch.block_size)
             num_splits = min(
                 int(scratch.full_attn_split_count),
                 max(1, (active_context + chunk_size - 1) // chunk_size),
             )
-            split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
+            split_gate_fn = _gguf_full_attention_split_gate_bf16_fn_for_scratch(
                 cfg,
-                block_size=scratch.block_size,
+                scratch,
                 num_splits=num_splits,
                 active_context=active_context,
             )
@@ -4008,6 +4008,11 @@ class _FullStackScratch:
     full_attn_split_m: object
     full_attn_split_l: object
     full_attn_split_count: int
+    full_attn_decode_split_min_context: int
+    paged_attn_gqa_grouped_enabled: bool
+    paged_attn_gqa_grouped_min_splits: int
+    paged_attn_gqa_grouped_min_context: int
+    paged_attn_warp_split_enabled: bool
     full_gated: object
     full_key_caches: tuple[object | None, ...]
     full_value_caches: tuple[object | None, ...]
@@ -4092,6 +4097,11 @@ class _FullStackScratch:
         q_f32_bytes = runner.q_width * 4
         kv_f32_bytes = runner.kv_width * 4
         full_attn_split_count = (max_positions + block_size - 1) // block_size
+        full_attn_decode_split_min_context = _gguf_full_attention_split_decode_min_context()
+        paged_attn_gqa_grouped_enabled = _gguf_paged_attn_gqa_grouped_enabled()
+        paged_attn_gqa_grouped_min_splits = _gguf_paged_attn_gqa_grouped_min_splits()
+        paged_attn_gqa_grouped_min_context = _gguf_paged_attn_gqa_grouped_min_context()
+        paged_attn_warp_split_enabled = _gguf_paged_attn_warp_split_enabled()
         full_attn_split_partial_bytes = runner.q_width * full_attn_split_count * 4
         full_attn_split_stat_bytes = cfg.head_count * full_attn_split_count * 4
         conv_zero = np.zeros((runner.linear_qkv_width, cfg.ssm_conv_kernel), dtype=np.float32)
@@ -4209,6 +4219,11 @@ class _FullStackScratch:
         return cls(
             **fields,
             full_attn_split_count=full_attn_split_count,
+            full_attn_decode_split_min_context=full_attn_decode_split_min_context,
+            paged_attn_gqa_grouped_enabled=paged_attn_gqa_grouped_enabled,
+            paged_attn_gqa_grouped_min_splits=paged_attn_gqa_grouped_min_splits,
+            paged_attn_gqa_grouped_min_context=paged_attn_gqa_grouped_min_context,
+            paged_attn_warp_split_enabled=paged_attn_warp_split_enabled,
             full_key_caches=tuple(full_key_caches),
             full_value_caches=tuple(full_value_caches),
             block_table=block_table,
@@ -4527,6 +4542,14 @@ def _use_gguf_full_attention_split_decode(active_context: int) -> bool:
     return threshold > 0 and int(active_context) >= threshold
 
 
+def _use_gguf_full_attention_split_decode_for_scratch(scratch, active_context: int) -> bool:
+    threshold = getattr(scratch, "full_attn_decode_split_min_context", None)
+    if threshold is None:
+        threshold = _gguf_full_attention_split_decode_min_context()
+    threshold = int(threshold)
+    return threshold > 0 and int(active_context) >= threshold
+
+
 def _gguf_paged_attn_gqa_grouped_min_splits() -> int:
     return max(1, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS", 64))
 
@@ -4576,6 +4599,33 @@ def _gguf_full_attention_split_gate_bf16_fn(
     active_context: int,
 ):
     if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
+        if _use_gguf_paged_attn_gqa_grouped(active_context, num_splits):
+            return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
+        if _gguf_paged_attn_warp_split_enabled():
+            return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
+    return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
+
+
+def _gguf_full_attention_split_gate_bf16_fn_for_scratch(
+    config,
+    scratch,
+    *,
+    num_splits: int,
+    active_context: int,
+):
+    block_size = int(scratch.block_size)
+    if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
+        grouped_enabled = getattr(scratch, "paged_attn_gqa_grouped_enabled", None)
+        if grouped_enabled is not None:
+            use_grouped = bool(grouped_enabled) and (
+                int(num_splits) >= int(scratch.paged_attn_gqa_grouped_min_splits)
+                or int(active_context) >= int(scratch.paged_attn_gqa_grouped_min_context)
+            )
+            if use_grouped:
+                return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
+            if bool(scratch.paged_attn_warp_split_enabled):
+                return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
+            return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
         if _use_gguf_paged_attn_gqa_grouped(active_context, num_splits):
             return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
         if _gguf_paged_attn_warp_split_enabled():
