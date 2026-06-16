@@ -689,6 +689,13 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     ]
     with pytest.raises(ValueError, match="steps candidate_counts mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
+    bad_steps = dict(metrics.as_dict())
+    bad_steps["steps"] = [
+        {**metrics.as_dict()["steps"][0], "reseed": {**metrics.as_dict()["steps"][0]["reseed"], "hidden_ptr": 0}},
+        metrics.as_dict()["steps"][1],
+    ]
+    with pytest.raises(ValueError, match="steps reseed"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
     assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]
@@ -1109,6 +1116,12 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
     broken["results"] = [{**payload["results"][0], "target_token_ids": [9]}]
     with pytest.raises(ValueError, match="accepted prefix"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+    broken = dict(payload)
+    broken["results"] = [
+        {**payload["results"][0], "reseed": {**payload["results"][0]["reseed"], "hidden_size": 0}}
+    ]
+    with pytest.raises(ValueError, match="results reseed"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
 
 
 def test_gguf_mtp_verification_result_rejects_spoofed_prefix_and_mismatch() -> None:
@@ -1366,6 +1379,20 @@ def test_gguf_mtp_context_accept_reseeds_from_verify_row_min_accepted() -> None:
 
 
 def test_gguf_mtp_context_rejects_unready_or_multirow_seed_contract() -> None:
+    payload = Qwen35GGUFMTPSeedRow(
+        token_id=1,
+        position=2,
+        hidden_ptr=0x1000,
+        hidden_size=8,
+        source="verify[0]",
+    ).as_dict()
+    Qwen35GGUFMTPSeedRow.validate_payload(payload, field_name="test seed")
+    with pytest.raises(ValueError, match="test seed hidden_ptr"):
+        Qwen35GGUFMTPSeedRow.validate_payload({**payload, "hidden_ptr": 0}, field_name="test seed")
+    missing_source = dict(payload)
+    missing_source.pop("source")
+    with pytest.raises(ValueError, match="missing fields: source"):
+        Qwen35GGUFMTPSeedRow.validate_payload(missing_source, field_name="test seed")
     with pytest.raises(ValueError, match="ready fp32 hidden contract"):
         Qwen35GGUFMTPSeedRow.from_seed(
             _Seed(token_id=1, position=1, hidden_ptr=1, hidden_contract=_Contract(ready_for_mtp=False))

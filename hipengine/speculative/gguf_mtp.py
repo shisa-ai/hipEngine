@@ -86,6 +86,35 @@ class Qwen35GGUFMTPSeedRow:
         if not self.source:
             raise ValueError("seed source must be non-empty")
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return ("token_id", "position", "hidden_ptr", "hidden_size", "source")
+
+    @classmethod
+    def validate_payload(cls, payload: Mapping[str, object], *, field_name: str = "seed row") -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = tuple(field for field in cls.required_fields() if field not in payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing fields: {joined}")
+        source = payload["source"]
+        if not isinstance(source, str):
+            raise ValueError(f"{field_name} source must be a string")
+        try:
+            cls(
+                token_id=int(payload["token_id"]),
+                position=int(payload["position"]),
+                hidden_ptr=int(payload["hidden_ptr"]),
+                hidden_size=int(payload["hidden_size"]),
+                source=source,
+            )
+        except (TypeError, ValueError) as exc:
+            detail = str(exc)
+            if detail.startswith("seed "):
+                detail = detail[len("seed ") :]
+            raise ValueError(f"{field_name} {detail}") from exc
+
     def as_dict(self) -> dict[str, object]:
         return {
             "token_id": self.token_id,
@@ -922,6 +951,10 @@ class Qwen35GGUFMTPAcceptStepMetrics:
                 raise ValueError("accept-step metrics artifact steps candidate_counts mismatch")
             if tuple(int(item) for item in accepted_counts) != row_accepted_counts_by_step[index]:
                 raise ValueError("accept-step metrics artifact steps accepted_counts mismatch")
+            Qwen35GGUFMTPSeedRow.validate_payload(
+                step.get("reseed"),
+                field_name="accept-step metrics artifact steps reseed",
+            )
         if abs(float(payload["accepted_per_draft"]) - (accepted_token_count / draft_token_count)) > 1e-12:
             raise ValueError("accept-step metrics artifact accepted_per_draft mismatch")
         if abs(float(payload["accepted_per_output"]) - (accepted_token_count / output_token_count)) > 1e-12:
@@ -1416,6 +1449,10 @@ class Qwen35GGUFMTPVerificationMetrics:
                 raise ValueError("verification metrics artifact results verify_seed_count must include the next target row")
             if abs(float(result.get("accepted_per_draft")) - (result_accepted_count / result_draft_count)) > 1e-12:
                 raise ValueError("verification metrics artifact results accepted_per_draft mismatch")
+            Qwen35GGUFMTPSeedRow.validate_payload(
+                result.get("reseed"),
+                field_name="verification metrics artifact results reseed",
+            )
 
             first_mismatch_index = result.get("first_mismatch_index")
             rejected_proposal_token_id = result.get("rejected_proposal_token_id")

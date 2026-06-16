@@ -99100,3 +99100,45 @@ Validation:
   backend/quant dispatch branch; no native MTP execution, actual KV allocation,
   GPU kernel, attention/KV runtime path, or performance claim. Existing
   KVLiveSpans execution-plan contract is unchanged.
+
+## 2026-06-16 - MTP-GGUF reseed-row payload validation
+
+Implemented `mtp-gguf` multiloop iteration 148: added structural validation for
+serialized GGUF MTP reseed rows in accept-step and verification metrics artifacts.
+
+Scope note:
+- Torch-free metadata/validation change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This protects future B1-B4 parity artifacts from carrying impossible reseed
+  hidden-row metadata while the count, token-prefix, mismatch, and ratio
+  contracts still pass.
+
+RED/GREEN:
+- RED: added tests that mutate `steps[*].reseed.hidden_ptr`,
+  `results[*].reseed.hidden_size`, and direct seed-row payload fields;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py -q`
+  failed as expected because seed-row payload validation did not exist and the
+  accept/verification artifact validators ignored nested reseed rows.
+- GREEN: added `Qwen35GGUFMTPSeedRow.required_fields()` /
+  `validate_payload()` and wired it into accept-step and verification metrics
+  payload validation.
+
+Validation:
+- Focused context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> passed (38 tests).
+- Focused prompt-suite/context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> passed (82 tests).
+- Real local B4 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` -> `status blocked`, `hipengine_metrics_contract_validation.passed True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Existing
+  KVLiveSpans execution-plan contract is unchanged.
