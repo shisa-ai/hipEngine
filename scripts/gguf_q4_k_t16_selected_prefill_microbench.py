@@ -30,11 +30,11 @@ from typing import Any, Callable
 
 import numpy as np
 
+from hipengine.quant.gguf_q4_k import pack_q8_1_mmq_ds4_from_bf16
+
 
 _GIB = 1 << 30
 _Q8_1_BLOCK = 32
-_Q8_1_MMQ_BLOCK = 4 * _Q8_1_BLOCK
-_Q8_1_MMQ_DS4_BYTES = 8 * np.dtype(np.uint16).itemsize + _Q8_1_MMQ_BLOCK
 
 
 def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
@@ -68,34 +68,6 @@ def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, n
     qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
     sums = (qs.astype(np.float32).sum(axis=-1) * d).astype(np.float32)
     return np.ascontiguousarray(qs), np.ascontiguousarray(d), np.ascontiguousarray(sums)
-
-
-def _quantize_q8_1_mmq_ds4_blocks(x_bf16: np.ndarray) -> np.ndarray:
-    """Return llama.cpp-style DS4 ``block_q8_1_mmq`` activation blocks.
-
-    The byte layout is four FP16 ``(d, sum)`` pairs followed by 128 int8 quants.
-    ``sum`` intentionally tracks the original BF16 activation sum in that 32-K
-    subblock, matching llama.cpp's Q8_1 MMQ contract.
-    """
-
-    x = _bf16_u16_to_f32(x_bf16).astype(np.float32, copy=False)
-    if x.shape[-1] % _Q8_1_MMQ_BLOCK:
-        raise ValueError("hidden dimension must be divisible by 128 for DS4 Q8_1 MMQ")
-    blocks = x.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 4, _Q8_1_BLOCK)
-    max_abs = np.max(np.abs(blocks), axis=-1)
-    d = (max_abs / 127.0).astype(np.float32)
-    safe_d = np.where(d > 0.0, d, 1.0).astype(np.float32)
-    qs = np.rint(blocks / safe_d[..., None]).clip(-127, 127).astype(np.int8)
-    qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
-    sums = blocks.sum(axis=-1, dtype=np.float32).astype(np.float32)
-
-    ds4 = np.empty((*d.shape, 2), dtype=np.uint16)
-    ds4[..., 0] = d.astype(np.float16).view(np.uint16)
-    ds4[..., 1] = sums.astype(np.float16).view(np.uint16)
-    out = np.empty((x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_DS4_BYTES), dtype=np.uint8)
-    out[..., :16] = ds4.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 8).view(np.uint8)
-    out[..., 16:] = qs.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_BLOCK).view(np.uint8)
-    return np.ascontiguousarray(out)
 
 
 def _make_activation(rows: int, hidden: int, *, seed: int) -> np.ndarray:
@@ -313,7 +285,7 @@ def main() -> None:
                     )
 
             else:
-                q8_ds4 = _quantize_q8_1_mmq_ds4_blocks(x_host)
+                q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(x_host)
                 q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
                 bufs.append(q8_ds4_dev)
                 variant_extra = {

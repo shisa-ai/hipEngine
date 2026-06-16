@@ -14,7 +14,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     plan_gguf_q4_k_q8_1_selected_prefill_build,
 )
 from hipengine.kernels.registry import resolve
-from hipengine.quant.gguf import GGMLQuantizationType, unpack_q4_k_scale_min
+from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K_BLOCK_BYTES,
+    GGUF_Q4_K_SUBBLOCK,
+    GGUF_Q4_K_SUBBLOCKS,
+    gguf_q4_k_mmq_tile16_preview_matmul,
+    pack_gguf_q4_k_mmq_tile16_preview,
+    pack_q8_1_mmq_ds4_from_bf16,
+)
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
     _TOLERANCE_BF16,
     _bf16_bits_to_float32,
@@ -24,10 +32,6 @@ from tests.test_gguf_q4_k_selected_wmma_prefill import (
 )
 
 _Q8_1_BLOCK = 32
-_Q8_1_MMQ_BLOCK = 4 * _Q8_1_BLOCK
-_Q8_1_MMQ_DS4_BYTES = 8 * np.dtype(np.uint16).itemsize + _Q8_1_MMQ_BLOCK
-_Q4_K_BLOCK_BYTES = 144
-_Q4_K_QS_OFFSET = 16
 
 
 def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -40,27 +44,6 @@ def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, n
     qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
     sums = (qs.astype(np.float32).sum(axis=-1) * d).astype(np.float32)
     return np.ascontiguousarray(qs), np.ascontiguousarray(d), np.ascontiguousarray(sums)
-
-
-def _quantize_q8_1_mmq_ds4_blocks(x_bf16: np.ndarray) -> np.ndarray:
-    x = _bf16_bits_to_float32(x_bf16).astype(np.float32, copy=False)
-    if x.shape[-1] % _Q8_1_MMQ_BLOCK:
-        raise ValueError("hidden dimension must be divisible by 128 for DS4 Q8_1 MMQ")
-    blocks = x.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 4, _Q8_1_BLOCK)
-    max_abs = np.max(np.abs(blocks), axis=-1)
-    d = (max_abs / 127.0).astype(np.float32)
-    safe_d = np.where(d > 0.0, d, 1.0).astype(np.float32)
-    qs = np.rint(blocks / safe_d[..., None]).clip(-127, 127).astype(np.int8)
-    qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
-    sums = blocks.sum(axis=-1, dtype=np.float32).astype(np.float32)
-
-    ds4 = np.empty((*d.shape, 2), dtype=np.uint16)
-    ds4[..., 0] = d.astype(np.float16).view(np.uint16)
-    ds4[..., 1] = sums.astype(np.float16).view(np.uint16)
-    out = np.empty((x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_DS4_BYTES), dtype=np.uint8)
-    out[..., :16] = ds4.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 8).view(np.uint8)
-    out[..., 16:] = qs.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_BLOCK).view(np.uint8)
-    return np.ascontiguousarray(out)
 
 
 def _dequant_q8_1(qs: np.ndarray, d: np.ndarray) -> np.ndarray:
@@ -85,56 +68,19 @@ def _q8_1_selected_reference(fixture) -> np.ndarray:
     return ref
 
 
-def _q4_k_q8_1_ds4_gemv(q8_ds4: np.ndarray, qweight: np.ndarray) -> np.ndarray:
-    rows = q8_ds4.shape[0]
-    out_features = qweight.shape[0]
-    blocks_per_row = qweight.shape[1] // _Q4_K_BLOCK_BYTES
-    q8_blocks_per_row = blocks_per_row * 2
-    q8_blocks = q8_ds4.reshape(rows, q8_blocks_per_row, _Q8_1_MMQ_DS4_BYTES)
-    out = np.zeros((rows, out_features), dtype=np.float32)
-
-    for out_col in range(out_features):
-        raw_blocks = qweight[out_col].reshape(blocks_per_row, _Q4_K_BLOCK_BYTES)
-        d = raw_blocks[:, 0:2].copy().view(np.float16).astype(np.float32).reshape(blocks_per_row)
-        dmin = raw_blocks[:, 2:4].copy().view(np.float16).astype(np.float32).reshape(blocks_per_row)
-        scales, mins = unpack_q4_k_scale_min(raw_blocks[:, 4:16])
-        packed_q = raw_blocks[:, _Q4_K_QS_OFFSET:].reshape(blocks_per_row, 4, _Q8_1_BLOCK)
-        q4 = np.empty((blocks_per_row, 8, _Q8_1_BLOCK), dtype=np.int32)
-        q4[:, 0::2, :] = (packed_q & np.uint8(0x0F)).astype(np.int32)
-        q4[:, 1::2, :] = (packed_q >> np.uint8(4)).astype(np.int32)
-
-        for row in range(rows):
-            acc = 0.0
-            for blk in range(blocks_per_row):
-                for sb in range(8):
-                    xb = q8_blocks[row, blk * 2 + (sb >> 2)]
-                    ds4 = xb[:16].copy().view(np.uint16).reshape(4, 2)
-                    xd = np.asarray([ds4[sb & 3, 0]], dtype=np.uint16).view(np.float16).astype(np.float32)[0]
-                    xsum = np.asarray([ds4[sb & 3, 1]], dtype=np.uint16).view(np.float16).astype(np.float32)[0]
-                    xq_start = 16 + (sb & 3) * _Q8_1_BLOCK
-                    xq = xb[xq_start : xq_start + _Q8_1_BLOCK]
-                    xq_i32 = xq.view(np.int8).astype(np.int32)
-                    dot = int(np.dot(q4[blk, sb], xq_i32))
-                    scale = float(d[blk] * scales[blk, sb])
-                    minv = float(dmin[blk] * mins[blk, sb])
-                    acc += scale * float(xd) * float(dot) - minv * float(xsum)
-            out[row, out_col] = acc
-    return out
-
-
 def _q8_1_ds4_selected_reference(fixture) -> np.ndarray:
-    q8_ds4 = _quantize_q8_1_mmq_ds4_blocks(fixture.x_host)
+    q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(fixture.x_host)
     ref = np.zeros((fixture.compact_rows, fixture.out_features_a + fixture.out_features_b), dtype=np.float32)
     for expert in range(fixture.num_experts):
         start = int(fixture.expert_start_compact[expert])
         stop = int(fixture.expert_start_compact[expert + 1])
         if stop == start:
             continue
-        ref[start:stop, : fixture.out_features_a] = _q4_k_q8_1_ds4_gemv(
-            q8_ds4[start:stop], fixture.qweight_a[expert]
+        ref[start:stop, : fixture.out_features_a] = gguf_q4_k_mmq_tile16_preview_matmul(
+            q8_ds4[start:stop], pack_gguf_q4_k_mmq_tile16_preview(fixture.qweight_a[expert])
         )
-        ref[start:stop, fixture.out_features_a :] = _q4_k_q8_1_ds4_gemv(
-            q8_ds4[start:stop], fixture.qweight_b[expert]
+        ref[start:stop, fixture.out_features_a :] = gguf_q4_k_mmq_tile16_preview_matmul(
+            q8_ds4[start:stop], pack_gguf_q4_k_mmq_tile16_preview(fixture.qweight_b[expert])
         )
     return ref
 
@@ -170,6 +116,39 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
 
     dry_run = build_gguf_q4_k_q8_1_selected_prefill(dry_run=True, compiler_version="test-compiler")
     assert dry_run.output_path == artifact.output_path
+
+
+def test_q4_k_mmq_tile16_preview_reconstructs_raw_q4_k_values() -> None:
+    fixture = _build_compact_fixture(
+        counts=[3],
+        in_features=512,
+        out_features_a=32,
+        out_features_b=16,
+        dtype="bf16",
+        seed=5,
+    )
+    raw = fixture.qweight_a[0]
+    preview = pack_gguf_q4_k_mmq_tile16_preview(raw)
+
+    reconstructed = np.empty((fixture.out_features_a, fixture.in_features), dtype=np.float32)
+    for out_tile in range(preview.out_tiles):
+        for col in range(16):
+            out_col = out_tile * 16 + col
+            for blk in range(preview.blocks_per_row):
+                for sb in range(GGUF_Q4_K_SUBBLOCKS):
+                    start = blk * 256 + sb * GGUF_Q4_K_SUBBLOCK
+                    reconstructed[out_col, start : start + GGUF_Q4_K_SUBBLOCK] = (
+                        preview.q4[out_tile, col, blk, sb].astype(np.float32)
+                        * preview.scales[out_tile, col, blk, sb]
+                        - preview.mins[out_tile, col, blk, sb]
+                    )
+
+    expected = dequantize_gguf_data(raw, GGMLQuantizationType.Q4_K)
+    assert preview.q4.shape == (2, 16, 2, 8, 32)
+    assert preview.scales.shape == (2, 16, 2, 8)
+    assert preview.mins.shape == (2, 16, 2, 8)
+    assert raw.shape[1] == preview.blocks_per_row * GGUF_Q4_K_BLOCK_BYTES
+    np.testing.assert_allclose(reconstructed, expected, rtol=0.0, atol=1e-6)
 
 
 def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> None:
@@ -313,7 +292,7 @@ def _run_q8_1_ds4_selected_dual_gpu(fixture) -> np.ndarray:
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=np.uint16,
     )
-    q8_ds4 = _quantize_q8_1_mmq_ds4_blocks(fixture.x_host)
+    q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(fixture.x_host)
 
     bufs = []
     try:

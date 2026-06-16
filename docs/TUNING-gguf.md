@@ -324,9 +324,12 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   separate-array scalar prototype, with finite output and `0.142 GiB` tracked
   fixture memory. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-selected-prefill-prototype.json`.
-  **Next code test:** port the actual shared-memory + WMMA/MMA tile path
-  (`load_tiles_q4_K` + `vec_dot_q8_1_q8_1_mma`) for this microbench shape;
-  layout-only scalar variants are rejected.
+  A host-side `GGUFQ4KMMQTile16Preview` scaffold now centralizes DS4 activation
+  packing plus the 16-column Q4_K nibble/scale/min operands and has an exact
+  CPU oracle test that reconstructs raw Q4_K values. **Next code test:** port
+  the actual shared-memory + WMMA/MMA tile path (`load_tiles_q4_K` +
+  `vec_dot_q8_1_q8_1_mma`) for this microbench shape; layout-only scalar
+  variants are rejected.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
