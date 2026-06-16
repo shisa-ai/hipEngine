@@ -1,0 +1,289 @@
+{
+  "schema": "hipengine.native_sampler_overhead_profile.v1",
+  "date": "2026-06-16",
+  "task": "Native sampler overhead diagnostic",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100, HIP_VISIBLE_DEVICES=0",
+  "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+  "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+  "quant": "w4_paro",
+  "command": {
+    "profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/native_sampler_overhead_profile.py --json benchmarks/results/2026-06-16-native-sampler-scalar-cache.json"
+  },
+  "workload": {
+    "prompt_source": "repeated_token_id",
+    "prompt_token_id": 9707,
+    "prompt_length": 45,
+    "warmup_decode_tokens": 4,
+    "measured_decode_tokens": 64,
+    "max_layers": 40,
+    "kv_storage": "bf16"
+  },
+  "env": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "PYTHONPATH": "."
+  },
+  "lanes": {
+    "greedy_graph": {
+      "mode": "greedy_graph",
+      "elapsed_s": 0.5499731791205704,
+      "tok_s": 116.36931114047891,
+      "telemetry": {
+        "sampler_mode": null,
+        "plan_fast_path_blockers": [],
+        "generated_tail": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "generated_tokens": 64
+      },
+      "profile": {
+        "copy_host_to_device": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "sizes": {}
+        },
+        "copy_device_to_host": {
+          "calls": 1,
+          "bytes": 512,
+          "calls_per_decode_token": 0.015625,
+          "bytes_per_decode_token": 8.0,
+          "sizes": {
+            "512": 1
+          }
+        },
+        "native_uploads": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "names": {},
+          "sizes": {}
+        },
+        "method_timings_s": {}
+      }
+    },
+    "greedy_eager": {
+      "mode": "greedy_eager",
+      "elapsed_s": 0.5747769998852164,
+      "tok_s": 111.34753132568088,
+      "telemetry": {
+        "sampler_mode": null,
+        "plan_fast_path_blockers": [],
+        "generated_tail": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "generated_tokens": 64
+      },
+      "profile": {
+        "copy_host_to_device": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "sizes": {}
+        },
+        "copy_device_to_host": {
+          "calls": 128,
+          "bytes": 768,
+          "calls_per_decode_token": 2.0,
+          "bytes_per_decode_token": 12.0,
+          "sizes": {
+            "4": 64,
+            "8": 64
+          }
+        },
+        "native_uploads": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "names": {},
+          "sizes": {}
+        },
+        "method_timings_s": {
+          "_project_logits_device_from_hidden": {
+            "calls": 64,
+            "total_s": 0.001181705854833126,
+            "median_s": 1.7725047655403614e-05,
+            "total_per_decode_token_s": 1.8464153981767595e-05
+          },
+          "_select_argmax_device_from_logits": {
+            "calls": 64,
+            "total_s": 0.0006280969828367233,
+            "median_s": 9.34605486690998e-06,
+            "total_per_decode_token_s": 9.814015356823802e-06
+          },
+          "_sample_device_from_hidden": {
+            "calls": 64,
+            "total_s": 0.002028425456956029,
+            "median_s": 3.035052213817835e-05,
+            "total_per_decode_token_s": 3.169414776493795e-05
+          },
+          "_read_sample": {
+            "calls": 64,
+            "total_s": 0.004876310238614678,
+            "median_s": 8.008594159036875e-05,
+            "total_per_decode_token_s": 7.619234747835435e-05
+          }
+        }
+      }
+    },
+    "native_topk_eager": {
+      "mode": "native_topk",
+      "elapsed_s": 0.6765595420729369,
+      "tok_s": 94.59625653036824,
+      "telemetry": {
+        "sampler_mode": "gpu_sample",
+        "plan_fast_path_blockers": [
+          "temperature"
+        ],
+        "generated_tail": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "generated_tokens": 64
+      },
+      "profile": {
+        "copy_host_to_device": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "sizes": {}
+        },
+        "copy_device_to_host": {
+          "calls": 192,
+          "bytes": 768,
+          "calls_per_decode_token": 3.0,
+          "bytes_per_decode_token": 12.0,
+          "sizes": {
+            "4": 192
+          }
+        },
+        "native_uploads": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "names": {},
+          "sizes": {}
+        },
+        "method_timings_s": {
+          "_project_logits_device_from_hidden": {
+            "calls": 64,
+            "total_s": 0.0012460395228117704,
+            "median_s": 1.7700367607176304e-05,
+            "total_per_decode_token_s": 1.9469367543933913e-05
+          },
+          "_sample_from_hidden_native": {
+            "calls": 64,
+            "total_s": 0.27168803685344756,
+            "median_s": 0.004504898563027382,
+            "total_per_decode_token_s": 0.004245125575835118
+          }
+        }
+      }
+    },
+    "host_topk_eager": {
+      "mode": "host_topk",
+      "elapsed_s": 1.9888428868725896,
+      "tok_s": 32.179515245992384,
+      "telemetry": {
+        "sampler_mode": "host_logits_sample",
+        "plan_fast_path_blockers": [
+          "temperature"
+        ],
+        "generated_tail": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "generated_tokens": 64
+      },
+      "profile": {
+        "copy_host_to_device": {
+          "calls": 128,
+          "bytes": 768,
+          "calls_per_decode_token": 2.0,
+          "bytes_per_decode_token": 12.0,
+          "sizes": {
+            "4": 64,
+            "8": 64
+          }
+        },
+        "copy_device_to_host": {
+          "calls": 64,
+          "bytes": 63569920,
+          "calls_per_decode_token": 1.0,
+          "bytes_per_decode_token": 993280.0,
+          "sizes": {
+            "993280": 64
+          }
+        },
+        "native_uploads": {
+          "calls": 0,
+          "bytes": 0,
+          "calls_per_decode_token": 0.0,
+          "bytes_per_decode_token": 0.0,
+          "names": {},
+          "sizes": {}
+        },
+        "method_timings_s": {
+          "_project_logits_device_from_hidden": {
+            "calls": 64,
+            "total_s": 0.0016876414883881807,
+            "median_s": 2.543057780712843e-05,
+            "total_per_decode_token_s": 2.6369398256065324e-05
+          },
+          "_sample_from_hidden_host": {
+            "calls": 64,
+            "total_s": 1.479870188049972,
+            "median_s": 0.02273722691461444,
+            "total_per_decode_token_s": 0.023122971688280813
+          }
+        }
+      }
+    }
+  },
+  "summary": {
+    "greedy_graph_tok_s": 116.36931114047891,
+    "greedy_eager_tok_s": 111.34753132568088,
+    "native_topk_eager_tok_s": 94.59625653036824,
+    "host_topk_eager_tok_s": 32.179515245992384,
+    "native_vs_greedy_graph": 0.8128969365142443,
+    "native_vs_greedy_eager": 0.8495586332640213,
+    "native_vs_host": 2.9396420613312126
+  },
+  "assessment": {
+    "primary_next_step": "host result-readback coalescing or device-side continuation plumbing",
+    "secondary_next_step": "sampler-kernel overhead audit against greedy argmax",
+    "reason": "Request-constant scalar caching removes measured native H2D traffic: native top-k now has 0 H2D and 3 D2H Python-visible copies/token in the warmed decode window. Native remains much faster than host logits but still trails greedy eager by the sampler kernel and host result readback."
+  }
+}

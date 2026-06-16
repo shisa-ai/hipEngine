@@ -1507,6 +1507,7 @@ class Qwen35ParoResidentSession:
         self._native_sampling_state: RowSamplingState | None = None
         self._native_sampling_states_by_slot: dict[int, RowSamplingState] | None = None
         self._native_sampler_library: Any | None = None
+        self._native_sampler_cached_uploads: dict[tuple[Any, ...], DeviceBuffer] = {}
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
         try:
@@ -8794,13 +8795,15 @@ class Qwen35ParoResidentSession:
         self._project_logits_device_from_hidden(hidden)
         logits_ptr = self._native_sampler_logits_ptr(params, state)
         library = self._native_sampler_library_handle()
-        temperature_buf = self._native_sampler_upload(
-            "_native_sampler_temperature_buf",
-            np.asarray([float(getattr(params, "temperature", 0.0))], dtype=np.float32),
+        temperature_buf = self._native_sampler_cached_scalar(
+            ("temperature",),
+            float(getattr(params, "temperature", 0.0)),
+            np.float32,
         )
-        seed_buf = self._native_sampler_upload(
-            "_native_sampler_seed_buf",
-            np.asarray([int(state.seed) & ((1 << 64) - 1)], dtype=np.uint64),
+        seed_buf = self._native_sampler_cached_scalar(
+            ("seed",),
+            int(state.seed) & ((1 << 64) - 1),
+            np.uint64,
         )
         out_indices = self._native_sampler_buffer("_native_sampler_out_indices_i32", DType.INT32.itemsize)
         out_logprobs = self._native_sampler_buffer("_native_sampler_out_logprobs_f32", DType.FP32.itemsize)
@@ -8808,8 +8811,8 @@ class Qwen35ParoResidentSession:
         top_p = float(getattr(params, "top_p", 1.0))
         min_p = float(getattr(params, "min_p", 0.0))
         if top_p < 1.0 or min_p > 0.0:
-            top_p_buf = self._native_sampler_upload("_native_sampler_top_p_buf", np.asarray([top_p], dtype=np.float32))
-            min_p_buf = self._native_sampler_upload("_native_sampler_min_p_buf", np.asarray([min_p], dtype=np.float32))
+            top_p_buf = self._native_sampler_cached_scalar(("top_p",), top_p, np.float32)
+            min_p_buf = self._native_sampler_cached_scalar(("min_p",), min_p, np.float32)
             retained_counts = self._native_sampler_buffer("_native_sampler_retained_counts_i32", DType.INT32.itemsize)
             sample_top_p_temperature_f32_rows_i32(
                 logits_ptr,
@@ -8898,8 +8901,8 @@ class Qwen35ParoResidentSession:
             for token, count in sorted(state.history_counts().items())
             if 0 <= int(token) < self.vocab_size
         )
-        bias_offsets = self._native_sampler_upload(
-            "_native_sampler_bias_offsets_i32",
+        bias_offsets = self._native_sampler_cached_upload(
+            ("bias_offsets_i32", len(bias_pairs)),
             np.asarray([0, len(bias_pairs)], dtype=np.int32),
         )
         history_offsets = self._native_sampler_upload(
@@ -8909,12 +8912,12 @@ class Qwen35ParoResidentSession:
         bias_ids = None
         bias_values = None
         if bias_pairs:
-            bias_ids = self._native_sampler_upload(
-                "_native_sampler_bias_ids_i32",
+            bias_ids = self._native_sampler_cached_upload(
+                ("bias_ids_i32", tuple(int(token) for token, _bias in bias_pairs)),
                 np.asarray([int(token) for token, _bias in bias_pairs], dtype=np.int32),
             )
-            bias_values = self._native_sampler_upload(
-                "_native_sampler_bias_values_f32",
+            bias_values = self._native_sampler_cached_upload(
+                ("bias_values_f32", tuple(float(bias) for _token, bias in bias_pairs)),
                 np.asarray([float(bias) for _token, bias in bias_pairs], dtype=np.float32),
             )
         history_ids = None
@@ -8928,17 +8931,20 @@ class Qwen35ParoResidentSession:
                 "_native_sampler_history_counts_i32",
                 np.asarray([count for _token, count in history_pairs], dtype=np.int32),
             )
-        repetition = self._native_sampler_upload(
-            "_native_sampler_repetition_f32",
-            np.asarray([float(getattr(params, "repetition_penalty", 1.0))], dtype=np.float32),
+        repetition = self._native_sampler_cached_scalar(
+            ("repetition",),
+            float(getattr(params, "repetition_penalty", 1.0)),
+            np.float32,
         )
-        presence = self._native_sampler_upload(
-            "_native_sampler_presence_f32",
-            np.asarray([float(getattr(params, "presence_penalty", 0.0))], dtype=np.float32),
+        presence = self._native_sampler_cached_scalar(
+            ("presence",),
+            float(getattr(params, "presence_penalty", 0.0)),
+            np.float32,
         )
-        frequency = self._native_sampler_upload(
-            "_native_sampler_frequency_f32",
-            np.asarray([float(getattr(params, "frequency_penalty", 0.0))], dtype=np.float32),
+        frequency = self._native_sampler_cached_scalar(
+            ("frequency",),
+            float(getattr(params, "frequency_penalty", 0.0)),
+            np.float32,
         )
         apply_processors_f32_rows(
             self.lm_logits.ptr,
@@ -8980,6 +8986,43 @@ class Qwen35ParoResidentSession:
         host = np.ascontiguousarray(array)
         buffer = self._native_sampler_buffer(name, int(host.nbytes))
         copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+        return buffer
+
+    def _native_sampler_cached_scalar(self, cache_key: tuple[Any, ...], value: Any, dtype: Any) -> DeviceBuffer:
+        np_dtype = np.dtype(dtype)
+        scalar = np_dtype.type(value).item()
+        key = (*cache_key, np_dtype.str, scalar)
+        cache = getattr(self, "_native_sampler_cached_uploads", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_sampler_cached_uploads = cache
+        buffer = cache.get(key)
+        if not isinstance(buffer, DeviceBuffer):
+            host = np.ascontiguousarray(np.asarray([scalar], dtype=np_dtype))
+            buffer = malloc(max(int(host.nbytes), 4), runtime=self.runtime)
+            self.buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+            cache[key] = buffer
+        return buffer
+
+    def _native_sampler_cached_upload(self, cache_key: tuple[Any, ...], array: np.ndarray) -> DeviceBuffer:
+        host = np.ascontiguousarray(array)
+        key = (
+            *cache_key,
+            str(host.dtype),
+            tuple(int(dim) for dim in host.shape),
+            host.tobytes(),
+        )
+        cache = getattr(self, "_native_sampler_cached_uploads", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_sampler_cached_uploads = cache
+        buffer = cache.get(key)
+        if not isinstance(buffer, DeviceBuffer) or int(buffer.nbytes) < int(host.nbytes):
+            buffer = malloc(max(int(host.nbytes), 4), runtime=self.runtime)
+            self.buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+            cache[key] = buffer
         return buffer
 
     def _sample_from_hidden_host(

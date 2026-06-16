@@ -351,6 +351,17 @@ def _assessment(lanes: dict[str, Any]) -> dict[str, str]:
     h2d = native_profile["copy_host_to_device"]["calls_per_decode_token"]
     d2h = native_profile["copy_device_to_host"]["calls_per_decode_token"]
     uploads = native_profile["native_uploads"]["calls_per_decode_token"]
+    if h2d == 0:
+        return {
+            "primary_next_step": "host result-readback coalescing or device-side continuation plumbing",
+            "secondary_next_step": "sampler-kernel overhead audit against greedy argmax",
+            "reason": (
+                "Request-constant scalar caching removes measured native H2D traffic: native top-k now has "
+                f"{h2d:g} H2D and {d2h:g} D2H Python-visible copies/token in the warmed decode window. "
+                "Native remains much faster than host logits but still trails greedy eager by the sampler "
+                "kernel and host result readback."
+            ),
+        }
     if h2d is not None and uploads is not None and h2d <= uploads:
         return {
             "primary_next_step": "request-constant scalar buffer caching (#10)",

@@ -93847,3 +93847,39 @@ Validation:
 - `uv run ruff check scripts/native_sampler_overhead_profile.py` -> `All checks passed!`.
 - Retained diagnostic command above -> completed and wrote
   `benchmarks/results/2026-06-16-native-sampler-device-writeback.json`.
+
+## 2026-06-16 - Native sampler scalar-buffer cache (#10)
+
+Added lazy cached native-sampler uploads for request-constant scalar inputs:
+temperature, seed, top-p, min-p, repetition/presence/frequency penalties, and
+logit-bias ids/values/offsets. Dynamic history offsets/ids/counts remain
+per-step uploads because they depend on generated token history. The hot c=1
+bounded top-k path now hits cached temperature/seed device buffers after prefill
+and warmup, so warmed measured decode does not issue native sampler H2D copies.
+
+Retained diagnostic command:
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/native_sampler_overhead_profile.py --json benchmarks/results/2026-06-16-native-sampler-scalar-cache.json`
+
+Result on GPU0 / W7900 / gfx1100, Qwen3.6-35B-A3B PARO packed, BF16 KV,
+repeated token `9707`, prompt `45`, warmup decode `4`, measured decode `64`:
+- greedy graph replay: `116.369 tok/s`;
+- greedy eager/no-graph: `111.348 tok/s`;
+- native bounded top-k eager (`temperature=0.7`, `top_k=4`, `seed=123`):
+  `94.596 tok/s`;
+- host-logits top-k eager: `32.180 tok/s`;
+- native/greedy eager `0.850x`; native/host `2.940x`.
+
+Native measured decode H2D copies/token dropped `2 -> 0`; D2H is still `3`
+copies/token for selected id, logprob, and selected logit. The retained run's
+aggregate native tok/s is neutral vs #11 (`94.842 -> 94.596`, `-0.3%`, run
+noise), but `_sample_from_hidden_native` timing improved `4.550 -> 4.245
+ms/token` and the copy reduction is exact. A pre-final confirmation run reached
+native `95.477 tok/s` with the same zero-H2D counter shape, so this is retained
+as an overhead reduction rather than an aggregate throughput regression.
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/native_sampler_overhead_profile.py tests/test_gpu_sampler_kernel.py` -> passed.
+- `uv run ruff check hipengine/runtime/qwen35_paro_runner.py scripts/native_sampler_overhead_profile.py tests/test_gpu_sampler_kernel.py` -> `All checks passed!`.
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest tests/test_gpu_sampler_kernel.py -q` -> `10 passed`.
+- Retained diagnostic command above -> completed and wrote
+  `benchmarks/results/2026-06-16-native-sampler-scalar-cache.json`.
