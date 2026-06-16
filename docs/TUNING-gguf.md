@@ -479,6 +479,18 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **GGUF chunk tune min=513 rejected (2026-06-16).** Lowering the auto
+  chunk-tuning minimum from `1025` to `513` max-sequence tokens made
+  `512/128`-class sessions resolve the retained `1024/4096` mid-context chunk
+  policy instead of staying below-min/unchunked. The focused config smoke and
+  `154`-test GGUF guard passed with stable IDs and flat memory, but the
+  primary gate regressed versus the retained decode-policy-cache baseline:
+  `512/128` prefill `1958.536 -> 1881.896 tok/s`, decode `127.263 ->
+  127.104 tok/s`; `4K/128` prefill nudged up `2292.684 -> 2296.736 tok/s` but
+  decode regressed `114.991 -> 114.736 tok/s`. Code/test changes were
+  reverted; keep the chunk-tune minimum at `1025`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-prefill-chunk-min513-rejected.json`.
+
 - **GGUF linear-attention chunk=512 rejected (2026-06-16).** Lowering only the
   auto-tuned mid-context linear-attention prefill chunk from `1024` to `512`
   rows passed the prefill-config smoke and `154`-test GGUF guard with stable IDs
