@@ -319,14 +319,12 @@ def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() 
 
     assert plan.exactness_oracles_ready is True
     assert plan.native_runtime_kernels_ready is False
-    assert plan.optimization_kernels_ready is False
+    assert plan.optimization_kernels_ready is True
     assert payload["missing_exactness_oracle_keys"] == []
     assert payload["missing_native_runtime_keys"] == [
         ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
     ]
-    assert payload["missing_optimization_keys"] == [
-        ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
-    ]
+    assert payload["missing_optimization_keys"] == []
     assert [item["name"] for item in payload["checks"]] == [
         "cpu_nextn_oracle",
         "draft_topk_fallback_oracle",
@@ -409,6 +407,7 @@ def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:
         llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
         native_runtime_kernels_ready=True,
+        optimization_kernels_ready=True,
         metrics_contract_status=GGUF_MTP_METRICS_CONTRACT_READY,
     )
 
@@ -427,6 +426,7 @@ def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
         llamacpp_trace_budget_coverage=GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
         native_runtime_kernels_ready=False,
+        optimization_kernels_ready=False,
         metrics_contract_status="not_run",
     )
 
@@ -440,8 +440,27 @@ def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
         "partial_llamacpp_trace_budget_coverage",
         "accepted_output_denominator_not_comparable",
         "native_runtime_kernels_missing",
+        "optimization_kernels_missing",
         "hipengine_metrics_not_ready",
     )
+
+
+def test_gguf_mtp_performance_readiness_blocks_missing_optimization_kernels() -> None:
+    readiness = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+        parity_precheck=True,
+        draft_budget_precheck=True,
+        draft_sampling_contract_precheck=True,
+        hidden_seed_contract_precheck=True,
+        exactness_gate="passed",
+        llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+        native_runtime_kernels_ready=True,
+        optimization_kernels_ready=False,
+        metrics_contract_status=GGUF_MTP_METRICS_CONTRACT_READY,
+    )
+
+    assert readiness.ready is False
+    assert readiness.blockers == ("optimization_kernels_missing",)
 
 
 def test_gguf_mtp_context_rejects_incomplete_verification_inputs() -> None:

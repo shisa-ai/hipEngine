@@ -58,6 +58,7 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
         llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
         native_runtime_kernels_ready=True,
+        optimization_kernels_ready=True,
         metrics_contract_status=GGUF_MTP_METRICS_CONTRACT_READY,
     )
 

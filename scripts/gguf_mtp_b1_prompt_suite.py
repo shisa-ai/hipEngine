@@ -644,6 +644,7 @@ def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
             llamacpp_trace_budget_coverage=str(readiness["llamacpp_trace_budget_coverage"]),
             accepted_per_output_status=str(readiness["accepted_per_output_status"]),
             native_runtime_kernels_ready=bool(readiness["native_runtime_kernels_ready"]),
+            optimization_kernels_ready=bool(readiness["optimization_kernels_ready"]),
             metrics_contract_status=str(readiness["metrics_contract_status"]),
         ).blockers
     )

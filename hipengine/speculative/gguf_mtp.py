@@ -670,6 +670,7 @@ class Qwen35GGUFMTPPerformanceReadiness:
         llamacpp_trace_budget_coverage: str,
         accepted_per_output_status: str,
         native_runtime_kernels_ready: bool,
+        optimization_kernels_ready: bool,
         metrics_contract_status: str,
     ) -> "Qwen35GGUFMTPPerformanceReadiness":
         blockers: list[str] = []
@@ -689,6 +690,8 @@ class Qwen35GGUFMTPPerformanceReadiness:
             blockers.append("accepted_output_denominator_not_comparable")
         if not native_runtime_kernels_ready:
             blockers.append("native_runtime_kernels_missing")
+        if not optimization_kernels_ready:
+            blockers.append("optimization_kernels_missing")
         if metrics_contract_status != GGUF_MTP_METRICS_CONTRACT_READY:
             blockers.append("hipengine_metrics_not_ready")
         return cls(blockers=tuple(blockers))
