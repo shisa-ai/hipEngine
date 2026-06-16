@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **GGUF linear-attention chunk=512 rejected (2026-06-16).** Lowering only the
+  auto-tuned mid-context linear-attention prefill chunk from `1024` to `512`
+  rows passed the prefill-config smoke and `154`-test GGUF guard with stable IDs
+  and flat memory, but it regressed prefill sharply on both retained gates
+  (`512/128` `1958.536 -> 1844.457 tok/s`, `4K/128` `2292.684 -> 2131.252
+  tok/s`) while decode was flat/small mixed. Code/test changes were reverted;
+  keep the mid-context linear-attention chunk at `1024`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-linear-chunk512-rejected.json`.
+
 - **GGUF linear dispatch resolve cache rejected (2026-06-16).** Adding an
   `lru_cache`-backed base-dispatch resolver passed focused dispatch tests and
   the `154`-test GGUF guard with stable IDs and flat memory, but measured gate
