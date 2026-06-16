@@ -96924,3 +96924,54 @@ Validation:
   performance claim. The shared readiness contract only summarizes existing
   preflight evidence; future MTP attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-15 - MTP-GGUF topk_device registry key
+
+Implemented `mtp-gguf` multiloop iteration 94: registered the existing native
+bounded top-k sampler wrapper under the GGUF MTP draft `topk_device` four-axis
+registry key.
+
+Scope note:
+- Registry/docs/tests only. No sampler kernel body, GGUF tensor payload loading,
+  hipEngine generation integration, native NextN execution, actual KV allocation,
+  attention/KV runtime path, or performance path changed.
+- The new registration keeps the CPU `full_vocab_d2h` top-k oracle/fallback and
+  only marks the optimization-side `mtp_draft_topk/w4_gguf/topk_device` key as
+  available through registry preflight. Runtime integration still waits on
+  native GGUF MTP NextN execution.
+
+Changes:
+- `hipengine/kernels/hip_gfx1100/sampling/sampler.py` now registers
+  `KernelKey("hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device")` to
+  `sample_topk_temperature_f32_rows_i32`.
+- Existing gfx1151 alias registration now exposes the same key for `hip_gfx1151`
+  via the standard backend alias path.
+- Added sampler registry/preflight tests for gfx1100/gfx1151 topk_device
+  readiness.
+- Updated B1/B1-B4 prompt-suite expectations now that optimization-kernel
+  readiness is true and `missing_optimization_keys` is empty.
+- Updated `docs/MTP-gguf.md` to mark the backend-side top-k draft sampling
+  registry-key milestone complete while noting runtime integration still waits
+  on native NextN execution.
+
+Validation:
+- Focused non-GPU sampler registry + B1/B1-B4 preflight tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gpu_sampler_kernel.py::test_sampler_registers_for_gfx1151_alias tests/test_gpu_sampler_kernel.py::test_sampler_mtp_topk_key_satisfies_runtime_optimization_preflight tests/test_gpu_sampler_kernel.py::test_sampler_wrapper_validates_shapes_before_loading_hip tests/test_gguf_mtp_b1_prompt_suite.py` -> `26` passed.
+- Real local compact B1-B4 matrix smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` ->
+  `optimization_ready True`, `missing_opt_B1 []`, `performance_ready False`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/kernels/hip_gfx1100/sampling/sampler.py tests/test_gpu_sampler_kernel.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/kernels/hip_gfx1100/sampling/sampler.py tests/test_gpu_sampler_kernel.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: registry/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP
+  execution, actual KV allocation, attention/KV runtime path, or performance
+  claim. Future MTP attention/KV-write execution remains KVLiveSpans-gated.
+- Note: a broad `tests/test_gpu_sampler_kernel.py tests/test_gguf_mtp_b1_prompt_suite.py`
+  run was attempted first; GPU-executing sampler tests hit HIP invalid kernel
+  image/file errors on this host, while the non-GPU registry/wrapper tests above
+  cover this registry-key change. No sampler device code was changed.

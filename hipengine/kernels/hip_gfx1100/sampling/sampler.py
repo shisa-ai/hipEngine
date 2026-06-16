@@ -353,6 +353,11 @@ def register_sampler_kernels(*, replace: bool = True) -> None:
         sample_topk_temperature_f32_rows_i32,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"),
+        sample_topk_temperature_f32_rows_i32,
+        replace=replace,
+    )
 
 
 def _check_rows_vocab(rows: int, vocab_size: int) -> None:

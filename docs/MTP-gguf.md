@@ -936,13 +936,14 @@ is now answered by the M1 required/optional table.)
       `--fail-on-performance-unready` exits `5` until the combined M6 readiness
       rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean); actual B2-B4
       execution/parity still waits on native draft execution.
-- [ ] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
+- [x] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU
       `full_vocab_d2h` fallback/oracle is registered and advertised in MTP
       draft tensor plans/call specs with the llama.cpp parity contract
-      (`top_k=10`, greedy top-1); backend `topk_device` remains open and is now
-      reported by the shared `Qwen35GGUFMTPRuntimeKernelPlan` through the
-      preflight `runtime_kernel_precheck`.
+      (`top_k=10`, greedy top-1). The `topk_device` optimization key now
+      resolves through the four-axis registry on gfx1100/gfx1151 to the native
+      bounded top-k sampler wrapper; runtime integration still waits on native
+      NextN execution.
 - [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
       warmup.
 

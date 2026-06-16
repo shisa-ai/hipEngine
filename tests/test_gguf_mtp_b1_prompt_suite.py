@@ -268,14 +268,12 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["runtime_kernel_precheck"]["backend"] == "hip_gfx1100"
     assert artifact["runtime_kernel_precheck"]["exactness_oracles_ready"] is True
     assert artifact["runtime_kernel_precheck"]["native_runtime_kernels_ready"] is False
-    assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is False
+    assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is True
     assert artifact["runtime_kernel_precheck"]["missing_exactness_oracle_keys"] == []
     assert artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"] == [
         ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
     ]
-    assert artifact["runtime_kernel_precheck"]["missing_optimization_keys"] == [
-        ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
-    ]
+    assert artifact["runtime_kernel_precheck"]["missing_optimization_keys"] == []
     assert artifact["oracle_gate"]["passed"] is True
     assert artifact["llamacpp_trace_oracle"]["passed"] is True
     assert artifact["llamacpp_trace_oracle"]["selected_token_ids"] == [8068, 271]
@@ -333,9 +331,7 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             "missing_native_runtime_keys": [
                 ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
             ],
-            "missing_optimization_keys": [
-                ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
-            ],
+            "missing_optimization_keys": [],
         }
     ]
 
@@ -365,9 +361,7 @@ def test_b1_prompt_suite_preflight_can_request_b4_when_sampling_matches(
             "missing_native_runtime_keys": [
                 ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
             ],
-            "missing_optimization_keys": [
-                ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
-            ],
+            "missing_optimization_keys": [],
         }
     ]
 
@@ -442,7 +436,7 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     }
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_native_runtime_kernels_ready"] is False
-    assert matrix["all_optimization_kernels_ready"] is False
+    assert matrix["all_optimization_kernels_ready"] is True
     assert matrix["all_performance_comparisons_ready"] is False
     assert matrix["performance_comparison_ready_by_budget"] == {
         "B1": False,
@@ -473,13 +467,11 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "llamacpp_trace_budget_coverage": "full_requested_budget_exercised",
         "accepted_per_output_status": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
         "native_runtime_kernels_ready": False,
-        "optimization_kernels_ready": False,
+        "optimization_kernels_ready": True,
         "missing_native_runtime_keys": [
             ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"]
         ],
-        "missing_optimization_keys": [
-            ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
-        ],
+        "missing_optimization_keys": [],
         "metrics_contract_status": "not_run",
         "blocker_codes": ["native_gguf_mtp_runtime_missing"],
         "performance_comparison_blockers": [

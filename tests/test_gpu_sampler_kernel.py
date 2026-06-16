@@ -69,6 +69,28 @@ def test_sampler_registers_for_gfx1151_alias() -> None:
         resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="topk_temperature_rows_i32")
         is sample_topk_temperature_f32_rows_i32
     )
+    assert (
+        resolve(backend="hip_gfx1100", layer="mtp_draft_topk", quant="w4_gguf", variant="topk_device")
+        is sample_topk_temperature_f32_rows_i32
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="mtp_draft_topk", quant="w4_gguf", variant="topk_device")
+        is sample_topk_temperature_f32_rows_i32
+    )
+
+
+def test_sampler_mtp_topk_key_satisfies_runtime_optimization_preflight() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.speculative import Qwen35GGUFMTPRuntimeKernelPlan
+
+    register_sampler_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
+
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        plan = Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend=backend)
+        assert plan.optimization_kernels_ready is True
+        assert plan.missing_optimization_keys == ()
+        assert plan.native_runtime_kernels_ready is False
 
 
 def test_sampler_wrapper_validates_shapes_before_loading_hip() -> None:
