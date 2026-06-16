@@ -536,6 +536,18 @@ No-hold notes:
   code-object/ISA variant reduces the remaining VGPR cap without the gate tradeoff.
   Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q4selected-tile16-rejected.json`.
 
+- **Q8_0 T16 768-row out8192 TM64 rejected (2026-06-16).** Isolating the
+  resident Q8_0 T16 WMMA prefill policy so only 768-row `in<=2048,out>=8192`
+  projections use `TM64/TN32` (leaving the 512-row and 1024-row out8192 rules
+  unchanged) passed the focused tile-policy smoke, primary gate stability, the
+  `154`-test GGUF guard, and a `128K/128` memory check. It was not retained
+  because the targeted 128K low-memory prefill path regressed versus the latest
+  retained references (`745.977/747.033 -> 739.646 tok/s`), and `512/128` decode
+  was not clearly non-regressive versus the decode-policy-cache baseline
+  (`127.263 -> 126.941 tok/s`). Code/test changes were reverted; keep 768-row
+  out8192-like Q8_0 T16 projections at `TM32`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-row768-out8192-tm64-rejected.json`.
+
 - **Q8_0 T16 768/1024-row out8192 TM64 rejected (2026-06-16).** Extending the
   resident Q8_0 T16 WMMA prefill tile policy so 768/1024-row
   `in<=2048,out>=8192` projections use `TM64/TN32` instead of `TM32/TN32`
