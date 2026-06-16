@@ -9,11 +9,12 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
+    gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
     plan_gguf_q4_k_q8_1_selected_prefill_build,
 )
 from hipengine.kernels.registry import resolve
-from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf import GGMLQuantizationType, unpack_q4_k_scale_min
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
     _TOLERANCE_BF16,
     _bf16_bits_to_float32,
@@ -23,6 +24,10 @@ from tests.test_gguf_q4_k_selected_wmma_prefill import (
 )
 
 _Q8_1_BLOCK = 32
+_Q8_1_MMQ_BLOCK = 4 * _Q8_1_BLOCK
+_Q8_1_MMQ_DS4_BYTES = 8 * np.dtype(np.uint16).itemsize + _Q8_1_MMQ_BLOCK
+_Q4_K_BLOCK_BYTES = 144
+_Q4_K_QS_OFFSET = 16
 
 
 def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -35,6 +40,27 @@ def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, n
     qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
     sums = (qs.astype(np.float32).sum(axis=-1) * d).astype(np.float32)
     return np.ascontiguousarray(qs), np.ascontiguousarray(d), np.ascontiguousarray(sums)
+
+
+def _quantize_q8_1_mmq_ds4_blocks(x_bf16: np.ndarray) -> np.ndarray:
+    x = _bf16_bits_to_float32(x_bf16).astype(np.float32, copy=False)
+    if x.shape[-1] % _Q8_1_MMQ_BLOCK:
+        raise ValueError("hidden dimension must be divisible by 128 for DS4 Q8_1 MMQ")
+    blocks = x.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 4, _Q8_1_BLOCK)
+    max_abs = np.max(np.abs(blocks), axis=-1)
+    d = (max_abs / 127.0).astype(np.float32)
+    safe_d = np.where(d > 0.0, d, 1.0).astype(np.float32)
+    qs = np.rint(blocks / safe_d[..., None]).clip(-127, 127).astype(np.int8)
+    qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
+    sums = blocks.sum(axis=-1, dtype=np.float32).astype(np.float32)
+
+    ds4 = np.empty((*d.shape, 2), dtype=np.uint16)
+    ds4[..., 0] = d.astype(np.float16).view(np.uint16)
+    ds4[..., 1] = sums.astype(np.float16).view(np.uint16)
+    out = np.empty((x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_DS4_BYTES), dtype=np.uint8)
+    out[..., :16] = ds4.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 8).view(np.uint8)
+    out[..., 16:] = qs.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_BLOCK).view(np.uint8)
+    return np.ascontiguousarray(out)
 
 
 def _dequant_q8_1(qs: np.ndarray, d: np.ndarray) -> np.ndarray:
@@ -59,6 +85,60 @@ def _q8_1_selected_reference(fixture) -> np.ndarray:
     return ref
 
 
+def _q4_k_q8_1_ds4_gemv(q8_ds4: np.ndarray, qweight: np.ndarray) -> np.ndarray:
+    rows = q8_ds4.shape[0]
+    out_features = qweight.shape[0]
+    blocks_per_row = qweight.shape[1] // _Q4_K_BLOCK_BYTES
+    q8_blocks_per_row = blocks_per_row * 2
+    q8_blocks = q8_ds4.reshape(rows, q8_blocks_per_row, _Q8_1_MMQ_DS4_BYTES)
+    out = np.zeros((rows, out_features), dtype=np.float32)
+
+    for out_col in range(out_features):
+        raw_blocks = qweight[out_col].reshape(blocks_per_row, _Q4_K_BLOCK_BYTES)
+        d = raw_blocks[:, 0:2].copy().view(np.float16).astype(np.float32).reshape(blocks_per_row)
+        dmin = raw_blocks[:, 2:4].copy().view(np.float16).astype(np.float32).reshape(blocks_per_row)
+        scales, mins = unpack_q4_k_scale_min(raw_blocks[:, 4:16])
+        packed_q = raw_blocks[:, _Q4_K_QS_OFFSET:].reshape(blocks_per_row, 4, _Q8_1_BLOCK)
+        q4 = np.empty((blocks_per_row, 8, _Q8_1_BLOCK), dtype=np.int32)
+        q4[:, 0::2, :] = (packed_q & np.uint8(0x0F)).astype(np.int32)
+        q4[:, 1::2, :] = (packed_q >> np.uint8(4)).astype(np.int32)
+
+        for row in range(rows):
+            acc = 0.0
+            for blk in range(blocks_per_row):
+                for sb in range(8):
+                    xb = q8_blocks[row, blk * 2 + (sb >> 2)]
+                    ds4 = xb[:16].copy().view(np.uint16).reshape(4, 2)
+                    xd = np.asarray([ds4[sb & 3, 0]], dtype=np.uint16).view(np.float16).astype(np.float32)[0]
+                    xsum = np.asarray([ds4[sb & 3, 1]], dtype=np.uint16).view(np.float16).astype(np.float32)[0]
+                    xq_start = 16 + (sb & 3) * _Q8_1_BLOCK
+                    xq = xb[xq_start : xq_start + _Q8_1_BLOCK]
+                    xq_i32 = xq.view(np.int8).astype(np.int32)
+                    dot = int(np.dot(q4[blk, sb], xq_i32))
+                    scale = float(d[blk] * scales[blk, sb])
+                    minv = float(dmin[blk] * mins[blk, sb])
+                    acc += scale * float(xd) * float(dot) - minv * float(xsum)
+            out[row, out_col] = acc
+    return out
+
+
+def _q8_1_ds4_selected_reference(fixture) -> np.ndarray:
+    q8_ds4 = _quantize_q8_1_mmq_ds4_blocks(fixture.x_host)
+    ref = np.zeros((fixture.compact_rows, fixture.out_features_a + fixture.out_features_b), dtype=np.float32)
+    for expert in range(fixture.num_experts):
+        start = int(fixture.expert_start_compact[expert])
+        stop = int(fixture.expert_start_compact[expert + 1])
+        if stop == start:
+            continue
+        ref[start:stop, : fixture.out_features_a] = _q4_k_q8_1_ds4_gemv(
+            q8_ds4[start:stop], fixture.qweight_a[expert]
+        )
+        ref[start:stop, fixture.out_features_a :] = _q4_k_q8_1_ds4_gemv(
+            q8_ds4[start:stop], fixture.qweight_b[expert]
+        )
+    return ref
+
+
 # ---------------------------------------------------------------------------
 # No-GPU surface checks.
 # ---------------------------------------------------------------------------
@@ -73,6 +153,15 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="selected_dual_q8_1_prefill_compact32_bf16_bf16_out",
         )
         is gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out
     )
     artifact = plan_gguf_q4_k_q8_1_selected_prefill_build(compiler_version="test-compiler")
     assert artifact.output_path.name == "gguf_q4_k_q8_1_selected_prefill.so"
@@ -121,6 +210,17 @@ def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> 
     with pytest.raises(ValueError, match="wmma_total_rows.*multiple of 16"):
         gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(
             **{**kwargs, "wmma_total_rows": 31}
+        )
+
+    ds4_kwargs = {
+        k: v
+        for k, v in kwargs.items()
+        if k not in {"x_qs_ptr", "x_d_ptr", "x_sum_ptr"}
+    }
+    ds4_kwargs["x_q8_ptr"] = 1
+    with pytest.raises(ValueError, match="compact_rows"):
+        gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out(
+            **{**ds4_kwargs, "compact_rows": 0}
         )
 
 
@@ -204,6 +304,73 @@ def _run_q8_1_selected_dual_gpu(fixture) -> np.ndarray:
     return _decode_output(host_out, "bf16")
 
 
+def _run_q8_1_ds4_selected_dual_gpu(fixture) -> np.ndarray:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    host_out = np.zeros(
+        (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
+        dtype=np.uint16,
+    )
+    q8_ds4 = _quantize_q8_1_mmq_ds4_blocks(fixture.x_host)
+
+    bufs = []
+    try:
+        q8_ds4_dev = malloc(q8_ds4.nbytes, runtime=runtime)
+        start_compact_dev = malloc(fixture.expert_start_compact.nbytes, runtime=runtime)
+        start_wmma_dev = malloc(fixture.expert_start_wmma.nbytes, runtime=runtime)
+        tile_expert_dev = malloc(fixture.tile_expert.nbytes, runtime=runtime)
+        qweight_a_dev = malloc(fixture.qweight_a.nbytes, runtime=runtime)
+        qweight_b_dev = malloc(fixture.qweight_b.nbytes, runtime=runtime)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        bufs.extend(
+            (
+                q8_ds4_dev,
+                start_compact_dev,
+                start_wmma_dev,
+                tile_expert_dev,
+                qweight_a_dev,
+                qweight_b_dev,
+                out_dev,
+            )
+        )
+        for dev, arr in (
+            (q8_ds4_dev, q8_ds4),
+            (start_compact_dev, fixture.expert_start_compact),
+            (start_wmma_dev, fixture.expert_start_wmma),
+            (tile_expert_dev, fixture.tile_expert),
+            (qweight_a_dev, fixture.qweight_a),
+            (qweight_b_dev, fixture.qweight_b),
+        ):
+            copy_host_to_device(dev, host_array_ptr(np.ascontiguousarray(arr)), runtime=runtime)
+
+        gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out(
+            q8_ds4_dev.ptr,
+            start_compact_dev.ptr,
+            start_wmma_dev.ptr,
+            tile_expert_dev.ptr,
+            qweight_a_dev.ptr,
+            qweight_b_dev.ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            fixture.out_features_a,
+            fixture.out_features_b,
+            fixture.num_experts,
+            fixture.wmma_total_rows,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    return _decode_output(host_out, "bf16")
+
+
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     ("counts", "in_features", "out_features_a", "out_features_b"),
@@ -225,4 +392,28 @@ def test_q4_k_q8_1_selected_prefill_bf16_matches_quantized_cpu_reference(
     )
     actual = _run_q8_1_selected_dual_gpu(fixture)
     expected = _q8_1_selected_reference(fixture)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"),
+    [
+        pytest.param([4, 0, 5], 256, 16, 16, id="empty-middle-small-boundary"),
+        pytest.param([0, 17, 31], 512, 32, 48, id="empty-first-multi-block"),
+    ],
+)
+def test_q4_k_q8_1_ds4_selected_prefill_bf16_matches_ds4_cpu_reference(
+    counts: list[int], in_features: int, out_features_a: int, out_features_b: int
+) -> None:
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=7,
+    )
+    actual = _run_q8_1_ds4_selected_dual_gpu(fixture)
+    expected = _q8_1_ds4_selected_reference(fixture)
     np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)

@@ -21,6 +21,16 @@ constexpr int Q4_K_SCALE_BYTES = 12;
 constexpr int Q4_K_QS_OFFSET = 2 + 2 + Q4_K_SCALE_BYTES;
 constexpr int Q4_K_SUBBLOCK = 32;
 constexpr int Q4_K_SUBBLOCKS = QK_K / Q4_K_SUBBLOCK;  // == 8
+constexpr int Q8_1_MMQ_BLOCK = 4 * Q8_1_BLOCK;        // == 128
+
+struct block_q8_1_mmq_ds4 {
+  // Matches llama.cpp's DS4 block_q8_1_mmq layout for Q4_K/Q5_K MMQ:
+  // four (scale, sum) half2 pairs followed by 128 int8 quants.
+  uint16_t ds4[8];
+  int8_t qs[Q8_1_MMQ_BLOCK];
+};
+static_assert(sizeof(block_q8_1_mmq_ds4) == 4 * Q8_1_BLOCK + 8 * sizeof(uint16_t),
+              "unexpected DS4 Q8_1 MMQ block size");
 
 __device__ inline uint16_t float_to_bf16_bits(float value) {
   union {
@@ -33,15 +43,19 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
   return static_cast<uint16_t>(in.u32 >> 16);
 }
 
-__device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
-  const uint16_t bits = static_cast<uint16_t>(ptr[0]) |
-                        (static_cast<uint16_t>(ptr[1]) << 8);
+__device__ inline float fp16_bits_to_float(uint16_t bits) {
   union {
     uint16_t u16;
     half_t f16;
   } in;
   in.u16 = bits;
   return static_cast<float>(in.f16);
+}
+
+__device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
+  const uint16_t bits = static_cast<uint16_t>(ptr[0]) |
+                        (static_cast<uint16_t>(ptr[1]) << 8);
+  return fp16_bits_to_float(bits);
 }
 
 __device__ inline uint8_t gguf_q4_k_scale(const uint8_t* scales, int subblock) {
@@ -180,6 +194,88 @@ __global__ void gguf_q4_k_selected_dual_q8_1_prefill_compact32_kernel(
   }
 }
 
+__launch_bounds__(256, 1)
+__global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows) {
+  const int col_tile = blockIdx.x;
+  const int row_tile = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int row_lane = tid >> 4;
+  const int col_lane = tid & 15;
+
+  const int64_t global_col = static_cast<int64_t>(col_tile) * 16 + col_lane;
+  const int64_t out_features_total = out_features_a + out_features_b;
+  if (global_col >= out_features_total) return;
+
+  const int64_t expert_id = tile_expert[row_tile];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  const int64_t compact_base = expert_start_compact[expert_id];
+  const int64_t expert_count = expert_start_compact[expert_id + 1] - compact_base;
+  const int64_t wmma_base = expert_start_wmma[expert_id];
+  const int64_t row_start_in_wmma = static_cast<int64_t>(row_tile) * 16;
+  const int64_t tile_row_in_expert = row_start_in_wmma - wmma_base;
+  const int64_t local_row = tile_row_in_expert + row_lane;
+  const bool valid_row = local_row < expert_count;
+  const int64_t compact_row = valid_row ? (compact_base + local_row) : 0;
+
+  const bool use_b = global_col >= out_features_a;
+  const int64_t local_col = use_b ? (global_col - out_features_a) : global_col;
+  const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+  const bool valid_col = local_col < local_out_features;
+  const uint8_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t q8_mmq_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
+  const int64_t row_bytes = blocks_per_row * Q4_K_BLOCK_BYTES;
+  const int64_t expert_bytes = local_out_features * row_bytes;
+  const uint8_t* __restrict__ expert_base = qweight + expert_id * expert_bytes;
+  const uint8_t* __restrict__ weight_row =
+      valid_col ? (expert_base + local_col * row_bytes) : expert_base;
+
+  float acc = 0.0f;
+  if (valid_row && valid_col && compact_row < compact_rows) {
+    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+      const uint8_t* __restrict__ block_ptr = weight_row + blk * Q4_K_BLOCK_BYTES;
+      const float d_f = fp16_bytes_to_float(block_ptr);
+      const float dmin_f = fp16_bytes_to_float(block_ptr + 2);
+      const uint8_t* __restrict__ scales = block_ptr + 4;
+      const uint8_t* __restrict__ qs = block_ptr + Q4_K_QS_OFFSET;
+#pragma unroll
+      for (int sb = 0; sb < Q4_K_SUBBLOCKS; ++sb) {
+        const int64_t q8_block = compact_row * q8_mmq_blocks_per_row + blk * 2 + (sb >> 2);
+        const int ds4_idx = sb & 3;
+        const block_q8_1_mmq_ds4& xb = x_q8[q8_block];
+        const int8_t* __restrict__ xq = xb.qs + ds4_idx * Q8_1_BLOCK;
+        const float xd = fp16_bits_to_float(xb.ds4[2 * ds4_idx + 0]);
+        const float xsum = fp16_bits_to_float(xb.ds4[2 * ds4_idx + 1]);
+        int dot = 0;
+#pragma unroll
+        for (int lane32 = 0; lane32 < Q8_1_BLOCK; ++lane32) {
+          const int q4 = static_cast<int>(gguf_q4_k_quant(qs, sb, lane32));
+          dot += q4 * static_cast<int>(xq[lane32]);
+        }
+        const float scale_f = d_f * static_cast<float>(gguf_q4_k_scale(scales, sb));
+        const float min_f = dmin_f * static_cast<float>(gguf_q4_k_min(scales, sb));
+        acc += scale_f * xd * static_cast<float>(dot) - min_f * xsum;
+      }
+    }
+    out[compact_row * out_features_total + global_col] = float_to_bf16_bits(acc);
+  }
+}
+
 int launch_selected_dual_q8_1_compact32(
     const int8_t* x_qs,
     const float* x_d,
@@ -245,6 +341,67 @@ int launch_selected_dual_q8_1_compact32(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_selected_dual_q8_1_ds4_compact32(
+    const block_q8_1_mmq_ds4* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!valid_q8_1_selected_dual_common(
+          x_q8,
+          x_q8,
+          x_q8,
+          expert_start_compact,
+          expert_start_wmma,
+          tile_expert,
+          qweight_a,
+          qweight_b,
+          out,
+          compact_rows,
+          in_features,
+          out_features_a,
+          out_features_b,
+          num_experts,
+          wmma_total_rows)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const int64_t row_tiles = wmma_total_rows / 16;
+  const dim3 block(256);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_total + 15) / 16),
+      static_cast<unsigned int>(row_tiles));
+  hipLaunchKernelGGL(
+      gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x_q8,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(
@@ -268,6 +425,38 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf1
       x_qs,
       x_d,
       x_sum,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_compact32(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
       expert_start_compact,
       expert_start_wmma,
       tile_expert,

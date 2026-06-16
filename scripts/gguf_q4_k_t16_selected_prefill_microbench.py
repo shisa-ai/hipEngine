@@ -8,6 +8,9 @@ It builds a synthetic compact-selected MoE fixture and can time either:
 * ``q8-1-dot``: a standalone raw-Q4_K x prequantized-Q8_1 integer-dot
   prototype.  This is deliberately simple and does not include activation
   quantization time in the measured loop.
+* ``q8-1-ds4-dot``: the same scalar dot prototype fed by llama.cpp-style
+  DS4 ``block_q8_1_mmq`` activation blocks, isolating layout effects before a
+  tiled WMMA/MMQ port.
 
 The script does not load a full GGUF model and does not validate model quality;
 it is a same-shape kernel-design baseline/prototype harness.
@@ -30,6 +33,8 @@ import numpy as np
 
 _GIB = 1 << 30
 _Q8_1_BLOCK = 32
+_Q8_1_MMQ_BLOCK = 4 * _Q8_1_BLOCK
+_Q8_1_MMQ_DS4_BYTES = 8 * np.dtype(np.uint16).itemsize + _Q8_1_MMQ_BLOCK
 
 
 def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
@@ -63,6 +68,34 @@ def _quantize_q8_1_blocks(x_bf16: np.ndarray) -> tuple[np.ndarray, np.ndarray, n
     qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
     sums = (qs.astype(np.float32).sum(axis=-1) * d).astype(np.float32)
     return np.ascontiguousarray(qs), np.ascontiguousarray(d), np.ascontiguousarray(sums)
+
+
+def _quantize_q8_1_mmq_ds4_blocks(x_bf16: np.ndarray) -> np.ndarray:
+    """Return llama.cpp-style DS4 ``block_q8_1_mmq`` activation blocks.
+
+    The byte layout is four FP16 ``(d, sum)`` pairs followed by 128 int8 quants.
+    ``sum`` intentionally tracks the original BF16 activation sum in that 32-K
+    subblock, matching llama.cpp's Q8_1 MMQ contract.
+    """
+
+    x = _bf16_u16_to_f32(x_bf16).astype(np.float32, copy=False)
+    if x.shape[-1] % _Q8_1_MMQ_BLOCK:
+        raise ValueError("hidden dimension must be divisible by 128 for DS4 Q8_1 MMQ")
+    blocks = x.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 4, _Q8_1_BLOCK)
+    max_abs = np.max(np.abs(blocks), axis=-1)
+    d = (max_abs / 127.0).astype(np.float32)
+    safe_d = np.where(d > 0.0, d, 1.0).astype(np.float32)
+    qs = np.rint(blocks / safe_d[..., None]).clip(-127, 127).astype(np.int8)
+    qs = np.where(d[..., None] > 0.0, qs, np.zeros_like(qs)).astype(np.int8, copy=False)
+    sums = blocks.sum(axis=-1, dtype=np.float32).astype(np.float32)
+
+    ds4 = np.empty((*d.shape, 2), dtype=np.uint16)
+    ds4[..., 0] = d.astype(np.float16).view(np.uint16)
+    ds4[..., 1] = sums.astype(np.float16).view(np.uint16)
+    out = np.empty((x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_DS4_BYTES), dtype=np.uint8)
+    out[..., :16] = ds4.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, 8).view(np.uint8)
+    out[..., 16:] = qs.reshape(x.shape[0], x.shape[1] // _Q8_1_MMQ_BLOCK, _Q8_1_MMQ_BLOCK).view(np.uint8)
+    return np.ascontiguousarray(out)
 
 
 def _make_activation(rows: int, hidden: int, *, seed: int) -> np.ndarray:
@@ -119,7 +152,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--mode", choices=("selected-wmma", "q8-1-dot"), default="selected-wmma")
+    parser.add_argument("--mode", choices=("selected-wmma", "q8-1-dot", "q8-1-ds4-dot"), default="selected-wmma")
     parser.add_argument("--hidden", type=int, default=2048)
     parser.add_argument("--out-features-a", type=int, default=4096)
     parser.add_argument("--out-features-b", type=int, default=4096)
@@ -226,6 +259,7 @@ def main() -> None:
         else:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
                 build_gguf_q4_k_q8_1_selected_prefill,
+                gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
             )
 
@@ -233,46 +267,84 @@ def main() -> None:
                 load=True,
                 require_cached=args.require_cached_build,
             )
-            q8_qs, q8_d, q8_sum = _quantize_q8_1_blocks(x_host)
-            q8_qs_dev, _ = _copy_to_device(q8_qs, runtime=runtime)
-            q8_d_dev, _ = _copy_to_device(q8_d, runtime=runtime)
-            q8_sum_dev, _ = _copy_to_device(q8_sum, runtime=runtime)
             qweight_a_dev, _ = _copy_to_device(qweight_a, runtime=runtime)
             qweight_b_dev, _ = _copy_to_device(qweight_b, runtime=runtime)
             out_dev = malloc(out_host.nbytes, runtime=runtime)
-            bufs.extend((q8_qs_dev, q8_d_dev, q8_sum_dev, qweight_a_dev, qweight_b_dev, out_dev))
-            variant_extra = {
-                "host_q8_qs_mib": q8_qs.nbytes / (1 << 20),
-                "host_q8_scale_mib": q8_d.nbytes / (1 << 20),
-                "host_q8_sum_mib": q8_sum.nbytes / (1 << 20),
-                "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
-                "host_raw_qweight_b_mib": qweight_b.nbytes / (1 << 20),
-                "activation_quantization_in_loop": False,
-                "weight_layout": "raw_gguf_q4_k",
-                "prototype_note": "Prequantized activation scalar integer-dot prototype; not a tiled MMQ implementation.",
-            }
+            bufs.extend((qweight_a_dev, qweight_b_dev, out_dev))
 
-            def launch() -> None:
-                gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(
-                    q8_qs_dev.ptr,
-                    q8_d_dev.ptr,
-                    q8_sum_dev.ptr,
-                    start_compact_dev.ptr,
-                    start_wmma_dev.ptr,
-                    tile_expert_dev.ptr,
-                    qweight_a_dev.ptr,
-                    qweight_b_dev.ptr,
-                    out_dev.ptr,
-                    compact_rows,
-                    args.hidden,
-                    args.out_features_a,
-                    args.out_features_b,
-                    args.experts,
-                    wmma_total_rows,
-                    stream=stream,
-                    library=library,
-                    runtime=runtime,
-                )
+            if args.mode == "q8-1-dot":
+                q8_qs, q8_d, q8_sum = _quantize_q8_1_blocks(x_host)
+                q8_qs_dev, _ = _copy_to_device(q8_qs, runtime=runtime)
+                q8_d_dev, _ = _copy_to_device(q8_d, runtime=runtime)
+                q8_sum_dev, _ = _copy_to_device(q8_sum, runtime=runtime)
+                bufs.extend((q8_qs_dev, q8_d_dev, q8_sum_dev))
+                variant_extra = {
+                    "host_q8_qs_mib": q8_qs.nbytes / (1 << 20),
+                    "host_q8_scale_mib": q8_d.nbytes / (1 << 20),
+                    "host_q8_sum_mib": q8_sum.nbytes / (1 << 20),
+                    "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
+                    "host_raw_qweight_b_mib": qweight_b.nbytes / (1 << 20),
+                    "activation_quantization_in_loop": False,
+                    "activation_layout": "separate_qs_f32_scale_f32_sum",
+                    "weight_layout": "raw_gguf_q4_k",
+                    "prototype_note": "Prequantized activation scalar integer-dot prototype; not a tiled MMQ implementation.",
+                }
+
+                def launch() -> None:
+                    gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(
+                        q8_qs_dev.ptr,
+                        q8_d_dev.ptr,
+                        q8_sum_dev.ptr,
+                        start_compact_dev.ptr,
+                        start_wmma_dev.ptr,
+                        tile_expert_dev.ptr,
+                        qweight_a_dev.ptr,
+                        qweight_b_dev.ptr,
+                        out_dev.ptr,
+                        compact_rows,
+                        args.hidden,
+                        args.out_features_a,
+                        args.out_features_b,
+                        args.experts,
+                        wmma_total_rows,
+                        stream=stream,
+                        library=library,
+                        runtime=runtime,
+                    )
+
+            else:
+                q8_ds4 = _quantize_q8_1_mmq_ds4_blocks(x_host)
+                q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
+                bufs.append(q8_ds4_dev)
+                variant_extra = {
+                    "host_q8_ds4_mib": q8_ds4.nbytes / (1 << 20),
+                    "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
+                    "host_raw_qweight_b_mib": qweight_b.nbytes / (1 << 20),
+                    "activation_quantization_in_loop": False,
+                    "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+                    "weight_layout": "raw_gguf_q4_k",
+                    "prototype_note": "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation.",
+                }
+
+                def launch() -> None:
+                    gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out(
+                        q8_ds4_dev.ptr,
+                        start_compact_dev.ptr,
+                        start_wmma_dev.ptr,
+                        tile_expert_dev.ptr,
+                        qweight_a_dev.ptr,
+                        qweight_b_dev.ptr,
+                        out_dev.ptr,
+                        compact_rows,
+                        args.hidden,
+                        args.out_features_a,
+                        args.out_features_b,
+                        args.experts,
+                        wmma_total_rows,
+                        stream=stream,
+                        library=library,
+                        runtime=runtime,
+                    )
 
         for _ in range(args.warmup):
             launch()

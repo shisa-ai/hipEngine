@@ -314,10 +314,19 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `mmq_y` weight rows in shared memory, processes two 128-value Q8_1 activation
   blocks per 256-wide Q4_K block, and writes back a full tile
   (`mmq.cuh:3447-3518`). On RDNA3, `mmq_y=128`; `mmq_x` is chosen up to 128 by
-  shared-memory fit and output column tiling (`mmq.cuh:3943-4138`).
-  **Next code test:** port a minimal Q4_K/DS4 shared-memory + WMMA-tile kernel
-  for the same microbench shape (even without stream-k/fixup) rather than
-  optimizing the rejected scalar Q8_1 dot.
+  shared-memory fit and output column tiling (`mmq.cuh:3943-4138`). A follow-up
+  `q8-1-ds4-dot` diagnostic now feeds the same scalar raw-Q4_K dot loop with the
+  real DS4 `block_q8_1_mmq` activation layout. Layout alone did not help: on
+  the same qwen-like reduced-expert shape, same-session runs measured
+  `q8-1-ds4-dot` at `22.497 ms/call` (`6.11` logical TFLOP/s), `q8-1-dot` at
+  `21.727 ms/call`, and selected-WMMA at `11.951 ms/call`; the DS4 scalar path
+  is therefore ~`1.88x` slower than selected-WMMA and ~`3.5%` slower than the
+  separate-array scalar prototype, with finite output and `0.142 GiB` tracked
+  fixture memory. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-selected-prefill-prototype.json`.
+  **Next code test:** port the actual shared-memory + WMMA/MMA tile path
+  (`load_tiles_q4_K` + `vec_dot_q8_1_q8_1_mma`) for this microbench shape;
+  layout-only scalar variants are rejected.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
