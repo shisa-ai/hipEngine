@@ -3021,3 +3021,95 @@ Interpretation:
 - Next memory work should re-probe the `Q4_K_S` max-fit boundary above 65K and
   only consider no-T16/emergency residency if long-context headroom is worth the
   current speed tradeoff.
+
+---
+
+## GGUF vs PARO vs llama.cpp gap analysis (2026-06-16)
+
+### Baseline numbers (W7900 GPU0, TheRock 7.13, Q4_K_M)
+
+| Workload | hipEngine GGUF PF | hipEngine PARO PF | llama HIP PF | llama VK PF |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 2182 | 2730 | 2516 | 2823 |
+| 4K/128 | 2491 | 2880 | 2303 | 2582 |
+| 32K/128 | 1840 | 2079 | 1685 | 1969 |
+
+| Workload | hipEngine GGUF DC | hipEngine PARO DC | llama HIP DC | llama VK DC |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 106.6 | 115.2 | 79.6 | 106.2 |
+| 4K/128 | 97.5 | 105.3 | 78.7 | 102.6 |
+| 32K/128 | 84.9 | 92.0 | 71.8 | 91.6 |
+
+Peak memory: hipEngine GGUF 26.3 GiB vs PARO 21.0 GiB vs llama HIP 21.6 GiB.
+
+### Prefill gap root causes
+
+**#1 — MoE expert prefill uses GEMV instead of WMMA GEMM.**
+PARO uses `gemm_awq_selected_dual_pack8_wmma_compact_bf16` for MoE experts at
+prefill (tokens > 8). GGUF's compact WMMA path exists
+(`_try_run_post_attention_moe_rows_compact_wmma` in `qwen35_gguf_runner.py`)
+but is gated behind `HIPENGINE_GGUF_WMMA_PREFILL=1`, which defaults to off.
+Without it, GGUF dispatches per-expert GEMV launches — the largest single
+kernel-level difference for a MoE model. Estimated contribution: 5-10%.
+
+**#2 — BF16 activations vs PARO's FP16.**
+PARO operates FP16 natively. GGUF uses BF16 + extra `bf16_to_f32` casts
+before conv/GDN operations. BF16 has higher register pressure on RDNA3.
+Estimated contribution: 2-3%.
+
+**#3 — GEMV-shaped dense projection kernels at prefill.**
+Without WMMA opt-in, GGUF uses row-GEMV for all projections even at prefill.
+PARO uses AWQ pack8 multi-row GEMV with better cache behavior. Estimated
+contribution: 3-5%.
+
+### Decode gap root causes
+
+**#1 (~60% of gap) — Dequantization kernel quality.**
+GGUF Q4_K format (6-bit scales + 4-bit weights + mins) has more complex
+dequant math per element than PARO's AWQ pack8 (128-element group scaling).
+Compounds across ~150+ GEMV launches per token.
+
+**#2 (~25% of gap) — MoE C-dispatch.**
+PARO bundles 6 MoE sub-methods into one `extern "C"` call via
+`_try_moe_c1_c_dispatch`, eliminating ~320 Python→C transitions per token.
+GGUF has no C-dispatch equivalent.
+
+**#3 (~15% of gap) — Fewer launches from dual/fused projections.**
+PARO's dual QK GEMV (1 launch for 2 matrices), fused RMSNorm+rotate, and
+fused activate+down save ~100-150 launches vs GGUF across all layers.
+
+### Peak memory gap root causes
+
+The gap is constant across all context sizes, confirming it is weight
+materialization, not scratch/KV:
+
+| Component | Delta | Source |
+| --- | --- | --- |
+| Pack8 expansion for dense Q4_K | **+2-3 GiB** | `repack_gguf_q4_k_pack8()` precomputes FP32 scale/min arrays (33% larger than raw) |
+| Q8_0 T16 tile overhead | **+0.5-1 GiB** | 251 Q8_0 tensors get T16 layout with decode-repack |
+| GGUF Q4_K larger than PARO W4 | **+0.6 GiB** | Q4_K is 4.5 bits/value vs AWQ ~4.16 bits/value |
+| Expert T16 expansion | +0.1 GiB | 2.8% over raw |
+| Scratch/KV/other | ~0 | Equivalent architecture |
+
+### Fix plan (ordered by leverage)
+
+1. **Enable WMMA prefill for GGUF decode-repack path.** The kernels exist;
+   `HIPENGINE_GGUF_WMMA_PREFILL=1` needs to be wired for the decode-repack
+   combination. Expected: +5-10% prefill, neutral decode. Risk: correctness.
+
+2. **Port C-dispatch for GGUF MoE layers.** Adapt PARO's
+   `_try_moe_c1_c_dispatch` pattern. Expected: +3-5% decode. Risk: low.
+
+3. **Fuse RMSNorm+rotate for GGUF.** Same pattern as PARO's
+   `paro_rmsnorm_rotate2_fp16`. Expected: +1-2% decode. Risk: low.
+
+4. **Fuse activate+down for GGUF selected experts.** Expected: +1-2% decode.
+   Risk: low.
+
+5. **Pack8 layout optimization.** The FP32 scale/min arrays are the biggest
+   memory cost. A raw-GGUF dequant path in kernels would avoid the 33%
+   expansion but may regress decode speed. Tradeoff: memory vs speed.
+
+6. **Drop T16 decode-repack for Q8_0 tensors.** Saves 0.5-1 GiB; 251 Q8_0
+   tensors don't benefit much from T16 at decode. Risk: decode speed regression
+   on Q8_0 projections.
