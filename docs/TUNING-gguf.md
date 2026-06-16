@@ -469,6 +469,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q8_0 T16 shared-down rows=512 TN16 rejected (2026-06-16).** Extending the
+  resident Q8_0 T16 shared-expert down (`in=512,out=2048`) `TN16` tile from
+  rows `>512` to rows `>=512` kept IDs and memory stable and passed the `154`
+  test guard, but regressed the primary gate versus the retained small-shape
+  policy: `512/128` `1958.693 / 126.924 -> 1956.322 / 126.753 tok/s`, `4K/128`
+  `2293.994 / 114.991 -> 2284.550 / 114.931 tok/s`. Code was reverted to the
+  rows `>512` policy. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-down512-tn16-rejected.json`.
+
 - **G-P4 low-memory non-attn chunks=512 not retained (2026-06-16).** Raising
   linear/MoE/post/RoPE chunks from 256 to 512 while keeping full-attn query at
   768 improved 128K prefill to `718.895 tok/s`, but all-768 was faster
