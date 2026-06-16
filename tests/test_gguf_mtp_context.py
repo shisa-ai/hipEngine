@@ -1356,6 +1356,8 @@ def test_gguf_mtp_context_builds_metadata_only_kvlivespans_plan_for_draft_batch(
         "decode_live_counts": [7, 8],
         "token_positions": [6, 7],
         "evict_mask": None,
+        "required_fields": list(Qwen35GGUFMTPKVLiveSpansPlan.required_fields()),
+        "validator": "Qwen35GGUFMTPKVLiveSpansPlan.validate_payload",
     }
     assert plan.cpu_reference_kwargs(role="append") == {
         "kv_base_offsets": [[0, 1], [0, 1]],
@@ -1390,6 +1392,21 @@ def test_gguf_mtp_kvlivespans_plan_validates_abi_fields() -> None:
             decode_live_counts=(7,),
             token_positions=(6,),
         )
+    payload = context.build_kvlivespans_plan(batch, block_size=4).as_dict()
+    assert Qwen35GGUFMTPKVLiveSpansPlan.contract() == {
+        "required_fields": list(Qwen35GGUFMTPKVLiveSpansPlan.required_fields()),
+        "validator": "Qwen35GGUFMTPKVLiveSpansPlan.validate_payload",
+    }
+    Qwen35GGUFMTPKVLiveSpansPlan.validate_payload(payload)
+    bad_payload = {**payload, "validator": "wrong"}
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPKVLiveSpansPlan.validate_payload(bad_payload)
+    bad_payload = {**payload, "decode_live_counts": [5]}
+    with pytest.raises(ValueError, match="decode_live_counts"):
+        Qwen35GGUFMTPKVLiveSpansPlan.validate_payload(bad_payload)
+    bad_payload = {**payload, "token_positions": [99]}
+    with pytest.raises(ValueError, match="token_positions"):
+        Qwen35GGUFMTPKVLiveSpansPlan.validate_payload(bad_payload)
     with pytest.raises(ValueError, match="role"):
         context.build_kvlivespans_plan(batch).cpu_reference_kwargs(role="prefill")
 

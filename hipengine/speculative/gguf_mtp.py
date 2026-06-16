@@ -599,6 +599,98 @@ class Qwen35GGUFMTPKVLiveSpansPlan:
             storage_dtype=str(storage_dtype),
         )
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "spans_mode",
+            "storage_dtype",
+            "rows",
+            "block_size",
+            "logical_blocks",
+            "base_offsets",
+            "append_live_counts",
+            "decode_live_counts",
+            "token_positions",
+            "evict_mask",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPKVLiveSpansPlan.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "KVLiveSpans plan",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+
+        base_offsets = payload.get("base_offsets")
+        append_live_counts = payload.get("append_live_counts")
+        decode_live_counts = payload.get("decode_live_counts")
+        token_positions = payload.get("token_positions")
+        evict_mask = payload.get("evict_mask")
+        for name, values in (
+            ("base_offsets", base_offsets),
+            ("append_live_counts", append_live_counts),
+            ("decode_live_counts", decode_live_counts),
+            ("token_positions", token_positions),
+        ):
+            if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+                raise ValueError(f"{field_name} {name} must be a sequence")
+        normalized_base_offsets = tuple(tuple(int(item) for item in row) for row in base_offsets)
+        normalized_append = tuple(int(item) for item in append_live_counts)
+        normalized_decode = tuple(int(item) for item in decode_live_counts)
+        normalized_positions = tuple(int(item) for item in token_positions)
+        if normalized_positions != normalized_append:
+            raise ValueError(f"{field_name} token_positions must match append_live_counts")
+        if normalized_decode != tuple(position + 1 for position in normalized_positions):
+            raise ValueError(f"{field_name} decode_live_counts must equal token_positions + 1")
+        normalized_evict_mask: tuple[tuple[bool, ...], ...] | None
+        if evict_mask is None:
+            normalized_evict_mask = None
+        else:
+            if not isinstance(evict_mask, Sequence) or isinstance(evict_mask, (str, bytes)):
+                raise ValueError(f"{field_name} evict_mask must be null or a sequence")
+            normalized_evict_mask = tuple(tuple(bool(item) for item in row) for row in evict_mask)
+        cls(
+            rows=int(payload["rows"]),
+            block_size=int(payload["block_size"]),
+            logical_blocks=int(payload["logical_blocks"]),
+            base_offsets=normalized_base_offsets,
+            append_live_counts=normalized_append,
+            decode_live_counts=normalized_decode,
+            token_positions=normalized_positions,
+            evict_mask=normalized_evict_mask,
+            spans_mode=str(payload["spans_mode"]),
+            storage_dtype=str(payload["storage_dtype"]),
+        )
+
     def __post_init__(self) -> None:
         if self.rows <= 0:
             raise ValueError("rows must be positive")
@@ -669,6 +761,8 @@ class Qwen35GGUFMTPKVLiveSpansPlan:
             "evict_mask": None
             if self.evict_mask is None
             else [[bool(value) for value in row] for row in self.evict_mask],
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 

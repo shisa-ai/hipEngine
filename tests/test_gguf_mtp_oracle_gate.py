@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPKVLiveSpansPlan
 from scripts.gguf_mtp_oracle_gate import DEFAULT_FIXTURE, run_oracle_gate
 
 
@@ -56,6 +57,8 @@ def test_gguf_mtp_oracle_gate_passes_committed_fixture() -> None:
         "decode_live_counts": [2],
         "token_positions": [1],
         "evict_mask": None,
+        "required_fields": list(Qwen35GGUFMTPKVLiveSpansPlan.required_fields()),
+        "validator": "Qwen35GGUFMTPKVLiveSpansPlan.validate_payload",
     }
     assert result["draft_execution_plan"]["cpu_reference_kwargs"]["decode"] == {
         "kv_base_offsets": [[0]],

@@ -671,9 +671,12 @@ Current status:
   torch-free proposal bridge that resolves the registered draft top-k kernel and
   converts runtime logits into selected draft rows plus top-k evidence. It can
   also emit a metadata-only uniform KVLiveSpans plan for the future single-NextN
-  append/decode cache from a draft batch, can bundle proposal + KVLiveSpans
-  into a single draft execution-plan contract carrying CPU-reference-shaped
-  append/decode kwargs, can project GGUF-specific draft rows into the shared
+  append/decode cache from a draft batch. The KVLiveSpans payload now advertises
+  and validates its ABI contract (`base_offsets`, append/decode live counts,
+  token positions, optional evict mask, dtype/mode, and block shape) before it is
+  bundled with the proposal into a single draft execution-plan contract carrying
+  CPU-reference-shaped append/decode kwargs. The context can project
+  GGUF-specific draft rows into the shared
   `DraftBatch`/`TargetVerifyBatch` verifier ABI while deriving root rows from
   depth-1 GGUF parent token/position metadata, keeping embedding-seed pointers
   on GGUF rows, producing a shared `TargetAcceptSummary` CPU oracle from target
@@ -964,8 +967,9 @@ is now answered by the M1 required/optional table.)
       now include dense and KVLiveSpans-shaped paged-cache paths through the full
       NextN logits oracle, and `Qwen35GGUFMTPContext` covers the B1-B4
       seed/batch/proposal/verification state scaffold plus metadata-only
-      KVLiveSpans and execution-plan contracts exported through
-      `hipengine.speculative`; `Qwen35GGUFMTPRuntimeKernelPlan` now enumerates
+      KVLiveSpans (including an explicit payload validator) and execution-plan
+      contracts exported through `hipengine.speculative`;
+      `Qwen35GGUFMTPRuntimeKernelPlan` now enumerates
       the missing native composite NextN runtime key plus the KVLiveSpans-shaped
       `paged_kv_write/mixed_bf16_spans` append and
       `paged_attn_decode/bf16_context_spans` decode keys under
