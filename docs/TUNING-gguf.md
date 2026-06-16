@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Full-attention post/RoPE chunk=2048 rejected (2026-06-16).** Raising the
+  mid-context full-attention post/RoPE prefill chunks from `1024` to `2048`
+  while keeping query chunks at `4096` passed the config smoke and `154`-test
+  GGUF guard with stable IDs and flat memory, but it regressed the retained
+  decode-policy cache baseline (`512/128` `1958.536 / 127.263 -> 1884.846 /
+  127.043 tok/s`, `4K/128` `2292.684 / 114.991 -> 2294.975 / 114.711 tok/s`).
+  Code and test changes were reverted. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-postrope2048-rejected.json`.
+
 - **Full-attention KV pair cache rejected (2026-06-16).** Adding cached
   per-layer full-attention `(key_cache, value_cache)` tuples to
   `_FullStackScratch` passed the focused full-cache/routing smoke and `154`-test
