@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q6_K T16 lm-head block256 rejected (2026-06-16).** Changing dense Q6_K
+  T16 lm-head GEMV decode from `__launch_bounds__(128,4)` / `blockDim=128` to
+  `__launch_bounds__(256,2)` / `blockDim=256` passed the Q6 correctness suite
+  and `154`-test GGUF guard with stable IDs and flat memory, but it regressed
+  decode sharply on both retained gates (`512/128` `127.263 -> 125.297 tok/s`,
+  `4K/128` `114.991 -> 113.797 tok/s`) and also lowered `512/128` prefill. Code
+  was reverted; keep Q6_K T16 decode at `128,4` / `blockDim=128`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q6t16-block256-rejected.json`.
+
 - **Q8_0 T16 large-input TM16 rejected (2026-06-16).** Changing the resident
   Q8_0 T16 WMMA prefill tile policy for `in>=4096,out>=2048` projections from
   `TM32/TN32` to `TM16/TN32` passed the focused tile-policy smoke and `154`-test
