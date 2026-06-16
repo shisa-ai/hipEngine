@@ -20,6 +20,7 @@ EXPECTED_CLI_GATE_EXIT_CODES = {
     "native_runtime_missing": 7,
     "optimization_missing": 8,
     "kvlivespans_smoke_fail": 9,
+    "exactness_failed": 10,
 }
 
 
@@ -695,6 +696,130 @@ def test_b1_prompt_suite_cli_fail_on_partial_trace_budget_rejects_compact_matrix
     assert rc == 3
     matrix = json.loads(out.read_text())
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+
+
+def test_b1_prompt_suite_cli_fail_on_exactness_allows_default_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-exactness-fail",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert artifact["execution"]["exactness_gate"] == "passed"
+
+
+def test_b1_prompt_suite_cli_fail_on_exactness_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "run_oracle_gate",
+        lambda fixture: {
+            "passed": False,
+            "fixture": str(fixture),
+            "metrics": {"max_kl": 0.5, "top1_agreement": 0.0},
+            "kvlivespans_paged_cache_smoke": {
+                "passed": True,
+                "max_abs_diff": 0.0,
+            },
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-exactness-fail",
+        ]
+    )
+
+    assert rc == 10
+    artifact = json.loads(out.read_text())
+    assert artifact["execution"]["exactness_gate"] == "failed"
+    assert artifact["blockers"][0]["code"] == "oracle_gate_failed"
+
+
+def test_b1_prompt_suite_cli_fail_on_exactness_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "run_oracle_gate",
+        lambda fixture: {
+            "passed": False,
+            "fixture": str(fixture),
+            "metrics": {"max_kl": 0.5, "top1_agreement": 0.0},
+            "kvlivespans_paged_cache_smoke": {
+                "passed": True,
+                "max_abs_diff": 0.0,
+            },
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-exactness-fail",
+        ]
+    )
+
+    assert rc == 10
+    matrix = json.loads(out.read_text())
+    assert matrix["all_exactness_gates_pass"] is False
 
 
 def test_b1_prompt_suite_cli_fail_on_kvlivespans_smoke_allows_default_b1(

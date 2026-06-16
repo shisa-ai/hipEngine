@@ -86,6 +86,7 @@ CLI_GATE_EXIT_CODES = {
     "native_runtime_missing": 7,
     "optimization_missing": 8,
     "kvlivespans_smoke_fail": 9,
+    "exactness_failed": 10,
 }
 
 
@@ -836,6 +837,16 @@ def build_b1_b4_prompt_suite_matrix(
     return matrix
 
 
+def _has_failed_exactness_gate(artifact: dict[str, Any]) -> bool:
+    all_pass = artifact.get("all_exactness_gates_pass")
+    if isinstance(all_pass, bool):
+        return not all_pass
+    execution = artifact.get("execution")
+    if not isinstance(execution, dict):
+        return False
+    return execution.get("exactness_gate") != "passed"
+
+
 def _has_partial_llamacpp_trace_budget_coverage(artifact: dict[str, Any]) -> bool:
     partial_budgets = artifact.get("partial_llamacpp_trace_budget_budgets")
     if isinstance(partial_budgets, list):
@@ -970,6 +981,11 @@ def main(argv: list[str] | None = None) -> int:
         help="return exit code 3 when the llama.cpp trace did not exercise the requested draft budget",
     )
     parser.add_argument(
+        "--fail-on-exactness-fail",
+        action="store_true",
+        help="return exit code 10 when the CPU-reference or llama.cpp trace exactness gate fails",
+    )
+    parser.add_argument(
         "--fail-on-kvlivespans-smoke-fail",
         action="store_true",
         help="return exit code 9 when the KVLiveSpans paged-cache smoke fails",
@@ -1040,6 +1056,8 @@ def main(argv: list[str] | None = None) -> int:
         print(payload, end="")
     if args.fail_on_partial_trace_budget and _has_partial_llamacpp_trace_budget_coverage(artifact):
         return 3
+    if args.fail_on_exactness_fail and _has_failed_exactness_gate(artifact):
+        return 10
     if args.fail_on_kvlivespans_smoke_fail and _has_failed_kvlivespans_paged_cache_smoke(
         artifact
     ):
