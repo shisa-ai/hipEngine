@@ -97614,3 +97614,50 @@ Validation:
   backend/quant dispatch branch; no generation integration, native MTP execution,
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Future native attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF shared DraftBatch projection
+
+Implemented `mtp-gguf` multiloop iteration 110: added a torch-free bridge from
+GGUF-specific MTP draft rows into the shared verifier `DraftBatch` ABI.
+
+Scope note:
+- Metadata/state plumbing only. No GGUF tensor payload loading, hipEngine
+  generation integration, native NextN execution, actual KV allocation, GPU
+  kernel, attention/KV runtime path, or performance path changed.
+- `Qwen35GGUFMTPDraftRow` still owns the GGUF-only embedding seed pointer; the
+  new shared projection exports only verifier-facing candidate token/topology
+  metadata for `TargetVerifyBatch`.
+
+Changes:
+- Added `Qwen35GGUFMTPDraftBatch.to_shared_draft_batch()` in
+  `hipengine/speculative/gguf_mtp.py`.
+- The projection validates that B2+ rows reference an earlier same-request depth
+  row and emits explicit `tree_parents`, so interleaved multi-request chains do
+  not rely on `DraftBatch`'s single-chain default parent inference.
+- Added tests covering interleaved two-request B2 projection through
+  `TargetVerifyBatch.from_draft()` and missing-parent rejection.
+- Made the runtime-kernel readiness test explicitly register sampler kernels so
+  the native `mtp_draft_topk/w4_gguf/topk_device` optimization check is not
+  import-order dependent.
+- Updated `docs/MTP-gguf.md` M4 status/deliverables to record the shared ABI
+  bridge and the fact that GGUF rows still carry embedding seed pointers.
+
+Validation:
+- Initial context-suite validation exposed the existing order-dependent sampler
+  registration gap in `test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys`;
+  after adding explicit sampler registration the suite passed.
+- Focused GGUF MTP context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> `29` passed.
+- Prompt-suite regression passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `41` passed.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/state/tests/docs only; no torch import; no
+  runtime backend/quant dispatch branch; no native MTP execution, actual KV
+  allocation, GPU kernel, attention/KV runtime path, or performance claim.
+  Future native attention/KV-write execution remains KVLiveSpans-gated.

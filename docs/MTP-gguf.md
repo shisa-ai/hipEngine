@@ -666,11 +666,13 @@ Current status:
   also emit a metadata-only uniform KVLiveSpans plan for the future single-NextN
   append/decode cache from a draft batch, can bundle proposal + KVLiveSpans
   into a single draft execution-plan contract carrying CPU-reference-shaped
-  append/decode kwargs, and can score proposed draft tokens against target tokens
-  to produce accepted counts while applying the llama.cpp verify-row reseed rule,
-  plus an aggregate metrics contract for `accepted_per_draft` and
-  `accepted_per_output` denominators. It does not allocate MTP KV buffers or run
-  NextN draft kernels yet.
+  append/decode kwargs, can project GGUF-specific draft rows into the shared
+  `DraftBatch`/`TargetVerifyBatch` verifier ABI while keeping embedding-seed
+  pointers on GGUF rows, and can score proposed draft tokens against target
+  tokens while applying the llama.cpp verify-row reseed rule, plus an aggregate
+  metrics contract for `accepted_per_draft` and `accepted_per_output`
+  denominators. It does not allocate MTP KV buffers or run NextN draft kernels
+  yet.
 
 Deliverables:
 
@@ -690,8 +692,9 @@ Deliverables:
   `DraftBatch`/`TargetVerifyBatch`/accept/commit live in the PARO/safetensors
   runner stack (`qwen35_paro_runner.py`, `batch_scheduler.py`,
   `hipengine/speculative/`, `loading/mtp.py`); the GGUF runner has none of it.
-  The `DraftBatch` ABI must permit a row carrying **both** a token id and an
-  embedding seed.
+  `Qwen35GGUFMTPDraftBatch.to_shared_draft_batch()` now bridges candidate token
+  topology into that shared ABI; the GGUF row objects still carry the extra
+  embedding seed pointer until native MTP runtime buffers exist.
 
 Acceptance:
 

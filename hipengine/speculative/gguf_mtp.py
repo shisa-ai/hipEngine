@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.speculative.interfaces import DraftBatch
 
 
 DEFAULT_DRAFT_TOPK_KERNEL = ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
@@ -219,6 +220,47 @@ class Qwen35GGUFMTPDraftBatch:
     @property
     def embedding_seed_ptrs(self) -> tuple[int, ...]:
         return tuple(row.embedding_seed_ptr for row in self.rows)
+
+    def to_shared_draft_batch(self, *, mode: str = "verify_chain") -> DraftBatch:
+        """Project GGUF MTP rows into the shared target verifier ABI.
+
+        GGUF MTP keeps embedding-seed pointers on ``Qwen35GGUFMTPDraftRow``.
+        The shared ``DraftBatch`` is candidate-only, so this method deliberately
+        exports only verifier-facing token/topology metadata while validating
+        that each deeper draft row references an earlier row for the same
+        request.
+        """
+
+        target_mode = str(mode)
+        if target_mode != "verify_chain":
+            raise ValueError("GGUF MTP shared draft batches must use verify_chain mode")
+        parent_by_request_depth: dict[tuple[int, int], int] = {}
+        tree_parents: list[int] = []
+        for index, row in enumerate(self.rows):
+            if row.draft_depth == 1:
+                parent = -1
+            else:
+                parent_key = (row.request_id, row.draft_depth - 1)
+                if parent_key not in parent_by_request_depth:
+                    raise ValueError("GGUF MTP draft rows must be ordered parent before child")
+                parent = parent_by_request_depth[parent_key]
+                parent_row = self.rows[parent]
+                if row.parent_token_id != parent_row.token_id:
+                    raise ValueError("draft row parent_token_id must match the previous depth token_id")
+                if row.parent_position != parent_row.position:
+                    raise ValueError("draft row parent_position must match the previous depth position")
+            parent_by_request_depth[(row.request_id, row.draft_depth)] = index
+            tree_parents.append(parent)
+        return DraftBatch(
+            request_ids=self.request_ids,
+            candidate_tokens=tuple(row.token_id for row in self.rows),
+            parent_positions=tuple(row.parent_position for row in self.rows),
+            draft_depths=tuple(row.draft_depth for row in self.rows),
+            row_to_request=tuple(row.request_id for row in self.rows),
+            tree_parents=tuple(tree_parents),
+            active_mask=tuple(True for _ in self.rows),
+            mode=target_mode,
+        )
 
     def as_dict(self) -> dict[str, object]:
         return {

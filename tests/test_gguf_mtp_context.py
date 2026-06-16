@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
+from hipengine.kernels.hip_gfx1100.sampling.sampler import register_sampler_kernels
+from hipengine.speculative.interfaces import DraftBatch, TargetVerifyBatch
 from hipengine.speculative.gguf_mtp import (
     GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
     GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
@@ -181,6 +183,92 @@ def test_gguf_mtp_context_builds_multi_depth_draft_batch_from_seed_rows() -> Non
     assert [row.parent_position for row in batch.rows] == [5, 6, 7]
 
 
+def test_gguf_mtp_draft_batch_projects_to_shared_verifier_batch() -> None:
+    rows = (
+        Qwen35GGUFMTPDraftRow(
+            request_id=10,
+            token_id=101,
+            position=6,
+            draft_depth=1,
+            embedding_seed_ptr=0x1000,
+            embedding_hidden_size=8,
+            parent_token_id=100,
+            parent_position=5,
+        ),
+        Qwen35GGUFMTPDraftRow(
+            request_id=20,
+            token_id=201,
+            position=8,
+            draft_depth=1,
+            embedding_seed_ptr=0x2000,
+            embedding_hidden_size=8,
+            parent_token_id=200,
+            parent_position=7,
+        ),
+        Qwen35GGUFMTPDraftRow(
+            request_id=10,
+            token_id=102,
+            position=7,
+            draft_depth=2,
+            embedding_seed_ptr=0x3000,
+            embedding_hidden_size=8,
+            parent_token_id=101,
+            parent_position=6,
+        ),
+        Qwen35GGUFMTPDraftRow(
+            request_id=20,
+            token_id=202,
+            position=9,
+            draft_depth=2,
+            embedding_seed_ptr=0x4000,
+            embedding_hidden_size=8,
+            parent_token_id=201,
+            parent_position=8,
+        ),
+    )
+    batch = Qwen35GGUFMTPDraftBatch(rows=rows)
+
+    shared = batch.to_shared_draft_batch()
+    verify = TargetVerifyBatch.from_draft(
+        shared,
+        root_tokens=(100, 200),
+        root_positions=(5, 7),
+    )
+
+    assert isinstance(shared, DraftBatch)
+    assert shared.request_ids == (10, 20)
+    assert shared.candidate_tokens == (101, 201, 102, 202)
+    assert shared.parent_positions == (5, 7, 6, 8)
+    assert shared.draft_depths == (1, 1, 2, 2)
+    assert shared.row_to_request == (10, 20, 10, 20)
+    assert shared.tree_parents == (-1, -1, 0, 1)
+    assert shared.active_mask == (True, True, True, True)
+    assert verify.tokens == (100, 200, 101, 201, 102, 202)
+    assert verify.positions == (5, 7, 6, 8, 7, 9)
+    assert verify.parent_rows == (-1, -1, 0, 1, 2, 3)
+    assert verify.tree_shape == (0, 0, 1, 2)
+
+
+def test_gguf_mtp_draft_batch_rejects_missing_shared_parent_row() -> None:
+    batch = Qwen35GGUFMTPDraftBatch(
+        rows=(
+            Qwen35GGUFMTPDraftRow(
+                request_id=10,
+                token_id=102,
+                position=7,
+                draft_depth=2,
+                embedding_seed_ptr=0x3000,
+                embedding_hidden_size=8,
+                parent_token_id=101,
+                parent_position=6,
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="parent before child"):
+        batch.to_shared_draft_batch()
+
+
 def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
     register_cpu_reference_kernels(replace=True)
     context = Qwen35GGUFMTPContext(target_session=object())
@@ -315,6 +403,7 @@ def test_gguf_mtp_context_verifies_full_proposal_acceptance_from_execution_plan(
 
 def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() -> None:
     register_cpu_reference_kernels(replace=True)
+    register_sampler_kernels(replace=True)
 
     plan = Qwen35GGUFMTPRuntimeKernelPlan.from_registry(backend="hip_gfx1100")
     payload = plan.as_dict()
