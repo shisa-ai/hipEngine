@@ -457,6 +457,35 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "native_runtime_missing",
         "performance_unready",
     ]
+    assert matrix["cli_gate_failures_by_budget"] == {
+        "B1": [
+            "blocked",
+            "noncomparable_accepted_output",
+            "native_runtime_missing",
+            "performance_unready",
+        ],
+        "B2": [
+            "blocked",
+            "partial_trace_budget",
+            "noncomparable_accepted_output",
+            "native_runtime_missing",
+            "performance_unready",
+        ],
+        "B3": [
+            "blocked",
+            "partial_trace_budget",
+            "noncomparable_accepted_output",
+            "native_runtime_missing",
+            "performance_unready",
+        ],
+        "B4": [
+            "blocked",
+            "partial_trace_budget",
+            "noncomparable_accepted_output",
+            "native_runtime_missing",
+            "performance_unready",
+        ],
+    }
     assert matrix["budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
     assert matrix["artifact_count"] == 4
@@ -604,6 +633,19 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_performance_comparisons_ready"] is False
     assert matrix["performance_unready_budgets"] == ["B1", "B2", "B3", "B4"]
+    assert matrix["cli_gate_failures_by_budget"]["B1"] == [
+        "blocked",
+        "noncomparable_accepted_output",
+        "native_runtime_missing",
+        "performance_unready",
+    ]
+    assert matrix["cli_gate_failures_by_budget"]["B4"] == [
+        "blocked",
+        "partial_trace_budget",
+        "noncomparable_accepted_output",
+        "native_runtime_missing",
+        "performance_unready",
+    ]
     assert matrix["readiness_by_budget"]["B1"]["blocker_codes"] == ["native_gguf_mtp_runtime_missing"]
     assert matrix["readiness_by_budget"]["B4"]["draft_max"] == 4
     assert (

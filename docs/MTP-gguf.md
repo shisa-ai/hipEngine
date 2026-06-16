@@ -355,7 +355,8 @@ matrix artifact does not exercise the requested draft budget, preventing partial
 B2-B4 debug-trace provenance from being mistaken for full-budget parity evidence.
 Each single-budget or matrix artifact embeds `cli_gate_exit_codes` with the
 stable CLI gate names and exit codes plus `cli_gate_failures` with the currently
-failing gate names. Use `--fail-on-precheck-fail` to return
+failing gate names; matrix artifacts also include `cli_gate_failures_by_budget`
+for compact per-budget diagnostics. Use `--fail-on-precheck-fail` to return
 exit code `11` when token/sampling/budget/hidden-seed prechecks fail. Use
 `--fail-on-exactness-fail` to return exit code `10` when the CPU-reference or
 llama.cpp trace exactness gate fails.

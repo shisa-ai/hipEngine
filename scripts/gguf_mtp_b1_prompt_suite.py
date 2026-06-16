@@ -737,6 +737,7 @@ def build_b1_b4_prompt_suite_matrix(
         for draft_max in (1, 2, 3, 4)
     ]
     readiness_by_budget = {item["budget"]: _matrix_budget_readiness(item) for item in artifacts}
+    cli_gate_failures_by_budget = {item["budget"]: item["cli_gate_failures"] for item in artifacts}
     trace_budget_coverage_by_budget = {
         budget: readiness["llamacpp_trace_budget_coverage"]
         for budget, readiness in readiness_by_budget.items()
@@ -791,6 +792,7 @@ def build_b1_b4_prompt_suite_matrix(
         "mode": "preflight",
         "status": "blocked" if any(item["status"] == "blocked" for item in artifacts) else "ready",
         "cli_gate_exit_codes": dict(CLI_GATE_EXIT_CODES),
+        "cli_gate_failures_by_budget": cli_gate_failures_by_budget,
         "model": str(model),
         "backend": str(backend),
         "budgets": [item["budget"] for item in artifacts],
