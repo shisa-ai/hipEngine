@@ -382,6 +382,8 @@ the torch-free `Qwen35GGUFMTPPerformanceReadiness` speculative contract;
 KVLiveSpans paged-cache smoke, full trace-budget coverage, comparable
 accepted/draft and accepted/output denominators, native runtime kernels,
 optimization kernels, and hipEngine metrics are all present.
+`--fail-on-metrics-contract-invalid` returns exit code `12` if the blocked or
+native hipEngine metrics contract validation fails.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -1022,7 +1024,9 @@ is now answered by the M1 required/optional table.)
       denominators are not comparable,
       `--fail-on-native-runtime-missing` exits `7` when native NextN/KVLiveSpans
       runtime keys are absent, `--fail-on-optimization-missing` exits `8` when
-      device-side optimization keys are absent, and `--fail-on-performance-unready`
+      device-side optimization keys are absent,
+      `--fail-on-metrics-contract-invalid` exits `12` when hipEngine metrics
+      contract validation fails, and `--fail-on-performance-unready`
       exits `5` until the combined M6 readiness
       rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean, including
       accepted/draft comparability, the KVLiveSpans smoke, and

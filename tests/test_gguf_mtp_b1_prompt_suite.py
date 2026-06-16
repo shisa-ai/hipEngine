@@ -22,6 +22,7 @@ EXPECTED_CLI_GATE_EXIT_CODES = {
     "kvlivespans_smoke_fail": 9,
     "exactness_failed": 10,
     "precheck_failed": 11,
+    "metrics_contract_invalid": 12,
 }
 
 
@@ -66,6 +67,69 @@ def test_hipengine_metrics_contract_builder_self_validates(monkeypatch: pytest.M
     )
     with pytest.raises(ValueError, match="candidate_budget mismatch"):
         suite._build_hipengine_metrics_contract(draft_max=2)
+
+
+def test_cli_gate_failures_report_invalid_metrics_contracts() -> None:
+    single = {"status": "ready", "hipengine_metrics_contract_validation": {"passed": False}}
+    matrix = {
+        "status": "ready",
+        "all_hipengine_metrics_contracts_valid": False,
+        "hipengine_metrics_contract_validation_summary": {"failed_count": 1},
+    }
+    by_budget = {
+        "status": "ready",
+        "hipengine_metrics_contract_validation_by_budget": {"B2": {"passed": False}},
+    }
+
+    assert suite._has_invalid_hipengine_metrics_contracts(single) is True
+    assert suite._has_invalid_hipengine_metrics_contracts(matrix) is True
+    assert suite._has_invalid_hipengine_metrics_contracts(by_budget) is True
+    assert "metrics_contract_invalid" in suite._cli_gate_failures(single)
+    assert suite.CLI_GATE_EXIT_CODES["metrics_contract_invalid"] == 12
+
+
+def test_b1_prompt_suite_cli_fail_on_metrics_contract_invalid_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    monkeypatch.setattr(
+        suite,
+        "_hipengine_metrics_contract_validation",
+        lambda contract, *, draft_max: {
+            "passed": False,
+            "validator": "synthetic.invalid",
+            "candidate_budget": draft_max,
+            "budget_label": f"B{draft_max}",
+        },
+    )
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-metrics-contract-invalid",
+        ]
+    )
+
+    assert rc == 12
+    artifact = json.loads(out.read_text())
+    assert artifact["hipengine_metrics_contract_validation"]["passed"] is False
+    assert "metrics_contract_invalid" in artifact["cli_gate_failures"]
 
 
 def _token_inventory(path: Path, *, token_ids: list[int] | None = None) -> Path:

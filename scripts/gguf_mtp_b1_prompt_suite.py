@@ -88,6 +88,7 @@ CLI_GATE_EXIT_CODES = {
     "kvlivespans_smoke_fail": 9,
     "exactness_failed": 10,
     "precheck_failed": 11,
+    "metrics_contract_invalid": 12,
 }
 
 
@@ -1007,6 +1008,24 @@ def _has_unready_performance_comparisons(artifact: dict[str, Any]) -> bool:
     return bool(_matrix_budget_readiness(artifact)["performance_comparison_blockers"])
 
 
+def _has_invalid_hipengine_metrics_contracts(artifact: dict[str, Any]) -> bool:
+    all_valid = artifact.get("all_hipengine_metrics_contracts_valid")
+    if isinstance(all_valid, bool) and not all_valid:
+        return True
+    summary = artifact.get("hipengine_metrics_contract_validation_summary")
+    if isinstance(summary, dict):
+        failed_count = summary.get("failed_count")
+        if isinstance(failed_count, int) and failed_count > 0:
+            return True
+    validations_by_budget = artifact.get("hipengine_metrics_contract_validation_by_budget")
+    if isinstance(validations_by_budget, dict):
+        for validation in validations_by_budget.values():
+            if isinstance(validation, dict) and validation.get("passed") is False:
+                return True
+    validation = artifact.get("hipengine_metrics_contract_validation")
+    return isinstance(validation, dict) and validation.get("passed") is False
+
+
 def _cli_gate_failures(artifact: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     if artifact.get("status") == "blocked":
@@ -1021,6 +1040,7 @@ def _cli_gate_failures(artifact: dict[str, Any]) -> list[str]:
         ("native_runtime_missing", _has_missing_native_runtime_kernels),
         ("optimization_missing", _has_missing_optimization_kernels),
         ("performance_unready", _has_unready_performance_comparisons),
+        ("metrics_contract_invalid", _has_invalid_hipengine_metrics_contracts),
     )
     for name, check in checks:
         if check(artifact):
@@ -1117,6 +1137,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="return exit code 8 when GGUF MTP optimization kernel keys are missing",
     )
+    parser.add_argument(
+        "--fail-on-metrics-contract-invalid",
+        action="store_true",
+        help="return exit code 12 when hipEngine metrics contract validation fails",
+    )
     args = parser.parse_args(argv)
 
     if args.compact_matrix and not args.all_budgets:
@@ -1180,6 +1205,8 @@ def main(argv: list[str] | None = None) -> int:
         return 8
     if args.fail_on_performance_unready and _has_unready_performance_comparisons(artifact):
         return 5
+    if args.fail_on_metrics_contract_invalid and _has_invalid_hipengine_metrics_contracts(artifact):
+        return 12
     if args.fail_on_blocked and artifact["status"] == "blocked":
         return 2
     return 0
