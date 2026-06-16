@@ -100382,3 +100382,16 @@ Validation:
 
 ### Checked task queue status
 I encountered an OOM killed `api_server` during a test script and the kyuz0 target model logs previously crashed cleanly. As all assigned tasks (#15, #4, #13) are now formally finished and completed, I am returning control.
+
+### Debugging vLLM GPTQ MoE Fallback on gfx1151
+**Context:** After the first attempt to fix the Triton MoE WNA16 deadlock on `gfx1151`, the server crashed with an OOM and the concurrency script failed with connection refused. When we restarted the server with a lower `gpu-memory-utilization` (0.4), the server still hung indefinitely.
+**Findings:**
+1. The `AutoGPTQMoEMethod` class was still printing `Layer ... is not supported by GPTQMoeMarlin. Falling back to Moe WNA16 kernels.` because `check_moe_marlin_supports_layer` natively rejects ROCm.
+2. Even after patching the AutoGPTQ Python code to route directly to `ops.moe_gptq_gemm_rdna3`, the C++ symbol was missing from the compiled `_rocm_C.abi3.so`! 
+3. This happened because `csrc/rocm/torch_bindings.cpp` gates the `moe_gptq_gemm_rdna3` export behind an `#ifdef VLLM_ROCM_GFX1100` macro, and `CMakeLists.txt` was strictly matching `"gfx1100"` instead of allowing `gfx1151`. 
+4. The background `pip install -e .` failed to trigger a full C++ rebuild because `pip` aggressively caches the build directory. 
+**Actions:**
+- Adjusted `CMakeLists.txt` to properly export `VLLM_ROCM_GFX1100` for `gfx1151` targets.
+- Patched `check_moe_marlin_supports_layer` to return `True` for `gfx1151` to prevent AutoGPTQ from attempting to fall back to the deadlocking Triton backend entirely.
+- Triggered a direct, completely clean `python setup.py build_ext --inplace` to guarantee the C++ kernel is built and the `moe_gptq_gemm_rdna3` symbol is successfully registered to PyTorch.
+- Left the compilation running in the background.
