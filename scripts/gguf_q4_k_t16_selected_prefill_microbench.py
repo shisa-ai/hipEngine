@@ -19,6 +19,11 @@ It builds a synthetic compact-selected MoE fixture and can time either:
   fragment mapping.
 * ``q8-1-ds4-wmma32-pack``: the WMMA32 prototype with the BF16->DS4 Q8_1 GPU
   activation pack kernel included in the timed loop.
+* ``q8-1-ds4-t16-wmma32``: the two-wave integer-WMMA math consuming the resident
+  Q4_K T16 tile layout instead of raw GGUF Q4_K weights, testing whether the
+  no-raw-duplicate runtime layout preserves the DS4 headroom.
+* ``q8-1-ds4-t16-wmma32-pack``: the same resident-Q4T16 prototype with the
+  BF16->DS4 Q8_1 GPU activation pack kernel included in the timed loop.
 * ``q8-1-ds4-wmma64``: a four-wave/64-column raw-Q4_K integer-WMMA diagnostic
   that tests whether larger output-column tiles reduce block scheduling overhead.
 * ``q8-1-ds4-preview-wmma32``: the two-wave integer-WMMA math fed by a
@@ -151,6 +156,8 @@ def parse_args() -> argparse.Namespace:
             "q8-1-ds4-wmma",
             "q8-1-ds4-wmma32",
             "q8-1-ds4-wmma32-pack",
+            "q8-1-ds4-t16-wmma32",
+            "q8-1-ds4-t16-wmma32-pack",
             "q8-1-ds4-wmma64",
             "q8-1-ds4-preview-wmma32",
             "q8-1-ds4-wmma32-ldspack",
@@ -215,9 +222,10 @@ def main() -> None:
         tile_expert_dev, _ = _copy_to_device(tile_expert, runtime=runtime)
         bufs.extend((start_compact_dev, start_wmma_dev, tile_expert_dev))
 
-        if args.mode == "selected-wmma":
+        if args.mode in {"selected-wmma", "q8-1-ds4-t16-wmma32", "q8-1-ds4-t16-wmma32-pack"}:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
                 build_gguf_q4_k_t16_selected_prefill,
+                gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
             )
             from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
@@ -228,38 +236,110 @@ def main() -> None:
             )
             tiles_a = repack_gguf_q4_k_tile16(qweight_a).tiles
             tiles_b = repack_gguf_q4_k_tile16(qweight_b).tiles
-            x_dev, _ = _copy_to_device(x_host, runtime=runtime)
             tiles_a_dev, _ = _copy_to_device(tiles_a, runtime=runtime)
             tiles_b_dev, _ = _copy_to_device(tiles_b, runtime=runtime)
             out_dev = malloc(out_host.nbytes, runtime=runtime)
-            bufs.extend((x_dev, tiles_a_dev, tiles_b_dev, out_dev))
-            variant_extra = {
-                "host_input_mib": x_host.nbytes / (1 << 20),
-                "host_tiles_a_mib": tiles_a.nbytes / (1 << 20),
-                "host_tiles_b_mib": tiles_b.nbytes / (1 << 20),
-                "activation_quantization_in_loop": False,
-                "weight_layout": "gguf_q4_k_t16_v1",
-            }
+            bufs.extend((tiles_a_dev, tiles_b_dev, out_dev))
 
-            def launch() -> None:
-                gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
-                    x_dev.ptr,
-                    start_compact_dev.ptr,
-                    start_wmma_dev.ptr,
-                    tile_expert_dev.ptr,
-                    tiles_a_dev.ptr,
-                    tiles_b_dev.ptr,
-                    out_dev.ptr,
-                    compact_rows,
-                    args.hidden,
-                    args.out_features_a,
-                    args.out_features_b,
-                    args.experts,
-                    wmma_total_rows,
-                    stream=stream,
-                    library=library,
-                    runtime=runtime,
-                )
+            if args.mode in {"q8-1-ds4-t16-wmma32", "q8-1-ds4-t16-wmma32-pack"}:
+                pack_in_loop = args.mode == "q8-1-ds4-t16-wmma32-pack"
+                if pack_in_loop:
+                    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+                        build_gguf_q4_k_q8_1_selected_prefill,
+                        gguf_q8_1_mmq_ds4_pack_bf16,
+                    )
+
+                    pack_library = build_gguf_q4_k_q8_1_selected_prefill(
+                        load=True,
+                        require_cached=args.require_cached_build,
+                    )
+                    q8_ds4 = np.empty((compact_rows, args.hidden // 128, 144), dtype=np.uint8)
+                    q8_ds4_dev = malloc(q8_ds4.nbytes, runtime=runtime)
+                    x_dev, _ = _copy_to_device(x_host, runtime=runtime)
+                    bufs.extend((q8_ds4_dev, x_dev))
+                else:
+                    q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(x_host)
+                    q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
+                    x_dev = None
+                    pack_library = None
+                    bufs.append(q8_ds4_dev)
+                variant_extra = {
+                    "host_q8_ds4_mib": q8_ds4.nbytes / (1 << 20),
+                    "host_input_mib": x_host.nbytes / (1 << 20),
+                    "host_tiles_a_mib": tiles_a.nbytes / (1 << 20),
+                    "host_tiles_b_mib": tiles_b.nbytes / (1 << 20),
+                    "activation_quantization_in_loop": pack_in_loop,
+                    "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+                    "weight_layout": "gguf_q4_k_t16_v1_resident",
+                    "integer_mma": True,
+                    "prototype_note": (
+                        "DS4 activation layout with GPU BF16->Q8_1 pack plus wave32 integer-WMMA32 dot tiles over resident Q4_K T16 repack tiles in the timed loop; diagnostic no-raw-duplicate runtime-viability probe."
+                        if pack_in_loop
+                        else "DS4 activation layout with wave32 integer-WMMA32 dot tiles over resident Q4_K T16 repack tiles; diagnostic no-raw-duplicate layout probe."
+                    ),
+                }
+
+                def launch() -> None:
+                    if pack_in_loop:
+                        assert x_dev is not None and pack_library is not None
+                        gguf_q8_1_mmq_ds4_pack_bf16(
+                            x_dev.ptr,
+                            q8_ds4_dev.ptr,
+                            compact_rows,
+                            args.hidden,
+                            stream=stream,
+                            library=pack_library,
+                            runtime=runtime,
+                        )
+                    gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out(
+                        q8_ds4_dev.ptr,
+                        start_compact_dev.ptr,
+                        start_wmma_dev.ptr,
+                        tile_expert_dev.ptr,
+                        tiles_a_dev.ptr,
+                        tiles_b_dev.ptr,
+                        out_dev.ptr,
+                        compact_rows,
+                        args.hidden,
+                        args.out_features_a,
+                        args.out_features_b,
+                        args.experts,
+                        wmma_total_rows,
+                        stream=stream,
+                        library=library,
+                        runtime=runtime,
+                    )
+
+            else:
+                input_dev, _ = _copy_to_device(x_host, runtime=runtime)
+                bufs.append(input_dev)
+                variant_extra = {
+                    "host_input_mib": x_host.nbytes / (1 << 20),
+                    "host_tiles_a_mib": tiles_a.nbytes / (1 << 20),
+                    "host_tiles_b_mib": tiles_b.nbytes / (1 << 20),
+                    "activation_quantization_in_loop": False,
+                    "weight_layout": "gguf_q4_k_t16_v1",
+                }
+
+                def launch() -> None:
+                    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+                        input_dev.ptr,
+                        start_compact_dev.ptr,
+                        start_wmma_dev.ptr,
+                        tile_expert_dev.ptr,
+                        tiles_a_dev.ptr,
+                        tiles_b_dev.ptr,
+                        out_dev.ptr,
+                        compact_rows,
+                        args.hidden,
+                        args.out_features_a,
+                        args.out_features_b,
+                        args.experts,
+                        wmma_total_rows,
+                        stream=stream,
+                        library=library,
+                        runtime=runtime,
+                    )
 
         else:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (

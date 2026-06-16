@@ -357,9 +357,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `8.261 ms/call`, WMMA64 `8.229 ms/call`, selected-WMMA `11.579 ms/call`, and
   DS4 scalar `21.826 ms/call`. rocprof saw pack launches at roughly
   `18-22 us` on the smaller rows-per-expert=64 trace. Activation packing is
-  therefore not the immediate blocker; the remaining useful MMQ direction is a
-  runtime/fused pack+MMQ integration with real tile reuse, not more same-shape
-  staging/pre-unpack probes.
+  therefore not the immediate blocker. A resident-layout follow-up
+  (`q8-1-ds4-t16-wmma32`) consumes the existing `gguf_q4_k_t16_v1` tiles instead
+  of raw GGUF Q4_K weights and measured `7.764 ms/call` (`17.70` logical
+  TFLOP/s) versus same-run raw WMMA32 `8.224 ms/call` and selected-WMMA
+  `11.566 ms/call`; with GPU BF16→DS4 packing in the timed loop
+  (`q8-1-ds4-t16-wmma32-pack`) it measured `7.810 ms/call` (`17.60` logical
+  TFLOP/s). This is the first DS4/MMQ diagnostic that both beats raw WMMA32 and
+  fits the no-raw-duplicate resident layout story, though it is still a
+  synthetic microbench and not a runtime dispatch path.
   Artifacts:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`,
@@ -367,11 +373,13 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`,
-  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-pack-wmma32-selected-prefill-probe.json`.
-  **Next code test:** stop adding same-shape staging variants. Either wire a
-  guarded runtime/fused pack+MMQ prototype to measure full-model prefill with
-  the GPU DS4 pack included, or switch focus to the now-comparable GDN prefill
-  recurrent / dense Q8_0 WMMA buckets.
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-pack-wmma32-selected-prefill-probe.json`,
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-t16-ds4-wmma32-selected-prefill-probe.json`.
+  **Next code test:** stop adding raw-Q4_K same-shape staging variants. Wire a
+  guarded runtime/fused pack+resident-T16-DS4 prototype to measure full-model
+  prefill and scratch residency, or switch focus to the now-comparable GDN
+  prefill recurrent / dense Q8_0 WMMA buckets if runtime integration proves too
+  invasive.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`
