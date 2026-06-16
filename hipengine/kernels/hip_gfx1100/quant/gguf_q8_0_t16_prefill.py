@@ -114,6 +114,10 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
         tile_m = 64 if rows <= 512 or (rows <= 768 and out_features < 8192) else 32
     elif out_features >= 32:
         tile_m = 32
+        if rows == 1024 and in_features == 2048 and out_features == 2048:
+            # The 1024-row medium-square projection benefits from TN16 in the
+            # full GGUF gate; 512/768-row probes regressed and stay on TN32.
+            tile_n = 16
     else:
         tile_m = 16
     return tile_m, tile_n

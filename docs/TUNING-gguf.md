@@ -199,6 +199,19 @@ memory.
 
 Retained notes:
 
+- **Q8_0 T16 1024-row square-projection TN16 retained (2026-06-16).** The
+  resident Q8_0 T16 WMMA prefill tile policy now uses `TM32/TN16` for the
+  1024-row `in=2048,out=2048` medium-square projection shape only. GPU1 Q4_K_S
+  primary gate moved versus the retained decode-policy-cache baseline to
+  `512/128` `1965.587 / 127.250 tok/s` and `4K/128` `2293.367 / 115.168 tok/s`,
+  stable IDs `220/570`, with tracked peak flat at `21.335 GiB`; the tiny
+  `512/128` decode dip (`127.263 -> 127.250 tok/s`) is treated as run noise, not
+  a decode regression. The required `128K/128` final check measured
+  `741.581 / 67.636 tok/s`, stable ID `[220]`, and `23.310 GiB` tracked peak.
+  Related 512/768-row square, large up-projection, and output-projection TN16
+  probes are recorded as no-holds below. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-square2048-tn16-gate.json`.
+
 - **Q8_0 T16 small-shape prefill tiles retained (2026-06-16).** A follow-up
   resident Q8_0 T16 tile-policy pass uses `TN16` for the shared-expert
   `in=2048,out=512` and `in=512,out=2048` shapes only when `rows > 512`, while
