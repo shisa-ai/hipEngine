@@ -336,7 +336,8 @@ matrix includes a compact `readiness_by_budget` section for precheck booleans,
 missing native keys, exactness status, KVLiveSpans paged-cache smoke status,
 llama.cpp trace budget coverage, metrics-contract status, per-budget
 `hipengine_metrics_contract_by_budget`, per-budget
-`hipengine_metrics_contract_validation_by_budget`, and blocker codes without
+`hipengine_metrics_contract_validation_by_budget`, a compact
+`hipengine_metrics_contract_validation_summary`, and blocker codes without
 requiring reviewers to inspect each full child artifact. It also
 includes matrix-level `kvlivespans_paged_cache_smoke_by_budget`,
 `kvlivespans_paged_cache_max_abs_diff_by_budget`,

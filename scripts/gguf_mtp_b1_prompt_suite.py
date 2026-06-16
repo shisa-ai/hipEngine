@@ -754,6 +754,24 @@ def build_b1_b4_prompt_suite_matrix(
     hipengine_metrics_contract_validation_by_budget = {
         item["budget"]: item["hipengine_metrics_contract_validation"] for item in artifacts
     }
+    hipengine_metrics_contract_valid_budgets = [
+        budget
+        for budget, validation in hipengine_metrics_contract_validation_by_budget.items()
+        if validation["passed"]
+    ]
+    hipengine_metrics_contract_invalid_budgets = [
+        budget
+        for budget, validation in hipengine_metrics_contract_validation_by_budget.items()
+        if not validation["passed"]
+    ]
+    hipengine_metrics_contract_validation_summary = {
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "total_budgets": len(hipengine_metrics_contract_validation_by_budget),
+        "passed_count": len(hipengine_metrics_contract_valid_budgets),
+        "failed_count": len(hipengine_metrics_contract_invalid_budgets),
+        "passed_budgets": hipengine_metrics_contract_valid_budgets,
+        "failed_budgets": hipengine_metrics_contract_invalid_budgets,
+    }
     trace_budget_coverage_by_budget = {
         budget: readiness["llamacpp_trace_budget_coverage"]
         for budget, readiness in readiness_by_budget.items()
@@ -811,9 +829,8 @@ def build_b1_b4_prompt_suite_matrix(
         "cli_gate_failures_by_budget": cli_gate_failures_by_budget,
         "hipengine_metrics_contract_by_budget": hipengine_metrics_contract_by_budget,
         "hipengine_metrics_contract_validation_by_budget": hipengine_metrics_contract_validation_by_budget,
-        "all_hipengine_metrics_contracts_valid": all(
-            validation["passed"] for validation in hipengine_metrics_contract_validation_by_budget.values()
-        ),
+        "hipengine_metrics_contract_validation_summary": hipengine_metrics_contract_validation_summary,
+        "all_hipengine_metrics_contracts_valid": not hipengine_metrics_contract_invalid_budgets,
         "model": str(model),
         "backend": str(backend),
         "budgets": [item["budget"] for item in artifacts],

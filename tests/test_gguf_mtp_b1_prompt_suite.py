@@ -553,6 +553,14 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
             "budget_label": "B4",
         },
     }
+    assert matrix["hipengine_metrics_contract_validation_summary"] == {
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "total_budgets": 4,
+        "passed_count": 4,
+        "failed_count": 0,
+        "passed_budgets": ["B1", "B2", "B3", "B4"],
+        "failed_budgets": [],
+    }
     assert matrix["all_hipengine_metrics_contracts_valid"] is True
     assert matrix["draft_max_values"] == [1, 2, 3, 4]
     assert matrix["artifact_count"] == 4
@@ -742,6 +750,14 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
         "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
         "candidate_budget": 4,
         "budget_label": "B4",
+    }
+    assert matrix["hipengine_metrics_contract_validation_summary"] == {
+        "validator": "Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract",
+        "total_budgets": 4,
+        "passed_count": 4,
+        "failed_count": 0,
+        "passed_budgets": ["B1", "B2", "B3", "B4"],
+        "failed_budgets": [],
     }
     assert matrix["all_hipengine_metrics_contracts_valid"] is True
     assert matrix["all_kvlivespans_paged_cache_smokes_pass"] is True
