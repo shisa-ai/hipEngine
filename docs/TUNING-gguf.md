@@ -620,6 +620,17 @@ No-hold notes:
   fixed position/context scalar arguments. Code was reverted. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-readme-graphsteps2-rejected.json`.
 
+- **Full-attention post/RoPE chunk=512 rejected (2026-06-16).** Lowering only
+  the mid-context full-attention post/RoPE prefill chunks from `1024` to `512`,
+  while keeping query chunks at `4096` and linear/MoE chunks at `1024`, passed
+  the prefill-config smoke and `154`-test GGUF guard with stable IDs and flat
+  memory. It was not retained because the short gate regressed versus the
+  retained decode-policy-cache baseline (`512/128` `1958.536 / 127.263 ->
+  1917.323 / 127.128 tok/s`) while the `4K/128` prefill nudge was tiny/noisy.
+  Code/test changes were reverted; keep mid-context post/RoPE chunks at `1024`.
+  Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-postrope512-rejected.json`.
+
 - **Full-attention post/RoPE chunk=2048 rejected (2026-06-16).** Raising the
   mid-context full-attention post/RoPE prefill chunks from `1024` to `2048`
   while keeping query chunks at `4096` passed the config smoke and `154`-test
