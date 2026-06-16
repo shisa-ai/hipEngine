@@ -2,9 +2,9 @@
 
 These kernels take the resident T16 tile layout from
 ``hipengine/quant/gguf_t16.py`` (``tiles[out_tiles16, blocks_per_row, 544]``)
-and produce dense BF16 / FP16 / F32 outputs. Tile selection mirrors the
-raw Q8_0 prefill kernel so the shape-aware ``_default_tiles`` policy in
-``hipengine/runtime/gguf_linear.py`` can reuse the existing decision tree.
+and produce dense BF16 / FP16 / F32 outputs. Tile selection starts from the
+raw Q8_0 prefill policy but is tuned separately for the resident T16 layout,
+whose contiguous 16-column tile slabs have a different best tile balance.
 """
 
 from __future__ import annotations
@@ -79,26 +79,22 @@ def build_gguf_q8_0_t16_prefill(
 
 
 def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int, int]:
-    """Reuse the raw Q8_0 prefill tile policy (see ``gguf_q8_0_prefill.py``).
+    """Tuned default for resident Q8_0 T16 WMMA prefill tiles.
 
-    Shape-driven decisions:
-    * ``out_features <= 512`` -> ``tile_m = 16``
-    * ``in_features >= 4096`` and ``out_features >= 2048`` -> ``tile_m = 64``
-    * ``in_features <= 2048`` and ``out_features >= 4096`` -> ``tile_m = 16``
-    * ``out_features >= 32`` -> ``tile_m = 32``
-    * else ``tile_m = 16``
-
-    ``tile_n`` is 32 for ``rows >= 32`` (full prefill bulks) and 16 otherwise
-    (small rows, e.g. decode warmup chunks).
+    The T16 resident layout no longer matches the older raw-Q8_0 tile policy:
+    synthetic qwen35moe-shape probes on GPU1 showed that the old raw defaults
+    under-tiled ``in<=2048,out>=4096`` and over-tiled
+    ``in>=4096,out>=2048``.  Keep the small-output and medium defaults stable,
+    but use wider output tiles for the large shared/full-attention projections.
     """
 
     tile_n = 32 if rows >= 32 else 16
     if out_features <= 512:
         tile_m = 16
     elif in_features >= 4096 and out_features >= 2048:
-        tile_m = 64
+        tile_m = 32
     elif in_features <= 2048 and out_features >= 4096:
-        tile_m = 16
+        tile_m = 64 if rows <= 512 or (rows <= 768 and out_features < 8192) else 32
     elif out_features >= 32:
         tile_m = 32
     else:

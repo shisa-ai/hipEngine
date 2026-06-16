@@ -97,16 +97,16 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1837.509` | `126.699` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `2212.932` | `115.335` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1951.832` | `127.138` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `2278.421` | `114.736` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `115.335 tok/s` after
-the GDN prefill recurrent-segments threshold was raised to `1025`, keeping the
-exact single-segment `k2` recurrent path for 512/1024-row primary chunks. This is
-primarily a prefill promotion (`4K/128` +`2.47%` versus the previous default gate;
-`512/128` was flat/noisy-positive at +`0.24%`), with decode effectively flat and
-tracked memory unchanged.
+multiloop metric is the minimum gate decode rate, currently `114.736 tok/s` after
+the resident Q8_0 T16 WMMA prefill tile policy was retuned for the active GGUF
+shape mix. This is a prefill promotion (`512/128` +`6.22%`, `4K/128` +`2.96%`
+versus the GDN-threshold default gate), not a decode promotion: 4K decode moved
+within observed same-session variance while tracked memory and generated IDs
+remained stable.
 
 ## Active GPU1 profile findings
 
@@ -198,6 +198,20 @@ final long-context promotion is now gated by further speed, not construction
 memory.
 
 Retained notes:
+
+- **Q8_0 T16 WMMA prefill tile policy retained (2026-06-16).** The resident
+  Q8_0 T16 prefill wrapper now uses a T16-specific tile policy instead of
+  inheriting the raw-Q8 heuristic: large `in<=2048,out>=4096` projections use
+  `TM64` at 512-row chunks (and selected 768-row `out<8192` chunks) but `TM32`
+  for 1024-row chunks, and `in>=4096,out>=2048` projections use `TM32` instead
+  of `TM64`. GPU1 Q4_K_S primary gate moved to `512/128`
+  `1951.832 / 127.138 tok/s` and `4K/128` `2278.421 / 114.736 tok/s`, stable
+  IDs `220/570`, with tracked peak unchanged at `21.335 GiB`. The required
+  128K check measured `747.085 / 67.728 tok/s`, stable ID `[220]`, and
+  `23.310 GiB` tracked peak. This is retained for prefill; decode is not claimed
+  as improved because the 4K decode median was lower than the immediately prior
+  run but within observed same-session noise. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-prefill-tiles-gate.json`.
 
 - **GDN single-segment `k2` threshold retained (2026-06-16).** The GGUF GDN
   prefill recurrent-segments default threshold is now `1025` instead of `256`,
