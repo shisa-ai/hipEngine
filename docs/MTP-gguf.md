@@ -336,6 +336,7 @@ matrix includes a compact `readiness_by_budget` section for precheck booleans,
 missing native keys, exactness status, KVLiveSpans paged-cache smoke status,
 llama.cpp trace budget coverage, metrics-contract status, per-budget
 `hidden_seed_contract_precheck_by_budget` seed-contract evidence, per-budget
+`execution_by_budget` exactness/next-action stubs, per-budget
 `oracle_gate_by_budget` KL/top-1 plus KVLiveSpans oracle evidence, per-budget
 `llamacpp_trace_oracle_by_budget` denominator/trace evidence, a matrix-level
 `target_context_contract`, self-validating per-budget
@@ -1049,7 +1050,8 @@ is now answered by the M1 required/optional table.)
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
       `readiness_by_budget` parity/preflight/native-key status, per-budget
       `hidden_seed_contract_precheck_by_budget` seed-contract evidence,
-      per-budget `oracle_gate_by_budget` KL/top-1 plus KVLiveSpans oracle
+      per-budget `execution_by_budget` exactness/next-action stubs, per-budget
+      `oracle_gate_by_budget` KL/top-1 plus KVLiveSpans oracle
       evidence, per-budget `llamacpp_trace_oracle_by_budget` denominator/trace
       evidence, a matrix-level `target_context_contract`, self-validating
       `runtime_kernel_precheck_by_budget` payloads, current CLI
