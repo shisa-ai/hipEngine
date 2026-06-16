@@ -93776,3 +93776,37 @@ and faster full-vocab top-p remain P3/native-surface work.
 
 Validation: docs-only; re-read changed `docs/SAMPLING.md` sections and reviewed
 `git diff -- docs/SAMPLING.md`.
+
+## 2026-06-16 - Native sampler overhead diagnostic (#9)
+
+Added `scripts/native_sampler_overhead_profile.py` to profile the promoted PARO
+c=1 native bounded-top-k sampler against greedy graph, greedy eager, and host
+logits controls in one resident session. The script instruments
+`Qwen35ParoResidentSession` copy helpers and native scalar uploads only during
+the measured decode window, so it can distinguish graph-replay effects from
+Python-visible sampler traffic.
+
+Retained diagnostic command:
+- `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/native_sampler_overhead_profile.py --json benchmarks/results/2026-06-16-native-sampler-overhead-profile.json`
+
+Result on GPU0 / W7900 / gfx1100, Qwen3.6-35B-A3B PARO packed, BF16 KV,
+repeated token `9707`, prompt `45`, warmup decode `4`, measured decode `64`:
+- greedy graph replay: `116.010 tok/s`;
+- greedy eager/no-graph: `109.150 tok/s`;
+- native bounded top-k eager (`temperature=0.7`, `top_k=4`, `seed=123`):
+  `94.196 tok/s`;
+- host-logits top-k eager: `34.223 tok/s`;
+- native/greedy eager `0.863x`; native/host `2.752x`.
+
+Native measured decode had `4` H2D calls/token and `3` D2H calls/token visible
+from Python, including `2` native scalar uploads/token (`temperature`, `seed`).
+This makes Task #11 (device-side selected-token/logit writeback) the higher-value
+next overhead experiment, with Task #10 (request-constant scalar buffer caching)
+as secondary. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with
+the diagnostic row. Marked local TaskList #9 complete.
+
+Validation:
+- `python3 -m py_compile scripts/native_sampler_overhead_profile.py` -> passed.
+- `uv run ruff check scripts/native_sampler_overhead_profile.py` -> `All checks passed!`.
+- Retained diagnostic command above -> completed and wrote
+  `benchmarks/results/2026-06-16-native-sampler-overhead-profile.json`.
