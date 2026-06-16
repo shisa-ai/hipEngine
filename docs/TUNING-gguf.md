@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Full-attention cached Qwen-GQA shape rejected (2026-06-16).** Caching the
+  Qwen full-attention GQA-shape boolean on `_FullStackScratch` passed the
+  focused routing smoke and the `154`-test GGUF guard, with stable IDs and flat
+  memory, but it regressed the `512/128` prefill median versus the retained
+  decode-policy cache baseline (`1958.536 -> 1854.538 tok/s`). The small 4K
+  decode nudge (`114.991 -> 115.089 tok/s`) was not enough to retain it. Code
+  and test changes were reverted. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-cached-gqa-shape-rejected.json`.
+
 - **Q8_0 T16 decode block64 rejected (2026-06-16).** Reducing all resident
   Q8_0 T16 GEMV decode kernels from `blockDim/launch_bounds=128` to `64` passed
   unit tests but changed deterministic generated IDs on both primary gates
