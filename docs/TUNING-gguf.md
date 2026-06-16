@@ -479,6 +479,15 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **GDN segment threshold=769 rejected (2026-06-16).** Lowering the GGUF GDN
+  prefill recurrent-segments threshold from `1025` to `769` so 1024-row chunks
+  use `segments_k2` passed the focused routing smoke and `154`-test GGUF guard
+  with stable IDs and flat memory, but it regressed prefill versus the retained
+  decode-policy cache baseline (`512/128` `1958.536 / 127.263 -> 1919.168 /
+  127.082 tok/s`, `4K/128` `2292.684 / 114.991 -> 2236.029 / 114.977 tok/s`).
+  Code and test changes were reverted; keep the default threshold at `1025`.
+  Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-gdn-th769-rejected.json`.
+
 - **README sweep graph steps/replay=2 rejected (2026-06-16).** Changing
   `scripts/qwen35_readme_sweep.py` default `--graph-steps-per-replay` from `1`
   to `2` passed the CLI divisibility smoke and `154`-test GGUF guard, but it
