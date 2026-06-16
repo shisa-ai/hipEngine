@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
-from hipengine.speculative.interfaces import DraftBatch, TargetVerifyBatch
+from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
 
 
 DEFAULT_DRAFT_TOPK_KERNEL = ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
@@ -437,6 +437,30 @@ class Qwen35GGUFMTPDraftExecutionPlan:
 
     def to_target_verify_batch(self, *, mode: str = "verify_chain") -> TargetVerifyBatch:
         return self.proposal.batch.to_target_verify_batch(mode=mode)
+
+    def target_accept_summary_from_top1(
+        self,
+        target_top1: Sequence[int],
+        *,
+        transaction_id: int | None = None,
+        remaining_decode: Sequence[int] | None = None,
+        mode: str = "verify_chain",
+    ) -> TargetAcceptSummary:
+        """CPU oracle for the future GGUF MTP target accept-summary kernel.
+
+        ``target_top1`` is indexed by the shared ``TargetVerifyBatch`` rows built
+        from this execution plan.  The returned summary fixes accepted counts,
+        commit rows/tokens/positions, full-accept flags, and correction tokens
+        without allocating device buffers or mutating GGUF MTP hidden-seed state.
+        """
+
+        target_batch = self.to_target_verify_batch(mode=mode)
+        accept_result = target_batch.accept_from_top1(
+            target_top1,
+            transaction_id=transaction_id,
+            remaining_decode=remaining_decode,
+        )
+        return TargetAcceptSummary.from_accept_result(target_batch, accept_result)
 
     def cpu_reference_kwargs(self) -> dict[str, object]:
         return {

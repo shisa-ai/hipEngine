@@ -7,7 +7,7 @@ import pytest
 
 from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
 from hipengine.kernels.hip_gfx1100.sampling.sampler import register_sampler_kernels
-from hipengine.speculative.interfaces import DraftBatch, TargetVerifyBatch
+from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
 from hipengine.speculative.gguf_mtp import (
     GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
     GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
@@ -312,6 +312,47 @@ def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
         "w4_gguf",
         "full_vocab_d2h",
     ]
+
+
+def test_gguf_mtp_execution_plan_builds_target_accept_summary_from_top1() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1, 2), seed_rows=seeds)
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,), (2,)),
+        top_k_logits=((4.0,), (3.0,)),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+
+    partial = plan.target_accept_summary_from_top1((1, 9, 77), transaction_id=12)
+    full_budgeted = plan.target_accept_summary_from_top1((1, 2, 77), remaining_decode=(2,))
+
+    assert isinstance(partial, TargetAcceptSummary)
+    assert partial.request_ids == (7,)
+    assert partial.accepted_counts == (1,)
+    assert partial.accepted_tokens == ((1,),)
+    assert partial.commit_rows == (1,)
+    assert partial.commit_tokens == (1,)
+    assert partial.commit_positions == (6,)
+    assert partial.full_accept == (False,)
+    assert partial.next_tokens == (9,)
+    assert partial.candidate_counts == (2,)
+    assert partial.transaction_id == 12
+    assert partial.draft_depth == 2
+    assert partial.tree_shape == (0, 1)
+    assert full_budgeted.accepted_counts == (2,)
+    assert full_budgeted.commit_rows == (2,)
+    assert full_budgeted.commit_tokens == (2,)
+    assert full_budgeted.commit_positions == (7,)
+    assert full_budgeted.full_accept == (True,)
+    assert full_budgeted.next_tokens == (None,)
 
 
 def test_gguf_mtp_execution_plan_validates_positions_match_spans() -> None:

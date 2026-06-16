@@ -668,8 +668,9 @@ Current status:
   into a single draft execution-plan contract carrying CPU-reference-shaped
   append/decode kwargs, can project GGUF-specific draft rows into the shared
   `DraftBatch`/`TargetVerifyBatch` verifier ABI while deriving root rows from
-  depth-1 GGUF parent token/position metadata and keeping embedding-seed
-  pointers on GGUF rows, and can score proposed draft tokens against target
+  depth-1 GGUF parent token/position metadata, keeping embedding-seed pointers
+  on GGUF rows, and producing a shared `TargetAcceptSummary` CPU oracle from
+  target top-1 rows, and can score proposed draft tokens against target
   tokens while applying the llama.cpp verify-row reseed rule, plus an aggregate
   metrics contract for `accepted_per_draft` and `accepted_per_output`
   denominators. It does not allocate MTP KV buffers or run NextN draft kernels
@@ -694,10 +695,11 @@ Deliverables:
   runner stack (`qwen35_paro_runner.py`, `batch_scheduler.py`,
   `hipengine/speculative/`, `loading/mtp.py`); the GGUF runner has none of it.
   `Qwen35GGUFMTPDraftBatch.to_shared_draft_batch()` now bridges candidate token
-  topology into that shared ABI, and `to_target_verify_batch()` derives root
-  rows from the depth-1 GGUF parent token/position metadata; the GGUF row objects
-  still carry the extra embedding seed pointer until native MTP runtime buffers
-  exist.
+  topology into that shared ABI, `to_target_verify_batch()` derives root rows
+  from the depth-1 GGUF parent token/position metadata, and
+  `Qwen35GGUFMTPDraftExecutionPlan.target_accept_summary_from_top1()` builds the
+  shared accept-summary oracle from target top-1 rows; the GGUF row objects still
+  carry the extra embedding seed pointer until native MTP runtime buffers exist.
 
 Acceptance:
 
