@@ -303,9 +303,18 @@ def test_gguf_mtp_context_builds_draft_execution_plan_from_logits() -> None:
         },
     }
     verify = plan.to_target_verify_batch()
+    transaction = plan.target_verify_transaction(12)
     assert verify.tokens == (10, 1)
     assert verify.positions == (5, 6)
     assert verify.parent_rows == (-1, 0)
+    assert isinstance(transaction, KVTransaction)
+    assert transaction.transaction_id == 12
+    assert transaction.request_ids == (9,)
+    assert transaction.draft_rows == 1
+    assert transaction.role == "verify_chain"
+    assert transaction.candidate_counts == (1,)
+    assert not transaction.committed
+    assert not transaction.rolled_back
     assert plan.as_dict()["proposed_token_ids"] == [1]
     assert plan.as_dict()["proposal"]["topk_kernel"] == [
         "cpu_reference",

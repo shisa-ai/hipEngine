@@ -670,7 +670,8 @@ Current status:
   `DraftBatch`/`TargetVerifyBatch` verifier ABI while deriving root rows from
   depth-1 GGUF parent token/position metadata, keeping embedding-seed pointers
   on GGUF rows, producing a shared `TargetAcceptSummary` CPU oracle from target
-  top-1 rows, validating shared `TargetCommitPlan` metadata from that summary,
+  top-1 rows, deriving scheduler-facing `KVTransaction` metadata for target
+  verification, validating shared `TargetCommitPlan` metadata from that summary,
   applying the summary or validated commit plan back to GGUF hidden-seed reseed
   state, and scoring proposed draft tokens against target tokens while applying
   the llama.cpp verify-row reseed rule, plus an aggregate
@@ -701,6 +702,8 @@ Deliverables:
   from the depth-1 GGUF parent token/position metadata,
   `Qwen35GGUFMTPDraftExecutionPlan.target_accept_summary_from_top1()` builds the
   shared accept-summary oracle from target top-1 rows,
+  `target_verify_transaction()` derives speculative `KVTransaction` metadata
+  from the same GGUF-derived target verifier batch,
   `target_commit_plan_from_summary()` validates commit rows against the
   GGUF-derived `TargetVerifyBatch` before building the shared `TargetCommitPlan`,
   and `Qwen35GGUFMTPContext.accept_target_summary()` /

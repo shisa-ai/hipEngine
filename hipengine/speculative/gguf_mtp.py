@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.kvcache.policy import KVTransaction
 from hipengine.speculative.interfaces import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch
 
 
@@ -437,6 +438,24 @@ class Qwen35GGUFMTPDraftExecutionPlan:
 
     def to_target_verify_batch(self, *, mode: str = "verify_chain") -> TargetVerifyBatch:
         return self.proposal.batch.to_target_verify_batch(mode=mode)
+
+    def target_verify_transaction(self, transaction_id: int, *, mode: str = "verify_chain") -> KVTransaction:
+        """Build scheduler-facing speculative KV transaction metadata.
+
+        Native GGUF MTP KV writes are not wired yet, but the transaction shape
+        must match the target-verification row layout: request ids, candidate-row
+        count, per-request candidate counts, and verify-chain/tree role all come
+        from the same ``TargetVerifyBatch`` used by accept/commit plumbing.
+        """
+
+        target_batch = self.to_target_verify_batch(mode=mode)
+        return KVTransaction(
+            transaction_id=int(transaction_id),
+            request_ids=target_batch.request_ids,
+            draft_rows=target_batch.candidate_count,
+            role=target_batch.mode,
+            candidate_counts=target_batch.candidate_counts,
+        )
 
     def target_accept_summary_from_top1(
         self,
