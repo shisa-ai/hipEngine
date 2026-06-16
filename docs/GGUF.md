@@ -3096,6 +3096,14 @@ materialization, not scratch/KV:
 1. **Enable WMMA prefill for GGUF decode-repack path.** The kernels exist;
    `HIPENGINE_GGUF_WMMA_PREFILL=1` needs to be wired for the decode-repack
    combination. Expected: +5-10% prefill, neutral decode. Risk: correctness.
+   **Status: BLOCKED.** 2026-06-16 E2E correctness test showed T16 WMMA
+   prefill produces garbage output for the full qwen35moe model. The safety
+   gate was right to keep T16 WMMA prefill as opt-in-only. The +0.8% measured
+   prefill gain does not justify the correctness regression. The MoE compact
+   WMMA plan resolves correctly but the dense Q8_0 T16 WMMA prefill kernel
+   (`t16_wmma_prefill_bf16_bf16_out`) appears to produce incorrect results
+   for the full-model AOTriton prefill path. Needs kernel-level correctness
+   fixture before re-attempting.
 
 2. **Port C-dispatch for GGUF MoE layers.** Adapt PARO's
    `_try_moe_c1_c_dispatch` pattern. Expected: +3-5% decode. Risk: low.
