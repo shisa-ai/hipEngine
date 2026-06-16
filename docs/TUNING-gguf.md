@@ -186,15 +186,15 @@ raw+packed duplicate residency.
 
 G-P4 128K memory policy/full gate is recorded in
 `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-gate.json`. The 24GB
-low-memory chunk policy now triggers at 128K-class contexts with 256-token
-linear/MoE/post/RoPE chunks and 768-token full-attention query chunks (keeping
-AOTriton active); the low-memory prefill path uses one full-sequence hidden
-buffer plus a chunk staging buffer, and bulk-prefill dense block-table metadata
-is compacted to scratch rows. GPU1 `128K/128` now runs successfully with
-`650.367` prefill tok/s, `67.541` decode tok/s, stable final ID `[220]`, finite
-logits, tracked/owned peak `23.310 GiB`, and sampled HIP-used `23.898 GiB`.
-This replaces the pre-policy `25.108 GiB` OOM projection and improves the first
-512-query low-memory gate by `+13.68%` prefill for `+0.082 GiB` tracked peak;
+low-memory chunk policy now triggers at 128K-class contexts with 768-token
+chunks for linear/MoE/full-attn query/post/RoPE (keeping AOTriton active); the
+low-memory prefill path uses one full-sequence hidden buffer plus a chunk
+staging buffer, and bulk-prefill dense block-table metadata is compacted to
+scratch rows. GPU1 `128K/128` now runs successfully with `730.191` prefill
+tok/s, `67.733` decode tok/s, stable final ID `[220]`, finite logits,
+tracked/owned peak `23.310 GiB`, and sampled HIP-used `23.898 GiB`. This
+replaces the pre-policy `25.108 GiB` OOM projection and improves the first
+512-query low-memory gate by `+27.63%` prefill for `+0.082 GiB` tracked peak;
 final long-context promotion is now gated by further speed, not construction
 memory.
 
@@ -213,8 +213,8 @@ Retained notes:
   `800.455 -> 454.370 ms` and total prefill kernel time fell
   `2094.198 -> 1761.552 ms`, while gate decode stayed within noise of the
   selected-down-lb2 row. The follow-up GPU1 `128K/128` single-run final check
-  now fits and is deterministic; the latest 768-query low-memory gate measures
-  `650.367 / 67.541 tok/s`, stable ID `[220]`, and `23.310 GiB` tracked peak.
+  now fits and is deterministic; the latest all-768 low-memory gate measures
+  `730.191 / 67.733 tok/s`, stable ID `[220]`, and `23.310 GiB` tracked peak.
   Long-context prefill remains slower than the stale W7900 README row, so future
   G-P4/P3 work should optimize the 24GB low-memory policy rather than memory
   construction.
@@ -244,7 +244,7 @@ Current focused lanes from evidence:
    no-held. Prefer dispatch/graph/full-attention or an algorithmic Q8 reduction
    over more occupancy pokes.
 2. **G-P4/P3 long-context follow-up:** GPU1 `128K/128` now fits and completes,
-   but low-memory throughput is prefill-limited (`650.367 tok/s` vs the stale
+   but low-memory throughput is prefill-limited (`730.191 tok/s` vs the stale
    W7900 diagnostic `995.295 tok/s`). Next targets are lower-overhead
    long-context prefill staging, full-attention prefill chunk/AOTriton tuning,
    or KV/cache residency reductions that permit larger chunks.
@@ -256,10 +256,15 @@ Current focused lanes from evidence:
 
 No-hold notes:
 
+- **G-P4 low-memory non-attn chunks=512 not retained (2026-06-16).** Raising
+  linear/MoE/post/RoPE chunks from 256 to 512 while keeping full-attn query at
+  768 improved 128K prefill to `718.895 tok/s`, but all-768 was faster
+  (`730.191 tok/s`) at the same tracked/sampled peak because the 768 full-attn
+  query chunk already determines staging rows.
 - **G-P4 low-memory full-attn query=1024 not retained (2026-06-16).** A
   1024-token query chunk still fit on GPU1 and improved the original 512-query
-  low-memory row, but it was slower than the retained 768-token policy
-  (`618.642` vs `650.367` prefill tok/s) and consumed more headroom
+  low-memory row, but it was slower than the retained all-768 policy
+  (`618.642` vs `730.191` prefill tok/s) and consumed more headroom
   (`23.393 GiB` tracked / `23.969 GiB` sampled HIP-used). Keep 768 as the
   24GB-class default unless a later multi-run sweep shows otherwise.
 - **G-P1 selected-down T16 prefill launch-bound=1 rejected (2026-06-15).**
@@ -703,7 +708,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-P1 | Follow up the retained selected-MoE half-seq WMMA rewrite only if a 16-column/codegen variant can reduce the remaining 256-VGPR cap. | Half-seq moved the 4K/16 target bucket `800.455 -> 454.370 ms`; remaining upside is smaller and must not trade back decode stability. | Target bucket moves materially beyond half-seq without >24 GiB duplicate storage or decode noise. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
-| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | GPU1 `128K/128` now fits and runs: 256-token low-memory chunks with 768-token full-attn query chunks, chunk-staged prefill hidden, `650.367 / 67.541 tok/s`, stable ID `[220]`, `23.310 GiB` peak. Next work is speed, not capacity. |
+| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | GPU1 `128K/128` now fits and runs with all 768-token low-memory chunks, chunk-staged prefill hidden, `730.191 / 67.733 tok/s`, stable ID `[220]`, `23.310 GiB` peak. Next work is speed, not capacity. |
 
 ### H lane — Host/runtime and graph replay
 
