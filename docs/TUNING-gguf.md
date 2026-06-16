@@ -469,6 +469,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q8_0 T16 4K shared-gate/up TM64 rejected (2026-06-16).** A 4K-oriented
+  resident Q8_0 T16 tile override changed shared-expert gate/up shapes
+  (`out<=512`, rows `>=2048`) from `TM32/TN16` to `TM64/TN16`, after synthetic
+  microbenching showed `0.416 ms` vs `0.472 ms` for rows4096/in2048/out512.
+  Full-model primary gate failed promotion: IDs/memory were stable and decode
+  improved slightly, but prefill regressed versus the retained small-shape
+  default (`512/128` `1958.693 -> 1884.288 tok/s`, `4K/128`
+  `2293.994 -> 2287.071 tok/s`). Code was reverted. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-4k-gateup-tm64-rejected.json`.
+
 - **Q8_0 T16 shared-down rows=512 TN16 rejected (2026-06-16).** Extending the
   resident Q8_0 T16 shared-expert down (`in=512,out=2048`) `TN16` tile from
   rows `>512` to rows `>=512` kept IDs and memory stable and passed the `154`
