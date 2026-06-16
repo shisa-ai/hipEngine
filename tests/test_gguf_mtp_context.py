@@ -615,6 +615,22 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     bad_denominators = {**metrics.as_dict(), "denominators": {}}
     with pytest.raises(ValueError, match="denominator labels mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_denominators)
+    bad_budget_label = {**metrics.as_dict(), "budget_label": "B3"}
+    with pytest.raises(ValueError, match="budget_label mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_budget_label)
+    bad_draft_total = {**metrics.as_dict(), "draft_token_count": 99}
+    with pytest.raises(ValueError, match="draft_token_count mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_draft_total)
+    bad_ratio = {**metrics.as_dict(), "accepted_per_draft": 0.1}
+    with pytest.raises(ValueError, match="accepted_per_draft mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_ratio)
+    bad_step_rows = dict(metrics.as_dict())
+    bad_step_rows["step_rows"] = [
+        {**metrics.as_dict()["step_rows"][0], "candidate_token_count": 99},
+        metrics.as_dict()["step_rows"][1],
+    ]
+    with pytest.raises(ValueError, match="step_rows candidate_token_count mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_step_rows)
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
     assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]

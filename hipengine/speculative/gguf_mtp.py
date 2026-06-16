@@ -721,6 +721,12 @@ class Qwen35GGUFMTPAcceptStepMetrics:
 
     @classmethod
     def validate_payload(cls, payload: Mapping[str, object]) -> None:
+        def int_sequence(name: str) -> tuple[int, ...]:
+            value = payload.get(name)
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+                raise ValueError(f"accept-step metrics artifact {name} must be a sequence")
+            return tuple(int(item) for item in value)
+
         for key, expected in cls.artifact_labels().items():
             if payload.get(key) != expected:
                 raise ValueError(f"accept-step metrics artifact {key} mismatch")
@@ -730,6 +736,82 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             raise ValueError(f"accept-step metrics artifact missing required fields: {joined}")
         if payload.get("denominators") != cls.denominator_labels():
             raise ValueError("accept-step metrics artifact denominator labels mismatch")
+
+        cycle_count = int(payload["cycle_count"])
+        candidate_budget = int(payload["candidate_budget"])
+        draft_token_count = int(payload["draft_token_count"])
+        accepted_token_count = int(payload["accepted_token_count"])
+        output_token_count = int(payload["output_token_count"])
+        if cycle_count <= 0:
+            raise ValueError("accept-step metrics artifact cycle_count must be positive")
+        if candidate_budget <= 0:
+            raise ValueError("accept-step metrics artifact candidate_budget must be positive")
+        if draft_token_count <= 0:
+            raise ValueError("accept-step metrics artifact draft_token_count must be positive")
+        if accepted_token_count < 0:
+            raise ValueError("accept-step metrics artifact accepted_token_count must be non-negative")
+        if output_token_count <= 0:
+            raise ValueError("accept-step metrics artifact output_token_count must be positive")
+        if payload.get("budget_label") != f"B{candidate_budget}":
+            raise ValueError("accept-step metrics artifact budget_label mismatch")
+
+        step_transaction_ids = int_sequence("step_transaction_ids")
+        step_candidate_counts = int_sequence("step_candidate_token_counts")
+        step_accepted_counts = int_sequence("step_accepted_token_counts")
+        for name, values in (
+            ("step_transaction_ids", step_transaction_ids),
+            ("step_candidate_token_counts", step_candidate_counts),
+            ("step_accepted_token_counts", step_accepted_counts),
+        ):
+            if len(values) != cycle_count:
+                raise ValueError(f"accept-step metrics artifact {name} length mismatch")
+        if draft_token_count != sum(step_candidate_counts):
+            raise ValueError("accept-step metrics artifact draft_token_count mismatch")
+        if accepted_token_count != sum(step_accepted_counts):
+            raise ValueError("accept-step metrics artifact accepted_token_count mismatch")
+
+        step_rows = payload.get("step_rows")
+        if not isinstance(step_rows, Sequence) or isinstance(step_rows, (str, bytes)):
+            raise ValueError("accept-step metrics artifact step_rows must be a sequence")
+        if len(step_rows) != cycle_count:
+            raise ValueError("accept-step metrics artifact step_rows length mismatch")
+        max_row_candidate_budget = 0
+        for index, row in enumerate(step_rows):
+            if not isinstance(row, Mapping):
+                raise ValueError("accept-step metrics artifact step_rows entries must be mappings")
+            candidate_counts = row.get("candidate_counts")
+            accepted_counts = row.get("accepted_counts")
+            if not isinstance(candidate_counts, Sequence) or isinstance(candidate_counts, (str, bytes)):
+                raise ValueError("accept-step metrics artifact step_rows candidate_counts must be sequences")
+            if not isinstance(accepted_counts, Sequence) or isinstance(accepted_counts, (str, bytes)):
+                raise ValueError("accept-step metrics artifact step_rows accepted_counts must be sequences")
+            row_candidate_counts = tuple(int(item) for item in candidate_counts)
+            row_accepted_counts = tuple(int(item) for item in accepted_counts)
+            if not row_candidate_counts:
+                raise ValueError("accept-step metrics artifact step_rows candidate_counts must be non-empty")
+            max_row_candidate_budget = max(max_row_candidate_budget, max(row_candidate_counts))
+            if int(row.get("transaction_id")) != step_transaction_ids[index]:
+                raise ValueError("accept-step metrics artifact step_rows transaction_id mismatch")
+            if int(row.get("candidate_token_count")) != step_candidate_counts[index]:
+                raise ValueError("accept-step metrics artifact step_rows candidate_token_count mismatch")
+            if int(row.get("accepted_token_count")) != step_accepted_counts[index]:
+                raise ValueError("accept-step metrics artifact step_rows accepted_token_count mismatch")
+            if sum(row_candidate_counts) != step_candidate_counts[index]:
+                raise ValueError("accept-step metrics artifact step_rows candidate_counts mismatch")
+            if sum(row_accepted_counts) != step_accepted_counts[index]:
+                raise ValueError("accept-step metrics artifact step_rows accepted_counts mismatch")
+        if max_row_candidate_budget != candidate_budget:
+            raise ValueError("accept-step metrics artifact candidate_budget mismatch")
+
+        steps = payload.get("steps")
+        if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes)):
+            raise ValueError("accept-step metrics artifact steps must be a sequence")
+        if len(steps) != cycle_count:
+            raise ValueError("accept-step metrics artifact steps length mismatch")
+        if abs(float(payload["accepted_per_draft"]) - (accepted_token_count / draft_token_count)) > 1e-12:
+            raise ValueError("accept-step metrics artifact accepted_per_draft mismatch")
+        if abs(float(payload["accepted_per_output"]) - (accepted_token_count / output_token_count)) > 1e-12:
+            raise ValueError("accept-step metrics artifact accepted_per_output mismatch")
 
     def as_dict(self) -> dict[str, object]:
         return {
