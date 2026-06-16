@@ -714,9 +714,10 @@ Deliverables:
   count back to the llama.cpp verify-row hidden-seed reseed rule;
   `accept_target_top1()` returns a serializable `Qwen35GGUFMTPAcceptStep` while
   still supporting tuple unpacking as `(commit_plan, reseed)`, and
-  `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with the
-  same accepted/draft and accepted/output denominator labels used for llama.cpp
-  parity; the GGUF row objects still carry the extra embedding seed pointer
+  `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
+  self-identifying schema/kind/source payload and the same accepted/draft and
+  accepted/output denominator labels used for llama.cpp parity; the GGUF row
+  objects still carry the extra embedding seed pointer
   until native MTP runtime buffers exist.
 
 Acceptance:

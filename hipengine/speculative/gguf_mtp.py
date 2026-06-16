@@ -648,8 +648,18 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "accepted_per_output": "accepted_token_count / output_token_count",
         }
 
+    @staticmethod
+    def artifact_labels() -> dict[str, object]:
+        return {
+            "schema": 1,
+            "kind": "hipengine_gguf_mtp_accept_step_metrics",
+            "source": "Qwen35GGUFMTPAcceptStepMetrics",
+            "result_source": "Qwen35GGUFMTPAcceptStep",
+        }
+
     def as_dict(self) -> dict[str, object]:
         return {
+            **self.artifact_labels(),
             "cycle_count": self.cycle_count,
             "draft_token_count": self.draft_token_count,
             "accepted_token_count": self.accepted_token_count,

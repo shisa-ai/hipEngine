@@ -572,6 +572,10 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     assert metrics.accepted_token_count == 3
     assert metrics.accepted_per_draft == 0.75
     assert metrics.accepted_per_output == 0.6
+    assert metrics.as_dict()["schema"] == 1
+    assert metrics.as_dict()["kind"] == "hipengine_gguf_mtp_accept_step_metrics"
+    assert metrics.as_dict()["source"] == "Qwen35GGUFMTPAcceptStepMetrics"
+    assert metrics.as_dict()["result_source"] == "Qwen35GGUFMTPAcceptStep"
     assert metrics.as_dict()["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
         "accepted_per_output": "accepted_token_count / output_token_count",
