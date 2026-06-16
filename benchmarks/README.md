@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-16 (GPU0 W7900 GGUF Q4_K_M standardized sweep: hipEngine decode-repack + WMMA prefill + GEMV decode vs llama.cpp HIP ngl=99 flash-attn f16 KV; hipEngine decode wins `+33.9%` at 512/128, `+23.9%` at 4K/128, `+18.2%` at 32K/128, `+9.2%` at 64K/128, tied at 128K/128; prefill wins `+8-9%` at 1K-128K; artifacts `benchmarks/results/2026-06-16-w7900-gpu0-gguf-q4km-hipengine-gguf-q4km-readme-sweep.json` and `2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json`.)
+Last updated: 2026-06-16 (GPU0 W7900 GGUF Q4_K_M standardized 3-way sweep: hipEngine decode-repack+WMMA+GEMV vs llama.cpp HIP vs llama.cpp Vulkan, all ngl=99 flash-attn f16 KV; hipEngine decode beats HIP +24-34% at 512-4K, tied with Vulkan at 512; Vulkan strongest llama.cpp backend at all shapes; artifacts under `benchmarks/results/2026-06-16-w7900-gpu0-*`.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -327,24 +327,26 @@ git diff --check
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 | 3279.030 | 179.044 | 0.937 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +33.8% vs Qwen3.6 packed PARO comparison row (`2451.2 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 4K/128 | 3599.717 | 85.702 | 1.608 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +35.0% vs Qwen3.6 packed PARO comparison row (`2666.7 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 
-## hipEngine vs llama.cpp HIP Q4_K_M comparison (W7900 GPU0, same model)
+## hipEngine vs llama.cpp HIP/Vulkan Q4_K_M comparison (W7900 GPU0, same model)
 
 Same Qwen3.6-35B-A3B `UD-Q4_K_M.gguf` on the same AMD Radeon Pro W7900 (48 GiB).
 hipEngine: decode-repack + WMMA prefill + GEMV decode, TheRock 7.13, 2 warmups + 5 measured runs.
-llama.cpp: HIP backend, ngl=99, flash-attn=1, f16 KV cache, build `263cc04a5`.
+llama.cpp HIP: ngl=99, flash-attn=1, f16 KV cache, build `263cc04a5`.
+llama.cpp Vulkan: ngl=99, flash-attn=1, f16 KV cache, RADV NAVI31.
 
-| Workload | hipEngine prefill | llama.cpp prefill | PF Δ | hipEngine decode | llama.cpp decode | DC Δ | hipEngine peak | llama.cpp peak |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 2182 | 2516 | -13.3% | **106.6** | 79.6 | **+33.9%** | 26.3 | 21.6 |
-| 1K/128 | **2464** | 2431 | **+1.3%** | **96.0** | 79.3 | **+21.2%** | 26.3 | 21.6 |
-| 4K/128 | **2491** | 2303 | **+8.1%** | **97.5** | 78.7 | **+23.9%** | 26.3 | 21.7 |
-| 32K/128 | **1840** | 1685 | **+9.2%** | **84.9** | 71.8 | **+18.2%** | 26.3 | 22.2 |
-| 64K/128 | **1427** | 1325 | **+7.7%** | **72.6** | 66.5 | **+9.2%** | 26.3 | 22.9 |
-| 128K/128 | **989** | 918 | **+7.7%** | 57.3 | 57.7 | -0.7% | 26.3 | 24.1 |
+| Workload | hipEngine PF | llama HIP PF | llama VK PF | hipEngine DC | llama HIP DC | llama VK DC |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 2182 | 2516 (-13.3%) | **2823** (-29.4%) | **106.6** | 79.6 (+33.9%) | 106.2 (+0.4%) |
+| 1K/128 | 2464 | 2431 (+1.3%) | **2711** (-9.1%) | 96.0 | 79.3 (+21.2%) | **106.2** (-9.6%) |
+| 4K/128 | **2491** | 2303 (+8.1%) | 2582 (-3.5%) | 97.5 | 78.7 (+23.9%) | **102.6** (-4.9%) |
+| 32K/128 | 1840 | 1685 (+9.2%) | **1969** (-6.5%) | 84.9 | 71.8 (+18.2%) | **91.6** (-7.3%) |
+| 64K/128 | **1427** | 1325 (+7.7%) | 1412 (+1.1%) | 72.6 | 66.5 (+9.2%) | **83.3** (-12.8%) |
+| 128K/128 | 989 | 918 (+7.7%) | **1082** (-8.6%) | 57.3 | 57.7 (-0.7%) | **70.5** (-18.7%) |
 
 Artifacts:
 - hipEngine: [`2026-06-16-w7900-gpu0-gguf-q4km-hipengine-gguf-q4km-readme-sweep.json`](results/2026-06-16-w7900-gpu0-gguf-q4km-hipengine-gguf-q4km-readme-sweep.json)
-- llama.cpp: [`2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json`](results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json)
+- llama.cpp HIP: [`2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json`](results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json)
+- llama.cpp Vulkan: [`2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json`](results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)
 
 ## MTP / DFlash Speculative Decode
 
