@@ -350,19 +350,28 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `12.020 ms/call` (`11.43` logical TFLOP/s), slower than raw WMMA32
   (`8.209 ms/call`) and slightly slower than selected-WMMA (`11.584 ms/call`)
   while raising synthetic fixture memory to `0.228 GiB`; Q4_K metadata decode is
-  therefore not the standalone bottleneck. The remaining useful MMQ direction is
-  real llama.cpp-style tile geometry / data reuse, not simply pre-unpacking
-  per-column operands consumed by the same 16x32 tile.
+  therefore not the standalone bottleneck. A GPU BF16→DS4 Q8_1 activation pack
+  diagnostic now measures the missing quantization cost for a runtime version:
+  `q8-1-ds4-wmma32-pack` (pack + raw WMMA32 in the timed loop) measured
+  `8.391 ms/call` (`16.38` logical TFLOP/s) versus same-run raw WMMA32
+  `8.261 ms/call`, WMMA64 `8.229 ms/call`, selected-WMMA `11.579 ms/call`, and
+  DS4 scalar `21.826 ms/call`. rocprof saw pack launches at roughly
+  `18-22 us` on the smaller rows-per-expert=64 trace. Activation packing is
+  therefore not the immediate blocker; the remaining useful MMQ direction is a
+  runtime/fused pack+MMQ integration with real tile reuse, not more same-shape
+  staging/pre-unpack probes.
   Artifacts:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma64-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`,
-  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`.
-  **Next code test:** stop adding same-shape staging variants; port a true
-  MMQ-style multi-output tile (larger `mmq_x`/`mmq_y` reuse) or switch focus to
-  another prefill bottleneck.
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`,
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-pack-wmma32-selected-prefill-probe.json`.
+  **Next code test:** stop adding same-shape staging variants. Either wire a
+  guarded runtime/fused pack+MMQ prototype to measure full-model prefill with
+  the GPU DS4 pack included, or switch focus to the now-comparable GDN prefill
+  recurrent / dense Q8_0 WMMA buckets.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`

@@ -17,6 +17,8 @@ It builds a synthetic compact-selected MoE fixture and can time either:
 * ``q8-1-ds4-wmma32``: the same integer-WMMA math with two independent 16-column
   waves per block, reducing block-count overhead while preserving the one-wave
   fragment mapping.
+* ``q8-1-ds4-wmma32-pack``: the WMMA32 prototype with the BF16->DS4 Q8_1 GPU
+  activation pack kernel included in the timed loop.
 * ``q8-1-ds4-wmma64``: a four-wave/64-column raw-Q4_K integer-WMMA diagnostic
   that tests whether larger output-column tiles reduce block scheduling overhead.
 * ``q8-1-ds4-preview-wmma32``: the two-wave integer-WMMA math fed by a
@@ -148,6 +150,7 @@ def parse_args() -> argparse.Namespace:
             "q8-1-ds4-dot",
             "q8-1-ds4-wmma",
             "q8-1-ds4-wmma32",
+            "q8-1-ds4-wmma32-pack",
             "q8-1-ds4-wmma64",
             "q8-1-ds4-preview-wmma32",
             "q8-1-ds4-wmma32-ldspack",
@@ -269,6 +272,7 @@ def main() -> None:
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
+                gguf_q8_1_mmq_ds4_pack_bf16,
             )
 
             library = build_gguf_q4_k_q8_1_selected_prefill(
@@ -325,9 +329,17 @@ def main() -> None:
                     )
 
             else:
-                q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(x_host)
-                q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
-                bufs.append(q8_ds4_dev)
+                pack_in_loop = args.mode == "q8-1-ds4-wmma32-pack"
+                if pack_in_loop:
+                    q8_ds4 = np.empty((compact_rows, args.hidden // 128, 144), dtype=np.uint8)
+                    q8_ds4_dev = malloc(q8_ds4.nbytes, runtime=runtime)
+                    x_dev, _ = _copy_to_device(x_host, runtime=runtime)
+                    bufs.extend((q8_ds4_dev, x_dev))
+                else:
+                    q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(x_host)
+                    q8_ds4_dev, _ = _copy_to_device(q8_ds4, runtime=runtime)
+                    x_dev = None
+                    bufs.append(q8_ds4_dev)
                 if args.mode == "q8-1-ds4-preview-wmma32":
                     previews_a = [pack_gguf_q4_k_mmq_tile16_preview(qweight_a[expert]) for expert in range(args.experts)]
                     previews_b = [pack_gguf_q4_k_mmq_tile16_preview(qweight_b[expert]) for expert in range(args.experts)]
@@ -386,6 +398,7 @@ def main() -> None:
                     use_wmma = args.mode in {
                         "q8-1-ds4-wmma",
                         "q8-1-ds4-wmma32",
+                        "q8-1-ds4-wmma32-pack",
                         "q8-1-ds4-wmma64",
                         "q8-1-ds4-wmma32-ldspack",
                         "q8-1-ds4-wmma32-lds",
@@ -396,7 +409,7 @@ def main() -> None:
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out
                     elif args.mode == "q8-1-ds4-wmma64":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out
-                    elif args.mode == "q8-1-ds4-wmma32":
+                    elif args.mode in {"q8-1-ds4-wmma32", "q8-1-ds4-wmma32-pack"}:
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out
                     elif args.mode == "q8-1-ds4-wmma":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out
@@ -404,22 +417,27 @@ def main() -> None:
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out
                     variant_extra = {
                         "host_q8_ds4_mib": q8_ds4.nbytes / (1 << 20),
+                        "host_input_mib": x_host.nbytes / (1 << 20),
                         "host_raw_qweight_a_mib": qweight_a.nbytes / (1 << 20),
                         "host_raw_qweight_b_mib": qweight_b.nbytes / (1 << 20),
-                        "activation_quantization_in_loop": False,
+                        "activation_quantization_in_loop": pack_in_loop,
                         "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
                         "weight_layout": "raw_gguf_q4_k",
                         "integer_mma": use_wmma,
                         "prototype_note": (
-                            "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged packed Q4_K qs bytes; still a diagnostic microbench, not a full runtime MMQ integration."
-                            if args.mode == "q8-1-ds4-wmma32-ldspack"
+                            "DS4 activation layout with GPU BF16->Q8_1 pack plus wave32 integer-WMMA32 dot tiles in the timed loop; diagnostic runtime-viability probe only."
+                            if pack_in_loop
                             else (
-                                "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged Q4_K columns; still a diagnostic microbench, not a full runtime MMQ integration."
-                                if args.mode == "q8-1-ds4-wmma32-lds"
+                                "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged packed Q4_K qs bytes; still a diagnostic microbench, not a full runtime MMQ integration."
+                                if args.mode == "q8-1-ds4-wmma32-ldspack"
                                 else (
-                                    "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile."
-                                    if use_wmma
-                                    else "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation."
+                                    "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged Q4_K columns; still a diagnostic microbench, not a full runtime MMQ integration."
+                                    if args.mode == "q8-1-ds4-wmma32-lds"
+                                    else (
+                                        "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile."
+                                        if use_wmma
+                                        else "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation."
+                                    )
                                 )
                             )
                         ),
@@ -427,6 +445,17 @@ def main() -> None:
 
                     def launch() -> None:
                         assert qweight_a_dev is not None and qweight_b_dev is not None
+                        if pack_in_loop:
+                            assert x_dev is not None
+                            gguf_q8_1_mmq_ds4_pack_bf16(
+                                x_dev.ptr,
+                                q8_ds4_dev.ptr,
+                                compact_rows,
+                                args.hidden,
+                                stream=stream,
+                                library=library,
+                                runtime=runtime,
+                            )
                         ds4_launcher(
                             q8_ds4_dev.ptr,
                             start_compact_dev.ptr,

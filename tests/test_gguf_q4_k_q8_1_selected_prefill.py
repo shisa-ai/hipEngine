@@ -10,6 +10,7 @@ from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
     gguf_q4_k_q8_1_wmma_i8_probe_16x16,
+    gguf_q8_1_mmq_ds4_pack_bf16,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
@@ -292,6 +293,47 @@ def test_wmma_i8_probe_16x16_matches_cpu_matmul() -> None:
             a_dev.ptr,
             b_dev.ptr,
             out_dev.ptr,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(("counts", "in_features"), [([1], 256), ([3, 2], 512)])
+def test_q8_1_mmq_ds4_pack_bf16_matches_cpu(counts: list[int], in_features: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=19,
+    )
+    expected = pack_q8_1_mmq_ds4_from_bf16(fixture.x_host)
+    actual = np.zeros_like(expected)
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+
+    bufs = []
+    try:
+        x_dev = malloc(fixture.x_host.nbytes, runtime=runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        bufs.extend((x_dev, out_dev))
+        copy_host_to_device(x_dev, host_array_ptr(np.ascontiguousarray(fixture.x_host)), runtime=runtime)
+        gguf_q8_1_mmq_ds4_pack_bf16(
+            x_dev.ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
             library=library,
             runtime=runtime,
         )

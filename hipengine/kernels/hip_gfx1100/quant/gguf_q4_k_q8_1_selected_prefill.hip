@@ -8,6 +8,7 @@
 // prefill path.
 
 #include <hip/hip_runtime.h>
+#include <math.h>
 #include <stdint.h>
 
 namespace {
@@ -43,6 +44,24 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
   const uint32_t lsb = (in.u32 >> 16) & 1U;
   in.u32 += 0x7FFFU + lsb;
   return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+__device__ inline float bf16_bits_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline uint16_t float_to_fp16_bits(float value) {
+  union {
+    half_t f16;
+    uint16_t u16;
+  } out;
+  out.f16 = static_cast<half_t>(value);
+  return out.u16;
 }
 
 __device__ inline float fp16_bits_to_float(uint16_t bits) {
@@ -113,6 +132,73 @@ __device__ inline int pack_q4_k_u8x4(
     out |= static_cast<uint32_t>(gguf_q4_k_quant(qs, subblock, lane32_base + i)) << (8 * i);
   }
   return static_cast<int>(out);
+}
+
+__device__ inline float wave32_sum(float value) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value += __shfl_down(value, offset);
+  }
+  return value;
+}
+
+__device__ inline float wave32_max(float value) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value = fmaxf(value, __shfl_down(value, offset));
+  }
+  return value;
+}
+
+__launch_bounds__(128, 1)
+__global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    block_q8_1_mmq_ds4* __restrict__ out,
+    int64_t rows,
+    int64_t hidden) {
+  const int64_t q8_block = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int ds4_idx = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  if (row >= rows || q8_block >= blocks_per_row) return;
+
+  const int64_t in_idx = row * hidden + q8_block * Q8_1_MMQ_BLOCK + tid;
+  const float value = bf16_bits_to_float(x[in_idx]);
+  const float sum = wave32_sum(value);
+  const float max_abs = wave32_max(fabsf(value));
+
+  __shared__ float scale_shared[4];
+  __shared__ float sum_shared[4];
+  if (lane == 0) {
+    scale_shared[ds4_idx] = max_abs / 127.0f;
+    sum_shared[ds4_idx] = sum;
+  }
+  __syncthreads();
+
+  const float scale = scale_shared[ds4_idx];
+  int q = 0;
+  if (scale > 0.0f) {
+    const float qf = fminf(127.0f, fmaxf(-127.0f, rintf(value / scale)));
+    q = static_cast<int>(qf);
+  }
+
+  block_q8_1_mmq_ds4* __restrict__ out_block = out + row * blocks_per_row + q8_block;
+  out_block->qs[tid] = static_cast<int8_t>(q);
+  if (lane == 0) {
+    out_block->ds4[2 * ds4_idx + 0] = float_to_fp16_bits(scale_shared[ds4_idx]);
+    out_block->ds4[2 * ds4_idx + 1] = float_to_fp16_bits(sum_shared[ds4_idx]);
+  }
+}
+
+bool valid_q8_1_mmq_ds4_pack(
+    const void* x,
+    const void* out,
+    int64_t rows,
+    int64_t hidden) {
+  return x != nullptr && out != nullptr && rows > 0 && hidden > 0 &&
+      (hidden % Q8_1_MMQ_BLOCK) == 0;
 }
 
 bool valid_q8_1_selected_dual_common(
@@ -1217,6 +1303,29 @@ int launch_wmma_i8_probe_16x16(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q8_1_mmq_ds4_pack_bf16(
+    const uint16_t* x,
+    block_q8_1_mmq_ds4* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  hipLaunchKernelGGL(
+      gguf_q8_1_mmq_ds4_pack_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks_per_row), static_cast<unsigned int>(rows)),
+      dim3(128),
+      0,
+      stream,
+      x,
+      out,
+      rows,
+      hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_selected_dual_q8_1_compact32(
     const int8_t* x_qs,
     const float* x_d,
@@ -1726,6 +1835,20 @@ extern "C" int hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16(
     int32_t* out,
     hipStream_t stream) {
   return launch_wmma_i8_probe_16x16(a_rows, b_cols, out, stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_mmq_ds4_pack_bf16(
+    const uint16_t* x,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_ds4_pack_bf16(
+      x,
+      reinterpret_cast<block_q8_1_mmq_ds4*>(out),
+      rows,
+      hidden,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out(

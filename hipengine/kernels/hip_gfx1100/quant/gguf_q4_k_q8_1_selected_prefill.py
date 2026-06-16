@@ -25,7 +25,9 @@ _SYMBOL_DS4_PREVIEW_WMMA32_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_pr
 _SYMBOL_DS4_WMMA32_LDSPACK_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA32_LDS_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out"
 _SYMBOL_WMMA_I8_PROBE = "hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16"
+_SYMBOL_DS4_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16"
 _Q4_K_BLOCK = 256
+_Q8_1_MMQ_BLOCK = 128
 
 
 def plan_gguf_q4_k_q8_1_selected_prefill_build(
@@ -98,6 +100,44 @@ def gguf_q4_k_q8_1_wmma_i8_probe_16x16(
         ctypes.c_void_p(a_rows_ptr),
         ctypes.c_void_p(b_cols_ptr),
         ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_1_mmq_ds4_pack_bf16(
+    x_bf16_ptr: int,
+    out_q8_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Pack BF16 activations to llama.cpp-style DS4 block_q8_1_mmq on GPU."""
+
+    _check_positive(rows, "rows")
+    _check_positive(hidden, "hidden")
+    if hidden % _Q8_1_MMQ_BLOCK != 0:
+        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DS4_PACK_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(out_q8_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
