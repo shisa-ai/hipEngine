@@ -595,6 +595,73 @@ class Qwen35GGUFMTPAcceptStep:
 
 
 @dataclass(frozen=True, slots=True)
+class Qwen35GGUFMTPAcceptStepMetrics:
+    """Aggregate denominator contract for target-top1 GGUF MTP accept steps."""
+
+    steps: tuple[Qwen35GGUFMTPAcceptStep, ...]
+    output_token_count: int
+
+    @classmethod
+    def from_steps(
+        cls,
+        steps: Sequence[Qwen35GGUFMTPAcceptStep],
+        *,
+        output_token_count: int,
+    ) -> Qwen35GGUFMTPAcceptStepMetrics:
+        normalized = tuple(steps)
+        if not normalized:
+            raise ValueError("at least one GGUF MTP accept step is required")
+        out = int(output_token_count)
+        if out <= 0:
+            raise ValueError("output_token_count must be positive")
+        for index, step in enumerate(normalized):
+            if step.commit_plan.candidate_counts is None:
+                raise ValueError(f"accept step {index} must include candidate_counts")
+        if sum(sum(step.commit_plan.candidate_counts or ()) for step in normalized) <= 0:
+            raise ValueError("draft_token_count must be positive")
+        return cls(steps=normalized, output_token_count=out)
+
+    @property
+    def cycle_count(self) -> int:
+        return len(self.steps)
+
+    @property
+    def draft_token_count(self) -> int:
+        return sum(sum(step.commit_plan.candidate_counts or ()) for step in self.steps)
+
+    @property
+    def accepted_token_count(self) -> int:
+        return sum(sum(step.commit_plan.accepted_counts) for step in self.steps)
+
+    @property
+    def accepted_per_draft(self) -> float:
+        return float(self.accepted_token_count) / float(self.draft_token_count)
+
+    @property
+    def accepted_per_output(self) -> float:
+        return float(self.accepted_token_count) / float(self.output_token_count)
+
+    @staticmethod
+    def denominator_labels() -> dict[str, str]:
+        return {
+            "accepted_per_draft": "accepted_token_count / draft_token_count",
+            "accepted_per_output": "accepted_token_count / output_token_count",
+        }
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "cycle_count": self.cycle_count,
+            "draft_token_count": self.draft_token_count,
+            "accepted_token_count": self.accepted_token_count,
+            "output_token_count": self.output_token_count,
+            "accepted_per_draft": self.accepted_per_draft,
+            "accepted_per_output": self.accepted_per_output,
+            "denominators": self.denominator_labels(),
+            "steps": [step.as_dict() for step in self.steps],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Qwen35GGUFMTPVerificationResult:
     """Prefix-match result for GGUF MTP proposal verification."""
 

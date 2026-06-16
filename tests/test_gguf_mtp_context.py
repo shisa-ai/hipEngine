@@ -18,6 +18,7 @@ from hipengine.speculative.gguf_mtp import (
     GGUF_MTP_METRICS_CONTRACT_READY,
     GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
     Qwen35GGUFMTPAcceptStep,
+    Qwen35GGUFMTPAcceptStepMetrics,
     Qwen35GGUFMTPContext,
     Qwen35GGUFMTPDraftBatch,
     Qwen35GGUFMTPDraftExecutionPlan,
@@ -532,6 +533,69 @@ def test_gguf_mtp_context_accepts_target_top1_with_commit_plan_reseed() -> None:
 
     with pytest.raises(ValueError, match="request_id"):
         context.accept_target_top1(plan, (1, 9, 77), transaction_id=14, request_id=8)
+
+
+def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=2, position=7, hidden_ptr=0x3000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1, 2), seed_rows=seeds[:2])
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,), (2,)),
+        top_k_logits=((4.0,), (3.0,)),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+    context.record_verify_seeds(seeds)
+    partial = context.accept_target_top1(plan, (1, 9, 77), transaction_id=12, request_id=7)
+    full_budgeted = context.accept_target_top1(
+        plan,
+        (1, 2, 77),
+        transaction_id=13,
+        remaining_decode=(2,),
+        request_id=7,
+    )
+
+    metrics = Qwen35GGUFMTPAcceptStepMetrics.from_steps(
+        (partial, full_budgeted),
+        output_token_count=5,
+    )
+
+    assert metrics.cycle_count == 2
+    assert metrics.draft_token_count == 4
+    assert metrics.accepted_token_count == 3
+    assert metrics.accepted_per_draft == 0.75
+    assert metrics.accepted_per_output == 0.6
+    assert metrics.as_dict()["denominators"] == {
+        "accepted_per_draft": "accepted_token_count / draft_token_count",
+        "accepted_per_output": "accepted_token_count / output_token_count",
+    }
+    assert metrics.as_dict()["steps"][0]["accepted_counts"] == [1]
+    assert metrics.as_dict()["steps"][1]["accepted_counts"] == [2]
+
+    with pytest.raises(ValueError, match="at least one"):
+        Qwen35GGUFMTPAcceptStepMetrics.from_steps((), output_token_count=1)
+    with pytest.raises(ValueError, match="output_token_count"):
+        Qwen35GGUFMTPAcceptStepMetrics.from_steps((partial,), output_token_count=0)
+    missing_counts = TargetCommitPlan(
+        transaction_id=99,
+        request_ids=(7,),
+        accepted_counts=(0,),
+        commit_rows=(0,),
+        commit_tokens=(10,),
+        commit_positions=(5,),
+    )
+    with pytest.raises(ValueError, match="candidate_counts"):
+        Qwen35GGUFMTPAcceptStepMetrics.from_steps(
+            (Qwen35GGUFMTPAcceptStep(commit_plan=missing_counts, reseed=seeds[0]),),
+            output_token_count=1,
+        )
 
 
 def test_gguf_mtp_context_applies_target_commit_plan_reseed_rule() -> None:
