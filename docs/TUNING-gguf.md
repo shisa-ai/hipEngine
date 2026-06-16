@@ -479,6 +479,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q8_0 T16 row512 out8192 TM32 rejected (2026-06-16).** Changing resident
+  Q8_0 T16 WMMA prefill for 512-row `in<=2048,out>=8192` projections from
+  `TM64/TN32` to `TM32/TN32` passed the focused tile-policy smoke and `154`-test
+  GGUF guard with stable IDs and flat memory. It improved the `4K/128` gate
+  (`2292.684 / 114.991 -> 2298.061 / 115.309 tok/s`) but regressed the short
+  gate beyond noise (`512/128` `1958.536 / 127.263 -> 1937.572 / 126.933
+  tok/s`), so code/test changes were reverted. Keep 512-row out8192-like Q8_0
+  T16 projections at `TM64`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-out8192-row512-tm32-rejected.json`.
+
 - **Q6_K T16 lm-head block256 rejected (2026-06-16).** Changing dense Q6_K
   T16 lm-head GEMV decode from `__launch_bounds__(128,4)` / `blockDim=128` to
   `__launch_bounds__(256,2)` / `blockDim=256` passed the Q6 correctness suite
