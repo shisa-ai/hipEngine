@@ -99055,3 +99055,48 @@ Validation:
   backend/quant dispatch branch; no native MTP execution, actual KV allocation,
   GPU kernel, attention/KV runtime path, or performance claim. Existing
   KVLiveSpans execution-plan contract is unchanged.
+
+## 2026-06-16 - MTP-GGUF verification token-prefix contract
+
+Implemented `mtp-gguf` multiloop iteration 147: tightened
+`Qwen35GGUFMTPVerificationResult` and `Qwen35GGUFMTPVerificationMetrics` so
+verification-result payloads must prove that accepted draft tokens match the
+corresponding target-token prefix and that mismatch metadata points at the actual
+proposed/target mismatch row.
+
+Scope note:
+- Torch-free metadata/validation change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This protects future B1-B4 exactness and accepted/output artifacts from
+  spoofed proposed/target token rows, accepted-token lists, or mismatch metadata
+  while aggregate counts and ratios remain internally consistent.
+
+RED/GREEN:
+- RED: added tests for spoofed `accepted_token_ids`, target-token accepted-prefix
+  mismatch, and mismatch-token metadata in verification-result artifacts;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py -q`
+  failed as expected because the validator only checked result lengths/counts.
+- GREEN: `Qwen35GGUFMTPVerificationResult.__post_init__()` and
+  `Qwen35GGUFMTPVerificationMetrics.validate_payload()` now enforce accepted
+  prefixes, target coverage, result-level draft/accept ratios, verify-seed row
+  counts, and mismatch-token consistency.
+
+Validation:
+- Focused context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> passed (38 tests).
+- Focused prompt-suite/context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> passed (82 tests).
+- Real local B4 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` -> `status blocked`, `hipengine_metrics_contract_validation.passed True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Existing
+  KVLiveSpans execution-plan contract is unchanged.

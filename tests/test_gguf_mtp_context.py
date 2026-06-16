@@ -1063,6 +1063,13 @@ def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:
     }
     assert payload["results"][0]["first_mismatch_index"] == 1
     Qwen35GGUFMTPVerificationMetrics.validate_payload(payload)
+    broken = dict(payload)
+    broken["results"] = [
+        {**payload["results"][0], "rejected_proposal_token_id": 99},
+        payload["results"][1],
+    ]
+    with pytest.raises(ValueError, match="mismatch token ids mismatch"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
 
 
 def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
@@ -1094,6 +1101,36 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
     broken["budget_label"] = "B2"
     with pytest.raises(ValueError, match="candidate_budget"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+    broken = dict(payload)
+    broken["results"] = [{**payload["results"][0], "accepted_token_ids": [9]}]
+    with pytest.raises(ValueError, match="accepted_token_ids mismatch"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+    broken = dict(payload)
+    broken["results"] = [{**payload["results"][0], "target_token_ids": [9]}]
+    with pytest.raises(ValueError, match="accepted prefix"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+
+
+def test_gguf_mtp_verification_result_rejects_spoofed_prefix_and_mismatch() -> None:
+    with pytest.raises(ValueError, match="accepted prefix"):
+        Qwen35GGUFMTPVerificationResult(
+            proposed_token_ids=(1,),
+            target_token_ids=(9,),
+            n_accepted=1,
+            verify_seed_count=2,
+            reseed=Qwen35GGUFMTPSeedRow(token_id=2, position=1, hidden_ptr=0x2000, hidden_size=8),
+        )
+    with pytest.raises(ValueError, match="mismatch token ids"):
+        Qwen35GGUFMTPVerificationResult(
+            proposed_token_ids=(1, 2),
+            target_token_ids=(1, 9),
+            n_accepted=1,
+            first_mismatch_index=1,
+            rejected_proposal_token_id=99,
+            target_token_id_at_mismatch=9,
+            verify_seed_count=3,
+            reseed=Qwen35GGUFMTPSeedRow(token_id=2, position=1, hidden_ptr=0x2000, hidden_size=8),
+        )
 
 
 def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:

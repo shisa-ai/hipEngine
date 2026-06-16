@@ -1004,6 +1004,10 @@ class Qwen35GGUFMTPVerificationResult:
             raise ValueError("verify_seed_count must include proposed rows plus the next target row")
         if self.n_accepted < 0 or self.n_accepted > len(self.proposed_token_ids):
             raise ValueError("n_accepted must be in 0..len(proposed_token_ids)")
+        accepted_prefix = self.proposed_token_ids[: self.n_accepted]
+        target_prefix = self.target_token_ids[: self.n_accepted]
+        if accepted_prefix != target_prefix:
+            raise ValueError("accepted prefix tokens must match target tokens")
         if self.first_mismatch_index is None:
             if self.n_accepted != len(self.proposed_token_ids):
                 raise ValueError("missing first_mismatch_index for partial acceptance")
@@ -1012,8 +1016,16 @@ class Qwen35GGUFMTPVerificationResult:
         else:
             if self.first_mismatch_index != self.n_accepted:
                 raise ValueError("first_mismatch_index must equal n_accepted")
+            if self.n_accepted == len(self.proposed_token_ids):
+                raise ValueError("first_mismatch_index must be empty when all drafts are accepted")
             if self.rejected_proposal_token_id is None or self.target_token_id_at_mismatch is None:
                 raise ValueError("mismatch token ids must be present for partial acceptance")
+            rejected = self.proposed_token_ids[self.first_mismatch_index]
+            target = self.target_token_ids[self.first_mismatch_index]
+            if self.rejected_proposal_token_id != rejected or self.target_token_id_at_mismatch != target:
+                raise ValueError("mismatch token ids must match proposed/target tokens")
+            if rejected == target:
+                raise ValueError("mismatch token ids must differ for partial acceptance")
 
     @property
     def accepted_token_ids(self) -> tuple[int, ...]:
@@ -1373,17 +1385,60 @@ class Qwen35GGUFMTPVerificationMetrics:
             if not isinstance(result, Mapping):
                 raise ValueError("verification metrics artifact results entries must be mappings")
             proposed = result.get("proposed_token_ids")
+            target = result.get("target_token_ids")
             accepted = result.get("accepted_token_ids")
             if not isinstance(proposed, Sequence) or isinstance(proposed, (str, bytes)):
                 raise ValueError("verification metrics artifact results proposed_token_ids must be sequences")
+            if not isinstance(target, Sequence) or isinstance(target, (str, bytes)):
+                raise ValueError("verification metrics artifact results target_token_ids must be sequences")
             if not isinstance(accepted, Sequence) or isinstance(accepted, (str, bytes)):
                 raise ValueError("verification metrics artifact results accepted_token_ids must be sequences")
-            if len(proposed) != result_draft_counts[index]:
+            proposed_tokens = tuple(int(item) for item in proposed)
+            target_tokens = tuple(int(item) for item in target)
+            accepted_tokens = tuple(int(item) for item in accepted)
+            result_draft_count = result_draft_counts[index]
+            result_accepted_count = result_accepted_counts[index]
+            if len(proposed_tokens) != result_draft_count:
                 raise ValueError("verification metrics artifact results draft count mismatch")
-            if len(accepted) != result_accepted_counts[index]:
+            if len(target_tokens) < result_draft_count:
+                raise ValueError("verification metrics artifact results target_token_ids must cover draft tokens")
+            if len(accepted_tokens) != result_accepted_count:
                 raise ValueError("verification metrics artifact results accepted count mismatch")
-            if int(result.get("n_accepted")) != result_accepted_counts[index]:
+            if accepted_tokens != proposed_tokens[:result_accepted_count]:
+                raise ValueError("verification metrics artifact results accepted_token_ids mismatch")
+            if proposed_tokens[:result_accepted_count] != target_tokens[:result_accepted_count]:
+                raise ValueError("verification metrics artifact results accepted prefix mismatch")
+            if int(result.get("n_accepted")) != result_accepted_count:
                 raise ValueError("verification metrics artifact results n_accepted mismatch")
+            if int(result.get("draft_count")) != result_draft_count:
+                raise ValueError("verification metrics artifact results draft_count mismatch")
+            if int(result.get("verify_seed_count")) <= result_draft_count:
+                raise ValueError("verification metrics artifact results verify_seed_count must include the next target row")
+            if abs(float(result.get("accepted_per_draft")) - (result_accepted_count / result_draft_count)) > 1e-12:
+                raise ValueError("verification metrics artifact results accepted_per_draft mismatch")
+
+            first_mismatch_index = result.get("first_mismatch_index")
+            rejected_proposal_token_id = result.get("rejected_proposal_token_id")
+            target_token_id_at_mismatch = result.get("target_token_id_at_mismatch")
+            if first_mismatch_index is None:
+                if result_accepted_count != result_draft_count:
+                    raise ValueError("verification metrics artifact results missing first_mismatch_index")
+                if rejected_proposal_token_id is not None or target_token_id_at_mismatch is not None:
+                    raise ValueError("verification metrics artifact results mismatch token ids must be empty")
+            else:
+                mismatch_index = int(first_mismatch_index)
+                if mismatch_index != result_accepted_count:
+                    raise ValueError("verification metrics artifact results first_mismatch_index mismatch")
+                if result_accepted_count == result_draft_count:
+                    raise ValueError("verification metrics artifact results first_mismatch_index must be empty")
+                if rejected_proposal_token_id is None or target_token_id_at_mismatch is None:
+                    raise ValueError("verification metrics artifact results mismatch token ids must be present")
+                rejected = proposed_tokens[mismatch_index]
+                mismatch_target = target_tokens[mismatch_index]
+                if int(rejected_proposal_token_id) != rejected or int(target_token_id_at_mismatch) != mismatch_target:
+                    raise ValueError("verification metrics artifact results mismatch token ids mismatch")
+                if rejected == mismatch_target:
+                    raise ValueError("verification metrics artifact results mismatch token ids must differ")
 
         if abs(float(payload["accepted_per_draft"]) - (accepted_token_count / draft_token_count)) > 1e-12:
             raise ValueError("verification metrics artifact accepted_per_draft mismatch")
