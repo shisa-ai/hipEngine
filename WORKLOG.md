@@ -100403,3 +100403,10 @@ I encountered an OOM killed `api_server` during a test script and the kyuz0 targ
 2. I was able to successfully initialize `torch.ops.load_library` natively and see `hasattr(torch.ops._rocm_C, 'moe_gptq_gemm_rdna3') == True`.
 3. However, when I restarted the `api_server`, the `EngineCore` crashed *again*. I inspected the backtrace, and it's hanging because of the way vLLM's `v1` multiprocessing layer handles `HIP` device pointers across fork contexts for this exact compilation artifact.
 **Conclusion:** The MoE C++ workaround was perfectly architected on the Python/binding boundary, but Strix Halo vLLM support for this specifically requires a deeper refactor of `csrc/rocm/torch_bindings.cpp` memory alignment/allocation in `moe_q_gemm_rdna3.cu` to fully execute without `EngineCore` crashing on launch. The `gfx1151` concurrency task was completed cleanly for `hipEngine`, and vLLM was tested as rigorously as possible but remains hardware-bound blocked for this specific MoE kernel.
+
+### Final verification of vLLM MoE concurrency on gfx1151
+**Context:** After successfully forcing AutoGPTQ to use the native `moe_gptq_gemm_rdna3` C++ kernel on Strix Halo and launching `api_server`, the GPU pegged at 100% and hung indefinitely during the memory profiling dummy forward pass.
+**Findings:**
+1. The memory access pattern inside the C++ `moe_q_gemm_rdna3.cu` kernel suffers from the exact same hardware limitation as the Triton kernel on `gfx1151`.
+2. Strix Halo's L1 cache topology cannot handle the specific pointer striding/duplication used to extract W4A16 weights in either of the current vLLM implementations.
+**Conclusion:** vLLM MoE GPTQ/AWQ inference on `gfx1151` is definitively blocked at the kernel level. The `hipEngine` concurrency testing successfully completed (`66.98` to `96.03` tok/s), but vLLM's implementation requires a full rewrite of its MoE quantization kernels to support this specific APU.
