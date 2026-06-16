@@ -93365,3 +93365,29 @@ Validation:
 - `uv run ruff check hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py -q` -> `70 passed`.
 - `git diff --check -- hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py tests/test_generation_batch_scheduler.py docs/AGENTIC.md docs/SAMPLING.md` -> clean.
+
+## 2026-06-15 - README gfx1100/gfx1151 coverage split
+
+On a fresh `/home/lhl/hipEngine-main-latest` worktree based on
+`origin/main@efcc321f`, reorganized the top-level README benchmark coverage so
+W7900/gfx1100 and Strix Halo/gfx1151 measurements are visually separated instead
+of interleaved by feature.
+
+Changes:
+- Kept the W7900/gfx1100 retained refresh as its own performance section.
+- Expanded the gfx1151 performance section to the same six shape rows where
+  measured, covering hipEngine PARO, hipEngine GGUF Q4_K_M, llama.cpp HIP
+  Q4_K_M, and llama.cpp Vulkan Q4_K_M.
+- Split speculative decode into gfx1100 retained rows and gfx1151 diagnostic MTP
+  comparison rows.
+- Split concurrency into gfx1100/W7900 and gfx1151/Radeon 8060S subsections,
+  including the validated llama.cpp Vulkan server rows and the remaining vLLM
+  GPTQ Int4 startup blocker.
+- Copied the referenced compact gfx1151 artifacts from the prior local main
+  worktree into `benchmarks/results/` so all README links resolve on the fresh
+  origin-main branch.
+
+Validation:
+- Parsed 14 copied gfx1151 JSON artifacts successfully.
+- Checked README local markdown links; all resolve.
+- `git diff --check -- README.md benchmarks/results/2026-06-15-gfx1151-*` -> clean.

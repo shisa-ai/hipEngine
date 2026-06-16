@@ -1,0 +1,254 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_readme_concurrency_summary",
+  "created_at": "2026-06-15T21:45:00+00:00",
+  "status": "partial_diagnostic_with_llamacpp_vulkan",
+  "performance_claim": false,
+  "retained_ready": false,
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "Strix Halo"
+  },
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "reps": 3
+  },
+  "artifacts": {
+    "hipengine_paro": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json",
+    "primitive_correctness_dir": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness",
+    "llamacpp_vulkan": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-llamacpp-vulkan/summary.json",
+    "vllm_gptq_int4_blocked": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-vllm-gptq-int4-blocked.json",
+    "previous_llamacpp_vulkan_blocked": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-llamacpp-vulkan-blocked.json"
+  },
+  "hipengine_rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 66.62292368583826,
+      "decode_tok_s_per_request_median": 66.62292368583826,
+      "decode_tok_s_aggregate_runs": [
+        66.60289689055264,
+        66.62292368583826,
+        67.12401805148073
+      ],
+      "decode_tok_s_per_request_runs": [
+        66.60289689055264,
+        66.62292368583826,
+        67.12401805148073
+      ],
+      "path": "paro_bench_graph_replay"
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 69.54004499106463,
+      "decode_tok_s_per_request_median": 34.77002249553232,
+      "decode_tok_s_aggregate_runs": [
+        69.54004499106463,
+        70.23348437647232,
+        69.46707019934469
+      ],
+      "decode_tok_s_per_request_runs": [
+        34.77002249553232,
+        35.11674218823616,
+        34.733535099672345
+      ],
+      "path": "retained_native_batch"
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 88.39219471640925,
+      "decode_tok_s_per_request_median": 22.098048679102313,
+      "decode_tok_s_aggregate_runs": [
+        88.39219471640925,
+        88.40224215826227,
+        88.13667617403253
+      ],
+      "decode_tok_s_per_request_runs": [
+        22.098048679102313,
+        22.100560539565567,
+        22.034169043508133
+      ],
+      "path": "retained_native_batch"
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 100.68459794266565,
+      "decode_tok_s_per_request_median": 12.585574742833206,
+      "decode_tok_s_aggregate_runs": [
+        100.37409658108659,
+        100.68459794266565,
+        100.73598620509516
+      ],
+      "decode_tok_s_per_request_runs": [
+        12.546762072635824,
+        12.585574742833206,
+        12.591998275636895
+      ],
+      "path": "retained_native_batch"
+    }
+  },
+  "llamacpp_vulkan_rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 62.162175287621466,
+      "decode_tok_s_per_request_median": 62.162175287621466,
+      "decode_tok_s_aggregate_runs": [
+        62.162175287621466,
+        62.09667482008944,
+        62.30371894792381
+      ],
+      "e2e_tok_s_aggregate_median": 52.32245313970882,
+      "e2e_tok_s_aggregate_runs": [
+        52.31554487091785,
+        52.32245313970882,
+        52.448830809057846
+      ],
+      "path": "llama-server /completion continuous batching"
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 94.12155725587128,
+      "decode_tok_s_per_request_median": 47.06077862793564,
+      "decode_tok_s_aggregate_runs": [
+        94.30097925673147,
+        93.7348847921374,
+        94.12155725587128
+      ],
+      "e2e_tok_s_aggregate_median": 73.86813981017454,
+      "e2e_tok_s_aggregate_runs": [
+        74.05468466778764,
+        73.63943916738314,
+        73.86813981017454
+      ],
+      "path": "llama-server /completion continuous batching"
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 119.50986948448532,
+      "decode_tok_s_per_request_median": 29.87746737112133,
+      "decode_tok_s_aggregate_runs": [
+        109.99133818211816,
+        119.50986948448532,
+        131.24096276524708
+      ],
+      "e2e_tok_s_aggregate_median": 94.25590397519204,
+      "e2e_tok_s_aggregate_runs": [
+        94.25590397519204,
+        90.70904107398621,
+        94.59911448631104
+      ],
+      "path": "llama-server /completion continuous batching"
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 119.94067621709918,
+      "decode_tok_s_per_request_median": 14.992584527137398,
+      "decode_tok_s_aggregate_runs": [
+        119.94067621709918,
+        116.62504875986231,
+        127.81658320310356
+      ],
+      "e2e_tok_s_aggregate_median": 106.58693752783789,
+      "e2e_tok_s_aggregate_runs": [
+        104.61193164014281,
+        106.58693752783789,
+        107.42488540598993
+      ],
+      "path": "llama-server /completion continuous batching"
+    }
+  },
+  "hipengine_validation": {
+    "status": "diagnostic_validated",
+    "performance_claim": false,
+    "retained_ready": false,
+    "reason": "README-style diagnostic only; primitive c>N correctness and generated-token equality passed, but retained c>N promotion still lacks retained-artifact profiler/scaling gates.",
+    "generated_token_equality": {
+      "2": {
+        "passed_all_reps": true,
+        "rep_count": 3,
+        "source_artifacts": [
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c2-r0.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c2-r1.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c2-r2.json"
+        ]
+      },
+      "4": {
+        "passed_all_reps": true,
+        "rep_count": 3,
+        "source_artifacts": [
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c4-r0.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c4-r1.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c4-r2.json"
+        ]
+      },
+      "8": {
+        "passed_all_reps": true,
+        "rep_count": 3,
+        "source_artifacts": [
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c8-r0.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c8-r1.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c8-r2.json"
+        ]
+      }
+    },
+    "primitive_correctness": {
+      "2": {
+        "artifact": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows2.json",
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08
+      },
+      "4": {
+        "artifact": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows4.json",
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08
+      },
+      "8": {
+        "artifact": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows8.json",
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.960464477539063e-08
+      }
+    },
+    "passed": true
+  },
+  "llamacpp_vulkan_validation": {
+    "passed": true,
+    "server_health": true,
+    "all_reps_completed": true,
+    "expected_reps_per_concurrency": 3,
+    "concurrencies_completed": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "json_schema_parse": true,
+    "notes": "Diagnostic comparison only; llama.cpp /completion responses completed with timing metadata, but this is not a hipEngine correctness gate."
+  },
+  "blocked_comparisons": {
+    "vllm_gptq_int4": "server did not become healthy on gfx1151; see blocked artifact"
+  },
+  "resolved_comparisons": {
+    "llamacpp_vulkan": "Resolved after rebuilding /home/lhl/llama.cpp/llama.cpp-vulkan/build with llama-server target via /home/lhl/llama.cpp/build-vulkan.sh."
+  },
+  "notes": [
+    "Per-rep HIP device properties on this TheRock gfx1151 stack can report gcnArchName gfx1100; rocminfo reports gfx1151 and the run forced HIPENGINE_HIP_ARCH=gfx1151.",
+    "llama.cpp Vulkan uses Qwen3.6-35B-A3B-UD-Q4_K_S GGUF, not the PARO-packed hipEngine weights; it is a diagnostic server comparison row."
+  ]
+}

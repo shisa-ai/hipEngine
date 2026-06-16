@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "note": "gfx1151 README rationalization diagnostic: UD-Q4_K_M for GGUF/llama.cpp and PARO-packed for hipEngine PARO. One measured repetition by default; APU sysfs VRAM aperture makes llama.cpp memory raw-only.",
+  "env_capture": "/tmp/hipengine-readme-gfx1151-runs/20260615-040438/env-capture.txt",
+  "artifacts": {
+    "hipengine_paro_packed": "/home/lhl/hipEngine/benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json",
+    "hipengine_gguf_ud_q4_k_m": "/home/lhl/hipEngine/benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-gguf-ud-q4km-1run.json",
+    "llamacpp_hip_ud_q4_k_m": "/home/lhl/hipEngine/benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json",
+    "llamacpp_vulkan_ud_q4_k_m": "/home/lhl/hipEngine/benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json"
+  },
+  "results": {
+    "hipengine_paro_packed": {
+      "512/128": {
+        "prefill_tok_s": 956.6662799019283,
+        "decode_tok_s": 66.96670730161162,
+        "tracked_peak_allocated_gib": 20.923728063702583,
+        "final_token_ids_stable": true
+      },
+      "1K/128": {
+        "prefill_tok_s": 1067.1752223491198,
+        "decode_tok_s": 61.76760819919701,
+        "tracked_peak_allocated_gib": 20.925681188702583,
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s": 1062.2476638260323,
+        "decode_tok_s": 62.91004351673891,
+        "tracked_peak_allocated_gib": 20.937399938702583,
+        "final_token_ids_stable": true
+      },
+      "32K/128": {
+        "prefill_tok_s": 822.2547629868104,
+        "decode_tok_s": 50.36823692692255,
+        "tracked_peak_allocated_gib": 21.046774938702583,
+        "final_token_ids_stable": true
+      },
+      "64K/128": {
+        "prefill_tok_s": 622.7520501649053,
+        "decode_tok_s": 41.966247670905915,
+        "tracked_peak_allocated_gib": 21.046774938702583,
+        "final_token_ids_stable": true
+      },
+      "128K/128": {
+        "prefill_tok_s": 425.7265045421768,
+        "decode_tok_s": 30.285583111281483,
+        "tracked_peak_allocated_gib": 21.24831572547555,
+        "final_token_ids_stable": true
+      }
+    },
+    "hipengine_gguf_ud_q4_k_m": {
+      "512/128": {
+        "prefill_tok_s": 833.3657049250711,
+        "decode_tok_s": 56.580899788683176,
+        "tracked_peak_allocated_gib": 26.263996124267578,
+        "final_token_ids_stable": true
+      },
+      "1K/128": {
+        "prefill_tok_s": 854.3079320937537,
+        "decode_tok_s": 52.832124216513456,
+        "tracked_peak_allocated_gib": 26.263996124267578,
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s": 729.1170691611503,
+        "decode_tok_s": 53.637761735863165,
+        "tracked_peak_allocated_gib": 26.263996124267578,
+        "final_token_ids_stable": true
+      },
+      "32K/128": {
+        "prefill_tok_s": 619.5702951971649,
+        "decode_tok_s": 44.383185184939805,
+        "tracked_peak_allocated_gib": 26.263996124267578,
+        "final_token_ids_stable": true
+      },
+      "64K/128": {
+        "prefill_tok_s": 522.8715612030201,
+        "decode_tok_s": 37.740541334101806,
+        "tracked_peak_allocated_gib": 26.263996124267578,
+        "final_token_ids_stable": true
+      },
+      "128K/128": {
+        "prefill_tok_s": 384.0105446100463,
+        "decode_tok_s": 28.04324288032927,
+        "tracked_peak_allocated_gib": 26.263996124267578,
+        "final_token_ids_stable": true
+      }
+    },
+    "llamacpp_hip_ud_q4_k_m": {
+      "512/128": {
+        "prefill_tok_s": 1016.69615,
+        "decode_tok_s": 51.64041,
+        "peak_vram_gib_raw": 0.15703582763671875,
+        "peak_delta_gib_raw": 0.012722015380859375
+      },
+      "1K/128": {
+        "prefill_tok_s": 1069.681074,
+        "decode_tok_s": 51.445965,
+        "peak_vram_gib_raw": 0.15703964233398438,
+        "peak_delta_gib_raw": 0.000385284423828125
+      },
+      "4K/128": {
+        "prefill_tok_s": 1021.186035,
+        "decode_tok_s": 49.581426,
+        "peak_vram_gib_raw": 0.15704345703125,
+        "peak_delta_gib_raw": 0.00045013427734375
+      },
+      "32K/128": {
+        "prefill_tok_s": 742.869329,
+        "decode_tok_s": 43.627773,
+        "peak_vram_gib_raw": 0.15704345703125,
+        "peak_delta_gib_raw": 0.000728607177734375
+      },
+      "64K/128": {
+        "prefill_tok_s": 569.61108,
+        "decode_tok_s": 38.603548,
+        "peak_vram_gib_raw": 0.15704345703125,
+        "peak_delta_gib_raw": 0.001209259033203125
+      },
+      "128K/128": {
+        "prefill_tok_s": 384.958873,
+        "decode_tok_s": 31.597911,
+        "peak_vram_gib_raw": 0.15704345703125,
+        "peak_delta_gib_raw": 0.002071380615234375
+      }
+    },
+    "llamacpp_vulkan_ud_q4_k_m": {
+      "512/128": {
+        "prefill_tok_s": 1043.209068,
+        "decode_tok_s": 62.434495,
+        "peak_vram_gib_raw": 0.22639083862304688,
+        "peak_delta_gib_raw": 0.08208084106445312
+      },
+      "1K/128": {
+        "prefill_tok_s": 1055.049948,
+        "decode_tok_s": 61.571602,
+        "peak_vram_gib_raw": 0.23615646362304688,
+        "peak_delta_gib_raw": 0.09184646606445312
+      },
+      "4K/128": {
+        "prefill_tok_s": 1027.068715,
+        "decode_tok_s": 60.011796,
+        "peak_vram_gib_raw": 0.2947502136230469,
+        "peak_delta_gib_raw": 0.15044021606445312
+      },
+      "32K/128": {
+        "prefill_tok_s": 809.61929,
+        "decode_tok_s": 50.911074,
+        "peak_vram_gib_raw": 0.21174240112304688,
+        "peak_delta_gib_raw": 0.06743240356445312
+      },
+      "64K/128": {
+        "prefill_tok_s": 658.399462,
+        "decode_tok_s": 44.010249,
+        "peak_vram_gib_raw": 0.46413421630859375,
+        "peak_delta_gib_raw": 0.31982421875
+      },
+      "128K/128": {
+        "prefill_tok_s": 473.651209,
+        "decode_tok_s": 34.713768,
+        "peak_vram_gib_raw": 0.21178436279296875,
+        "peak_delta_gib_raw": 0.067474365234375
+      }
+    }
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "kind": "concurrency_decode_throughput_sweep",
+  "created_at": "2026-06-15T12:32:34.628027+00:00",
+  "performance_claim": false,
+  "retained_ready": false,
+  "host": "gfx1151/Strix Halo Radeon 8060S via HIPENGINE_HIP_ARCH=gfx1151",
+  "model": "Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "shape": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "max_layers": 40,
+    "reps": 3,
+    "kv_storage_dtype": "bf16"
+  },
+  "methodology": {
+    "c1": "scripts/qwen35_paro_bench.py --graph-replay-decode -> throughput.warmed_decode_tok_s",
+    "cN": "scripts/qwen35_batch_retained_bench.py --batch-size N -> measurements.decode_tok_s_{aggregate,per_request}",
+    "aggregate_across_runs": "median"
+  },
+  "rows": {
+    "1": {
+      "concurrency": 1,
+      "decode_tok_s_aggregate_median": 66.62292368583826,
+      "decode_tok_s_per_request_median": 66.62292368583826,
+      "decode_tok_s_aggregate_runs": [
+        66.60289689055264,
+        66.62292368583826,
+        67.12401805148073
+      ],
+      "decode_tok_s_per_request_runs": [
+        66.60289689055264,
+        66.62292368583826,
+        67.12401805148073
+      ],
+      "path": "paro_bench_graph_replay"
+    },
+    "2": {
+      "concurrency": 2,
+      "decode_tok_s_aggregate_median": 69.54004499106463,
+      "decode_tok_s_per_request_median": 34.77002249553232,
+      "decode_tok_s_aggregate_runs": [
+        69.54004499106463,
+        70.23348437647232,
+        69.46707019934469
+      ],
+      "decode_tok_s_per_request_runs": [
+        34.77002249553232,
+        35.11674218823616,
+        34.733535099672345
+      ],
+      "path": "retained_native_batch"
+    },
+    "4": {
+      "concurrency": 4,
+      "decode_tok_s_aggregate_median": 88.39219471640925,
+      "decode_tok_s_per_request_median": 22.098048679102313,
+      "decode_tok_s_aggregate_runs": [
+        88.39219471640925,
+        88.40224215826227,
+        88.13667617403253
+      ],
+      "decode_tok_s_per_request_runs": [
+        22.098048679102313,
+        22.100560539565567,
+        22.034169043508133
+      ],
+      "path": "retained_native_batch"
+    },
+    "8": {
+      "concurrency": 8,
+      "decode_tok_s_aggregate_median": 100.68459794266565,
+      "decode_tok_s_per_request_median": 12.585574742833206,
+      "decode_tok_s_aggregate_runs": [
+        100.37409658108659,
+        100.68459794266565,
+        100.73598620509516
+      ],
+      "decode_tok_s_per_request_runs": [
+        12.546762072635824,
+        12.585574742833206,
+        12.591998275636895
+      ],
+      "path": "retained_native_batch"
+    }
+  },
+  "fixture_note": "Synthetic exact-token fixture generated at /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json: 8 rows x 512 tokens, token ids 9707..9714 repeated per row, sha256 40c2ec07359503cd9610fc5ab20db0840c0aae073cc7f547933b632ae298eb03.",
+  "status": "diagnostic_retained",
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "default_hardware": false
+  },
+  "software": {
+    "python": "/home/lhl/miniforge3/envs/therock/bin/python",
+    "rocm_hip": "7.13.60980-c76140fa27",
+    "hipengine_commit_at_run": "25bc2a51a5eb33579da87b28aae587f5d0792e13",
+    "worktree_at_run": "/home/lhl/hipEngine-main"
+  },
+  "commands": {
+    "hipengine_concurrency_sweep": "cd /home/lhl/hipEngine-main\nsource /home/lhl/miniforge3/etc/profile.d/conda.sh\nconda activate therock\nROOT=$(python -m rocm_sdk path --root)\n# PATH/LD_LIBRARY_PATH include $ROOT, $CONDA_PREFIX, _rocm_sdk_core, and _rocm_sdk_libraries_gfx1151\nHIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=/home/lhl/hipEngine-main   python scripts/qwen35_concurrency_decode_sweep.py   --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16   --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json   --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt   --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8   --concurrencies 1,2,4,8 --reps 3   --work-dir /tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work   --json /home/lhl/hipEngine-main/benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json",
+    "primitive_correctness": "cd /home/lhl/hipEngine-main\nsource /home/lhl/miniforge3/etc/profile.d/conda.sh\nconda activate therock\nROOT=$(python -m rocm_sdk path --root)\n# PATH/LD_LIBRARY_PATH include $ROOT, $CONDA_PREFIX, _rocm_sdk_core, and _rocm_sdk_libraries_gfx1151\nHIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=/home/lhl/hipEngine-main   python scripts/qwen35_batch_correctness.py --rows {2,4,8} --seed 1234   --json benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows{N}.json"
+  },
+  "validation": {
+    "status": "diagnostic_validated",
+    "performance_claim": false,
+    "retained_ready": false,
+    "reason": "README-style diagnostic only; primitive c>N correctness and generated-token equality passed, but retained c>N promotion still lacks retained-artifact profiler/scaling gates.",
+    "generated_token_equality": {
+      "2": {
+        "passed_all_reps": true,
+        "rep_count": 3,
+        "source_artifacts": [
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c2-r0.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c2-r1.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c2-r2.json"
+        ]
+      },
+      "4": {
+        "passed_all_reps": true,
+        "rep_count": 3,
+        "source_artifacts": [
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c4-r0.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c4-r1.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c4-r2.json"
+        ]
+      },
+      "8": {
+        "passed_all_reps": true,
+        "rep_count": 3,
+        "source_artifacts": [
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c8-r0.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c8-r1.json",
+          "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work/c8-r2.json"
+        ]
+      }
+    },
+    "primitive_correctness": {
+      "2": {
+        "artifact": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows2.json",
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08
+      },
+      "4": {
+        "artifact": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows4.json",
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08
+      },
+      "8": {
+        "artifact": "benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-primitive-correctness/rows8.json",
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.960464477539063e-08
+      }
+    },
+    "passed": true
+  },
+  "source_logs": {
+    "background_task": "bg-6",
+    "background_log": "/tmp/vstack-pi-bg/bg-6-1781526127841.log",
+    "per_rep_artifacts_dir": "/tmp/hipengine-readme-gfx1151-runs/20260615-122207/hipengine-concurrency-work"
+  },
+  "notes": [
+    "Per-rep HIP device properties on this TheRock gfx1151 stack can report gcnArchName gfx1100; rocminfo reports gfx1151 and the run forced HIPENGINE_HIP_ARCH=gfx1151."
+  ]
+}

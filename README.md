@@ -52,7 +52,7 @@ numbers below.
 - The OpenAI-compatible server now has resident context/KV preallocation, startup warmup, max-prompt scratch probing, bounded chat-shaped startup smoke, `/ready` diagnostics, request context admission, and `max_tokens=auto` defaults for chat requests that omit an output cap.
 - `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
 - Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
-- Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
+- Current gfx1100 and gfx1151 performance snapshots are summarized in [Performance](#performance) with hardware-separated tables and recent llama.cpp baselines.
 
 
 ## Hardware targets
@@ -181,27 +181,54 @@ W7900 row sources: summary [`benchmarks/results/2026-06-14-w7900-gpu0-readme-ref
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
-The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the same registry-keyed kernel surface. The Strix Halo snapshot below uses 256-row prefill chunks, which removed the 4K prefill gap without hurting long-context decode.
+The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the
+same registry-keyed kernel surface. The Strix Halo rows below are local
+single-repetition diagnostics (`performance_claim=false`) so they are separated
+from the W7900 retained refresh above instead of interleaving hardware contexts.
+They use `HIPENGINE_HIP_ARCH=gfx1151`, TheRock ROCm `7.13.60980-c76140fa27`, and
+match the W7900 table's shape set where available. hipEngine GGUF uses
+`UD-Q4_K_M` here because that is the gfx1151 file measured alongside the local
+llama.cpp HIP/Vulkan `UD-Q4_K_M` baselines.
 
-### Prefill tok/s
+#### Prefill tok/s
 
-| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
-| --- | ---: | ---: | ---: |
-| 512/128 | 983.206 | **1058.738** | 638.008 |
-| 4K/128 | **1029.402** | 1004.220 | 595.400 |
-| 32K/128 | **792.296** | 735.534 | 407.984 |
-| 128K/128 | **413.489** | 376.070 | 181.453 |
+| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 956.666 | 833.366 | 1016.696 | **1043.209** |
+| 1K/128 | 1067.175 | 854.308 | **1069.681** | 1055.050 |
+| 4K/128 | **1062.248** | 729.117 | 1021.186 | 1027.069 |
+| 32K/128 | **822.255** | 619.570 | 742.869 | 809.619 |
+| 64K/128 | 622.752 | 522.872 | 569.611 | **658.399** |
+| 128K/128 | 425.727 | 384.011 | 384.959 | **473.651** |
 
-### Decode tok/s
+#### Decode tok/s
 
-| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
-| --- | ---: | ---: | ---: |
-| 512/128 | **62.060** | 50.537 | 57.615 |
-| 4K/128 | **63.605** | 49.379 | 55.027 |
-| 32K/128 | **50.629** | 43.435 | 44.576 |
-| 128K/128 | 30.245 | **31.286** | 26.935 |
+| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **66.967** | 56.581 | 51.640 | 62.434 |
+| 1K/128 | **61.768** | 52.832 | 51.446 | 61.572 |
+| 4K/128 | **62.910** | 53.638 | 49.581 | 60.012 |
+| 32K/128 | 50.368 | 44.383 | 43.628 | **50.911** |
+| 64K/128 | 41.966 | 37.741 | 38.604 | **44.010** |
+| 128K/128 | 30.286 | 28.043 | 31.598 | **34.714** |
 
-On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-engine memory comparisons are omitted here. The hipEngine allocator high-water mark for the chunk256 sweep was 17.997 GiB (512/128), 18.097 GiB (4K/128), 18.909 GiB (32K/128), and 21.877 GiB (128K/128).
+#### hipEngine tracked allocator peak GiB
+
+| Workload | hipEngine PARO | hipEngine GGUF Q4_K_M |
+| --- | ---: | ---: |
+| 512/128 | 20.924 | 26.264 |
+| 1K/128 | 20.926 | 26.264 |
+| 4K/128 | 20.937 | 26.264 |
+| 32K/128 | 21.047 | 26.264 |
+| 64K/128 | 21.047 | 26.264 |
+| 128K/128 | 21.248 | 26.264 |
+
+On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so
+cross-engine memory comparisons are omitted here. Row sources: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-summary.json),
+[`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-paro-packed-1run.json),
+[`hipEngine GGUF`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-hipengine-gguf-ud-q4km-1run.json),
+[`llama.cpp HIP`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-hip-ud-q4km-f16kv.json), and
+[`llama.cpp Vulkan`](benchmarks/results/2026-06-15-gfx1151-readme-udq4km-20260615-040438-llamacpp-vulkan-ud-q4km-f16kv.json).
 
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
@@ -213,11 +240,29 @@ retained exact speedup; 35B-A3B MTP now has its first exact break-even row, with
 more policy/kernel margin work still active because the MoE target AR path is
 cheap.
 
+### gfx1100 (W7900)
+
 | Path | Model / workload | W7900 result | Status |
 | --- | --- | ---: | --- |
 | DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
 | MTP B=3 persistent chain, locked sprint baseline | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; retained as the sprint baseline. Artifacts: [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
 | MTP B=1 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 default | **1.023x prompt-mean / 1.014x total-time AR**, `14.134 ms/cycle` | Exact `9/9`, 3-run retained break-even row. B=3 remains higher-density but just short (`0.968x` same-session); full vocab was exact but no-held (`0.880x`). See [`docs/MTP.md`](docs/MTP.md) and [`B=1 artifact`](benchmarks/results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json). |
+
+### gfx1151 (Radeon 8060S diagnostic)
+
+The gfx1151 MTP rows are diagnostics, not retained wins. The hipEngine row used
+the public PARO packed trunk plus copied BF16 MTP sidecar with exact fallback
+flags to pass the D32 prompt suite; it remained below AR speed. The llama.cpp
+rows use the MTP-bearing `UD-Q4_K_M` GGUF and are cross-engine comparison
+baselines.
+
+| Path | Model / workload | gfx1151 result | Status |
+| --- | --- | ---: | --- |
+| hipEngine MTP B=1 | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, D32, 9 prompts | `0.912x` prompt-mean / `0.904x` total-time AR (`59.56` vs `65.37 tok/s`) | Exact `9/9` with exact fallbacks; diagnostic, no retained performance claim. |
+| llama.cpp HIP MTP B=4 | Qwen3.6-35B-A3B `UD-Q4_K_M` MTP GGUF, D32, 9 prompts | mean `91.11 tok/s`, wall `52.47 tok/s`, `1.79x` mean vs base | Cross-engine diagnostic; accept rate `91.5%`. |
+| llama.cpp Vulkan MTP B=4 | Qwen3.6-35B-A3B `UD-Q4_K_M` MTP GGUF, D32, 9 prompts | mean `108.96 tok/s`, wall `57.69 tok/s`, `1.73x` mean vs base | Cross-engine diagnostic; accept rate `92.3%`. |
+
+Source artifact: [`gfx1151 MTP comparison`](benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json).
 
 ## Concurrency (batched decode)
 
@@ -227,21 +272,21 @@ device batched LM-head argmax, on-stream position advance) that can be captured
 and replayed as a single HIP graph. See [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md)
 for the design and the C3.0a/b/c decode-throughput work.
 
-The table below is a current-code diagnostic snapshot of decode throughput as
-the number of concurrent sequences `c` grows on a fixed 512-prompt / 128-decode
-shape (gfx1100 / W7900, median of 3 runs). *Aggregate* is total tok/s across the
-batch; *per-sequence* is tok/s seen by one request. hipEngine uses PARO W4A16
+The snapshots below keep gfx1100 and gfx1151 separate because the model files,
+ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across
+the batch; *per-sequence* is tok/s seen by one request. See
+[`docs/VLLM_RDNA3.md`](docs/VLLM_RDNA3.md) for vLLM RDNA3 setup notes.
+
+### gfx1100 / W7900 decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128)
+
+This current-code diagnostic uses median-of-3 runs. hipEngine uses PARO W4A16
 with BF16 KV. llama.cpp uses the available Qwen3.6 GGUF `UD-Q4_K_S` with Vulkan
 RADV, f16 KV, exact token-id prompts, and `llama-server -np c -c 1024*c`, so it
 is a useful server-side comparison but not same-quant. vLLM uses a local
 `v0.22.1rc1.dev499+g470229c37.d20260613` source build with
 `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, no MTP, exact token-id prompts, and the
 OpenAI `/v1/completions` API. vLLM values are wall-throughput because the OpenAI
-response path does not expose llama.cpp-style pure decode timings; see
-[`docs/VLLM_RDNA3.md`](docs/VLLM_RDNA3.md) for the full vLLM setup notes and
-smoke-test details.
-
-### Decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128, W7900)
+response path does not expose llama.cpp-style pure decode timings.
 
 | Concurrency `c` | hipEngine aggregate | hipEngine per-seq | llama.cpp Vulkan aggregate | llama.cpp per-seq | vLLM OpenAI aggregate | vLLM per-seq |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -264,9 +309,33 @@ Source artifacts:
 [`vLLM local build W7900`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
 [`full W7900 refresh summary`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json),
 and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
+
+### gfx1151 / Radeon 8060S decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128)
+
+This Strix Halo diagnostic uses median-of-3 runs and is not a retained
+performance claim (`performance_claim=false`, `retained_ready=false`). hipEngine
+PARO completed c=1/2/4/8 with primitive c>N correctness passing for c=2/4/8 and
+generated-token equality passing for every c>N repetition. llama.cpp Vulkan uses
+`UD-Q4_K_S`, f16 KV, and a rebuilt `llama-server` from the standard
+`/home/lhl/llama.cpp/llama.cpp-vulkan/build` tree. vLLM GPTQ Int4 did not
+produce OpenAI rows on gfx1151: non-text-only startup hit a 256 GiB ViT SDPA OOM,
+and text-only attempts loaded weights but never bound port 8008.
+
+| Concurrency `c` | hipEngine aggregate | hipEngine per-seq | llama.cpp Vulkan aggregate | llama.cpp Vulkan per-seq | vLLM OpenAI |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 66.62 | 66.62 | 62.16 | 62.16 | blocked: server unhealthy |
+| 2 | 69.54 | 34.77 | 94.12 | 47.06 | blocked |
+| 4 | 88.39 | 22.10 | 119.51 | 29.88 | blocked |
+| 8 | 100.68 | 12.59 | 119.94 | 14.99 | blocked |
+
+Source artifacts: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json),
+[`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),
+[`llama.cpp Vulkan`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-llamacpp-vulkan/summary.json), and
+[`vLLM blocked`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-vllm-gptq-int4-blocked.json).
+
 A current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 now blocks with HIP OOM;
 see [`XTX partial`](benchmarks/results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json).
-Replicate the hipEngine, llama.cpp Vulkan, and vLLM concurrency rows with:
+Replicate the W7900 hipEngine, llama.cpp Vulkan, and vLLM concurrency rows with:
 
 ```bash
 scripts/run_w7900_readme_refresh.sh concurrency

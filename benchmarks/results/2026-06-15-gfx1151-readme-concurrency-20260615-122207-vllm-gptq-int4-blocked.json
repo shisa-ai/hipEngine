@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "kind": "vllm_openai_concurrency_decode_sweep_blocked",
+  "created_at": "2026-06-15T23:30:00+00:00",
+  "status": "blocked",
+  "performance_claim": false,
+  "retained_ready": false,
+  "hardware": {
+    "gpu": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "Strix Halo"
+  },
+  "software": {
+    "python": "/home/lhl/miniforge3/envs/vllm/bin/python",
+    "torch": "2.12.0a0+rocm7.13.0a20260411",
+    "torch_hip": "7.13.60980",
+    "triton": "3.7.0+git18f89f64.rocm7.13.0a20260411",
+    "vllm": "0.22.1rc1.dev499+g470229c37.d20260615.rocm713",
+    "rocm_sdk_libraries_gfx1151": "7.13.0a20260411"
+  },
+  "model": "palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4",
+  "served_model_name": "qwen36-gptq-int4",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 8,
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "reps": 3
+  },
+  "blocked_reason": "No gfx1151 vLLM OpenAI concurrency result: server did not reach a healthy /health endpoint or bind port 8008 in text-only GPTQ attempts; non-text-only attempt failed during startup with a 256 GiB ViT SDPA allocation.",
+  "server_attempts": [
+    {
+      "bg_task": "bg-7",
+      "log": "/tmp/vstack-pi-bg/bg-7-1781526845722.log",
+      "flags": "--max-model-len 8192 --enforce-eager",
+      "outcome": "failed",
+      "evidence": "Engine core initialization failed after torch.OutOfMemoryError: Tried to allocate 256.00 GiB in ViT Torch SDPA."
+    },
+    {
+      "bg_task": "bg-8",
+      "log": "/tmp/vstack-pi-bg/bg-8-1781529808025.log",
+      "flags": "--max-model-len 8192 --language-model-only --mm-processor-cache-gb 0 --enforce-eager",
+      "outcome": "stopped_unhealthy",
+      "evidence": "Loaded 7/7 shards in 342.09 s, model memory 20.15 GiB, then remained before serving; no port 8008 health check."
+    },
+    {
+      "bg_task": "bg-9",
+      "log": "/tmp/vstack-pi-bg/bg-9-1781531324815.log",
+      "flags": "--max-model-len 1024 --language-model-only --mm-processor-cache-gb 0 --skip-mm-profiling --max-num-batched-tokens 1024 --max-num-seqs 8 --enforce-eager",
+      "outcome": "stopped_unhealthy",
+      "evidence": "Loaded 7/7 shards in 341.11 s, model memory 20.15 GiB, then remained before serving; no port 8008 health check."
+    },
+    {
+      "bg_task": "bg-10",
+      "log": "/tmp/vstack-pi-bg/bg-10-1781532450021.log",
+      "flags": "VLLM_USE_V1=0 --max-model-len 1024 --language-model-only --mm-processor-cache-gb 0 --max-num-batched-tokens 1024 --max-num-seqs 8 --enforce-eager",
+      "outcome": "stopped_unhealthy",
+      "evidence": "vLLM reported unknown VLLM_USE_V1, loaded 7/7 shards in 341.46 s, model memory 20.15 GiB, then remained before serving; no port 8008 health check."
+    },
+    {
+      "bg_task": "bg-11",
+      "log": "/tmp/vstack-pi-bg/bg-11-1781532929936.log",
+      "flags": "--max-model-len 1024 --language-model-only --mm-processor-cache-gb 0 --skip-mm-profiling --max-num-batched-tokens 1024 --max-num-seqs 8 --moe-backend triton_unfused --enforce-eager",
+      "outcome": "stopped_unhealthy",
+      "evidence": "Loaded 7/7 shards in 342.45 s, model memory 20.15 GiB, warned about default MoE config, then remained before serving; no port 8008 health check."
+    }
+  ],
+  "server_command_final_attempt": "source /home/lhl/miniforge3/etc/profile.d/conda.sh\nconda activate vllm\nPY=/home/lhl/miniforge3/envs/vllm/bin/python\nPREFIX=$($PY -c 'import sys; print(sys.prefix)')\nROOT=$($PY -m rocm_sdk path --root)\n# PATH/LD_LIBRARY_PATH include $ROOT, $PREFIX, _rocm_sdk_core, and _rocm_sdk_libraries_gfx1151\nHIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 VLLM_TARGET_DEVICE=rocm HSA_NO_SCRATCH_RECLAIM=1 TORCHINDUCTOR_AUTOGRAD_CACHE=0   $PREFIX/bin/vllm serve palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4   --host 127.0.0.1 --port 8008 --served-model-name qwen36-gptq-int4   --dtype bfloat16 --max-model-len 1024 --gpu-memory-utilization 0.90   --enforce-eager --language-model-only --mm-processor-cache-gb 0   --skip-mm-profiling --max-num-batched-tokens 1024 --max-num-seqs 8   --moe-backend triton_unfused",
+  "client_command_not_run": "/home/lhl/miniforge3/envs/vllm/bin/python scripts/vllm_openai_concurrency_sweep.py   --url http://127.0.0.1:8008 --model qwen36-gptq-int4   --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json   --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8   --concurrencies 1,2,4,8 --reps 3   --json benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-vllm-gptq-int4.json",
+  "post_cleanup": {
+    "port_8008_listening": false,
+    "kfd_processes": "none observed after stopping bg-11"
+  }
+}
