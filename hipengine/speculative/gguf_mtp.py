@@ -2103,6 +2103,84 @@ class Qwen35GGUFMTPPerformanceReadiness:
 
     blockers: tuple[str, ...]
 
+    @staticmethod
+    def known_blockers() -> tuple[str, ...]:
+        return (
+            "parity_precheck_failed",
+            "draft_budget_precheck_failed",
+            "draft_sampling_contract_precheck_failed",
+            "hidden_seed_contract_precheck_failed",
+            "exactness_gate_failed",
+            "kvlivespans_paged_cache_smoke_failed",
+            "partial_llamacpp_trace_budget_coverage",
+            "accepted_draft_denominator_not_comparable",
+            "accepted_output_denominator_not_comparable",
+            "native_runtime_kernels_missing",
+            "optimization_kernels_missing",
+            "hipengine_metrics_not_ready",
+        )
+
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return ("ready", "blockers", "known_blockers")
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPPerformanceReadiness.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    def __post_init__(self) -> None:
+        known = self.known_blockers()
+        unknown = tuple(blocker for blocker in self.blockers if blocker not in known)
+        if unknown:
+            joined = ", ".join(unknown)
+            raise ValueError(f"performance readiness unknown blockers: {joined}")
+        expected_order = tuple(blocker for blocker in known if blocker in self.blockers)
+        if self.blockers != expected_order:
+            raise ValueError("performance readiness blockers must follow known blocker order")
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "performance readiness",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        known_blockers = payload.get("known_blockers")
+        if not isinstance(known_blockers, Sequence) or isinstance(known_blockers, (str, bytes)):
+            raise ValueError(f"{field_name} known_blockers must be a sequence")
+        if tuple(str(blocker) for blocker in known_blockers) != cls.known_blockers():
+            raise ValueError(f"{field_name} known_blockers mismatch")
+        blockers = payload.get("blockers")
+        if not isinstance(blockers, Sequence) or isinstance(blockers, (str, bytes)):
+            raise ValueError(f"{field_name} blockers must be a sequence")
+        readiness = cls(blockers=tuple(str(blocker) for blocker in blockers))
+        if bool(payload["ready"]) != readiness.ready:
+            raise ValueError(f"{field_name} ready mismatch")
+
     @classmethod
     def from_gate_inputs(
         cls,
@@ -2155,6 +2233,9 @@ class Qwen35GGUFMTPPerformanceReadiness:
         return {
             "ready": self.ready,
             "blockers": list(self.blockers),
+            "known_blockers": list(self.known_blockers()),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 

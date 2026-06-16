@@ -670,22 +670,22 @@ def build_b1_prompt_suite_artifact(
 
 
 def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
-    return list(
-        Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
-            parity_precheck=bool(readiness["parity_precheck"]),
-            draft_budget_precheck=bool(readiness["draft_budget_precheck"]),
-            draft_sampling_contract_precheck=bool(readiness["draft_sampling_contract_precheck"]),
-            hidden_seed_contract_precheck=bool(readiness["hidden_seed_contract_precheck"]),
-            exactness_gate=str(readiness["exactness_gate"]),
-            kvlivespans_paged_cache_smoke=bool(readiness["kvlivespans_paged_cache_smoke"]),
-            llamacpp_trace_budget_coverage=str(readiness["llamacpp_trace_budget_coverage"]),
-            accepted_per_draft_status=str(readiness["accepted_per_draft_status"]),
-            accepted_per_output_status=str(readiness["accepted_per_output_status"]),
-            native_runtime_kernels_ready=bool(readiness["native_runtime_kernels_ready"]),
-            optimization_kernels_ready=bool(readiness["optimization_kernels_ready"]),
-            metrics_contract_status=str(readiness["metrics_contract_status"]),
-        ).blockers
-    )
+    payload = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+        parity_precheck=bool(readiness["parity_precheck"]),
+        draft_budget_precheck=bool(readiness["draft_budget_precheck"]),
+        draft_sampling_contract_precheck=bool(readiness["draft_sampling_contract_precheck"]),
+        hidden_seed_contract_precheck=bool(readiness["hidden_seed_contract_precheck"]),
+        exactness_gate=str(readiness["exactness_gate"]),
+        kvlivespans_paged_cache_smoke=bool(readiness["kvlivespans_paged_cache_smoke"]),
+        llamacpp_trace_budget_coverage=str(readiness["llamacpp_trace_budget_coverage"]),
+        accepted_per_draft_status=str(readiness["accepted_per_draft_status"]),
+        accepted_per_output_status=str(readiness["accepted_per_output_status"]),
+        native_runtime_kernels_ready=bool(readiness["native_runtime_kernels_ready"]),
+        optimization_kernels_ready=bool(readiness["optimization_kernels_ready"]),
+        metrics_contract_status=str(readiness["metrics_contract_status"]),
+    ).as_dict()
+    Qwen35GGUFMTPPerformanceReadiness.validate_payload(payload)
+    return list(payload["blockers"])
 
 
 def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:

@@ -379,10 +379,11 @@ or KVLiveSpans runtime component keys are absent. Use
 performance-comparison readiness rollup (`performance_comparison_ready_by_budget`,
 `performance_comparison_blockers_by_budget`, `performance_unready_budgets`, and
 `all_performance_comparisons_ready`). The blocker derivation is shared through
-the torch-free `Qwen35GGUFMTPPerformanceReadiness` speculative contract;
-`--fail-on-performance-unready` returns exit code `5` until parity, exactness,
-KVLiveSpans paged-cache smoke, full trace-budget coverage, comparable
-accepted/draft and accepted/output denominators, native runtime kernels,
+the torch-free, self-validating `Qwen35GGUFMTPPerformanceReadiness`
+speculative contract; `--fail-on-performance-unready` returns exit code `5`
+until parity, exactness, KVLiveSpans paged-cache smoke, full trace-budget
+coverage, comparable accepted/draft and accepted/output denominators, native
+runtime kernels,
 optimization kernels, and hipEngine metrics are all present.
 `--fail-on-metrics-contract-invalid` returns exit code `12` if the blocked or
 native hipEngine metrics contract validation fails.
@@ -1049,7 +1050,7 @@ is now answered by the M1 required/optional table.)
       device-side optimization keys are absent,
       `--fail-on-metrics-contract-invalid` exits `12` when hipEngine metrics
       contract validation fails, and `--fail-on-performance-unready`
-      exits `5` until the combined M6 readiness
+      exits `5` until the combined, self-validating M6 readiness
       rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean, including
       accepted/draft comparability, the KVLiveSpans smoke, and
       optimization-kernel readiness bits); actual B2-B4

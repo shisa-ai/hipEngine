@@ -1263,7 +1263,27 @@ def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:
 
     assert readiness.ready is True
     assert readiness.blockers == ()
-    assert readiness.as_dict() == {"ready": True, "blockers": []}
+    assert readiness.as_dict() == {
+        "ready": True,
+        "blockers": [],
+        "known_blockers": list(Qwen35GGUFMTPPerformanceReadiness.known_blockers()),
+        "required_fields": list(Qwen35GGUFMTPPerformanceReadiness.required_fields()),
+        "validator": "Qwen35GGUFMTPPerformanceReadiness.validate_payload",
+    }
+    assert Qwen35GGUFMTPPerformanceReadiness.contract() == {
+        "required_fields": list(Qwen35GGUFMTPPerformanceReadiness.required_fields()),
+        "validator": "Qwen35GGUFMTPPerformanceReadiness.validate_payload",
+    }
+    Qwen35GGUFMTPPerformanceReadiness.validate_payload(readiness.as_dict())
+    bad_payload = {**readiness.as_dict(), "ready": False}
+    with pytest.raises(ValueError, match="ready mismatch"):
+        Qwen35GGUFMTPPerformanceReadiness.validate_payload(bad_payload)
+    bad_payload = {**readiness.as_dict(), "blockers": ["unknown_blocker"]}
+    with pytest.raises(ValueError, match="unknown blockers"):
+        Qwen35GGUFMTPPerformanceReadiness.validate_payload(bad_payload)
+    bad_payload = {**readiness.as_dict(), "validator": "wrong"}
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPPerformanceReadiness.validate_payload(bad_payload)
 
 
 def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
@@ -1297,6 +1317,7 @@ def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
         "optimization_kernels_missing",
         "hipengine_metrics_not_ready",
     )
+    Qwen35GGUFMTPPerformanceReadiness.validate_payload(readiness.as_dict())
 
 
 def test_gguf_mtp_performance_readiness_blocks_missing_optimization_kernels() -> None:
