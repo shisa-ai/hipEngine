@@ -100395,3 +100395,11 @@ I encountered an OOM killed `api_server` during a test script and the kyuz0 targ
 - Patched `check_moe_marlin_supports_layer` to return `True` for `gfx1151` to prevent AutoGPTQ from attempting to fall back to the deadlocking Triton backend entirely.
 - Triggered a direct, completely clean `python setup.py build_ext --inplace` to guarantee the C++ kernel is built and the `moe_gptq_gemm_rdna3` symbol is successfully registered to PyTorch.
 - Left the compilation running in the background.
+
+### Checked final vLLM MoE fallback
+**Context:** I cleared out the compilation environment and re-built vLLM cleanly.
+**Findings:**
+1. The compilation explicitly output that `moe_gptq_gemm_rdna3` was exposed in `vllm._rocm_C`.
+2. I was able to successfully initialize `torch.ops.load_library` natively and see `hasattr(torch.ops._rocm_C, 'moe_gptq_gemm_rdna3') == True`.
+3. However, when I restarted the `api_server`, the `EngineCore` crashed *again*. I inspected the backtrace, and it's hanging because of the way vLLM's `v1` multiprocessing layer handles `HIP` device pointers across fork contexts for this exact compilation artifact.
+**Conclusion:** The MoE C++ workaround was perfectly architected on the Python/binding boundary, but Strix Halo vLLM support for this specifically requires a deeper refactor of `csrc/rocm/torch_bindings.cpp` memory alignment/allocation in `moe_q_gemm_rdna3.cu` to fully execute without `EngineCore` crashing on launch. The `gfx1151` concurrency task was completed cleanly for `hipEngine`, and vLLM was tested as rigorously as possible but remains hardware-bound blocked for this specific MoE kernel.
