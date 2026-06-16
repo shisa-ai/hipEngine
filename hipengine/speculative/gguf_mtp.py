@@ -619,6 +619,9 @@ class Qwen35GGUFMTPAcceptStepMetrics:
                 raise ValueError(f"accept step {index} must include candidate_counts")
         if sum(sum(step.commit_plan.candidate_counts or ()) for step in normalized) <= 0:
             raise ValueError("draft_token_count must be positive")
+        accepted = sum(sum(step.commit_plan.accepted_counts) for step in normalized)
+        if accepted > out:
+            raise ValueError("accepted draft tokens cannot exceed visible output tokens")
         return cls(steps=normalized, output_token_count=out)
 
     @property
@@ -831,6 +834,8 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             raise ValueError("accept-step metrics artifact accepted_token_count must be non-negative")
         if output_token_count <= 0:
             raise ValueError("accept-step metrics artifact output_token_count must be positive")
+        if accepted_token_count > output_token_count:
+            raise ValueError("accept-step metrics artifact accepted draft tokens cannot exceed visible output tokens")
         if payload.get("budget_label") != f"B{candidate_budget}":
             raise ValueError("accept-step metrics artifact budget_label mismatch")
 

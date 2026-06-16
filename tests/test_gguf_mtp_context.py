@@ -658,6 +658,13 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     bad_draft_total = {**metrics.as_dict(), "draft_token_count": 99}
     with pytest.raises(ValueError, match="draft_token_count mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_draft_total)
+    over_visible_payload = {
+        **metrics.as_dict(),
+        "output_token_count": 2,
+        "accepted_per_output": 1.5,
+    }
+    with pytest.raises(ValueError, match="visible output"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(over_visible_payload)
     bad_ratio = {**metrics.as_dict(), "accepted_per_draft": 0.1}
     with pytest.raises(ValueError, match="accepted_per_draft mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_ratio)
@@ -700,6 +707,11 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         Qwen35GGUFMTPAcceptStepMetrics.from_steps((), output_token_count=1)
     with pytest.raises(ValueError, match="output_token_count"):
         Qwen35GGUFMTPAcceptStepMetrics.from_steps((partial,), output_token_count=0)
+    with pytest.raises(ValueError, match="visible output"):
+        Qwen35GGUFMTPAcceptStepMetrics.from_steps(
+            (partial, full_budgeted),
+            output_token_count=2,
+        )
     missing_counts = TargetCommitPlan(
         transaction_id=99,
         request_ids=(7,),
