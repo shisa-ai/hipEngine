@@ -676,6 +676,16 @@ No-hold notes:
   correctness oracle. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-block64-rejected.json`.
 
+- **Full-attention query chunk 8192 rejected (2026-06-16).** Raising only the
+  mid-context full-attention query prefill chunk from `4096` to `8192` passed
+  the prefill-config smoke and `154`-test GGUF guard with stable IDs, but it was
+  not neutral: tracked peak grew from `21.335` to `21.416 GiB` and `512/128`
+  regressed versus the retained decode-policy-cache baseline (`1958.536 /
+  127.263 -> 1952.309 / 127.068 tok/s`). The small `4K/128` nudge was not enough
+  to retain it. Code/test changes were reverted; keep the mid-context query
+  chunk at `4096`. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-query8192-rejected.json`.
+
 - **Full-attention query chunk 2048 rejected (2026-06-16).** Splitting the
   mid-context auto-tuned full-attention query chunk from `4096` to `2048`
   reduced tracked primary-gate peak (`21.335 -> 20.689 GiB`) and nudged decode
