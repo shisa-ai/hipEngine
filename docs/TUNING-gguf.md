@@ -170,6 +170,19 @@ the dense Q8_0 T16 bucket remains the largest decode bucket (`50.638 ms`,
 repeat blind Q8 launch-bound or scale-load tweaks without a new algorithmic or
 dispatch-level reason.
 
+G-M4 memory-census instrumentation is now emitted in GGUF benchmark memory
+snapshots and summarized in
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-memory-census.json`. On the primary
+GPU1 gate, owned resident memory remains `21.335 GiB`, split as `19.858 GiB`
+weights/T16 tiles, `0.148 GiB` decode scratch, and `1.329 GiB` session buffers
+(`1.295 GiB` bulk-prefill scratch plus `0.033 GiB` full-sequence prefill hidden
+for the 4K capacity). A static projection matching the resident-session scratch
+formulas puts `128K/128` at `25.108 GiB` (`19.858 GiB` weights, `2.638 GiB`
+decode scratch including `2.505 GiB` full-attention KV, and `2.611 GiB` session
+buffers including `1.608 GiB` bulk-prefill scratch and `1.002 GiB` full-sequence
+prefill hidden). GPU1 reports `23.984 GiB` total, so the 128K blocker is a real
+`~1.12 GiB` capacity shortfall rather than hidden raw+packed duplicate residency.
+
 Retained notes:
 
 - **G-P1 selected-WMMA half-sequential rewrite retained (2026-06-16).** The
@@ -212,10 +225,11 @@ Current focused lanes from evidence:
    object is scratch-free and low-VGPR and prior Q8 launch-bound/load variants
    no-held. Prefer dispatch/graph/full-attention or an algorithmic Q8 reduction
    over more occupancy pokes.
-2. **G-P4/G-M4 before final long-context promotion:** the primary gates fit at
-   `21.335 GiB`, but GPU1 `128K/128` currently fails with HIP OOM during session
-   construction, so long-context claims need W7900 fallback evidence or lower
-   prefill/KV/scratch residency.
+2. **G-P4 before final long-context promotion:** G-M4 now attributes the memory
+   blocker: the primary gates fit at `21.335 GiB`, while the projected GPU1
+   `128K/128` resident footprint is `25.108 GiB` on a `23.984 GiB` device. Long
+   context claims need W7900 fallback evidence or a real reduction in KV,
+   full-sequence prefill hidden, or bulk-prefill scratch residency.
 3. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
    WMMA is no longer the dominant 4K prefill bucket; GDN prefill recurrent and
    dense Q8_0 WMMA are now comparable follow-up targets, and any further G-P1
@@ -645,7 +659,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-M1 | Build a matched-token prompt fixture shared by hipEngine and llama.cpp. | Avoid token/template drift when comparing decode and MTP-bearing GGUFs. | Same token IDs and prompt length proven in artifacts. |
 | G-M2 | Produce per-shape GGUF rocprof bucket summaries for `512`, `4K`, `32K`, `128K`. | P9.C showed selected-MoE and Q8 buckets moved with shape; do not optimize blind. | `qwen35_gguf_rocprof_summary.py` artifacts list top buckets, dispatches, VGPR/scratch, and legacy fallback presence. |
 | G-M3 | Add/refresh code-object occupancy and scratch census for hot GGUF kernels. | Decode is memory-bound and occupancy-sensitive; any scratch on hot kernels is a bug. | Hot kernels report `Scratch_Size=0`, acceptable VGPR, and no unexpected LDS expansion. |
-| G-M4 | Memory residency census by tensor family/layout. | GPU1 gates fit but leave only ~2 GiB free, and stale full-sweep rows exceeded 24 GiB; duplicate layouts hide in totals. | Artifact breaks down raw, T16, KV, scratch, graph, and sampler allocations. |
+| G-M4 | Memory residency census by tensor family/layout. | GPU1 gates fit but leave only ~2 GiB free, and stale full-sweep rows exceeded 24 GiB; duplicate layouts hide in totals. | `qwen35_gguf_bench.py` snapshots now emit an owned-session breakdown; `2026-06-16-gpu1-gguf-q4ks-memory-census.json` attributes the 128K GPU1 blocker to projected KV/prefill residency, not duplicate layouts. |
 
 ### D lane — Decode throughput
 

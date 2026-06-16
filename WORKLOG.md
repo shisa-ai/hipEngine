@@ -94147,3 +94147,22 @@ Validation and outcome:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
 - Prompt verifier: passed for a diagnostic/no-runtime-change iteration. Generated IDs stayed deterministic, tracked peak stayed at `21.334858 GiB`, no torch/llama.cpp hot-path dependency or raw+packed residency change was introduced, and no promotion was claimed.
 - Decision: log/diagnostic. Do not repeat blind Q8T16 launch-bound or scale-load tweaks without a new algorithmic/dispatch reason; the active Q8 decode code object is already clean. Next decode work should look at dispatch/graph overhead, full-attention decode, or a true algorithmic Q8 reduction. The final 128K promotion blocker remains G-P4/G-M4 memory policy or W7900 fallback evidence.
+
+## 2026-06-16 - GGUF G-M4 memory census instrumentation
+
+Added an owned-session memory breakdown to the GGUF benchmark memory snapshots
+(`scripts/qwen35_gguf_bench.py`), so `qwen35_readme_sweep.py` now records resident
+weights by quant/layout plus decode scratch and session buffer families. This is
+a diagnostic/tooling iteration only; no runtime math, dispatch, or allocation
+policy changed.
+
+Validation and outcome:
+- Code sanity: `python3 -m py_compile scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py` passed.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1860.698440 / 125.786002 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2153.848448 / 115.755571 tok/s`, stable IDs `[570, 570, 570]`; tracked peak stayed `21.334858 GiB`. No runtime path changed, so throughput movement is variance/context only.
+- Emitted 4K owned-session breakdown: `21.334858 GiB` total = `19.858393 GiB` weights/T16 tiles, `0.147844 GiB` decode scratch, and `1.328621 GiB` session buffers. Session buffers include `1.294447 GiB` bulk-prefill scratch and `0.033203 GiB` full-sequence prefill hidden at `max_positions=4352`.
+- Static 128K/128 projection from the same resident-session formulas: `max_positions=131328`, projected owned bytes `25.107746 GiB` on GPU1 total `23.984375 GiB`, i.e. `+1.123371 GiB` over device capacity. Components: weights `19.858393 GiB`, decode scratch `2.637895 GiB` (full-attention KV `2.504883 GiB`), session buffers `2.611458 GiB` (bulk prefill scratch `1.607588 GiB`, full-sequence prefill hidden `1.001953 GiB`).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-memory-census.json`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for diagnostic/tooling. Generated IDs stayed deterministic, tracked peak stayed flat, the new snapshot fields introduce no torch/llama.cpp hot-path dependency and no extra residency, and no perf promotion is claimed.
+- Decision: log/diagnostic. The 128K GPU1 blocker is real capacity, not hidden raw+packed duplicate residency; final long-context promotion needs W7900 fallback evidence or a G-P4 reduction in KV/prefill-hidden/bulk-prefill scratch residency.

@@ -831,6 +831,7 @@ def _memory_snapshot(label: str, runtime: HipRuntime, session: Qwen35GGUFResiden
     if session is not None:
         payload["owned_session_bytes"] = _owned_device_bytes(session)
         payload["owned_session_gib"] = _bytes_to_gib(payload["owned_session_bytes"])
+        payload["owned_session_breakdown"] = _owned_device_breakdown(session)
         if session.scratch is not None:
             payload["scratch_max_positions"] = int(session.scratch.max_positions)
             payload["scratch_block_table_len"] = int(session.scratch.block_table_tensor.numel)
@@ -884,6 +885,158 @@ def _owned_device_bytes(session: Qwen35GGUFResidentSession) -> int:
         total += sum(int(buffer.nbytes) for buffer in session.scratch.buffers)
     total += sum(int(buffer.nbytes) for buffer in session._buffers if buffer is not None)
     return total
+
+
+def _owned_device_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
+    """Return a JSON-serialisable owned-device memory census for GGUF sessions."""
+
+    weights = _owned_weight_breakdown(session)
+    decode_scratch = _decode_scratch_breakdown(getattr(session, "scratch", None))
+    session_buffers = _session_buffer_breakdown(session)
+    total_bytes = int(weights["total_bytes"]) + int(decode_scratch["total_bytes"]) + int(session_buffers["total_bytes"])
+    return {
+        "total_bytes": total_bytes,
+        "total_gib": _bytes_to_gib(total_bytes),
+        "families": {
+            "weights": weights,
+            "decode_scratch": decode_scratch,
+            "session_buffers": session_buffers,
+        },
+        "notes": [
+            "weights counts unique resident GGUF allocations that own their device buffer; tied aliases are not double-counted.",
+            "decode_scratch is the persistent c=1 decode workspace, including full-attention KV cache and linear-attention recurrent state.",
+            "session_buffers includes logits/lm-head temporaries, full-sequence prefill token/hidden buffers, and the bulk-prefill scratch workspace.",
+        ],
+    }
+
+
+def _owned_weight_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
+    by_quant: dict[str, int] = {}
+    by_layout: dict[str, int] = {}
+    by_quant_layout: dict[str, int] = {}
+    by_allocation: dict[str, int] = {}
+    total = 0
+    count = 0
+    if session.runner is not None and session.runner.weights is not None:
+        for weight in session.runner.weights.weights:
+            spec = weight.spec
+            quant_key = str(spec.quant_key)
+            layout = str(spec.layout)
+            for allocation_name, allocation in weight.allocations.items():
+                if not allocation.owns_buffer:
+                    continue
+                nbytes = _buffer_nbytes(allocation.buffer)
+                total += nbytes
+                count += 1
+                _add_bytes(by_quant, quant_key, nbytes)
+                _add_bytes(by_layout, layout, nbytes)
+                _add_bytes(by_quant_layout, f"{quant_key}:{layout}", nbytes)
+                _add_bytes(by_allocation, str(allocation_name), nbytes)
+    return {
+        "total_bytes": total,
+        "total_gib": _bytes_to_gib(total),
+        "allocation_count": count,
+        "by_quant_key_bytes": by_quant,
+        "by_layout_bytes": by_layout,
+        "by_quant_layout_bytes": by_quant_layout,
+        "by_allocation_name_bytes": by_allocation,
+    }
+
+
+def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
+    if scratch is None:
+        return {"total_bytes": 0, "total_gib": 0.0, "by_component_bytes": {}}
+    buffers = tuple(getattr(scratch, "buffers", ()))
+    total = _sum_buffers(buffers)
+    full_attn_kv = _sum_buffers(tuple(getattr(scratch, "full_key_caches", ())) + tuple(getattr(scratch, "full_value_caches", ())))
+    linear_state = _sum_buffers(tuple(getattr(scratch, "layer_conv_states", ())) + tuple(getattr(scratch, "layer_recurrent_states", ())))
+    metadata = _sum_named_buffers(
+        scratch,
+        (
+            "block_table",
+            "position_buf",
+            "context_buf",
+            "cos_table_buf",
+            "sin_table_buf",
+        ),
+    )
+    named = {
+        "full_attention_kv_cache": full_attn_kv,
+        "linear_attention_state": linear_state,
+        "metadata_tables": metadata,
+    }
+    named["decode_workspace_other"] = max(0, total - sum(named.values()))
+    return {
+        "total_bytes": total,
+        "total_gib": _bytes_to_gib(total),
+        "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
+        "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
+        "by_component_bytes": named,
+    }
+
+
+def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
+    decode_runtime = _sum_named_buffers(
+        session,
+        (
+            "_token_buf",
+            "_hidden_a",
+            "_hidden_b",
+            "_logits_buf",
+            "_lm_block_values",
+            "_lm_block_indices",
+            "_lm_out_index",
+            "_lm_out_value",
+        ),
+    )
+    prefill_token = _sum_named_buffers(session, ("_prefill_token_buf",))
+    prefill_hidden = _sum_named_buffers(session, ("_prefill_hidden_a", "_prefill_hidden_b"))
+    bulk_scratch_obj = getattr(session, "_bulk_prefill_scratch", None)
+    bulk_scratch = _sum_buffers(getattr(bulk_scratch_obj, "buffers", ())) if bulk_scratch_obj is not None else 0
+    total = _sum_buffers(getattr(session, "_buffers", ()))
+    named = {
+        "decode_logits_and_lm_head": decode_runtime,
+        "prefill_token_buffer": prefill_token,
+        "prefill_full_sequence_hidden": prefill_hidden,
+        "bulk_prefill_scratch": bulk_scratch,
+    }
+    named["session_buffer_other"] = max(0, total - sum(named.values()))
+    payload: dict[str, Any] = {
+        "total_bytes": total,
+        "total_gib": _bytes_to_gib(total),
+        "by_component_bytes": named,
+    }
+    if bulk_scratch_obj is not None:
+        payload["bulk_prefill_scratch_rows"] = _maybe_int(getattr(bulk_scratch_obj, "rows", None))
+        payload["bulk_prefill_scratch_capacity"] = _maybe_int(getattr(bulk_scratch_obj, "max_positions", None))
+    return payload
+
+
+def _sum_named_buffers(owner: object, names: tuple[str, ...]) -> int:
+    return _sum_buffers(getattr(owner, name, None) for name in names)
+
+
+def _sum_buffers(buffers) -> int:
+    return sum(_buffer_nbytes(buffer) for buffer in buffers if buffer is not None)
+
+
+def _buffer_nbytes(buffer: object | None) -> int:
+    if buffer is None:
+        return 0
+    return int(getattr(buffer, "nbytes", 0))
+
+
+def _add_bytes(target: dict[str, int], key: str, nbytes: int) -> None:
+    target[key] = int(target.get(key, 0)) + int(nbytes)
+
+
+def _maybe_int(value: object | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _hip_memory_info(runtime: HipRuntime) -> dict[str, Any]:
