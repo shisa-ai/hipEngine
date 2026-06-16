@@ -359,8 +359,10 @@ trace artifact lacks visible output-token counts and therefore cannot support
 `--fail-on-noncomparable-accepted-draft` to return exit code `6` when the trace
 cannot support `accepted_per_draft` comparisons. Use
 `--fail-on-native-runtime-missing` to return exit code `7` when the native NextN
-or KVLiveSpans runtime component keys are absent. Matrix artifacts also carry an
-M6 performance-comparison readiness rollup (`performance_comparison_ready_by_budget`,
+or KVLiveSpans runtime component keys are absent. Use
+`--fail-on-optimization-missing` to return exit code `8` when optimization keys
+(such as device-side draft top-k) are absent. Matrix artifacts also carry an M6
+performance-comparison readiness rollup (`performance_comparison_ready_by_budget`,
 `performance_comparison_blockers_by_budget`, `performance_unready_budgets`, and
 `all_performance_comparisons_ready`). The blocker derivation is shared through
 the torch-free `Qwen35GGUFMTPPerformanceReadiness` speculative contract;
@@ -958,8 +960,9 @@ is now answered by the M1 required/optional table.)
       `--fail-on-noncomparable-accepted-draft` exits `6` when accepted/draft
       denominators are not comparable,
       `--fail-on-native-runtime-missing` exits `7` when native NextN/KVLiveSpans
-      runtime keys are absent, and `--fail-on-performance-unready` exits `5`
-      until the combined M6 readiness
+      runtime keys are absent, `--fail-on-optimization-missing` exits `8` when
+      device-side optimization keys are absent, and `--fail-on-performance-unready`
+      exits `5` until the combined M6 readiness
       rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean, including
       accepted/draft comparability, the KVLiveSpans smoke, and
       optimization-kernel readiness bits); actual B2-B4

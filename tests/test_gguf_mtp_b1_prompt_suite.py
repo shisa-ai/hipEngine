@@ -991,6 +991,125 @@ def test_b1_prompt_suite_native_runtime_missing_helper_allows_ready_artifacts(
     assert suite._has_missing_native_runtime_kernels(matrix) is False
 
 
+def test_b1_prompt_suite_cli_fail_on_optimization_missing_allows_current_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-optimization-missing",
+        ]
+    )
+
+    assert rc == 0
+    artifact = json.loads(out.read_text())
+    assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is True
+
+
+def test_b1_prompt_suite_cli_fail_on_optimization_missing_rejects_b1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    original_precheck = suite._build_runtime_kernel_precheck
+
+    def missing_optimization_precheck(**kwargs: object) -> dict[str, object]:
+        payload = dict(original_precheck(**kwargs))
+        payload["optimization_kernels_ready"] = False
+        payload["missing_optimization_keys"] = [
+            ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+        ]
+        return payload
+
+    monkeypatch.setattr(suite, "_build_runtime_kernel_precheck", missing_optimization_precheck)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "b1-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--hipengine-sampling",
+            str(inputs["hipengine_sampling"]),
+            "--llamacpp-sampling",
+            str(inputs["llamacpp_sampling"]),
+            "--out",
+            str(out),
+            "--fail-on-optimization-missing",
+        ]
+    )
+
+    assert rc == 8
+    artifact = json.loads(out.read_text())
+    assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is False
+
+
+def test_b1_prompt_suite_cli_fail_on_optimization_missing_rejects_compact_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_model(monkeypatch)
+    original_precheck = suite._build_runtime_kernel_precheck
+
+    def missing_optimization_precheck(**kwargs: object) -> dict[str, object]:
+        payload = dict(original_precheck(**kwargs))
+        payload["optimization_kernels_ready"] = False
+        payload["missing_optimization_keys"] = [
+            ["hip_gfx1100", "mtp_draft_topk", "w4_gguf", "topk_device"]
+        ]
+        return payload
+
+    monkeypatch.setattr(suite, "_build_runtime_kernel_precheck", missing_optimization_precheck)
+    inputs = _artifact_inputs(tmp_path)
+    out = tmp_path / "matrix-artifact.json"
+
+    rc = suite.main(
+        [
+            "--model",
+            str(inputs["model"]),
+            "--prompts-file",
+            str(inputs["prompts_file"]),
+            "--hipengine-token-inventory",
+            str(inputs["hipengine_token_inventory"]),
+            "--llamacpp-token-inventory",
+            str(inputs["llamacpp_token_inventory"]),
+            "--all-budgets",
+            "--compact-matrix",
+            "--out",
+            str(out),
+            "--fail-on-optimization-missing",
+        ]
+    )
+
+    assert rc == 8
+    matrix = json.loads(out.read_text())
+    assert matrix["all_optimization_kernels_ready"] is False
+
+
 def test_b1_prompt_suite_cli_fail_on_performance_unready_rejects_b1_until_runtime_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

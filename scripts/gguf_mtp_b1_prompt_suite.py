@@ -874,6 +874,17 @@ def _has_missing_native_runtime_kernels(artifact: dict[str, Any]) -> bool:
     return isinstance(ready, bool) and not ready
 
 
+def _has_missing_optimization_kernels(artifact: dict[str, Any]) -> bool:
+    all_ready = artifact.get("all_optimization_kernels_ready")
+    if isinstance(all_ready, bool):
+        return not all_ready
+    runtime_precheck = artifact.get("runtime_kernel_precheck")
+    if not isinstance(runtime_precheck, dict):
+        return False
+    ready = runtime_precheck.get("optimization_kernels_ready")
+    return isinstance(ready, bool) and not ready
+
+
 def _has_unready_performance_comparisons(artifact: dict[str, Any]) -> bool:
     unready_budgets = artifact.get("performance_unready_budgets")
     if isinstance(unready_budgets, list):
@@ -952,6 +963,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="return exit code 7 when native GGUF MTP runtime kernel keys are missing",
     )
+    parser.add_argument(
+        "--fail-on-optimization-missing",
+        action="store_true",
+        help="return exit code 8 when GGUF MTP optimization kernel keys are missing",
+    )
     args = parser.parse_args(argv)
 
     if args.compact_matrix and not args.all_budgets:
@@ -1003,6 +1019,8 @@ def main(argv: list[str] | None = None) -> int:
         return 6
     if args.fail_on_native_runtime_missing and _has_missing_native_runtime_kernels(artifact):
         return 7
+    if args.fail_on_optimization_missing and _has_missing_optimization_kernels(artifact):
+        return 8
     if args.fail_on_performance_unready and _has_unready_performance_comparisons(artifact):
         return 5
     if args.fail_on_blocked and artifact["status"] == "blocked":

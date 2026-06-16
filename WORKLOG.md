@@ -97333,3 +97333,42 @@ Validation:
   backend/quant dispatch branch; no generation integration, native MTP execution,
   actual KV allocation, GPU kernel, attention/KV runtime path, or performance
   claim. Future native attention/KV-write execution remains KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF optimization CLI gate
+
+Implemented `mtp-gguf` multiloop iteration 103: added an explicit CLI gate for
+missing GGUF MTP optimization kernels.
+
+Scope note:
+- Preflight/docs/tests only. No GGUF tensor payload loading, hipEngine generation
+  integration, native NextN execution, actual KV allocation, GPU kernel,
+  attention/KV runtime path, or performance path changed.
+- This complements the native-runtime and combined M6 gates with a specific
+  readiness exit for device-side optimization keys such as draft `topk_device`.
+
+Changes:
+- Added `_has_missing_optimization_kernels()` to
+  `scripts/gguf_mtp_b1_prompt_suite.py`.
+- Added `--fail-on-optimization-missing`, returning exit code `8` when a single
+  artifact or B1-B4 matrix reports missing optimization kernel keys.
+- Extended prompt-suite tests to cover current B1 allow, synthetic B1 rejection,
+  and compact matrix rejection for the new gate.
+- Updated `docs/MTP-gguf.md` to document the optimization-missing CLI gate.
+
+Validation:
+- Focused prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py` -> `32` passed.
+- Real local compact B1-B4 matrix gate smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --fail-on-optimization-missing --out <tmp>` ->
+  exit code `0`, `optimization_ready True`, and `missing_opt_B1 []`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: preflight/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no generation integration, native MTP execution,
+  actual KV allocation, GPU kernel, attention/KV runtime path, or performance
+  claim. Future native attention/KV-write execution remains KVLiveSpans-gated.
