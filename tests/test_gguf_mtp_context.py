@@ -475,6 +475,53 @@ def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_top1() -> None:
     assert full_budgeted.candidate_counts == (2,)
 
 
+def test_gguf_mtp_context_accepts_target_top1_with_commit_plan_reseed() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=2, position=7, hidden_ptr=0x3000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1, 2), seed_rows=seeds[:2])
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,), (2,)),
+        top_k_logits=((4.0,), (3.0,)),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+    context.record_verify_seeds(seeds)
+
+    partial_commit, partial_seed = context.accept_target_top1(
+        plan,
+        (1, 9, 77),
+        transaction_id=12,
+        request_id=7,
+    )
+    full_commit, full_seed = context.accept_target_top1(
+        plan,
+        (1, 2, 77),
+        transaction_id=13,
+        remaining_decode=(2,),
+        request_id=7,
+    )
+
+    assert partial_commit.accepted_counts == (1,)
+    assert partial_commit.commit_rows == (1,)
+    assert partial_commit.next_tokens == (9,)
+    assert partial_seed == seeds[1]
+    assert full_commit.accepted_counts == (2,)
+    assert full_commit.commit_rows == (2,)
+    assert full_commit.next_tokens == (None,)
+    assert full_seed == seeds[2]
+    assert context.pending_seed == seeds[2]
+
+    with pytest.raises(ValueError, match="request_id"):
+        context.accept_target_top1(plan, (1, 9, 77), transaction_id=14, request_id=8)
+
+
 def test_gguf_mtp_context_applies_target_commit_plan_reseed_rule() -> None:
     context = Qwen35GGUFMTPContext(target_session=object())
     seeds = (

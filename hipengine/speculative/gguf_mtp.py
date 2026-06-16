@@ -1033,6 +1033,33 @@ class Qwen35GGUFMTPContext:
                 raise RuntimeError("verify seeds must include candidate rows plus the next target row")
         return self.accept(commit_plan.accepted_counts[0])
 
+    def accept_target_top1(
+        self,
+        plan: Qwen35GGUFMTPDraftExecutionPlan,
+        target_top1: Sequence[int],
+        *,
+        transaction_id: int,
+        remaining_decode: Sequence[int] | None = None,
+        request_id: int | None = None,
+        mode: str = "verify_chain",
+    ) -> tuple[TargetCommitPlan, Qwen35GGUFMTPSeedRow]:
+        """Build/apply a validated target commit plan from top-1 verifier rows.
+
+        This is the metadata-only boundary for the future native GGUF MTP target
+        verify/commit loop: top-1 rows become a validated commit plan, then the
+        context applies the committed accepted count to the llama.cpp hidden-seed
+        reseed rule.
+        """
+
+        commit_plan = plan.target_commit_plan_from_top1(
+            target_top1,
+            transaction_id=transaction_id,
+            remaining_decode=remaining_decode,
+            mode=mode,
+        )
+        seed = self.accept_target_commit_plan(commit_plan, request_id=request_id)
+        return commit_plan, seed
+
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
         return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))
 
