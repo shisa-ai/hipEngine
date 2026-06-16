@@ -964,6 +964,31 @@ class Qwen35GGUFMTPContext:
                 raise RuntimeError("verify seeds must include candidate rows plus the next target row")
         return self.accept(summary.accepted_counts[0])
 
+    def accept_target_commit_plan(
+        self,
+        commit_plan: TargetCommitPlan,
+        *,
+        request_id: int | None = None,
+    ) -> Qwen35GGUFMTPSeedRow:
+        """Apply a validated target commit plan to GGUF hidden-seed state.
+
+        Future scheduler/KV integration will hand back a committed transaction
+        contract rather than the pre-commit summary.  The GGUF reseed rule is
+        still driven by the accepted count, but this method ties it to the same
+        commit metadata that will be used for KV/state commit.
+        """
+
+        if len(commit_plan.request_ids) != 1:
+            raise ValueError("GGUF MTP context accepts one request commit plan at a time")
+        plan_request_id = commit_plan.request_ids[0]
+        if request_id is not None and int(request_id) != plan_request_id:
+            raise ValueError("target commit plan request_id must match context request")
+        if commit_plan.candidate_counts is not None:
+            candidate_count = commit_plan.candidate_counts[0]
+            if len(self.verify_seeds) <= candidate_count:
+                raise RuntimeError("verify seeds must include candidate rows plus the next target row")
+        return self.accept(commit_plan.accepted_counts[0])
+
     def build_b1_draft_batch(self, *, request_id: int, token_id: int) -> Qwen35GGUFMTPDraftBatch:
         return self.build_draft_batch(request_id=request_id, token_ids=(int(token_id),))
 

@@ -422,6 +422,53 @@ def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_summary() -> Non
         plan.target_commit_plan_from_summary(summary, wrong_txn)
 
 
+def test_gguf_mtp_context_applies_target_commit_plan_reseed_rule() -> None:
+    context = Qwen35GGUFMTPContext(target_session=object())
+    seeds = (
+        Qwen35GGUFMTPSeedRow(token_id=10, position=5, hidden_ptr=0x1000, hidden_size=8),
+        Qwen35GGUFMTPSeedRow(token_id=1, position=6, hidden_ptr=0x2000, hidden_size=8),
+    )
+    batch = context.build_draft_batch(request_id=7, token_ids=(1,), seed_rows=seeds[:1])
+    proposal = Qwen35GGUFMTPDraftProposal(
+        batch=batch,
+        top_k_token_ids=((1,),),
+        top_k_logits=((4.0,),),
+    )
+    plan = Qwen35GGUFMTPDraftExecutionPlan(
+        proposal=proposal,
+        kv_live_spans=context.build_kvlivespans_plan(batch, block_size=4),
+    )
+    summary = plan.target_accept_summary_from_top1((1, 99), transaction_id=12, remaining_decode=(1,))
+    transaction = KVTransaction(
+        transaction_id=12,
+        request_ids=(7,),
+        draft_rows=1,
+        role="verify_chain",
+        candidate_counts=(1,),
+    )
+    commit = plan.target_commit_plan_from_summary(summary, transaction)
+    context.record_verify_seeds(seeds)
+
+    assert context.accept_target_commit_plan(commit, request_id=7) == seeds[1]
+    assert context.pending_seed == seeds[1]
+
+    with pytest.raises(ValueError, match="request_id"):
+        context.accept_target_commit_plan(commit, request_id=8)
+    with pytest.raises(RuntimeError, match="candidate rows plus"):
+        Qwen35GGUFMTPContext(target_session=object()).accept_target_commit_plan(commit)
+    multi = TargetCommitPlan(
+        transaction_id=12,
+        request_ids=(7, 8),
+        accepted_counts=(0, 0),
+        commit_rows=(0, 1),
+        commit_tokens=(10, 20),
+        commit_positions=(5, 6),
+        candidate_counts=(0, 0),
+    )
+    with pytest.raises(ValueError, match="one request"):
+        context.accept_target_commit_plan(multi)
+
+
 def test_gguf_mtp_context_applies_target_accept_summary_reseed_rule() -> None:
     context = Qwen35GGUFMTPContext(target_session=object())
     seeds = (
