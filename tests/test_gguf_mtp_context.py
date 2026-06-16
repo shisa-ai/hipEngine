@@ -684,6 +684,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "step_accepted_token_counts",
         "step_rows",
         "seed_row_contract",
+        "accept_step_contract",
         "steps",
         "accepted_per_draft",
         "accepted_per_output",
@@ -720,6 +721,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     with pytest.raises(ValueError, match="candidate_budget"):
         Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=0)
     assert metrics.as_dict()["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
+    assert metrics.as_dict()["accept_step_contract"] == Qwen35GGUFMTPAcceptStep.contract()
     assert set(Qwen35GGUFMTPAcceptStepMetrics.required_fields()).issubset(metrics.as_dict())
     assert Qwen35GGUFMTPAcceptStepMetrics.missing_required_fields({}) == tuple(
         Qwen35GGUFMTPAcceptStepMetrics.required_fields()
@@ -745,6 +747,9 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     bad_seed_contract = {**metrics.as_dict(), "seed_row_contract": {}}
     with pytest.raises(ValueError, match="seed_row_contract mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_seed_contract)
+    bad_accept_step_contract = {**metrics.as_dict(), "accept_step_contract": {}}
+    with pytest.raises(ValueError, match="accept_step_contract mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_accept_step_contract)
     bad_budget_label = {**metrics.as_dict(), "budget_label": "B3"}
     with pytest.raises(ValueError, match="budget_label mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_budget_label)

@@ -1291,6 +1291,7 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "step_accepted_token_counts",
             "step_rows",
             "seed_row_contract",
+            "accept_step_contract",
             "steps",
             "accepted_per_draft",
             "accepted_per_output",
@@ -1398,6 +1399,8 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             raise ValueError("accept-step metrics artifact denominator labels mismatch")
         if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
             raise ValueError("accept-step metrics artifact seed_row_contract mismatch")
+        if payload.get("accept_step_contract") != Qwen35GGUFMTPAcceptStep.contract():
+            raise ValueError("accept-step metrics artifact accept_step_contract mismatch")
 
         cycle_count = int(payload["cycle_count"])
         candidate_budget = int(payload["candidate_budget"])
@@ -1534,6 +1537,7 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "required_fields": list(self.required_fields()),
             "validator": self.validator_name(),
             "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
+            "accept_step_contract": Qwen35GGUFMTPAcceptStep.contract(),
             "steps": [step.as_dict() for step in self.steps],
         }
 
