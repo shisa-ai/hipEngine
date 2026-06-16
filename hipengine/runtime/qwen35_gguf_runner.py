@@ -699,7 +699,7 @@ class Qwen35GGUFFullStackRunner:
         keyed by ``(hip_gfx1100, ..., gguf_qwen35, ...)``. Whether the
         single-segment k2 or multi-segment k2_segments recurrent kernel runs
         is a perf-tuning decision controlled by
-        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 256), not a
+        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
         per-quant/per-backend branch.
         """
 
@@ -4447,7 +4447,7 @@ _GDN_PREFILL_RMSNORM_GATE_BF16_KEY = KernelKey(
 _GDN_PREFILL_DECODE_ORDER_BF16_KEY = KernelKey(
     "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"
 )
-_GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 256
+_GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 1025
 
 
 @dataclass(frozen=True)

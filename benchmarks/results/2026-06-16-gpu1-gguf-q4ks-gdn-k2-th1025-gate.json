@@ -1,0 +1,166 @@
+{
+  "change": "Raised GGUF GDN prefill recurrent-segments threshold default from 256 to 1025 so the exact single-segment k2 recurrent kernel handles 512/1024/768-row primary and 128K low-memory chunks by default; segments_k2 remains available via HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD.",
+  "checks": {
+    "final_128k_id_matches_previous_all768": true,
+    "final_128k_id_stable": true,
+    "gdn_boundary_correctness_passed": true,
+    "guard_passed": true,
+    "hot_path_torch_or_llamacpp_import_grep": "No matches for import torch or llama.cpp in hipengine/runtime/qwen35_gguf_runner.py",
+    "memory_non_regressive": true,
+    "primary_ids_match_previous_default": true,
+    "primary_ids_stable": true,
+    "routing_test_passed": true
+  },
+  "commands": {
+    "final_128k_gate": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-gdn-th1025-128k-default.json",
+    "gdn_boundary_correctness": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segment_boundary_paths_agree -q",
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "primary_gate": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "routing_test": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_gdn_prefill_correctness.py && python3 -m pytest tests/test_qwen35_gguf_gdn_prefill_routing.py -q"
+  },
+  "comparisons": {
+    "128K/128": {
+      "decode_delta_vs_previous_all768_pct": 0.13111462793458095,
+      "final_token_id_matches_previous_all768": true,
+      "peak_gib_delta_vs_previous_all768": 0.000420989990235654,
+      "prefill_delta_vs_previous_all768_pct": 0.9473202931356006
+    },
+    "4K/128": {
+      "decode_delta_vs_previous_default_pct": 0.09965792675012963,
+      "final_token_id_matches_previous_default": true,
+      "peak_gib_delta_vs_previous_default": 0.0,
+      "prefill_delta_vs_previous_default_pct": 2.47139057824457
+    },
+    "512/128": {
+      "decode_delta_vs_previous_default_pct": 0.2860255114145671,
+      "final_token_id_matches_previous_default": true,
+      "peak_gib_delta_vs_previous_default": 0.0,
+      "prefill_delta_vs_previous_default_pct": 0.23586046336423472
+    }
+  },
+  "date_utc": "2026-06-16",
+  "hardware": "GPU1 gfx1100 / AMD Radeon RX 7900 XTX class, TheRock HIP 7.13",
+  "limitations": [
+    "128K/128 final promotion gate is a single measured run with no warmup repetitions, matching prior 24GB-class long-context evidence policy to limit GPU1 wall time."
+  ],
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "new_final_128k_gate": {
+    "128K/128": {
+      "decode_tok_s_median": 67.82180787093894,
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        3642,
+        84,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 768,
+        "full_attn_query": 768,
+        "full_attn_rope": 768,
+        "linear": 768,
+        "moe": 768
+      },
+      "prefill_tok_s_median": 737.1082475216498,
+      "tracked_peak_allocated_gib_median": 23.310420989990234
+    }
+  },
+  "new_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.33501848709325,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        179495,
+        570
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2212.931868990868,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.69884478648521,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1837.5090128504612,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "performance_claim": true,
+  "previous_default_primary_from_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-t16-ds4-runtime-probe.json",
+  "previous_default_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.22019243211788,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "prefill_tok_s_median": 2159.5606895771843,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.33748734220634,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "prefill_tok_s_median": 1833.1852536169554,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.33501848709325,
+  "quant": "gguf_q4_k_s",
+  "status": "retained_default",
+  "workloads": [
+    "512/128",
+    "4K/128",
+    "128K/128"
+  ]
+}

@@ -97,17 +97,16 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1816.758` | `126.473` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `2151.851` | `115.798` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1837.509` | `126.699` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `2212.932` | `115.335` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `115.798 tok/s` after
-G-P1 rewrote the selected dual Q4_K T16 WMMA prefill kernel to compute the two
-16-column halves sequentially with one FP32 accumulator while preserving the
-per-lane output-store bounds guard. That change is a prefill promotion
-(`512/128` +`10.3%`, `4K/128` +`16.0%` versus the selected-down-lb2 baseline);
-decode is effectively flat against the prior `115.805 tok/s` gate row and was
-not counted as a decode promotion.
+multiloop metric is the minimum gate decode rate, currently `115.335 tok/s` after
+the GDN prefill recurrent-segments threshold was raised to `1025`, keeping the
+exact single-segment `k2` recurrent path for 512/1024-row primary chunks. This is
+primarily a prefill promotion (`4K/128` +`2.47%` versus the previous default gate;
+`512/128` was flat/noisy-positive at +`0.24%`), with decode effectively flat and
+tracked memory unchanged.
 
 ## Active GPU1 profile findings
 
@@ -199,6 +198,19 @@ final long-context promotion is now gated by further speed, not construction
 memory.
 
 Retained notes:
+
+- **GDN single-segment `k2` threshold retained (2026-06-16).** The GGUF GDN
+  prefill recurrent-segments default threshold is now `1025` instead of `256`,
+  so primary 512/1024-row chunks and 128K low-memory 768-row chunks use the
+  exact single-segment `k2` recurrent kernel by default. The primary gate moved
+  to `512/128` `1837.509 / 126.699 tok/s` and `4K/128`
+  `2212.932 / 115.335 tok/s`, with stable IDs `220/570` and unchanged
+  `21.335 GiB` tracked peak. The required 128K final-promotion check measured
+  `737.108 / 67.822 tok/s`, stable ID `[220]`, and `23.310 GiB` tracked peak.
+  `segments_k2` remains available through
+  `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` for larger or batched probes.
+  Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-gdn-k2-th1025-gate.json`.
 
 - **G-P1 selected-WMMA half-sequential rewrite retained (2026-06-16).** The
   selected dual Q4_K T16 WMMA prefill kernel now computes/stores each 16-column
