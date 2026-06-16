@@ -27,6 +27,8 @@ DEFAULT_NEXTN_ATTN_DECODE_VARIANT = "bf16_context_spans"
 DEFAULT_DRAFT_TOPK_DEVICE_VARIANT = "topk_device"
 GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE = "full_requested_budget_exercised"
 GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE = "partial_trace_did_not_exercise_full_budget"
+GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE = "computed"
+GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE = "not_comparable_debug_trace_missing_generated_draft_count"
 GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE = "computed"
 GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = "not_comparable_debug_trace_missing_visible_output_count"
 GGUF_MTP_METRICS_CONTRACT_READY = "ready"
@@ -685,6 +687,7 @@ class Qwen35GGUFMTPPerformanceReadiness:
         exactness_gate: str,
         kvlivespans_paged_cache_smoke: bool,
         llamacpp_trace_budget_coverage: str,
+        accepted_per_draft_status: str,
         accepted_per_output_status: str,
         native_runtime_kernels_ready: bool,
         optimization_kernels_ready: bool,
@@ -705,6 +708,8 @@ class Qwen35GGUFMTPPerformanceReadiness:
             blockers.append("kvlivespans_paged_cache_smoke_failed")
         if llamacpp_trace_budget_coverage != GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE:
             blockers.append("partial_llamacpp_trace_budget_coverage")
+        if accepted_per_draft_status != GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE:
+            blockers.append("accepted_draft_denominator_not_comparable")
         if accepted_per_output_status != GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE:
             blockers.append("accepted_output_denominator_not_comparable")
         if not native_runtime_kernels_ready:

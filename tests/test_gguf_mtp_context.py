@@ -7,6 +7,8 @@ import pytest
 
 from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
 from hipengine.speculative.gguf_mtp import (
+    GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
+    GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
     GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
     GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
     GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
@@ -410,6 +412,7 @@ def test_gguf_mtp_performance_readiness_accepts_fully_ready_inputs() -> None:
         exactness_gate="passed",
         kvlivespans_paged_cache_smoke=True,
         llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_draft_status=GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
         native_runtime_kernels_ready=True,
         optimization_kernels_ready=True,
@@ -430,6 +433,7 @@ def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
         exactness_gate="blocked",
         kvlivespans_paged_cache_smoke=False,
         llamacpp_trace_budget_coverage=GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE,
+        accepted_per_draft_status=GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
         native_runtime_kernels_ready=False,
         optimization_kernels_ready=False,
@@ -445,6 +449,7 @@ def test_gguf_mtp_performance_readiness_reports_ordered_blockers() -> None:
         "exactness_gate_failed",
         "kvlivespans_paged_cache_smoke_failed",
         "partial_llamacpp_trace_budget_coverage",
+        "accepted_draft_denominator_not_comparable",
         "accepted_output_denominator_not_comparable",
         "native_runtime_kernels_missing",
         "optimization_kernels_missing",
@@ -461,6 +466,7 @@ def test_gguf_mtp_performance_readiness_blocks_missing_optimization_kernels() ->
         exactness_gate="passed",
         kvlivespans_paged_cache_smoke=True,
         llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_draft_status=GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
         native_runtime_kernels_ready=True,
         optimization_kernels_ready=False,
@@ -480,6 +486,7 @@ def test_gguf_mtp_performance_readiness_blocks_failed_kvlivespans_smoke() -> Non
         exactness_gate="passed",
         kvlivespans_paged_cache_smoke=False,
         llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_draft_status=GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
         native_runtime_kernels_ready=True,
         optimization_kernels_ready=True,
@@ -488,6 +495,26 @@ def test_gguf_mtp_performance_readiness_blocks_failed_kvlivespans_smoke() -> Non
 
     assert readiness.ready is False
     assert readiness.blockers == ("kvlivespans_paged_cache_smoke_failed",)
+
+
+def test_gguf_mtp_performance_readiness_blocks_noncomparable_accepted_draft() -> None:
+    readiness = Qwen35GGUFMTPPerformanceReadiness.from_gate_inputs(
+        parity_precheck=True,
+        draft_budget_precheck=True,
+        draft_sampling_contract_precheck=True,
+        hidden_seed_contract_precheck=True,
+        exactness_gate="passed",
+        kvlivespans_paged_cache_smoke=True,
+        llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_draft_status=GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
+        accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
+        native_runtime_kernels_ready=True,
+        optimization_kernels_ready=True,
+        metrics_contract_status=GGUF_MTP_METRICS_CONTRACT_READY,
+    )
+
+    assert readiness.ready is False
+    assert readiness.blockers == ("accepted_draft_denominator_not_comparable",)
 
 
 def test_gguf_mtp_context_rejects_incomplete_verification_inputs() -> None:

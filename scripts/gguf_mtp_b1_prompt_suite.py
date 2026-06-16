@@ -30,6 +30,8 @@ from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     qwen35_gguf_fp32_hidden_seed_contract,
 )
 from hipengine.speculative import (  # noqa: E402
+    GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
+    GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
     GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
     GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
     GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
@@ -70,6 +72,8 @@ DEFAULT_SAMPLING_BY_DRAFT_MAX = {
 DEFAULT_LLAMACPP_TRACE_FIXTURE = Path("benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json")
 FULL_TRACE_BUDGET_COVERAGE = GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE
 PARTIAL_TRACE_BUDGET_COVERAGE = GGUF_MTP_PARTIAL_TRACE_BUDGET_COVERAGE
+ACCEPTED_DRAFT_COMPARABLE = GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE
+ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE = GGUF_MTP_ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE
 ACCEPTED_OUTPUT_COMPARABLE = GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE
 ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE = GGUF_MTP_ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE
 METRICS_CONTRACT_READY = GGUF_MTP_METRICS_CONTRACT_READY
@@ -389,6 +393,9 @@ def _validate_llamacpp_trace_oracle(trace_fixture: Path, *, draft_max: int) -> d
         "accepted_draft_tokens": accepted_draft_tokens,
         "generated_draft_tokens": generated_draft_tokens,
         "accepted_per_draft": expected_draft_acceptance,
+        "accepted_per_draft_status": ACCEPTED_DRAFT_COMPARABLE
+        if expected_draft_acceptance is not None
+        else ACCEPTED_DRAFT_NOT_COMPARABLE_DEBUG_TRACE,
         "visible_output_token_count": visible_output_token_count,
         "accepted_per_output": None
         if visible_output_token_count is None
@@ -643,6 +650,7 @@ def _performance_comparison_blockers(readiness: dict[str, Any]) -> list[str]:
             exactness_gate=str(readiness["exactness_gate"]),
             kvlivespans_paged_cache_smoke=bool(readiness["kvlivespans_paged_cache_smoke"]),
             llamacpp_trace_budget_coverage=str(readiness["llamacpp_trace_budget_coverage"]),
+            accepted_per_draft_status=str(readiness["accepted_per_draft_status"]),
             accepted_per_output_status=str(readiness["accepted_per_output_status"]),
             native_runtime_kernels_ready=bool(readiness["native_runtime_kernels_ready"]),
             optimization_kernels_ready=bool(readiness["optimization_kernels_ready"]),
@@ -667,6 +675,9 @@ def _matrix_budget_readiness(artifact: dict[str, Any]) -> dict[str, Any]:
             "kvlivespans_paged_cache_smoke"
         ]["max_abs_diff"],
         "llamacpp_trace_budget_coverage": artifact["llamacpp_trace_oracle"]["budget_coverage"],
+        "accepted_per_draft_status": artifact["llamacpp_trace_oracle"]["denominator_metrics"][
+            "accepted_per_draft_status"
+        ],
         "accepted_per_output_status": artifact["llamacpp_trace_oracle"]["denominator_metrics"][
             "accepted_per_output_status"
         ],
@@ -719,6 +730,15 @@ def build_b1_b4_prompt_suite_matrix(
         budget
         for budget, coverage in trace_budget_coverage_by_budget.items()
         if coverage != FULL_TRACE_BUDGET_COVERAGE
+    ]
+    accepted_per_draft_status_by_budget = {
+        budget: readiness["accepted_per_draft_status"]
+        for budget, readiness in readiness_by_budget.items()
+    }
+    noncomparable_accepted_per_draft_budgets = [
+        budget
+        for budget, status in accepted_per_draft_status_by_budget.items()
+        if status != ACCEPTED_DRAFT_COMPARABLE
     ]
     accepted_per_output_status_by_budget = {
         budget: readiness["accepted_per_output_status"]
@@ -778,6 +798,9 @@ def build_b1_b4_prompt_suite_matrix(
         "all_llamacpp_trace_budgets_full": not partial_trace_budget_budgets,
         "llamacpp_trace_budget_coverage_by_budget": trace_budget_coverage_by_budget,
         "partial_llamacpp_trace_budget_budgets": partial_trace_budget_budgets,
+        "all_accepted_per_draft_metrics_comparable": not noncomparable_accepted_per_draft_budgets,
+        "accepted_per_draft_status_by_budget": accepted_per_draft_status_by_budget,
+        "noncomparable_accepted_per_draft_budgets": noncomparable_accepted_per_draft_budgets,
         "all_accepted_per_output_metrics_comparable": not noncomparable_accepted_per_output_budgets,
         "accepted_per_output_status_by_budget": accepted_per_output_status_by_budget,
         "noncomparable_accepted_per_output_budgets": noncomparable_accepted_per_output_budgets,

@@ -97200,3 +97200,52 @@ Validation:
   execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
   performance claim. Future native attention/KV-write execution remains
   KVLiveSpans-gated.
+
+## 2026-06-16 - MTP-GGUF accepted/draft denominator gate
+
+Implemented `mtp-gguf` multiloop iteration 100: added explicit
+accepted/draft denominator comparability status to GGUF MTP trace artifacts and
+the shared M6 performance-readiness gate.
+
+Scope note:
+- Shared contract/preflight/docs/tests only. No GGUF tensor payload loading,
+  hipEngine generation integration, native NextN execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance path changed.
+- This aligns the preflight gate with the M6 acceptance rule requiring both
+  accepted/draft and accepted/output denominators to be comparable before any
+  performance claim.
+
+Changes:
+- Added shared `GGUF_MTP_ACCEPTED_DRAFT_*` status constants and exported them
+  through `hipengine.speculative`.
+- `scripts/gguf_mtp_b1_prompt_suite.py` now emits
+  `accepted_per_draft_status` in llama.cpp trace denominator metrics.
+- B1-B4 matrix artifacts now include
+  `accepted_per_draft_status_by_budget`,
+  `noncomparable_accepted_per_draft_budgets`, and
+  `all_accepted_per_draft_metrics_comparable`.
+- `Qwen35GGUFMTPPerformanceReadiness` now requires
+  `accepted_per_draft_status == computed` and emits
+  `accepted_draft_denominator_not_comparable` otherwise.
+- Updated readiness/export/prompt-suite tests and `docs/MTP-gguf.md`.
+
+Validation:
+- Focused shared-contract/prompt-suite tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py` -> `50` passed.
+- Real local compact B1-B4 matrix gate smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --fail-on-performance-unready --out <tmp>` ->
+  exit code `5`, `draft_comparable True`, `draft_noncomparable []`,
+  `B1_draft_status computed`, and B1 blockers
+  `accepted_output_denominator_not_comparable,native_runtime_kernels_missing,hipengine_metrics_not_ready`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py hipengine/speculative/__init__.py scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: shared contract/preflight/docs/tests only; no torch
+  import; no runtime backend/quant dispatch branch; no generation integration,
+  native MTP execution, actual KV allocation, GPU kernel, attention/KV runtime
+  path, or performance claim. Future native attention/KV-write execution remains
+  KVLiveSpans-gated.

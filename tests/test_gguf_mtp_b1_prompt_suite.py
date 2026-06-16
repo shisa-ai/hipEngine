@@ -301,6 +301,7 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
         "accepted_draft_tokens": 0,
         "generated_draft_tokens": 2,
         "accepted_per_draft": 0.0,
+        "accepted_per_draft_status": suite.ACCEPTED_DRAFT_COMPARABLE,
         "visible_output_token_count": None,
         "accepted_per_output": None,
         "accepted_per_output_status": "not_comparable_debug_trace_missing_visible_output_count",
@@ -457,6 +458,14 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "B4": "partial_trace_did_not_exercise_full_budget",
     }
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+    assert matrix["all_accepted_per_draft_metrics_comparable"] is True
+    assert matrix["accepted_per_draft_status_by_budget"] == {
+        "B1": suite.ACCEPTED_DRAFT_COMPARABLE,
+        "B2": suite.ACCEPTED_DRAFT_COMPARABLE,
+        "B3": suite.ACCEPTED_DRAFT_COMPARABLE,
+        "B4": suite.ACCEPTED_DRAFT_COMPARABLE,
+    }
+    assert matrix["noncomparable_accepted_per_draft_budgets"] == []
     assert matrix["all_accepted_per_output_metrics_comparable"] is False
     assert matrix["accepted_per_output_status_by_budget"] == {
         "B1": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
@@ -497,6 +506,7 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "kvlivespans_paged_cache_smoke": True,
         "kvlivespans_paged_cache_max_abs_diff": 0.0,
         "llamacpp_trace_budget_coverage": "full_requested_budget_exercised",
+        "accepted_per_draft_status": suite.ACCEPTED_DRAFT_COMPARABLE,
         "accepted_per_output_status": suite.ACCEPTED_OUTPUT_NOT_COMPARABLE_DEBUG_TRACE,
         "native_runtime_kernels_ready": False,
         "optimization_kernels_ready": True,
@@ -558,6 +568,8 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["kvlivespans_paged_cache_max_abs_diff_by_budget"]["B1"] == 0.0
     assert matrix["all_llamacpp_trace_budgets_full"] is False
     assert matrix["partial_llamacpp_trace_budget_budgets"] == ["B2", "B3", "B4"]
+    assert matrix["all_accepted_per_draft_metrics_comparable"] is True
+    assert matrix["noncomparable_accepted_per_draft_budgets"] == []
     assert matrix["all_accepted_per_output_metrics_comparable"] is False
     assert matrix["noncomparable_accepted_per_output_budgets"] == ["B1", "B2", "B3", "B4"]
     assert matrix["all_performance_comparisons_ready"] is False

@@ -341,8 +341,12 @@ includes matrix-level `kvlivespans_paged_cache_smoke_by_budget`,
 `all_kvlivespans_paged_cache_smokes_pass`,
 `llamacpp_trace_budget_coverage_by_budget`,
 `partial_llamacpp_trace_budget_budgets`, and
-`all_llamacpp_trace_budgets_full` rollups, plus accepted/output denominator
-comparability rollups (`accepted_per_output_status_by_budget`,
+`all_llamacpp_trace_budgets_full` rollups, plus accepted/draft and
+accepted/output denominator comparability rollups
+(`accepted_per_draft_status_by_budget`,
+`noncomparable_accepted_per_draft_budgets`,
+`all_accepted_per_draft_metrics_comparable`,
+`accepted_per_output_status_by_budget`,
 `noncomparable_accepted_per_output_budgets`, and
 `all_accepted_per_output_metrics_comparable`); add `--compact-matrix` to omit
 full child artifacts for compact benchmark evidence. Use
@@ -358,8 +362,8 @@ performance-comparison readiness rollup (`performance_comparison_ready_by_budget
 the torch-free `Qwen35GGUFMTPPerformanceReadiness` speculative contract;
 `--fail-on-performance-unready` returns exit code `5` until parity, exactness,
 KVLiveSpans paged-cache smoke, full trace-budget coverage, comparable
-denominators, native runtime kernels, optimization kernels, and hipEngine metrics
-are all present.
+accepted/draft and accepted/output denominators, native runtime kernels,
+optimization kernels, and hipEngine metrics are all present.
 Parity
 Preconditions (a) and (b) have fixture coverage; M5 still also requires the
 numeric KL/top-1 gate and actual GGUF MTP execution.
@@ -941,15 +945,16 @@ is now answered by the M1 required/optional table.)
       and `--all-budgets` emits a single B1-B4 matrix artifact with compact
       `readiness_by_budget` parity/preflight/native-key status plus per-budget
       and matrix-level KVLiveSpans paged-cache smoke status, llama.cpp trace
-      budget coverage, and accepted/output denominator comparability
-      (`--compact-matrix` omits
+      budget coverage, and accepted/draft plus accepted/output denominator
+      comparability (`--compact-matrix` omits
       full child artifacts for compact evidence, and
       `--fail-on-partial-trace-budget` exits `3` for B2-B4 partial-coverage
       trace provenance, `--fail-on-noncomparable-accepted-output` exits `4`
       when accepted/output denominators are not comparable, and
       `--fail-on-performance-unready` exits `5` until the combined M6 readiness
-      rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean, including the
-      KVLiveSpans smoke and optimization-kernel readiness bits); actual B2-B4
+      rollup from `Qwen35GGUFMTPPerformanceReadiness` is clean, including
+      accepted/draft comparability, the KVLiveSpans smoke, and
+      optimization-kernel readiness bits); actual B2-B4
       execution/parity still waits on native draft execution.
 - [x] Add backend-side top-k draft sampling as a `topk_device` variant, keeping
       `full_vocab_d2h` registered as the unfused fallback/oracle. The CPU

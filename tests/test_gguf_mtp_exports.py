@@ -9,6 +9,7 @@ from hipengine.speculative import (
     DEFAULT_NEXTN_ATTN_DECODE_VARIANT,
     DEFAULT_NEXTN_KV_WRITE_LAYER,
     DEFAULT_NEXTN_KV_WRITE_VARIANT,
+    GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
     GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
     GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
     GGUF_MTP_METRICS_CONTRACT_READY,
@@ -32,6 +33,7 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
     assert DEFAULT_DRAFT_TOPK_KERNEL == ("cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h")
     assert DEFAULT_NEXTN_KV_WRITE_LAYER == "paged_kv_write"
     assert DEFAULT_NEXTN_KV_WRITE_VARIANT == "mixed_bf16_spans"
+    assert GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE == "computed"
     assert DEFAULT_NEXTN_ATTN_DECODE_LAYER == "paged_attn_decode"
     assert DEFAULT_NEXTN_ATTN_DECODE_VARIANT == "bf16_context_spans"
 
@@ -65,6 +67,7 @@ def test_gguf_mtp_contracts_are_exported_from_speculative_package() -> None:
         exactness_gate="passed",
         kvlivespans_paged_cache_smoke=True,
         llamacpp_trace_budget_coverage=GGUF_MTP_FULL_TRACE_BUDGET_COVERAGE,
+        accepted_per_draft_status=GGUF_MTP_ACCEPTED_DRAFT_COMPARABLE,
         accepted_per_output_status=GGUF_MTP_ACCEPTED_OUTPUT_COMPARABLE,
         native_runtime_kernels_ready=True,
         optimization_kernels_ready=True,
