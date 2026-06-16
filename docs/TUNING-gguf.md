@@ -364,8 +364,16 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `11.566 ms/call`; with GPU BF16→DS4 packing in the timed loop
   (`q8-1-ds4-t16-wmma32-pack`) it measured `7.810 ms/call` (`17.60` logical
   TFLOP/s). This is the first DS4/MMQ diagnostic that both beats raw WMMA32 and
-  fits the no-raw-duplicate resident layout story, though it is still a
-  synthetic microbench and not a runtime dispatch path.
+  fits the no-raw-duplicate resident layout story. A guarded runtime follow-up
+  now wires the same resident-T16 DS4 path behind
+  `HIPENGINE_GGUF_T16_DS4_PREFILL=1`: on the full Q4_K_S GPU1 gate it improves
+  same-iteration median prefill from `1833.185 -> 1989.578 tok/s` at `512/128`
+  and `2159.561 -> 2372.228 tok/s` at `4K/128`, with decode flat/in-noise and
+  deterministic opt-in IDs. It is **not promoted** because the opt-in final
+  token IDs change versus default (`220/570 -> 3241/1510`) and the extra DS4
+  activation scratch raises opt-in peak by `+0.070 GiB`. The flag allocates that
+  scratch only when enabled, so default-path verify remains at `21.335 GiB` with
+  default IDs `220/570`.
   Artifacts:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`,
@@ -374,12 +382,13 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-pack-wmma32-selected-prefill-probe.json`,
-  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-t16-ds4-wmma32-selected-prefill-probe.json`.
-  **Next code test:** stop adding raw-Q4_K same-shape staging variants. Wire a
-  guarded runtime/fused pack+resident-T16-DS4 prototype to measure full-model
-  prefill and scratch residency, or switch focus to the now-comparable GDN
-  prefill recurrent / dense Q8_0 WMMA buckets if runtime integration proves too
-  invasive.
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-t16-ds4-wmma32-selected-prefill-probe.json`,
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-t16-ds4-runtime-probe.json`.
+  **Next code test:** stop adding raw-Q4_K same-shape staging variants. The
+  resident-T16 DS4 runtime route has speed headroom but fails exact-ID
+  promotion, so either investigate an exact-enough Q8_1/DS4 calibration path
+  before any default promotion, or switch focus to the now-comparable exact GDN
+  prefill recurrent / dense Q8_0 WMMA buckets.
 - HIP decode/MoE fusion is a lower-priority but useful reference: llama.cpp has
   explicit graph fusions for top-k MoE and for `MUL_MAT(_ID)+GLU`/bias patterns,
   then launches fused `mul_mat_vec_q` only for `ncols_dst=1`

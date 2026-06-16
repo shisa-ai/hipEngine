@@ -13,6 +13,7 @@ from hipengine.runtime.gguf_linear import set_wmma_prefill_enabled
 @pytest.fixture(autouse=True)
 def _reset_wmma_prefill_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_WMMA_PREFILL", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_DS4_PREFILL", raising=False)
     set_wmma_prefill_enabled(None)
     yield
     set_wmma_prefill_enabled(None)
@@ -95,6 +96,42 @@ def test_qwen35moe_compact_wmma_missing_selected_kernel_falls_back(monkeypatch: 
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
+def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 1200, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 1300, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q6_k_t16_v1", 1400, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_scheduler(monkeypatch, calls)
+    _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k_t16_v1", use_ds4=True)
+    monkeypatch.setattr(qgr, "_read_i64_device_scalar", lambda *args, **kwargs: 16)
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q8_1_mmq_ds4_pack_bf16",
+        lambda x_ptr, out_ptr, rows, hidden, **kwargs: calls.append(("ds4_pack", (x_ptr, out_ptr, rows, hidden))),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_DS4_PREFILL", "1")
+    set_wmma_prefill_enabled(True)
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    names = [name for name, _ in calls]
+    assert names.index("group_scatter_gather") < names.index("ds4_pack") < names.index("compact_gate_up_ds4")
+    assert ("ds4_pack", (scratch.moe_down_out.ptr, scratch.moe_q8_1_ds4.ptr, 6, 256)) in calls
+    assert ("compact_gate_up_ds4", (scratch.moe_q8_1_ds4.ptr, 6, 256, 256, 256, 4, 16)) in calls
+    assert ("compact_down", (6, 256, 256, 4, 16)) in calls
+
+
 def _fake_runner_and_scratch():
     cfg = SimpleNamespace(
         is_moe=True,
@@ -119,6 +156,7 @@ def _fake_runner_and_scratch():
         ffn_intermediate=_buf(160),
         ffn_down=_buf(170),
         moe_down_out=_buf(180),
+        moe_q8_1_ds4=_buf(185, nbytes=4096),
         moe_group_counts=_buf(190),
         moe_padded_counts=_buf(200),
         moe_scatter_offsets=_buf(210),
@@ -180,8 +218,8 @@ class _FakeLayer:
         return self._weights[slot]
 
 
-def _buf(ptr: int):
-    return SimpleNamespace(ptr=ptr, nbytes=8)
+def _buf(ptr: int, *, nbytes: int = 8):
+    return SimpleNamespace(ptr=ptr, nbytes=nbytes)
 
 
 def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str, object]]) -> None:
@@ -229,12 +267,18 @@ def _patch_compact_registry(
     calls: list[tuple[str, object]],
     *,
     down_quant: str,
+    use_ds4: bool = False,
 ) -> None:
-    gate_key = qgr._COMPACT_MOE_Q4_DUAL_KEYS[("gguf_q4_k", "gguf_q4_k")]
+    gate_key = (
+        qgr._COMPACT_MOE_Q4_DUAL_DS4_KEYS[("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1")]
+        if use_ds4
+        else qgr._COMPACT_MOE_Q4_DUAL_KEYS[("gguf_q4_k", "gguf_q4_k")]
+    )
     down_key = qgr._COMPACT_MOE_DOWN_KEYS[down_quant]
 
     def fake_gate_up(*args, **kwargs):
-        calls.append(("compact_gate_up", args[7:13]))
+        name = "compact_gate_up_ds4" if use_ds4 else "compact_gate_up"
+        calls.append((name, (args[0], *args[7:13]) if use_ds4 else args[7:13]))
 
     def fake_down(*args, **kwargs):
         calls.append(("compact_down", args[6:11]))

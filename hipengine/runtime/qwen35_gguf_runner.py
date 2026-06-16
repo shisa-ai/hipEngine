@@ -99,6 +99,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     register_gguf_q4_k_t16_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    gguf_q8_1_mmq_ds4_pack_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
@@ -2578,6 +2581,7 @@ _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
+_GGUF_T16_DS4_PREFILL_ENV = "HIPENGINE_GGUF_T16_DS4_PREFILL"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 
@@ -3661,6 +3665,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_experts: object
     moe_routing_weights: object
     moe_down_out: object
+    moe_q8_1_ds4: object
     moe_group_counts: object
     moe_padded_counts: object
     moe_scatter_offsets: object
@@ -3808,6 +3813,11 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_selected_experts": buf(rows * moe_top_k * DType.INT64.itemsize),
             "moe_routing_weights": buf(rows * moe_top_k * DType.FP32.itemsize),
             "moe_down_out": buf(moe_top_k * hidden_bytes),
+            "moe_q8_1_ds4": (
+                buf(moe_selected_rows_capacity * (runner.hidden_size // 128) * 144)
+                if _env_flag(_GGUF_T16_DS4_PREFILL_ENV, False) and runner.hidden_size % 128 == 0
+                else DeviceBuffer(0, 0)
+            ),
             "moe_group_counts": buf(moe_group_counts_zero.nbytes),
             "moe_padded_counts": buf(moe_group_counts_zero.nbytes),
             "moe_scatter_offsets": buf(moe_scatter_offsets_zero.nbytes),
@@ -4307,6 +4317,14 @@ _COMPACT_MOE_Q4_DUAL_KEYS = {
         "selected_dual_wmma_prefill_compact_bf16_bf16_out",
     ),
 }
+_COMPACT_MOE_Q4_DUAL_DS4_KEYS = {
+    ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q4_k_t16_v1",
+        "selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
+    ),
+}
 _COMPACT_MOE_DOWN_KEYS = {
     # Q4_K_S stores selected down experts as Q4_K.  In decode-repack mode those
     # tensors use the same single-output compact WMMA ABI as Q5/Q6 T16.
@@ -4448,6 +4466,7 @@ class _CompactMoeWmmaPlan:
     gate_allocation: str
     up_allocation: str
     down_allocation: str
+    gate_up_uses_q8_1_ds4: bool = False
 
 
 @dataclass(frozen=True)
@@ -4826,8 +4845,23 @@ def _try_run_post_attention_moe_rows_compact_wmma(
     if wmma_total_rows <= 0 or wmma_total_rows > int(getattr(scratch, "moe_wmma_rows_capacity", wmma_total_rows)):
         return False
 
+    gate_up_input_ptr = scratch.moe_down_out.ptr
+    if plan.gate_up_uses_q8_1_ds4:
+        required_ds4_bytes = selected_rows * (hidden_size // 128) * 144
+        if not hasattr(scratch, "moe_q8_1_ds4") or int(getattr(scratch.moe_q8_1_ds4, "nbytes", 0)) < required_ds4_bytes:
+            return False
+        gguf_q8_1_mmq_ds4_pack_bf16(
+            scratch.moe_down_out.ptr,
+            scratch.moe_q8_1_ds4.ptr,
+            selected_rows,
+            hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        gate_up_input_ptr = scratch.moe_q8_1_ds4.ptr
+
     gate_up_fn(
-        scratch.moe_down_out.ptr,
+        gate_up_input_ptr,
         scratch.moe_expert_start_compact.ptr,
         scratch.moe_expert_start_wmma.ptr,
         scratch.moe_tile_expert.ptr,
@@ -5528,7 +5562,14 @@ def _resolve_compact_moe_wmma_kernels(
     runtime can transparently use the slower per-row fallback paths.
     """
 
-    gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get((gate_weight.spec.quant_key, up_weight.spec.quant_key))
+    gate_pair = (gate_weight.spec.quant_key, up_weight.spec.quant_key)
+    gate_up_uses_q8_1_ds4 = False
+    gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get(gate_pair)
+    if _env_flag(_GGUF_T16_DS4_PREFILL_ENV, False):
+        ds4_gate_up_key = _COMPACT_MOE_Q4_DUAL_DS4_KEYS.get(gate_pair)
+        if ds4_gate_up_key is not None:
+            gate_up_key = ds4_gate_up_key
+            gate_up_uses_q8_1_ds4 = True
     down_key = _COMPACT_MOE_DOWN_KEYS.get(down_weight.spec.quant_key)
     if gate_up_key is None or down_key is None:
         return None
@@ -5545,6 +5586,7 @@ def _resolve_compact_moe_wmma_kernels(
         gate_allocation=_selected_wmma_allocation_name(gate_weight),
         up_allocation=_selected_wmma_allocation_name(up_weight),
         down_allocation=_selected_wmma_allocation_name(down_weight),
+        gate_up_uses_q8_1_ds4=gate_up_uses_q8_1_ds4,
     )
 
 
