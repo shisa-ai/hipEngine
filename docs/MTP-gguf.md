@@ -719,8 +719,9 @@ Deliverables:
   rows and verify seeds into one metrics artifact, and
   `Qwen35GGUFMTPAcceptStepMetrics` aggregates those serializable steps with a
   self-identifying schema/kind/source payload, inferred `B{candidate_budget}`
-  label, and the same accepted/draft and accepted/output denominator labels used
-  for llama.cpp parity; the GGUF row
+  label, compact per-step transaction/candidate/accepted rows, and the same
+  accepted/draft and accepted/output denominator labels used for llama.cpp
+  parity; the GGUF row
   objects still carry the extra embedding seed pointer
   until native MTP runtime buffers exist.
 

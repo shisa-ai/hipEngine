@@ -573,6 +573,9 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     assert metrics.budget_label == "B2"
     assert metrics.draft_token_count == 4
     assert metrics.accepted_token_count == 3
+    assert metrics.step_transaction_ids == (12, 13)
+    assert metrics.step_candidate_token_counts == (2, 2)
+    assert metrics.step_accepted_token_counts == (1, 2)
     assert metrics.accepted_per_draft == 0.75
     assert metrics.accepted_per_output == 0.6
     assert metrics.as_dict()["schema"] == 1
@@ -581,6 +584,27 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     assert metrics.as_dict()["result_source"] == "Qwen35GGUFMTPAcceptStep"
     assert metrics.as_dict()["candidate_budget"] == 2
     assert metrics.as_dict()["budget_label"] == "B2"
+    assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
+    assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
+    assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]
+    assert metrics.as_dict()["step_rows"] == [
+        {
+            "transaction_id": 12,
+            "request_ids": [7],
+            "candidate_token_count": 2,
+            "accepted_token_count": 1,
+            "candidate_counts": [2],
+            "accepted_counts": [1],
+        },
+        {
+            "transaction_id": 13,
+            "request_ids": [7],
+            "candidate_token_count": 2,
+            "accepted_token_count": 2,
+            "candidate_counts": [2],
+            "accepted_counts": [2],
+        },
+    ]
     assert metrics.as_dict()["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
         "accepted_per_output": "accepted_token_count / output_token_count",
@@ -652,6 +676,9 @@ def test_gguf_mtp_context_accepts_top1_specs_into_metrics() -> None:
     assert metrics.budget_label == "B2"
     assert metrics.as_dict()["candidate_budget"] == 2
     assert metrics.as_dict()["budget_label"] == "B2"
+    assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
+    assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
+    assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]
     assert metrics.as_dict()["steps"][0]["transaction_id"] == 12
     assert metrics.as_dict()["steps"][1]["transaction_id"] == 13
     assert context.pending_seed == seeds[2]

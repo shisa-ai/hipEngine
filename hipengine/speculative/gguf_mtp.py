@@ -642,6 +642,38 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         return sum(sum(step.commit_plan.accepted_counts) for step in self.steps)
 
     @property
+    def step_transaction_ids(self) -> tuple[int, ...]:
+        return tuple(step.commit_plan.transaction_id for step in self.steps)
+
+    @property
+    def step_candidate_token_counts(self) -> tuple[int, ...]:
+        return tuple(sum(step.commit_plan.candidate_counts or ()) for step in self.steps)
+
+    @property
+    def step_accepted_token_counts(self) -> tuple[int, ...]:
+        return tuple(sum(step.commit_plan.accepted_counts) for step in self.steps)
+
+    def step_rows(self) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {
+                "transaction_id": step.commit_plan.transaction_id,
+                "request_ids": list(step.commit_plan.request_ids),
+                "candidate_token_count": candidate_count,
+                "accepted_token_count": accepted_count,
+                "candidate_counts": None
+                if step.commit_plan.candidate_counts is None
+                else list(step.commit_plan.candidate_counts),
+                "accepted_counts": list(step.commit_plan.accepted_counts),
+            }
+            for step, candidate_count, accepted_count in zip(
+                self.steps,
+                self.step_candidate_token_counts,
+                self.step_accepted_token_counts,
+                strict=True,
+            )
+        )
+
+    @property
     def accepted_per_draft(self) -> float:
         return float(self.accepted_token_count) / float(self.draft_token_count)
 
@@ -674,6 +706,10 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "draft_token_count": self.draft_token_count,
             "accepted_token_count": self.accepted_token_count,
             "output_token_count": self.output_token_count,
+            "step_transaction_ids": list(self.step_transaction_ids),
+            "step_candidate_token_counts": list(self.step_candidate_token_counts),
+            "step_accepted_token_counts": list(self.step_accepted_token_counts),
+            "step_rows": list(self.step_rows()),
             "accepted_per_draft": self.accepted_per_draft,
             "accepted_per_output": self.accepted_per_output,
             "denominators": self.denominator_labels(),
