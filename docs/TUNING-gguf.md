@@ -184,16 +184,17 @@ formulas put pre-policy `128K/128` at `25.108 GiB` (`19.858 GiB` weights,
 that blocker was a real `~1.12 GiB` capacity shortfall rather than hidden
 raw+packed duplicate residency.
 
-G-P4 128K memory policy is recorded in
-`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-memory-policy.json`. The
-24GB low-memory chunk policy now triggers at 128K-class contexts and the
-low-memory prefill path uses one full-sequence hidden buffer plus a chunk staging
-buffer; bulk-prefill dense block-table metadata is also compacted to scratch
-rows. A GPU1 `128K/128` session-construction smoke now succeeds at
-`23.146 GiB` owned / `23.658 GiB` sampled HIP-used with `256`-token chunks,
-`0.146 GiB` bulk-prefill scratch, and `prefill_hidden_b_rows=256` (pre-policy
-projection was `25.108 GiB`). The full `128K/128` throughput/correctness run is
-still pending before final long-context promotion.
+G-P4 128K memory policy/full gate is recorded in
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-gate.json`. The 24GB
+low-memory chunk policy now triggers at 128K-class contexts with 256-token
+linear/MoE/post/RoPE chunks and 512-token full-attention query chunks (keeping
+AOTriton active); the low-memory prefill path uses one full-sequence hidden
+buffer plus a chunk staging buffer, and bulk-prefill dense block-table metadata
+is compacted to scratch rows. GPU1 `128K/128` now runs successfully with
+`572.096` prefill tok/s, `67.697` decode tok/s, stable final ID `[220]`, finite
+logits, tracked/owned peak `23.228 GiB`, and sampled HIP-used `23.816 GiB`.
+This replaces the pre-policy `25.108 GiB` OOM projection; final long-context
+promotion is now gated by performance quality, not session-construction memory.
 
 Retained notes:
 
@@ -209,9 +210,11 @@ Retained notes:
   decode promotion: the 4K/16 rocprof selected-WMMA bucket fell
   `800.455 -> 454.370 ms` and total prefill kernel time fell
   `2094.198 -> 1761.552 ms`, while gate decode stayed within noise of the
-  selected-down-lb2 row. GPU1 `128K/128` final promotion is
-  blocked by HIP OOM during session construction and needs a W7900 fallback or a
-  G-P4 memory-policy gate.
+  selected-down-lb2 row. The follow-up GPU1 `128K/128` single-run final check
+  now fits and is deterministic (`572.096 / 67.697 tok/s`, stable ID `[220]`,
+  `23.228 GiB` tracked peak); long-context prefill remains slower than the stale
+  W7900 README row, so future G-P4/P3 work should optimize the 24GB low-memory
+  policy rather than memory construction.
 - **G-P1 launch-bound default retained (2026-06-15).** Lowering
   `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS` from `2` to `1` in the selected Q4_K
   T16 WMMA prefill kernel kept gate IDs stable, kept tracked peak at
@@ -237,11 +240,11 @@ Current focused lanes from evidence:
    object is scratch-free and low-VGPR and prior Q8 launch-bound/load variants
    no-held. Prefer dispatch/graph/full-attention or an algorithmic Q8 reduction
    over more occupancy pokes.
-2. **G-P4 before final long-context promotion:** 128K session construction now
-   fits on GPU1 (`23.146 GiB` owned / `23.658 GiB` sampled HIP-used), but a full
-   `128K/128` throughput/correctness run is still required before final
-   long-context promotion. If it is too slow or regresses, next targets are KV
-   cache residency and lower-overhead long-context prefill staging.
+2. **G-P4/P3 long-context follow-up:** GPU1 `128K/128` now fits and completes,
+   but low-memory throughput is prefill-limited (`572.096 tok/s` vs the stale
+   W7900 diagnostic `995.295 tok/s`). Next targets are lower-overhead
+   long-context prefill staging, full-attention prefill chunk/AOTriton tuning,
+   or KV/cache residency reductions that permit larger chunks.
 3. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
    WMMA is no longer the dominant 4K prefill bucket; GDN prefill recurrent and
    dense Q8_0 WMMA are now comparable follow-up targets, and any further G-P1
@@ -691,7 +694,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-P1 | Follow up the retained selected-MoE half-seq WMMA rewrite only if a 16-column/codegen variant can reduce the remaining 256-VGPR cap. | Half-seq moved the 4K/16 target bucket `800.455 -> 454.370 ms`; remaining upside is smaller and must not trade back decode stability. | Target bucket moves materially beyond half-seq without >24 GiB duplicate storage or decode noise. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
-| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | 128K session construction now fits on GPU1 via 256-token low-memory chunks and chunk-staged prefill hidden (`23.146 GiB` owned); full `128K/128` throughput/correctness still pending. |
+| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | GPU1 `128K/128` now fits and runs: 256-token low-memory chunks with 512-token full-attn query chunks, chunk-staged prefill hidden, `572.096 / 67.697 tok/s`, stable ID `[220]`, `23.228 GiB` peak. Next work is speed, not capacity. |
 
 ### H lane — Host/runtime and graph replay
 

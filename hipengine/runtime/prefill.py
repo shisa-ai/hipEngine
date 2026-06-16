@@ -12,6 +12,7 @@ _PREFILL_FULL_ATTN_QUERY_CHUNK = 4096
 _PREFILL_FULL_ATTN_POST_CHUNK = 1024
 _PREFILL_FULL_ATTN_ROPE_CHUNK = 1024
 _PREFILL_LOW_MEMORY_CHUNK = 256
+_PREFILL_LOW_MEMORY_FULL_ATTN_QUERY_CHUNK = 512
 _LOW_MEMORY_FULL_CONTEXT_MIN_TOKENS = 131_072
 _LOW_MEMORY_TOTAL_BYTES = 26 * _GIB
 _DEFAULT_BUDGET_FRACTION = 0.55
@@ -26,8 +27,10 @@ class PrefillConfig:
     Chunk sizes of ``0`` mean "no manual override", matching the parent
     environment-knob convention; with ``auto_tune_chunk_sizes`` enabled,
     prompts above 1K resolve those zeros to the retained 1024/4096 chunk
-    policy, except 128K-class prompts on 24GB-class cards use a conservative
-    256-token chunk policy to preserve transient scratch headroom.  AOTriton is
+    policy, except 128K-class prompts on 24GB-class cards use conservative
+    256-token chunks (512-token full-attention query chunks) to preserve
+    transient scratch headroom while keeping AOTriton on for long-context full
+    attention.  AOTriton is
     a baseline vendored runtime dependency for the gfx1100
     Qwen3.5/PARO path; the measured crossover policy uses AOTriton attention
     once prompts reach 512 tokens.
@@ -94,7 +97,8 @@ def resolve_prefill_config_for_sequence(
     default auto policy, prompts up to 1K stay unchunked while prompts above 1K
     use the retained 1024/4096 policy across linear attention, MoE, full-attn
     query, post, and RoPE stages.  On 24GB-class cards, 128K-class and longer
-    prompts use 256-token chunks to keep transient prefill scratch under the
+    prompts use 256-token chunks, with 512-token full-attention query chunks to
+    keep the AOTriton path active, to keep transient prefill scratch under the
     device limit.
     """
 
@@ -130,7 +134,7 @@ def resolve_prefill_config_for_sequence(
             config,
             linear_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
             moe_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
-            full_attn_query_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
+            full_attn_query_chunk_size=_PREFILL_LOW_MEMORY_FULL_ATTN_QUERY_CHUNK,
             full_attn_post_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
             full_attn_rope_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
         )

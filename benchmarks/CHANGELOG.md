@@ -19,7 +19,8 @@ Examples:
 
 ## 2026-06-16
 
-- [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_s / GPU1 512/128+4K/128: prefill `1647.390/1855.806 -> 1816.758/2151.851 tok/s` (+10.3%/+16.0%) after rewriting selected Q4_K T16 dual-WMMA prefill to compute the two 16-column halves sequentially with one accumulator while preserving the per-lane store bounds guard; min gate decode `115.805 -> 115.798 tok/s` (-0.01%, within run noise / not a decode promotion), stable IDs `220/570`, tracked peak unchanged `21.335 GiB`, GPU1 `128K/128` blocked by HIP OOM; `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`.
+- [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_s / GPU1 128K/128: blocked/OOM -> `572.096` prefill / `67.697` decode tok/s at `23.228 GiB` tracked peak after the 24GB low-memory policy switched 128K-class contexts to 256-token chunks with 512-token full-attention query chunks, chunk-staged prefill hidden, and compact bulk block-table metadata; stable final ID `[220]`, generated tail `[3642,84,220]`; `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-gate.json`.
+- [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_s / GPU1 512/128+4K/128: prefill `1647.390/1855.806 -> 1816.758/2151.851 tok/s` (+10.3%/+16.0%) after rewriting selected Q4_K T16 dual-WMMA prefill to compute the two 16-column halves sequentially with one accumulator while preserving the per-lane store bounds guard; min gate decode `115.805 -> 115.798 tok/s` (-0.01%, within run noise / not a decode promotion), stable IDs `220/570`, tracked peak unchanged `21.335 GiB`; `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`.
 
 ## 2026-06-15
 
