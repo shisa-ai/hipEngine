@@ -1553,6 +1553,48 @@ class Qwen35GGUFMTPRuntimeKernelCheck:
         if not self.required_for:
             raise ValueError("required_for must be non-empty")
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return ("name", "key", "registered", "required_for", "missing_is_blocker")
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPRuntimeKernelCheck.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "runtime kernel check",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = tuple(field for field in cls.required_fields() if field not in payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        key = payload["key"]
+        if not isinstance(key, Sequence) or isinstance(key, (str, bytes)):
+            raise ValueError(f"{field_name} key must be a sequence")
+        normalized_key = tuple(str(part) for part in key)
+        if len(normalized_key) != 4:
+            raise ValueError(f"{field_name} key must be a four-axis registry key")
+        cls(
+            name=str(payload["name"]),
+            key=normalized_key,  # type: ignore[arg-type]
+            registered=bool(payload["registered"]),
+            required_for=str(payload["required_for"]),
+            missing_is_blocker=bool(payload["missing_is_blocker"]),
+        )
+
     @classmethod
     def from_key(
         cls,
@@ -1680,6 +1722,95 @@ class Qwen35GGUFMTPRuntimeKernelPlan:
     def optimization_kernels_ready(self) -> bool:
         return not self.missing_optimization_keys
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "backend",
+            "exactness_oracles_ready",
+            "native_runtime_kernels_ready",
+            "optimization_kernels_ready",
+            "missing_exactness_oracle_keys",
+            "missing_native_runtime_keys",
+            "missing_optimization_keys",
+            "kernel_check_contract",
+            "checks",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPRuntimeKernelPlan.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "runtime kernel plan",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        if payload.get("kernel_check_contract") != Qwen35GGUFMTPRuntimeKernelCheck.contract():
+            raise ValueError(f"{field_name} kernel_check_contract mismatch")
+
+        checks = payload.get("checks")
+        if not isinstance(checks, Sequence) or isinstance(checks, (str, bytes)):
+            raise ValueError(f"{field_name} checks must be a sequence")
+        normalized_checks: list[Qwen35GGUFMTPRuntimeKernelCheck] = []
+        for index, check in enumerate(checks):
+            Qwen35GGUFMTPRuntimeKernelCheck.validate_payload(
+                check,
+                field_name=f"{field_name} checks[{index}]",
+            )
+            if not isinstance(check, Mapping):
+                raise ValueError(f"{field_name} checks[{index}] must be a mapping")
+            normalized_checks.append(
+                Qwen35GGUFMTPRuntimeKernelCheck(
+                    name=str(check["name"]),
+                    key=tuple(str(part) for part in check["key"]),  # type: ignore[arg-type]
+                    registered=bool(check["registered"]),
+                    required_for=str(check["required_for"]),
+                    missing_is_blocker=bool(check["missing_is_blocker"]),
+                )
+            )
+        plan = cls(backend=str(payload["backend"]), checks=tuple(normalized_checks))
+        expected_missing_exactness = [list(key) for key in plan.missing_exactness_oracle_keys]
+        expected_missing_native = [list(key) for key in plan.missing_native_runtime_keys]
+        expected_missing_optimization = [list(key) for key in plan.missing_optimization_keys]
+        if payload.get("missing_exactness_oracle_keys") != expected_missing_exactness:
+            raise ValueError(f"{field_name} missing_exactness_oracle_keys mismatch")
+        if payload.get("missing_native_runtime_keys") != expected_missing_native:
+            raise ValueError(f"{field_name} missing_native_runtime_keys mismatch")
+        if payload.get("missing_optimization_keys") != expected_missing_optimization:
+            raise ValueError(f"{field_name} missing_optimization_keys mismatch")
+        if bool(payload["exactness_oracles_ready"]) != plan.exactness_oracles_ready:
+            raise ValueError(f"{field_name} exactness_oracles_ready mismatch")
+        if bool(payload["native_runtime_kernels_ready"]) != plan.native_runtime_kernels_ready:
+            raise ValueError(f"{field_name} native_runtime_kernels_ready mismatch")
+        if bool(payload["optimization_kernels_ready"]) != plan.optimization_kernels_ready:
+            raise ValueError(f"{field_name} optimization_kernels_ready mismatch")
+
     def as_dict(self) -> dict[str, object]:
         return {
             "backend": self.backend,
@@ -1689,7 +1820,10 @@ class Qwen35GGUFMTPRuntimeKernelPlan:
             "missing_exactness_oracle_keys": [list(key) for key in self.missing_exactness_oracle_keys],
             "missing_native_runtime_keys": [list(key) for key in self.missing_native_runtime_keys],
             "missing_optimization_keys": [list(key) for key in self.missing_optimization_keys],
+            "kernel_check_contract": Qwen35GGUFMTPRuntimeKernelCheck.contract(),
             "checks": [check.as_dict() for check in self.checks],
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 

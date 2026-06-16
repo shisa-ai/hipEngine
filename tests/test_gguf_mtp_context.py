@@ -27,6 +27,7 @@ from hipengine.speculative.gguf_mtp import (
     Qwen35GGUFMTPDraftRow,
     Qwen35GGUFMTPKVLiveSpansPlan,
     Qwen35GGUFMTPPerformanceReadiness,
+    Qwen35GGUFMTPRuntimeKernelCheck,
     Qwen35GGUFMTPRuntimeKernelPlan,
     Qwen35GGUFMTPSeedRow,
     Qwen35GGUFMTPVerificationMetrics,
@@ -1081,6 +1082,11 @@ def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() 
         ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
     ]
     assert payload["missing_optimization_keys"] == []
+    assert payload["kernel_check_contract"] == Qwen35GGUFMTPRuntimeKernelCheck.contract()
+    assert Qwen35GGUFMTPRuntimeKernelPlan.contract() == {
+        "required_fields": list(Qwen35GGUFMTPRuntimeKernelPlan.required_fields()),
+        "validator": "Qwen35GGUFMTPRuntimeKernelPlan.validate_payload",
+    }
     assert [item["name"] for item in payload["checks"]] == [
         "cpu_nextn_oracle",
         "draft_topk_fallback_oracle",
@@ -1089,6 +1095,18 @@ def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() 
         "native_nextn_paged_attn_decode",
         "native_draft_topk_device",
     ]
+    Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(payload)
+    bad_payload = {**payload, "kernel_check_contract": {}}
+    with pytest.raises(ValueError, match="kernel_check_contract mismatch"):
+        Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(bad_payload)
+    bad_payload = {**payload, "native_runtime_kernels_ready": True}
+    with pytest.raises(ValueError, match="native_runtime_kernels_ready mismatch"):
+        Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(bad_payload)
+    bad_checks = [dict(item) for item in payload["checks"]]
+    bad_checks[2]["key"] = ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf"]
+    bad_payload = {**payload, "checks": bad_checks}
+    with pytest.raises(ValueError, match="four-axis"):
+        Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(bad_payload)
 
 
 def test_gguf_mtp_runtime_kernel_plan_validates_inputs() -> None:
