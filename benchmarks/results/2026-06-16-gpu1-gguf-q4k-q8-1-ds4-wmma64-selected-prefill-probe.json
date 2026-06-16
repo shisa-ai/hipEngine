@@ -1,0 +1,166 @@
+{
+  "change": "Added microbench-only q8-1-ds4-wmma64 kernel using four wave32 groups per 128-thread block for 64 output columns.",
+  "commands": {
+    "microbench": "for mode in q8-1-ds4-wmma64 q8-1-ds4-wmma32 q8-1-ds4-wmma selected-wmma q8-1-ds4-dot; do HIP_VISIBLE_DEVICES=1 ... scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode $mode --hidden 2048 --out-features-a 4096 --out-features-b 4096 --experts 8 --rows-per-expert 512 --warmup 3 --iters 10 --require-cached-build --json /tmp/hipengine-gguf-q4k-wmma64-$mode.json; done",
+    "primary_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 ... scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "rocprof": "HIP_VISIBLE_DEVICES=1 ... rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma64-trace -- python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma64_selected_prefill_bf16_matches_ds4_cpu_reference -q",
+    "selected_prefill_tests": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q"
+  },
+  "correctness": {
+    "pytest_selected_prefill": "20 passed",
+    "rocprof_duration_ns": [
+      23800,
+      36760
+    ],
+    "rocprof_kernel_matches": 2,
+    "rocprof_trace": "/tmp/hipengine-gguf-ds4-wmma64-trace/epyc/3025163_kernel_trace.csv"
+  },
+  "guard": {
+    "command": "python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "result": "154 passed"
+  },
+  "hardware": {
+    "device": "GPU1",
+    "gfx": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "interpretation": "Four-wave/64-column raw DS4 WMMA was only a tiny synthetic improvement over WMMA32 in the same run (8.216 vs 8.268 ms/call, +0.63%) and remained diagnostic-only. Independent-wave widening has near-flat returns after 32 columns; real MMQ parity likely requires shared-tile reuse rather than more block-count reduction.",
+  "microbench": {
+    "q8-1-ds4-dot": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 6.290992336352161,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": false,
+        "prototype_note": "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 21.846943395212293,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "q8-1-ds4-wmma": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 16.599498642616645,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 8.27970509417355,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "q8-1-ds4-wmma32": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 16.623427201450433,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 8.267786889337003,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "q8-1-ds4-wmma64": {
+      "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+      "finite_output": true,
+      "logical_tflops": 16.727789617001903,
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "ms_per_call": 8.216205285862088,
+      "output_checksum_f64": 6691301.919567704,
+      "tracked_peak_allocated_gib": 0.14160360395908356,
+      "weight_layout": "raw_gguf_q4_k"
+    },
+    "selected-wmma": {
+      "activation_layout": null,
+      "finite_output": true,
+      "logical_tflops": 11.870115370049565,
+      "memory": {
+        "activation_quantization_in_loop": false,
+        "host_input_mib": 16.0,
+        "host_output_mib": 64.0,
+        "host_tiles_a_mib": 37.0,
+        "host_tiles_b_mib": 37.0,
+        "tracked_peak_allocated_gib": 0.15039266645908356,
+        "weight_layout": "gguf_q4_k_t16_v1"
+      },
+      "ms_per_call": 11.57856930512935,
+      "output_checksum_f64": 6715252.562845781,
+      "tracked_peak_allocated_gib": 0.15039266645908356,
+      "weight_layout": "gguf_q4_k_t16_v1"
+    }
+  },
+  "microbench_shape": {
+    "experts": 8,
+    "hidden": 2048,
+    "iters": 10,
+    "out_features_a": 4096,
+    "out_features_b": 4096,
+    "rows_per_expert": 512,
+    "warmup": 3
+  },
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.30788201408417,
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2153.7180141157737,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.98848375829803,
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1865.150242176638,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.30788201408417,
+  "prompt_verifier": {
+    "evidence": "Diagnostic-only kernel/microbench; runtime defaults unchanged, primary GGUF gates kept stable IDs and flat 21.334842 GiB peak; no torch/llama.cpp hot-path dependency; no new runtime raw+packed residency. 128K not applicable until promotion.",
+    "passed": true
+  },
+  "quant": "gguf_q4_k_s",
+  "run_tag": "gguf_q4k_q8_1_ds4_wmma64_selected_prefill_probe",
+  "schema": 1,
+  "status": "diagnostic_retained_not_promoted",
+  "timestamp": "2026-06-16T05:08:41.477447+00:00"
+}

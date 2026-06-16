@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
     plan_gguf_q4_k_q8_1_selected_prefill_build,
 )
@@ -132,6 +133,15 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
             variant="selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
         )
         is gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out
     )
     assert (
         resolve(
@@ -548,6 +558,13 @@ def _run_q8_1_ds4_wmma32_selected_dual_gpu(fixture) -> np.ndarray:
     )
 
 
+def _run_q8_1_ds4_wmma64_selected_dual_gpu(fixture) -> np.ndarray:
+    return _run_q8_1_ds4_variant_gpu(
+        fixture,
+        gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out,
+    )
+
+
 def _run_q8_1_ds4_wmma32_ldspack_selected_dual_gpu(fixture) -> np.ndarray:
     return _run_q8_1_ds4_variant_gpu(
         fixture,
@@ -654,6 +671,30 @@ def test_q4_k_q8_1_ds4_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference(
         seed=7,
     )
     actual = _run_q8_1_ds4_wmma32_selected_dual_gpu(fixture)
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"),
+    [
+        pytest.param([4, 0, 5], 256, 16, 16, id="empty-middle-small-boundary"),
+        pytest.param([0, 17, 31], 512, 32, 48, id="empty-first-multi-block"),
+    ],
+)
+def test_q4_k_q8_1_ds4_wmma64_selected_prefill_bf16_matches_ds4_cpu_reference(
+    counts: list[int], in_features: int, out_features_a: int, out_features_b: int
+) -> None:
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=7,
+    )
+    actual = _run_q8_1_ds4_wmma64_selected_dual_gpu(fixture)
     expected = _q8_1_ds4_selected_reference(fixture)
     np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
 

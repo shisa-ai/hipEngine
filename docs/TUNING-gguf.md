@@ -335,8 +335,11 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   on the synthetic qwen-like shape, faster than same-script selected-WMMA
   `11.581 ms/call` and DS4 scalar `21.842 ms/call`. A two-wave/32-column block
   variant (`q8-1-ds4-wmma32`) nudges this to `8.191 ms/call` (`16.78` logical
-  TFLOP/s), only `+0.7%` over the one-wave variant. A naive expanded-Q4 LDS
-  staging variant (`q8-1-ds4-wmma32-lds`) regressed to `18.257 ms/call`, `2.22x`
+  TFLOP/s), only `+0.7%` over the one-wave variant. A four-wave/64-column
+  variant (`q8-1-ds4-wmma64`) measured `8.216 ms/call` in a same-session run vs
+  WMMA32 `8.268 ms/call`, so independent-wave output widening has only flat /
+  sub-1% returns after 32 columns. A naive expanded-Q4 LDS staging variant
+  (`q8-1-ds4-wmma32-lds`) regressed to `18.257 ms/call`, `2.22x`
   slower than raw WMMA32 and slower than current selected-WMMA, so do **not**
   promote that staging shape. A packed-Q4 LDS staging variant
   (`q8-1-ds4-wmma32-ldspack`) recovers much of that loss at `11.438 ms/call`
@@ -353,6 +356,7 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   Artifacts:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`,
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma64-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`,
   `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`.

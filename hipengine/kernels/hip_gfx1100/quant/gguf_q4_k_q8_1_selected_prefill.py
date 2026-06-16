@@ -20,6 +20,7 @@ _SYMBOL_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf
 _SYMBOL_DS4_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA32_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out"
+_SYMBOL_DS4_WMMA64_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_PREVIEW_WMMA32_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA32_LDSPACK_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out"
 _SYMBOL_DS4_WMMA32_LDS_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out"
@@ -279,6 +280,75 @@ def gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out(
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4_WMMA32_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_wmma_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the diagnostic BF16 DS4 Q8_1 x raw Q4_K four-wave WMMA prefill."""
+
+    _check_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+    )
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DS4_WMMA64_BF16)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -684,6 +754,16 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             variant="selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out,
         replace=replace,
     )
     register(

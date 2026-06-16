@@ -17,6 +17,8 @@ It builds a synthetic compact-selected MoE fixture and can time either:
 * ``q8-1-ds4-wmma32``: the same integer-WMMA math with two independent 16-column
   waves per block, reducing block-count overhead while preserving the one-wave
   fragment mapping.
+* ``q8-1-ds4-wmma64``: a four-wave/64-column raw-Q4_K integer-WMMA diagnostic
+  that tests whether larger output-column tiles reduce block scheduling overhead.
 * ``q8-1-ds4-preview-wmma32``: the two-wave integer-WMMA math fed by a
   pre-unpacked host-side Q4_K MMQ preview layout (q4 nibbles plus FP32 scale/min
   terms), testing whether raw Q4_K metadata decode is the remaining bottleneck.
@@ -146,6 +148,7 @@ def parse_args() -> argparse.Namespace:
             "q8-1-ds4-dot",
             "q8-1-ds4-wmma",
             "q8-1-ds4-wmma32",
+            "q8-1-ds4-wmma64",
             "q8-1-ds4-preview-wmma32",
             "q8-1-ds4-wmma32-ldspack",
             "q8-1-ds4-wmma32-lds",
@@ -264,6 +267,7 @@ def main() -> None:
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
+                gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
             )
 
@@ -382,6 +386,7 @@ def main() -> None:
                     use_wmma = args.mode in {
                         "q8-1-ds4-wmma",
                         "q8-1-ds4-wmma32",
+                        "q8-1-ds4-wmma64",
                         "q8-1-ds4-wmma32-ldspack",
                         "q8-1-ds4-wmma32-lds",
                     }
@@ -389,6 +394,8 @@ def main() -> None:
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out
                     elif args.mode == "q8-1-ds4-wmma32-ldspack":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_bf16_bf16_out
+                    elif args.mode == "q8-1-ds4-wmma64":
+                        ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out
                     elif args.mode == "q8-1-ds4-wmma32":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out
                     elif args.mode == "q8-1-ds4-wmma":
