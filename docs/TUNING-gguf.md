@@ -479,6 +479,17 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **Q8_0 T16 1024-row up-projection TM64 rejected (2026-06-16).** Extending
+  the resident Q8_0 T16 WMMA prefill tile policy so 1024-row
+  `in<=2048,out=4096` projections use `TM64/TN32` instead of `TM32/TN32`
+  passed the focused tile-policy smoke and `154`-test GGUF guard with stable IDs
+  and flat memory, but it regressed prefill versus the decode-policy cache
+  baseline (`512/128` `1958.536 / 127.263 -> 1921.592 / 127.022 tok/s`,
+  `4K/128` `2292.684 / 114.991 -> 2278.406 / 115.087 tok/s`). Code and test
+  changes were reverted; keep the 1024-row large-projection rule at `TM32`.
+  Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-up-tm64-rejected.json`.
+
 - **GDN segment-threshold runner cache rejected (2026-06-16).** Caching
   `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` once on the full-stack runner
   instead of reparsing it in every GDN prefill chunk passed the focused routing

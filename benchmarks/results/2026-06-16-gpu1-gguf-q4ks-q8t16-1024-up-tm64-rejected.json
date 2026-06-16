@@ -1,0 +1,171 @@
+{
+  "artifact_name": "gpu1-gguf-q4ks-q8t16-1024-up-tm64-rejected",
+  "base_commit": "3b0de8602c646b2825e223f7b6a14427bcee574e",
+  "baseline_retained_reference": {
+    "4K/128": {
+      "decode_tok_s": 114.991,
+      "peak_gib": 21.335,
+      "prefill_tok_s": 2292.684,
+      "stable_id": 570
+    },
+    "512/128": {
+      "decode_tok_s": 127.263,
+      "peak_gib": 21.335,
+      "prefill_tok_s": 1958.536,
+      "stable_id": 220
+    },
+    "artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-decode-policy-cache-gate.json",
+    "primary_metric_min_decode_tok_s": 114.990789
+  },
+  "change": {
+    "files": [
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py",
+      "tests/test_gguf_q8_0_t16_wmma_prefill.py"
+    ],
+    "final_action": "Rejected and code/test changes reverted after prompt verifier failed.",
+    "summary": "Candidate changed Q8_0 T16 WMMA prefill default tile policy for 1024-row in<=2048,out=4096-class shapes from TM32/TN32 to TM64/TN32, while leaving 512-row, 768-row, shared-expert, and out=8192 rules unchanged."
+  },
+  "checks": [
+    {
+      "name": "focused tile-policy test",
+      "result": "1 passed",
+      "status": "passed"
+    },
+    {
+      "name": "primary gate",
+      "result": "Stable IDs 220/570 and flat memory; candidate primary min decode 115.086944 tok/s.",
+      "status": "passed"
+    },
+    {
+      "name": "guard",
+      "result": "154 passed",
+      "status": "passed"
+    },
+    {
+      "name": "prompt verifier",
+      "result": "Prefill regressed versus retained decode-policy cache baseline: 512/128 1958.536 -> 1921.592 tok/s and 4K/128 2292.684 -> 2278.406 tok/s; 512 decode also regressed 127.263 -> 127.022 tok/s despite 4K decode nudge.",
+      "status": "failed"
+    }
+  ],
+  "commands": {
+    "focused_tests": "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q",
+    "guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "primary": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json"
+  },
+  "date": "2026-06-16",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX / gfx1100 (24GB class)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The 128K/128 final promotion check was not run because the primary prompt verifier failed.",
+    "The candidate was exact and flat-memory, but the wider 1024-row up-projection tile did not repay its prefill cost in the full-model gate."
+  ],
+  "per_run_metrics": {
+    "4K/128": [
+      {
+        "decode_tok_s": 111.970675,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": false,
+        "prefill_tok_s": 2283.187896,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 115.11457,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 2282.731287,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 115.086944,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 2278.406304,
+        "run_index": 2,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 115.049723,
+        "final_token_id": 570,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 2274.601754,
+        "run_index": 3,
+        "tracked_peak_allocated_gib": 21.334842
+      }
+    ],
+    "512/128": [
+      {
+        "decode_tok_s": 123.168639,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": false,
+        "prefill_tok_s": 1572.854464,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 127.132339,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 1965.635387,
+        "run_index": 1,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 126.990063,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 1900.040876,
+        "run_index": 2,
+        "tracked_peak_allocated_gib": 21.334842
+      },
+      {
+        "decode_tok_s": 127.022265,
+        "final_token_id": 220,
+        "finite_final_logits": true,
+        "measured": true,
+        "prefill_tok_s": 1921.592178,
+        "run_index": 3,
+        "tracked_peak_allocated_gib": 21.334842
+      }
+    ]
+  },
+  "performance_claim": false,
+  "primary_metric_min_decode_tok_s": 115.086944,
+  "quant": "gguf_q4_k_s",
+  "repo": "/home/lhl/hipEngine-gguf-tuning",
+  "schema": "hipengine_benchmark_result/v1",
+  "software": "TheRock ROCm 7.13; /home/lhl/mambaforge/envs/therock/bin/python3.12; cached hipcc builds via /tmp/hipengine-hipcc-version-713.txt",
+  "status": "rejected",
+  "summary_by_workload": {
+    "4K/128": {
+      "decode_tok_s_median": 115.086944,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2278.406304,
+      "tracked_peak_allocated_gib_median": 21.334842
+    },
+    "512/128": {
+      "decode_tok_s_median": 127.022265,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1921.592178,
+      "tracked_peak_allocated_gib_median": 21.334842
+    }
+  }
+}
