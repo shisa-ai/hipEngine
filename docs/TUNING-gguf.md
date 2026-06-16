@@ -97,16 +97,16 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1951.832` | `127.138` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `2278.421` | `114.736` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1958.693` | `126.924` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `2293.994` | `114.991` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `114.736 tok/s` after
-the resident Q8_0 T16 WMMA prefill tile policy was retuned for the active GGUF
-shape mix. This is a prefill promotion (`512/128` +`6.22%`, `4K/128` +`2.96%`
-versus the GDN-threshold default gate), not a decode promotion: 4K decode moved
-within observed same-session variance while tracked memory and generated IDs
-remained stable.
+multiloop metric is the minimum gate decode rate, currently `114.991 tok/s` after
+the resident Q8_0 T16 WMMA prefill tile policy was retuned again for small
+shared-expert shapes on rows > 512. This is a primary-gate prefill promotion
+(`512/128` +`0.35%`, `4K/128` +`0.68%` versus the prior T16 tile default), with
+flat memory and stable generated IDs; decode is mixed/in-noise (`4K/128` improved
++`0.22%`, `512/128` moved -`0.17%`).
 
 ## Active GPU1 profile findings
 
@@ -198,6 +198,18 @@ final long-context promotion is now gated by further speed, not construction
 memory.
 
 Retained notes:
+
+- **Q8_0 T16 small-shape prefill tiles retained (2026-06-16).** A follow-up
+  resident Q8_0 T16 tile-policy pass uses `TN16` for the shared-expert
+  `in=2048,out=512` and `in=512,out=2048` shapes only when `rows > 512`, while
+  preserving the previous `TN32` policy for 512-row primary chunks. GPU1 Q4_K_S
+  primary gate moved to `512/128` `1958.693 / 126.924 tok/s` and `4K/128`
+  `2293.994 / 114.991 tok/s`, stable IDs `220/570`, with tracked peak unchanged
+  at `21.335 GiB`. The required 128K check measured `747.033 / 67.592 tok/s`,
+  stable ID `[220]`, and `23.310 GiB` tracked peak. A broader variant that also
+  changed 512-row small-shape chunks regressed the `512/128` prefill median to
+  `1909.506 tok/s`, so only the rows>512 policy is retained. Artifact:
+  `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-smallshape-tiles-gate.json`.
 
 - **Q8_0 T16 WMMA prefill tile policy retained (2026-06-16).** The resident
   Q8_0 T16 prefill wrapper now uses a T16-specific tile policy instead of

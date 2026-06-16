@@ -99,7 +99,12 @@ def test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy() -> None:
     assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (32, 32)
     assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 32)
     assert _default_tiles(rows=512, in_features=2048, out_features=512) == (16, 32)
+    assert _default_tiles(rows=768, in_features=2048, out_features=512) == (32, 16)
+    assert _default_tiles(rows=1024, in_features=2048, out_features=512) == (32, 16)
+    assert _default_tiles(rows=512, in_features=512, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=1024, in_features=512, out_features=2048) == (32, 16)
     assert _default_tiles(rows=31, in_features=2048, out_features=4096) == (64, 16)
+    assert _default_tiles(rows=31, in_features=2048, out_features=512) == (16, 16)
     assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (32, 16)
 
 

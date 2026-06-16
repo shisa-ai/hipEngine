@@ -90,7 +90,24 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
 
     tile_n = 32 if rows >= 32 else 16
     if out_features <= 512:
-        tile_m = 16
+        # Shared-expert gate/up (in=2048,out=512) benefits from TN16 on the
+        # 768/1024-row mid/long chunks. Keep the 512-row primary gate on the
+        # previous TN32 policy because the full model regressed despite the
+        # isolated microbench preferring a wider TM64/16 tile.
+        if rows < 32:
+            tile_n = 16
+            tile_m = 16
+        elif rows <= 512:
+            tile_m = 16
+        else:
+            tile_n = 16
+            tile_m = 32
+    elif in_features <= 512 and out_features <= 2048:
+        # Shared-expert down (in=512,out=2048) also favors TN16 on the active
+        # 768/1024-row chunks, while 512-row primary-gate runs stay on TN32.
+        tile_m = 32
+        if rows > 512:
+            tile_n = 16
     elif in_features >= 4096 and out_features >= 2048:
         tile_m = 32
     elif in_features <= 2048 and out_features >= 4096:
