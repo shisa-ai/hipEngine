@@ -1,0 +1,325 @@
+{
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q",
+    "ds4_scalar_control": "same command with --mode q8-1-ds4-dot --json /tmp/hipengine-gguf-q8-1-ds4-dot-iter63.json",
+    "expanded_lds_control": "same command with --mode q8-1-ds4-wmma32-lds --json /tmp/hipengine-gguf-q8-1-ds4-wmma32-lds-iter63.json",
+    "new": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-wmma32-ldspack --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 2048 --out-features-a 4096 --out-features-b 4096 --experts 8 --rows-per-expert 512 --warmup 3 --iters 10 --json /tmp/hipengine-gguf-q8-1-ds4-wmma32-ldspack-iter63.json",
+    "rocprof_smoke": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma32-ldspack-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma32_ldspack_selected_prefill_bf16_matches_ds4_cpu_reference -q",
+    "selected_wmma_control": "same command with --mode selected-wmma --json /tmp/hipengine-gguf-selected-wmma-iter63.json",
+    "wmma32_control": "same command with --mode q8-1-ds4-wmma32 --json /tmp/hipengine-gguf-q8-1-ds4-wmma32-iter63.json"
+  },
+  "performance_claim": false,
+  "rocprof_smoke": {
+    "duration_ns_samples": [
+      30640,
+      64723
+    ],
+    "kernel_name_contains": "gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_kernel",
+    "launch_count": 2,
+    "trace_file": "/tmp/hipengine-gguf-ds4-wmma32-ldspack-trace/epyc/2989588_kernel_trace.csv"
+  },
+  "run_tag": "gguf_q4_k_q8_1_ds4_wmma32_ldspack_selected_prefill_probe",
+  "runs": {
+    "q8-1-ds4-dot": {
+      "kernel_mode": "q8-1-ds4-dot",
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": false,
+        "prototype_note": "DS4 activation layout with scalar integer-dot inner loop; still not a tiled WMMA/MMQ implementation.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "performance_claim": false,
+      "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
+      "run_tag": "gguf_q4_k_selected_prefill_microbench_q8-1-ds4-dot",
+      "sanity": {
+        "finite_output": true,
+        "output_checksum_f64": 6691301.919567704,
+        "output_max_abs": 136.0
+      },
+      "schema": 2,
+      "shape": {
+        "compact_rows": 4096,
+        "experts": 8,
+        "hidden": 2048,
+        "out_features_a": 4096,
+        "out_features_b": 4096,
+        "out_features_total": 8192,
+        "rows_per_expert": 512,
+        "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+        "wmma_total_rows": 4096
+      },
+      "software": {
+        "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+        "hipengine_commit": "da9c885baa3450d7437aa9be2ec204aa5afa8161",
+        "hipengine_dirty_files": [
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+          " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+          " M tests/test_gguf_q4_k_q8_1_selected_prefill.py"
+        ],
+        "python": "3.12.9"
+      },
+      "status": "diagnostic_retained",
+      "timestamp": "2026-06-16T04:37:22.117215+00:00",
+      "timing": {
+        "calls_per_s": 45.80766151824448,
+        "elapsed_s": 0.21830409299582243,
+        "iters": 10,
+        "logical_fma": 68719476736,
+        "logical_tflops": 6.295757060067128,
+        "ms_per_call": 21.830409299582243,
+        "warmup": 3
+      }
+    },
+    "q8-1-ds4-wmma32": {
+      "kernel_mode": "q8-1-ds4-wmma32",
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles; still uses raw Q4_K global loads rather than the full shared-memory MMQ tile.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "performance_claim": false,
+      "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
+      "run_tag": "gguf_q4_k_selected_prefill_microbench_q8-1-ds4-wmma32",
+      "sanity": {
+        "finite_output": true,
+        "output_checksum_f64": 6691301.919567704,
+        "output_max_abs": 136.0
+      },
+      "schema": 2,
+      "shape": {
+        "compact_rows": 4096,
+        "experts": 8,
+        "hidden": 2048,
+        "out_features_a": 4096,
+        "out_features_b": 4096,
+        "out_features_total": 8192,
+        "rows_per_expert": 512,
+        "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+        "wmma_total_rows": 4096
+      },
+      "software": {
+        "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+        "hipengine_commit": "da9c885baa3450d7437aa9be2ec204aa5afa8161",
+        "hipengine_dirty_files": [
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+          " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+          " M tests/test_gguf_q4_k_q8_1_selected_prefill.py"
+        ],
+        "python": "3.12.9"
+      },
+      "status": "diagnostic_retained",
+      "timestamp": "2026-06-16T04:37:13.867867+00:00",
+      "timing": {
+        "calls_per_s": 120.99051653335039,
+        "elapsed_s": 0.0826511059422046,
+        "iters": 10,
+        "logical_fma": 68719476736,
+        "logical_tflops": 16.62880997238039,
+        "ms_per_call": 8.26511059422046,
+        "warmup": 3
+      }
+    },
+    "q8-1-ds4-wmma32-lds": {
+      "kernel_mode": "q8-1-ds4-wmma32-lds",
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged Q4_K columns; still a diagnostic microbench, not a full runtime MMQ integration.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "performance_claim": false,
+      "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
+      "run_tag": "gguf_q4_k_selected_prefill_microbench_q8-1-ds4-wmma32-lds",
+      "sanity": {
+        "finite_output": true,
+        "output_checksum_f64": 6691301.919567704,
+        "output_max_abs": 136.0
+      },
+      "schema": 2,
+      "shape": {
+        "compact_rows": 4096,
+        "experts": 8,
+        "hidden": 2048,
+        "out_features_a": 4096,
+        "out_features_b": 4096,
+        "out_features_total": 8192,
+        "rows_per_expert": 512,
+        "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+        "wmma_total_rows": 4096
+      },
+      "software": {
+        "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+        "hipengine_commit": "da9c885baa3450d7437aa9be2ec204aa5afa8161",
+        "hipengine_dirty_files": [
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+          " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+          " M tests/test_gguf_q4_k_q8_1_selected_prefill.py"
+        ],
+        "python": "3.12.9"
+      },
+      "status": "diagnostic_retained",
+      "timestamp": "2026-06-16T04:37:16.504157+00:00",
+      "timing": {
+        "calls_per_s": 54.76853745930102,
+        "elapsed_s": 0.18258658098056912,
+        "iters": 10,
+        "logical_fma": 68719476736,
+        "logical_tflops": 7.527330471598362,
+        "ms_per_call": 18.258658098056912,
+        "warmup": 3
+      }
+    },
+    "q8-1-ds4-wmma32-ldspack": {
+      "kernel_mode": "q8-1-ds4-wmma32-ldspack",
+      "memory": {
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
+        "activation_quantization_in_loop": false,
+        "host_output_mib": 64.0,
+        "host_q8_ds4_mib": 9.0,
+        "host_raw_qweight_a_mib": 36.0,
+        "host_raw_qweight_b_mib": 36.0,
+        "integer_mma": true,
+        "prototype_note": "DS4 activation layout with wave32 integer-WMMA dot tiles and per-block LDS-staged packed Q4_K qs bytes; still a diagnostic microbench, not a full runtime MMQ integration.",
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "weight_layout": "raw_gguf_q4_k"
+      },
+      "performance_claim": false,
+      "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
+      "run_tag": "gguf_q4_k_selected_prefill_microbench_q8-1-ds4-wmma32-ldspack",
+      "sanity": {
+        "finite_output": true,
+        "output_checksum_f64": 6691301.919567704,
+        "output_max_abs": 136.0
+      },
+      "schema": 2,
+      "shape": {
+        "compact_rows": 4096,
+        "experts": 8,
+        "hidden": 2048,
+        "out_features_a": 4096,
+        "out_features_b": 4096,
+        "out_features_total": 8192,
+        "rows_per_expert": 512,
+        "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+        "wmma_total_rows": 4096
+      },
+      "software": {
+        "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+        "hipengine_commit": "da9c885baa3450d7437aa9be2ec204aa5afa8161",
+        "hipengine_dirty_files": [
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+          " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+          " M tests/test_gguf_q4_k_q8_1_selected_prefill.py"
+        ],
+        "python": "3.12.9"
+      },
+      "status": "diagnostic_retained",
+      "timestamp": "2026-06-16T04:37:11.362899+00:00",
+      "timing": {
+        "calls_per_s": 87.42709844536824,
+        "elapsed_s": 0.11438101204112172,
+        "iters": 10,
+        "logical_fma": 68719476736,
+        "logical_tflops": 12.015888915424929,
+        "ms_per_call": 11.438101204112172,
+        "warmup": 3
+      }
+    },
+    "selected-wmma": {
+      "kernel_mode": "selected-wmma",
+      "memory": {
+        "activation_quantization_in_loop": false,
+        "host_input_mib": 16.0,
+        "host_output_mib": 64.0,
+        "host_tiles_a_mib": 37.0,
+        "host_tiles_b_mib": 37.0,
+        "tracked_peak_allocated_gib": 0.15039266645908356,
+        "weight_layout": "gguf_q4_k_t16_v1"
+      },
+      "performance_claim": false,
+      "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
+      "run_tag": "gguf_q4_k_selected_prefill_microbench_selected-wmma",
+      "sanity": {
+        "finite_output": true,
+        "output_checksum_f64": 6715252.562845781,
+        "output_max_abs": 136.0
+      },
+      "schema": 2,
+      "shape": {
+        "compact_rows": 4096,
+        "experts": 8,
+        "hidden": 2048,
+        "out_features_a": 4096,
+        "out_features_b": 4096,
+        "out_features_total": 8192,
+        "rows_per_expert": 512,
+        "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+        "wmma_total_rows": 4096
+      },
+      "software": {
+        "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+        "hipengine_commit": "da9c885baa3450d7437aa9be2ec204aa5afa8161",
+        "hipengine_dirty_files": [
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
+          " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+          " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+          " M tests/test_gguf_q4_k_q8_1_selected_prefill.py"
+        ],
+        "python": "3.12.9"
+      },
+      "status": "diagnostic_retained",
+      "timestamp": "2026-06-16T04:37:19.352511+00:00",
+      "timing": {
+        "calls_per_s": 86.29713428643602,
+        "elapsed_s": 0.11587870307266712,
+        "iters": 10,
+        "logical_fma": 68719476736,
+        "logical_tflops": 11.860587823960415,
+        "ms_per_call": 11.587870307266712,
+        "warmup": 3
+      }
+    }
+  },
+  "schema": 2,
+  "status": "diagnostic_retained_not_promoted",
+  "summary": {
+    "ds4_scalar_ms_per_call": 21.830409299582243,
+    "expanded_lds_ms_per_call": 18.258658098056912,
+    "finite_output": true,
+    "new_logical_tflops": 12.015888915424929,
+    "new_mode": "q8-1-ds4-wmma32-ldspack",
+    "new_ms_per_call": 11.438101204112172,
+    "reason_not_promoted": "Packed-Q4 LDS staging recovers much of the expanded-LDS regression and is slightly faster than selected-WMMA in this one synthetic run, but it remains 38% slower than the raw DS4 WMMA32 prototype; no runtime path should use it unless a later ldmatrix/wider-tile design reuses the staged packed data better.",
+    "selected_wmma_ms_per_call": 11.587870307266712,
+    "slowdown_vs_raw_wmma32": 1.3839017728462688,
+    "speedup_vs_ds4_scalar": 1.9085693429372592,
+    "speedup_vs_expanded_lds": 1.596301499019142,
+    "speedup_vs_selected_wmma": 1.0130938781255665,
+    "tracked_peak_allocated_gib": 0.14160360395908356,
+    "wmma32_ms_per_call": 8.26511059422046
+  },
+  "timestamp": "2026-06-16T04:40:40.740545+00:00"
+}
