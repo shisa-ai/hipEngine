@@ -349,6 +349,10 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
             "draft_token_count",
             "accepted_token_count",
             "output_token_count",
+            "step_transaction_ids",
+            "step_candidate_token_counts",
+            "step_accepted_token_counts",
+            "step_rows",
             "accepted_per_draft",
             "accepted_per_output",
         ],
@@ -623,6 +627,10 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     ]
     assert all(
         item["hipengine_metrics_contract"]["kind"] == "hipengine_gguf_mtp_accept_step_metrics"
+        for item in matrix["artifacts"]
+    )
+    assert all(
+        "step_rows" in item["hipengine_metrics_contract"]["required_fields"]
         for item in matrix["artifacts"]
     )
 
