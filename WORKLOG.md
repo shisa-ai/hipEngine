@@ -99766,3 +99766,47 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. KVLiveSpans
   execution-plan contract remains the attention/KV-write ABI for future native
   paths.
+
+## 2026-06-16 - MTP-GGUF context snapshot contract metadata
+
+Implemented `mtp-gguf` multiloop iteration 163: target-attached GGUF MTP context
+snapshots now advertise and validate their own required-field/validator metadata
+plus the nested seed-row contract.
+
+Scope note:
+- Torch-free metadata/validation change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This keeps future B1-B4 artifacts that expose pending/verify hidden-seed state
+  self-describing before native target-attached execution and KV wiring are
+  implemented.
+
+RED/GREEN:
+- RED: added tests requiring `Qwen35GGUFMTPContext.as_dict()` to include
+  `seed_row_contract`, `required_fields`, and `validator`, plus rejection of a
+  spoofed nested pending-seed row;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py -q`
+  failed as expected with `KeyError: 'seed_row_contract'` because context
+  snapshots were not yet self-describing.
+- GREEN: added `Qwen35GGUFMTPContext.required_fields()`, `contract()`,
+  `validate_payload()`, and the corresponding `as_dict()` metadata.
+
+Validation:
+- Focused context/export tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py` -> passed (38 tests).
+- Focused prompt-suite/context/export/oracle-gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_oracle_gate.py` -> passed (85 tests).
+- Real local B4 preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --draft-max 4 --out <tmp>` -> `status blocked`, `hipengine_metrics_contract_validation.passed True`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py` and
+  `git diff --check -- hipengine/speculative/gguf_mtp.py tests/test_gguf_mtp_context.py docs/MTP-gguf.md WORKLOG.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: metadata/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. Context snapshot
+  validation only checks serialized seed-row metadata; KVLiveSpans execution-plan
+  contract remains the attention/KV-write ABI for future native paths.

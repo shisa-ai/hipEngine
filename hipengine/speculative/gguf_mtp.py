@@ -2610,6 +2610,72 @@ class Qwen35GGUFMTPContext:
     pending_seed: Qwen35GGUFMTPSeedRow | None = None
     verify_seeds: tuple[Qwen35GGUFMTPSeedRow, ...] = field(default_factory=tuple)
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "has_target_session",
+            "has_mtp_block",
+            "pending_seed",
+            "verify_seeds",
+            "seed_row_contract",
+            "required_fields",
+            "validator",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPContext.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "GGUF MTP context",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
+        if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
+            raise ValueError(f"{field_name} seed_row_contract mismatch")
+        if not isinstance(payload["has_target_session"], bool):
+            raise ValueError(f"{field_name} has_target_session must be bool")
+        if not isinstance(payload["has_mtp_block"], bool):
+            raise ValueError(f"{field_name} has_mtp_block must be bool")
+        pending_seed = payload["pending_seed"]
+        if pending_seed is not None:
+            if not isinstance(pending_seed, Mapping):
+                raise ValueError(f"{field_name} pending_seed must be a mapping or null")
+            Qwen35GGUFMTPSeedRow.validate_payload(pending_seed, field_name=f"{field_name} pending_seed")
+        verify_seeds = payload["verify_seeds"]
+        if not isinstance(verify_seeds, Sequence) or isinstance(verify_seeds, (str, bytes)):
+            raise ValueError(f"{field_name} verify_seeds must be a sequence")
+        for index, seed in enumerate(verify_seeds):
+            if not isinstance(seed, Mapping):
+                raise ValueError(f"{field_name} verify_seeds[{index}] must be a mapping")
+            Qwen35GGUFMTPSeedRow.validate_payload(seed, field_name=f"{field_name} verify_seeds[{index}]")
+
     @classmethod
     def from_target_seed(
         cls,
@@ -2982,6 +3048,9 @@ class Qwen35GGUFMTPContext:
             "has_mtp_block": self.mtp_block is not None,
             "pending_seed": None if self.pending_seed is None else self.pending_seed.as_dict(),
             "verify_seeds": [seed.as_dict() for seed in self.verify_seeds],
+            "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 

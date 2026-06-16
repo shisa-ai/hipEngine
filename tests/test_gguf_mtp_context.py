@@ -84,6 +84,20 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
         hidden_size=8,
         source="target",
     )
+    context_payload = context.as_dict()
+    assert context_payload["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
+    assert Qwen35GGUFMTPContext.contract() == {
+        "required_fields": list(Qwen35GGUFMTPContext.required_fields()),
+        "validator": "Qwen35GGUFMTPContext.validate_payload",
+    }
+    assert set(Qwen35GGUFMTPContext.required_fields()).issubset(context_payload)
+    Qwen35GGUFMTPContext.validate_payload(context_payload, field_name="context snapshot")
+    bad_context = {**context_payload, "seed_row_contract": {}}
+    with pytest.raises(ValueError, match="seed_row_contract mismatch"):
+        Qwen35GGUFMTPContext.validate_payload(bad_context, field_name="context snapshot")
+    bad_context = {**context_payload, "pending_seed": {**context_payload["pending_seed"], "hidden_ptr": 0}}
+    with pytest.raises(ValueError, match="pending_seed"):
+        Qwen35GGUFMTPContext.validate_payload(bad_context, field_name="context snapshot")
     assert batch.request_ids == (3,)
     assert batch.token_ids == (99,)
     assert batch.embedding_seed_ptrs == (0x1000,)

@@ -664,7 +664,8 @@ Current status:
   scaffold for the GGUF path (also exported through the public
   `hipengine.speculative` package boundary consumed by the preflight/oracle
   scripts). It references the target resident session, records
-  ready fp32 post-`output_norm` seed rows, applies the llama.cpp
+  ready fp32 post-`output_norm` seed rows, emits a self-validating context
+  snapshot for pending/verify seed-state artifacts, applies the llama.cpp
   `verify_h[min(n_accepted, n_rows - 1)]` accept/reseed rule, exports these GGUF
   MTP contracts through `hipengine.speculative`, builds B1 draft rows carrying
   both token IDs and embedding-seed pointers, can build B2-B4 draft
