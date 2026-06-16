@@ -99896,3 +99896,47 @@ Validation:
   GPU kernel, attention/KV runtime path, or performance claim. KVLiveSpans
   runtime-kernel and execution-plan contracts remain the attention/KV-write ABI
   for future native paths; no benchmark row was retained.
+
+## 2026-06-16 - MTP-GGUF matrix performance readiness contract artifact
+
+Implemented `mtp-gguf` multiloop iteration 166: B1-B4 GGUF MTP matrix
+artifacts now expose `performance_readiness_contract` from
+`Qwen35GGUFMTPPerformanceReadiness.contract()`.
+
+Scope note:
+- Torch-free artifact/metadata change only. No GGUF tensor loading, native MTP
+  execution, actual KV allocation, GPU kernel, attention/KV runtime path, or
+  performance path changed.
+- This lets matrix consumers see the M6 readiness validator and required metadata
+  before using `performance_comparison_ready_by_budget` or comparing
+  accepted/output and decode performance.
+
+RED/GREEN:
+- RED: added a matrix test requiring `performance_readiness_contract`, its
+  `Qwen35GGUFMTPPerformanceReadiness.validate_payload` validator, and the
+  required validator metadata;
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_builds_budget_matched_artifacts -q`
+  failed as expected with `KeyError: 'performance_readiness_contract'`.
+- GREEN: `scripts/gguf_mtp_b1_prompt_suite.py` now emits
+  `"performance_readiness_contract": Qwen35GGUFMTPPerformanceReadiness.contract()`
+  in B1-B4 matrix artifacts.
+
+Validation:
+- Focused matrix tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_builds_budget_matched_artifacts tests/test_gguf_mtp_b1_prompt_suite.py::test_b1_prompt_suite_matrix_can_omit_child_artifacts` -> passed (2 tests).
+- Focused prompt-suite/context/export/oracle-gate tests passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_context.py tests/test_gguf_mtp_exports.py tests/test_gguf_mtp_oracle_gate.py` -> passed (85 tests).
+- Real local B1-B4 compact matrix preflight smoke passed:
+  `scripts/gguf_mtp_b1_prompt_suite.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-limit 1 --all-budgets --compact-matrix --out <tmp>` -> `status blocked`, `all_performance_comparisons_ready False`, `performance_readiness_validator Qwen35GGUFMTPPerformanceReadiness.validate_payload`, required fields include `validator`.
+- `py_compile` and whitespace checks passed:
+  `/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py` and
+  `git diff --check -- scripts/gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_b1_prompt_suite.py docs/MTP-gguf.md WORKLOG.md`.
+- Loop verify command returned metric `1`.
+- Guard passed: `/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py` -> `29` selected tests (`24` pass, `5` skip).
+- Diff grep for added forbidden hot-path patterns found no added `import torch`
+  and no added backend/quant dispatch branches.
+- Prompt verifier passed: artifact/docs/tests only; no torch import; no runtime
+  backend/quant dispatch branch; no native MTP execution, actual KV allocation,
+  GPU kernel, attention/KV runtime path, or performance claim. KVLiveSpans
+  runtime-kernel and execution-plan contracts remain the attention/KV-write ABI
+  for future native paths; no benchmark row was retained.

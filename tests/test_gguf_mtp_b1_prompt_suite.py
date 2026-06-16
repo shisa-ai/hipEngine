@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.speculative import Qwen35GGUFMTPContext
+from hipengine.speculative import Qwen35GGUFMTPContext, Qwen35GGUFMTPPerformanceReadiness
 from scripts import gguf_mtp_b1_prompt_suite as suite
 
 
@@ -684,6 +684,11 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["all_native_runtime_kernels_ready"] is False
     assert matrix["all_optimization_kernels_ready"] is True
     assert matrix["all_performance_comparisons_ready"] is False
+    assert matrix["performance_readiness_contract"] == Qwen35GGUFMTPPerformanceReadiness.contract()
+    assert matrix["performance_readiness_contract"]["validator"] == (
+        "Qwen35GGUFMTPPerformanceReadiness.validate_payload"
+    )
+    assert "validator" in matrix["performance_readiness_contract"]["required_fields"]
     assert matrix["performance_comparison_ready_by_budget"] == {
         "B1": False,
         "B2": False,

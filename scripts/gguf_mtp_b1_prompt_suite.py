@@ -877,6 +877,7 @@ def build_b1_b4_prompt_suite_matrix(
             item["runtime_kernel_precheck"]["optimization_kernels_ready"] for item in artifacts
         ),
         "all_performance_comparisons_ready": not performance_unready_budgets,
+        "performance_readiness_contract": Qwen35GGUFMTPPerformanceReadiness.contract(),
         "performance_comparison_ready_by_budget": performance_comparison_ready_by_budget,
         "performance_comparison_blockers_by_budget": performance_comparison_blockers_by_budget,
         "performance_unready_budgets": performance_unready_budgets,
