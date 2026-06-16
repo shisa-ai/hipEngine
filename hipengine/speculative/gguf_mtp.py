@@ -1485,6 +1485,10 @@ class Qwen35GGUFMTPAcceptStepMetrics:
         for index, step in enumerate(steps):
             if not isinstance(step, Mapping):
                 raise ValueError("accept-step metrics artifact steps entries must be mappings")
+            Qwen35GGUFMTPAcceptStep.validate_payload(
+                step,
+                field_name=f"accept-step metrics artifact steps[{index}]",
+            )
             request_ids = step.get("request_ids")
             candidate_counts = step.get("candidate_counts")
             accepted_counts = step.get("accepted_counts")

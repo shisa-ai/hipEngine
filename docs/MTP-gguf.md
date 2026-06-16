@@ -1019,8 +1019,9 @@ is now answered by the M1 required/optional table.)
       artifacts self-validate the blocked contract at construction time, and
       native runtime artifacts can be checked with
       `Qwen35GGUFMTPAcceptStepMetrics.validate_payload()`
-      for labels, the advertised required-field list, validator hook, compact
-      step rows, full serialized step cross-checks, advertised nested seed-row
+      for labels, the advertised required-field list, validator hook, nested
+      accept-step payload validation, compact step rows, full serialized step
+      cross-checks, advertised nested seed-row
       contract, reseed-row metadata, aggregate counts, visible-output bounds, and
       ratio consistency before parity comparison. The draft-token verification
       aggregate (`Qwen35GGUFMTPVerificationMetrics`) now carries the same

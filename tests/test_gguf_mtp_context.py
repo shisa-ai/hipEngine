@@ -777,17 +777,31 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
     bad_steps = dict(metrics.as_dict())
     bad_steps["steps"] = [
+        {**metrics.as_dict()["steps"][0], "validator": "wrong"},
+        metrics.as_dict()["steps"][1],
+    ]
+    with pytest.raises(ValueError, match="validator mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
+    bad_steps = dict(metrics.as_dict())
+    bad_steps["steps"] = [
+        {**metrics.as_dict()["steps"][0], "seed_row_contract": {}},
+        metrics.as_dict()["steps"][1],
+    ]
+    with pytest.raises(ValueError, match="seed_row_contract mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
+    bad_steps = dict(metrics.as_dict())
+    bad_steps["steps"] = [
         {**metrics.as_dict()["steps"][0], "candidate_counts": [1, 1, 1]},
         metrics.as_dict()["steps"][1],
     ]
-    with pytest.raises(ValueError, match="steps candidate_counts mismatch"):
+    with pytest.raises(ValueError, match="candidate_counts"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
     bad_steps = dict(metrics.as_dict())
     bad_steps["steps"] = [
         {**metrics.as_dict()["steps"][0], "reseed": {**metrics.as_dict()["steps"][0]["reseed"], "hidden_ptr": 0}},
         metrics.as_dict()["steps"][1],
     ]
-    with pytest.raises(ValueError, match="steps reseed"):
+    with pytest.raises(ValueError, match=r"steps\[0\] reseed"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
