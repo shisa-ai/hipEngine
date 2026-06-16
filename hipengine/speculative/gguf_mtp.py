@@ -90,6 +90,17 @@ class Qwen35GGUFMTPSeedRow:
     def required_fields() -> tuple[str, ...]:
         return ("token_id", "position", "hidden_ptr", "hidden_size", "source")
 
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPSeedRow.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
     @classmethod
     def validate_payload(cls, payload: Mapping[str, object], *, field_name: str = "seed row") -> None:
         if not isinstance(payload, Mapping):
@@ -742,6 +753,7 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "step_candidate_token_counts",
             "step_accepted_token_counts",
             "step_rows",
+            "seed_row_contract",
             "steps",
             "accepted_per_draft",
             "accepted_per_output",
@@ -847,6 +859,8 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             raise ValueError("accept-step metrics artifact validator mismatch")
         if payload.get("denominators") != cls.denominator_labels():
             raise ValueError("accept-step metrics artifact denominator labels mismatch")
+        if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
+            raise ValueError("accept-step metrics artifact seed_row_contract mismatch")
 
         cycle_count = int(payload["cycle_count"])
         candidate_budget = int(payload["candidate_budget"])
@@ -978,6 +992,7 @@ class Qwen35GGUFMTPAcceptStepMetrics:
             "denominators": self.denominator_labels(),
             "required_fields": list(self.required_fields()),
             "validator": self.validator_name(),
+            "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
             "steps": [step.as_dict() for step in self.steps],
         }
 
@@ -1332,6 +1347,7 @@ class Qwen35GGUFMTPVerificationMetrics:
             "accepted_per_draft",
             "accepted_per_output",
             "denominators",
+            "seed_row_contract",
             "results",
         )
 
@@ -1367,6 +1383,8 @@ class Qwen35GGUFMTPVerificationMetrics:
             raise ValueError("verification metrics artifact validator mismatch")
         if payload.get("denominators") != cls.denominator_labels():
             raise ValueError("verification metrics artifact denominator labels mismatch")
+        if payload.get("seed_row_contract") != Qwen35GGUFMTPSeedRow.contract():
+            raise ValueError("verification metrics artifact seed_row_contract mismatch")
 
         cycle_count = int(payload["cycle_count"])
         candidate_budget = int(payload["candidate_budget"])
@@ -1498,6 +1516,7 @@ class Qwen35GGUFMTPVerificationMetrics:
             "denominators": self.denominator_labels(),
             "required_fields": list(self.required_fields()),
             "validator": self.validator_name(),
+            "seed_row_contract": Qwen35GGUFMTPSeedRow.contract(),
             "results": [result.as_dict() for result in self.results],
         }
 

@@ -595,6 +595,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "step_candidate_token_counts",
         "step_accepted_token_counts",
         "step_rows",
+        "seed_row_contract",
         "steps",
         "accepted_per_draft",
         "accepted_per_output",
@@ -630,6 +631,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         Qwen35GGUFMTPAcceptStepMetrics.validate_blocked_contract(missing_blocked_kind)
     with pytest.raises(ValueError, match="candidate_budget"):
         Qwen35GGUFMTPAcceptStepMetrics.blocked_contract(candidate_budget=0)
+    assert metrics.as_dict()["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
     assert set(Qwen35GGUFMTPAcceptStepMetrics.required_fields()).issubset(metrics.as_dict())
     assert Qwen35GGUFMTPAcceptStepMetrics.missing_required_fields({}) == tuple(
         Qwen35GGUFMTPAcceptStepMetrics.required_fields()
@@ -652,6 +654,9 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     bad_denominators = {**metrics.as_dict(), "denominators": {}}
     with pytest.raises(ValueError, match="denominator labels mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_denominators)
+    bad_seed_contract = {**metrics.as_dict(), "seed_row_contract": {}}
+    with pytest.raises(ValueError, match="seed_row_contract mismatch"):
+        Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_seed_contract)
     bad_budget_label = {**metrics.as_dict(), "budget_label": "B3"}
     with pytest.raises(ValueError, match="budget_label mismatch"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_budget_label)
@@ -1063,6 +1068,7 @@ def test_gguf_mtp_verification_metrics_aggregate_denominators() -> None:
     assert payload["budget_label"] == "B2"
     assert payload["result_draft_token_counts"] == [2, 2]
     assert payload["result_accepted_token_counts"] == [1, 2]
+    assert payload["seed_row_contract"] == Qwen35GGUFMTPSeedRow.contract()
     assert payload["accepted_per_output"] == 0.6
     assert payload["denominators"] == {
         "accepted_per_draft": "accepted_token_count / draft_token_count",
@@ -1107,6 +1113,10 @@ def test_gguf_mtp_verification_metrics_validate_denominators() -> None:
     broken["candidate_budget"] = 2
     broken["budget_label"] = "B2"
     with pytest.raises(ValueError, match="candidate_budget"):
+        Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
+    broken = dict(payload)
+    broken["seed_row_contract"] = {}
+    with pytest.raises(ValueError, match="seed_row_contract mismatch"):
         Qwen35GGUFMTPVerificationMetrics.validate_payload(broken)
     broken = dict(payload)
     broken["results"] = [{**payload["results"][0], "accepted_token_ids": [9]}]
