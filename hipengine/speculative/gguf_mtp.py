@@ -1887,7 +1887,15 @@ class Qwen35GGUFMTPRuntimeKernelCheck:
 
     @staticmethod
     def required_fields() -> tuple[str, ...]:
-        return ("name", "key", "registered", "required_for", "missing_is_blocker")
+        return (
+            "name",
+            "key",
+            "registered",
+            "required_for",
+            "missing_is_blocker",
+            "required_fields",
+            "validator",
+        )
 
     @staticmethod
     def validator_name() -> str:
@@ -1913,6 +1921,13 @@ class Qwen35GGUFMTPRuntimeKernelCheck:
         if missing:
             joined = ", ".join(missing)
             raise ValueError(f"{field_name} missing required fields: {joined}")
+        required_fields = payload.get("required_fields")
+        if not isinstance(required_fields, Sequence) or isinstance(required_fields, (str, bytes)):
+            raise ValueError(f"{field_name} required_fields must be a sequence")
+        if tuple(required_fields) != cls.required_fields():
+            raise ValueError(f"{field_name} required_fields mismatch")
+        if payload.get("validator") != cls.validator_name():
+            raise ValueError(f"{field_name} validator mismatch")
         key = payload["key"]
         if not isinstance(key, Sequence) or isinstance(key, (str, bytes)):
             raise ValueError(f"{field_name} key must be a sequence")
@@ -1954,6 +1969,8 @@ class Qwen35GGUFMTPRuntimeKernelCheck:
             "registered": self.registered,
             "required_for": self.required_for,
             "missing_is_blocker": self.missing_is_blocker,
+            "required_fields": list(self.required_fields()),
+            "validator": self.validator_name(),
         }
 
 

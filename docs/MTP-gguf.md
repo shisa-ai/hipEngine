@@ -981,15 +981,17 @@ is now answered by the M1 required/optional table.)
       the missing native composite NextN runtime key plus the KVLiveSpans-shaped
       `paged_kv_write/mixed_bf16_spans` append and
       `paged_attn_decode/bf16_context_spans` decode keys under
-      `quant='w4_gguf'`, but HIP/runtime registration for those keys remains
-      open.
+      `quant='w4_gguf'`; each nested registry-check row now carries and validates
+      its own required-field/validator metadata, but HIP/runtime registration for
+      those keys remains open.
 - [x] Add hipEngine GGUF MTP B1 prompt-suite runner (new GGUF child, not a wrapper
       flag): `scripts/gguf_mtp_b1_prompt_suite.py` currently implements
       preflight + blocked-artifact emission with embedded MTP draft tensor/call
       specs, hidden-seed dtype/provenance precheck, exact runtime-kernel registry
       precheck backed by a self-validating `Qwen35GGUFMTPRuntimeKernelPlan`
-      payload (including the native NextN composite key and the KVLiveSpans
-      paged-KV append/decode component keys), CPU-reference oracle
+      payload (including self-describing nested registry checks, the native NextN
+      composite key, and the KVLiveSpans paged-KV append/decode component keys),
+      CPU-reference oracle
       gate output, a hipEngine metrics contract with schema/kind/source labels,
       B-budget fields, compact per-step fields, full serialized `steps`, explicit
       accepted-per-draft/output denominator labels, and captured

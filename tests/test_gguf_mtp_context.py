@@ -1134,6 +1134,13 @@ def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() 
     ]
     assert payload["missing_optimization_keys"] == []
     assert payload["kernel_check_contract"] == Qwen35GGUFMTPRuntimeKernelCheck.contract()
+    assert Qwen35GGUFMTPRuntimeKernelCheck.contract() == {
+        "required_fields": list(Qwen35GGUFMTPRuntimeKernelCheck.required_fields()),
+        "validator": "Qwen35GGUFMTPRuntimeKernelCheck.validate_payload",
+    }
+    assert payload["checks"][0]["required_fields"] == list(Qwen35GGUFMTPRuntimeKernelCheck.required_fields())
+    assert payload["checks"][0]["validator"] == "Qwen35GGUFMTPRuntimeKernelCheck.validate_payload"
+    Qwen35GGUFMTPRuntimeKernelCheck.validate_payload(payload["checks"][0])
     assert Qwen35GGUFMTPRuntimeKernelPlan.contract() == {
         "required_fields": list(Qwen35GGUFMTPRuntimeKernelPlan.required_fields()),
         "validator": "Qwen35GGUFMTPRuntimeKernelPlan.validate_payload",
@@ -1152,6 +1159,11 @@ def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() 
         Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(bad_payload)
     bad_payload = {**payload, "native_runtime_kernels_ready": True}
     with pytest.raises(ValueError, match="native_runtime_kernels_ready mismatch"):
+        Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(bad_payload)
+    bad_checks = [dict(item) for item in payload["checks"]]
+    bad_checks[0]["validator"] = "wrong"
+    bad_payload = {**payload, "checks": bad_checks}
+    with pytest.raises(ValueError, match="validator mismatch"):
         Qwen35GGUFMTPRuntimeKernelPlan.validate_payload(bad_payload)
     bad_checks = [dict(item) for item in payload["checks"]]
     bad_checks[2]["key"] = ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf"]
