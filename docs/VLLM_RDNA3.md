@@ -477,3 +477,29 @@ Older/stale local and container attempts hit these issues:
   `TORCHINDUCTOR_AUTOGRAD_CACHE=0` or use `--enforce-eager`.
 - If pip wants to replace `torch`/`triton`, stop; use the constraints file from
   the recipe and install the final vLLM wheel with `--no-deps`.
+
+## gfx1151 (Strix Halo) MoE W4A16 Compatibility
+
+Running 35B Mixture-of-Experts (MoE) W4A16 checkpoints (like `Qwen3.6-35B-A3B-GPTQ-Int4` or `Qwen3.6-35B-A3B-AWQ-4bit`) on vLLM natively natively targeting the `gfx1151` Strix Halo APU currently encounters fundamental hardware-level lockups.
+
+### 1. The ViT SDPA OOM
+Qwen 3.5/3.6 architectures default to inheriting from the Vision-Language Model classes in vLLM. Booting the server blindly tries to instantiate a large Vision Transformer (ViT) and allocate KV space for images, instantly causing a 256 GiB VRAM Out-Of-Memory error.
+**Remedy:** Pass the `--language-model-only` flag to the API server to suppress multimodal instantiation.
+
+### 2. The AutoGPTQ Triton Deadlock
+When loading a GPTQ/AWQ MoE model, vLLM's `AutoGPTQ` loader attempts to route to the fast `gptq_marlin_repack` kernel. Because vLLM explicitly rejects ROCm for `MarlinExperts` in `marlin_utils.py`, it falls back to `MoeWNA16Method`, which launches a generic Triton kernel (`invoke_fused_moe_wna16_triton_kernel`).
+**The Issue:** Inside this Triton kernel, the weight tensor pointer is strided using `offs_k[:, None] // 2` to unpack two 4-bit elements per byte. This exact mathematical pattern causes multiple lanes in a warp to emit `tl.load` instructions against the exact same memory address simultaneously. While discrete RDNA3 GPUs (`gfx1100`) handle this gracefully, the L1 vector cache topology on Strix Halo (`gfx1151`) deadlocks. The GPU permanently hangs at 100% utilization during the memory profiling dummy forward pass with no crash log.
+
+### 3. The C++ Native Kernel Bypass
+vLLM possesses a highly-optimized native RDNA3 C++ kernel for MoE W4A16 (`moe_q_gemm_rdna3.cu`). 
+We attempted to bypass the deadlocking Triton compiler entirely by doing the following:
+1. **CMake:** Patched `CMakeLists.txt` to compile `moe_q_gemm_rdna3.cu` for `gfx1151` (it was previously hardcoded exclusively to `gfx1100`).
+2. **AutoGPTQ:** Patched `vllm/model_executor/layers/quantization/auto_gptq.py` to intercept the weights, shuffle them into the expected layout via `ops.gptq_shuffle(..., 4)`, and route the forward pass natively to the C++ kernel.
+3. **Marlin utils:** Overrode `check_moe_marlin_supports_layer` to return `True` for `gfx1151` to prevent AutoGPTQ from aggressively falling back.
+
+**The Final Result:** While the compilation succeeded and the Python bindings correctly routed to the C++ kernel, the exact same GPU deadlock occurred during the dummy forward pass. The C++ kernel uses the identical strided memory access pattern.
+
+### Conclusion
+vLLM is fundamentally blocked at the kernel level for W4A16 MoE operations on `gfx1151` until the AMD/vLLM upstream refactors the specific pointer/memory allocation patterns in `csrc/rocm/moe_q_gemm_rdna3.cu` to accommodate the Strix Halo L1 vector cache topology. 
+
+*(Note: Standard dense models using `TritonW4A16LinearKernel`, such as `Qwen1.5-0.5B-Chat-AWQ`, do not trigger this deadlock and run flawlessly via ROCm passthrough in the `kyuz0` Strix Halo container).*
