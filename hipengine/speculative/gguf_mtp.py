@@ -261,6 +261,100 @@ class Qwen35GGUFMTPDraftProposal:
             if int(token_row[self.selected_index]) != int(batch_row.token_id):
                 raise ValueError("draft batch token IDs must match selected top-k tokens")
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return (
+            "batch",
+            "draft_batch_contract",
+            "topk_kernel",
+            "selection",
+            "selected_index",
+            "top_k_token_ids",
+            "top_k_logits",
+            "proposed_token_ids",
+        )
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPDraftProposal.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "draft proposal",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        if payload.get("draft_batch_contract") != Qwen35GGUFMTPDraftBatch.contract():
+            raise ValueError(f"{field_name} draft_batch_contract mismatch")
+        batch_payload = payload.get("batch")
+        if not isinstance(batch_payload, Mapping):
+            raise ValueError(f"{field_name} batch must be a mapping")
+        Qwen35GGUFMTPDraftBatch.validate_payload(batch_payload, field_name=f"{field_name} batch")
+        rows = batch_payload.get("rows")
+        if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+            raise ValueError(f"{field_name} batch rows must be a sequence")
+        draft_rows: list[Qwen35GGUFMTPDraftRow] = []
+        for index, row in enumerate(rows):
+            if not isinstance(row, Mapping):
+                raise ValueError(f"{field_name} batch row[{index}] must be a mapping")
+            draft_rows.append(
+                Qwen35GGUFMTPDraftRow(
+                    request_id=int(row["request_id"]),
+                    token_id=int(row["token_id"]),
+                    position=int(row["position"]),
+                    draft_depth=int(row["draft_depth"]),
+                    embedding_seed_ptr=int(row["embedding_seed_ptr"]),
+                    embedding_hidden_size=int(row["embedding_hidden_size"]),
+                    parent_token_id=int(row["parent_token_id"]),
+                    parent_position=int(row["parent_position"]),
+                )
+            )
+        batch = Qwen35GGUFMTPDraftBatch(rows=tuple(draft_rows), mode=str(batch_payload["mode"]))
+        topk_kernel = payload.get("topk_kernel")
+        top_k_token_ids = payload.get("top_k_token_ids")
+        top_k_logits = payload.get("top_k_logits")
+        if not isinstance(topk_kernel, Sequence) or isinstance(topk_kernel, (str, bytes)):
+            raise ValueError(f"{field_name} topk_kernel must be a sequence")
+        if len(topk_kernel) != 4:
+            raise ValueError(f"{field_name} topk_kernel must be a four-axis registry key")
+        if not isinstance(top_k_token_ids, Sequence) or isinstance(top_k_token_ids, (str, bytes)):
+            raise ValueError(f"{field_name} top_k_token_ids must be a sequence")
+        if not isinstance(top_k_logits, Sequence) or isinstance(top_k_logits, (str, bytes)):
+            raise ValueError(f"{field_name} top_k_logits must be a sequence")
+        token_rows = tuple(tuple(int(item) for item in row) for row in top_k_token_ids)
+        logit_rows = tuple(tuple(float(item) for item in row) for row in top_k_logits)
+        proposal = cls(
+            batch=batch,
+            top_k_token_ids=token_rows,
+            top_k_logits=logit_rows,
+            topk_kernel=tuple(str(item) for item in topk_kernel),
+            selection=str(payload["selection"]),
+            selected_index=int(payload["selected_index"]),
+        )
+        proposed_token_ids = payload.get("proposed_token_ids")
+        if not isinstance(proposed_token_ids, Sequence) or isinstance(proposed_token_ids, (str, bytes)):
+            raise ValueError(f"{field_name} proposed_token_ids must be a sequence")
+        if tuple(int(item) for item in proposed_token_ids) != proposal.proposed_token_ids:
+            raise ValueError(f"{field_name} proposed_token_ids mismatch")
+
     @property
     def proposed_token_ids(self) -> tuple[int, ...]:
         return self.batch.token_ids
@@ -268,6 +362,7 @@ class Qwen35GGUFMTPDraftProposal:
     def as_dict(self) -> dict[str, object]:
         return {
             "batch": self.batch.as_dict(),
+            "draft_batch_contract": Qwen35GGUFMTPDraftBatch.contract(),
             "topk_kernel": list(self.topk_kernel),
             "selection": self.selection,
             "selected_index": self.selected_index,

@@ -145,8 +145,24 @@ def test_gguf_mtp_context_builds_b1_proposal_from_registered_topk_logits() -> No
     assert proposal.top_k_token_ids == ((1, 2),)
     assert proposal.top_k_logits == ((3.0, 3.0),)
     assert proposal.batch.token_ids == (1,)
-    assert proposal.as_dict()["topk_kernel"] == ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"]
-    assert proposal.as_dict()["proposed_token_ids"] == [1]
+    payload = proposal.as_dict()
+    assert payload["topk_kernel"] == ["cpu_reference", "mtp_draft_topk", "w4_gguf", "full_vocab_d2h"]
+    assert payload["proposed_token_ids"] == [1]
+    assert payload["draft_batch_contract"] == Qwen35GGUFMTPDraftBatch.contract()
+    assert Qwen35GGUFMTPDraftProposal.contract() == {
+        "required_fields": list(Qwen35GGUFMTPDraftProposal.required_fields()),
+        "validator": "Qwen35GGUFMTPDraftProposal.validate_payload",
+    }
+    Qwen35GGUFMTPDraftProposal.validate_payload(payload, field_name="draft proposal")
+    bad_payload = {**payload, "draft_batch_contract": {}}
+    with pytest.raises(ValueError, match="draft_batch_contract mismatch"):
+        Qwen35GGUFMTPDraftProposal.validate_payload(bad_payload, field_name="draft proposal")
+    bad_payload = {**payload, "top_k_token_ids": [[0, 2]]}
+    with pytest.raises(ValueError, match="selected top-k tokens"):
+        Qwen35GGUFMTPDraftProposal.validate_payload(bad_payload, field_name="draft proposal")
+    bad_payload = {**payload, "topk_kernel": ["cpu_reference", "mtp_draft_topk", "w4_gguf"]}
+    with pytest.raises(ValueError, match="topk_kernel"):
+        Qwen35GGUFMTPDraftProposal.validate_payload(bad_payload, field_name="draft proposal")
 
 
 def test_gguf_mtp_context_builds_multi_depth_proposal_from_registered_topk_logits() -> None:

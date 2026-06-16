@@ -733,9 +733,11 @@ Deliverables:
   parity; the GGUF draft-row objects still carry the extra embedding seed
   pointer until native MTP runtime buffers exist and now expose their own
   required-field/validator contract. Draft-batch payloads also advertise and
-  validate that nested row contract, row count, and request-id summary so
-  serialized B1-B4 proposal batches can reject malformed embedding-seed metadata
-  before native NextN execution is wired in.
+  validate that nested row contract, row count, and request-id summary. Draft
+  proposal payloads now advertise/validate their nested draft-batch contract,
+  top-k kernel key, selected-token rows, and proposed-token summary so serialized
+  B1-B4 proposals can reject malformed embedding-seed/top-k metadata before
+  native NextN execution is wired in.
 
 Acceptance:
 
