@@ -732,8 +732,10 @@ Deliverables:
   accepted/draft and accepted/output denominator labels used for llama.cpp
   parity; the GGUF draft-row objects still carry the extra embedding seed
   pointer until native MTP runtime buffers exist and now expose their own
-  required-field/validator contract so serialized B1-B4 proposal rows can reject
-  malformed embedding-seed metadata before native NextN execution is wired in.
+  required-field/validator contract. Draft-batch payloads also advertise and
+  validate that nested row contract, row count, and request-id summary so
+  serialized B1-B4 proposal batches can reject malformed embedding-seed metadata
+  before native NextN execution is wired in.
 
 Acceptance:
 

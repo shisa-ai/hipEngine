@@ -313,6 +313,76 @@ class Qwen35GGUFMTPDraftBatch:
     def embedding_seed_ptrs(self) -> tuple[int, ...]:
         return tuple(row.embedding_seed_ptr for row in self.rows)
 
+    @staticmethod
+    def required_fields() -> tuple[str, ...]:
+        return ("mode", "request_ids", "row_count", "draft_row_contract", "rows")
+
+    @staticmethod
+    def validator_name() -> str:
+        return "Qwen35GGUFMTPDraftBatch.validate_payload"
+
+    @classmethod
+    def contract(cls) -> dict[str, object]:
+        return {
+            "required_fields": list(cls.required_fields()),
+            "validator": cls.validator_name(),
+        }
+
+    @classmethod
+    def missing_required_fields(cls, payload: Mapping[str, object]) -> tuple[str, ...]:
+        return tuple(field for field in cls.required_fields() if field not in payload)
+
+    @classmethod
+    def validate_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        field_name: str = "draft batch",
+    ) -> None:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{field_name} must be a mapping")
+        missing = cls.missing_required_fields(payload)
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"{field_name} missing required fields: {joined}")
+        if payload.get("mode") != "gguf_mtp_nextn":
+            raise ValueError(f"{field_name} mode must be gguf_mtp_nextn")
+        if payload.get("draft_row_contract") != Qwen35GGUFMTPDraftRow.contract():
+            raise ValueError(f"{field_name} draft_row_contract mismatch")
+        rows = payload.get("rows")
+        if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+            raise ValueError(f"{field_name} rows must be a sequence")
+        row_count = int(payload["row_count"])
+        if row_count != len(rows):
+            raise ValueError(f"{field_name} row_count mismatch")
+        request_ids = payload.get("request_ids")
+        if not isinstance(request_ids, Sequence) or isinstance(request_ids, (str, bytes)):
+            raise ValueError(f"{field_name} request_ids must be a sequence")
+        normalized_rows: list[Qwen35GGUFMTPDraftRow] = []
+        for index, row in enumerate(rows):
+            Qwen35GGUFMTPDraftRow.validate_payload(
+                row,
+                field_name=f"{field_name} row[{index}]",
+            )
+            if not isinstance(row, Mapping):
+                raise ValueError(f"{field_name} row[{index}] must be a mapping")
+            normalized_rows.append(
+                Qwen35GGUFMTPDraftRow(
+                    request_id=int(row["request_id"]),
+                    token_id=int(row["token_id"]),
+                    position=int(row["position"]),
+                    draft_depth=int(row["draft_depth"]),
+                    embedding_seed_ptr=int(row["embedding_seed_ptr"]),
+                    embedding_hidden_size=int(row["embedding_hidden_size"]),
+                    parent_token_id=int(row["parent_token_id"]),
+                    parent_position=int(row["parent_position"]),
+                )
+            )
+        expected_request_ids = tuple(sorted({row.request_id for row in normalized_rows}))
+        if tuple(int(item) for item in request_ids) != expected_request_ids:
+            raise ValueError(f"{field_name} request_ids mismatch")
+        cls(rows=tuple(normalized_rows), mode=str(payload["mode"]))
+
     def to_shared_draft_batch(self, *, mode: str = "verify_chain") -> DraftBatch:
         """Project GGUF MTP rows into the shared target verifier ABI.
 
@@ -382,6 +452,8 @@ class Qwen35GGUFMTPDraftBatch:
         return {
             "mode": self.mode,
             "request_ids": self.request_ids,
+            "row_count": len(self.rows),
+            "draft_row_contract": Qwen35GGUFMTPDraftRow.contract(),
             "rows": [row.as_dict() for row in self.rows],
         }
 

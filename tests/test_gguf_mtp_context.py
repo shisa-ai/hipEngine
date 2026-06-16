@@ -98,7 +98,15 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
             "parent_position": 17,
         }
     ]
-    row_payload = batch.as_dict()["rows"][0]
+    batch_payload = batch.as_dict()
+    row_payload = batch_payload["rows"][0]
+    assert batch_payload["row_count"] == 1
+    assert batch_payload["draft_row_contract"] == Qwen35GGUFMTPDraftRow.contract()
+    assert Qwen35GGUFMTPDraftBatch.contract() == {
+        "required_fields": list(Qwen35GGUFMTPDraftBatch.required_fields()),
+        "validator": "Qwen35GGUFMTPDraftBatch.validate_payload",
+    }
+    Qwen35GGUFMTPDraftBatch.validate_payload(batch_payload, field_name="draft batch")
     assert Qwen35GGUFMTPDraftRow.contract() == {
         "required_fields": list(Qwen35GGUFMTPDraftRow.required_fields()),
         "validator": "Qwen35GGUFMTPDraftRow.validate_payload",
@@ -113,6 +121,15 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
     missing.pop("parent_position")
     with pytest.raises(ValueError, match="missing fields: parent_position"):
         Qwen35GGUFMTPDraftRow.validate_payload(missing, field_name="draft row")
+    bad_batch = {**batch_payload, "row_count": 2}
+    with pytest.raises(ValueError, match="row_count mismatch"):
+        Qwen35GGUFMTPDraftBatch.validate_payload(bad_batch, field_name="draft batch")
+    bad_batch = {**batch_payload, "draft_row_contract": {}}
+    with pytest.raises(ValueError, match="draft_row_contract mismatch"):
+        Qwen35GGUFMTPDraftBatch.validate_payload(bad_batch, field_name="draft batch")
+    bad_batch = {**batch_payload, "rows": [{**row_payload, "embedding_seed_ptr": 0}]}
+    with pytest.raises(ValueError, match=r"draft batch row\[0\] embedding_seed_ptr"):
+        Qwen35GGUFMTPDraftBatch.validate_payload(bad_batch, field_name="draft batch")
 
 
 def test_gguf_mtp_context_builds_b1_proposal_from_registered_topk_logits() -> None:
