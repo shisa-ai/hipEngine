@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-16
+
+- [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_s / GPU1 512/128+4K/128: prefill `1647.390/1855.806 -> 1816.758/2151.851 tok/s` (+10.3%/+16.0%) after rewriting selected Q4_K T16 dual-WMMA prefill to compute the two 16-column halves sequentially with one accumulator while preserving the per-lane store bounds guard; min gate decode `115.805 -> 115.798 tok/s` (-0.01%, within run noise / not a decode promotion), stable IDs `220/570`, tracked peak unchanged `21.335 GiB`, GPU1 `128K/128` blocked by HIP OOM; `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`.
+
 ## 2026-06-15
 
 - [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_s / GPU1 512/128+4K/128: min gate decode `115.703 -> 115.805 tok/s` (+0.09%) after lowering the selected single-output T16 GEMV kernel launch-bound default `4 -> 2`; 512 decode `126.993 -> 127.012`, 4K decode `115.703 -> 115.805`, stable IDs `220/570`, tracked peak unchanged `21.335 GiB`; `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-down-lb2-gate.json`.

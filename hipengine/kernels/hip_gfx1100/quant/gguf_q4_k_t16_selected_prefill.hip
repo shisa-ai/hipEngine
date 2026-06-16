@@ -229,55 +229,48 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
 
   const int64_t blocks_per_row = in_features / QK_K;
 
-  float8_t acc0 = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-  float8_t acc1 = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+#pragma unroll
+  for (int tm = 0; tm < 2; ++tm) {
+    const int64_t global_col_base = col_start + tm * 16;
+    if (global_col_base >= out_features_total) continue;
 
-  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-    const int64_t g_k_base = blk * QK_K;
-#pragma unroll
-    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
-#pragma unroll
-      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
-        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
-        const int64_t k_base = g_k_base + k_off;
-        const int64_t local_row = tile_row_in_expert + lane16;
-        const bool valid_row = local_row < expert_count;
-        const int64_t compact_row = valid_row ? (compact_base + local_row) : 0;
-        const half16_t a_reg = load_compact_row_half16<scalar_t>(
-            x, compact_row, in_features, k_base, valid_row);
+    const bool use_b = global_col_base >= out_features_a;
+    const int64_t local_col_base = use_b ? (global_col_base - out_features_a) : global_col_base;
+    const int64_t local_out_features = use_b ? out_features_b : out_features_a;
+    const int64_t local_col = local_col_base + lane16;
+    const bool valid_col = (global_col_base + lane16) < out_features_total &&
+        local_col < local_out_features;
+    const int64_t out_tiles = local_out_features / T16_COLS;
+    const int64_t out_tile = local_col_base / T16_COLS;
+    const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
 
+    float8_t acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+
+    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+      const int64_t g_k_base = blk * QK_K;
 #pragma unroll
-        for (int tm = 0; tm < 2; ++tm) {
-          const int64_t global_col_base = col_start + tm * 16;
-          const bool use_b = global_col_base >= out_features_a;
-          const int64_t local_col_base = use_b ? (global_col_base - out_features_a) : global_col_base;
-          const int64_t local_out_features = use_b ? out_features_b : out_features_a;
-          const int64_t local_col = local_col_base + lane16;
-          const bool valid_col = (global_col_base + lane16) < out_features_total &&
-              local_col < local_out_features;
-          const int64_t out_tiles = local_out_features / T16_COLS;
-          const int64_t out_tile = local_col_base / T16_COLS;
-          const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
+      for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+#pragma unroll
+        for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+          const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+          const int64_t k_base = g_k_base + k_off;
+          const int64_t local_row = tile_row_in_expert + lane16;
+          const bool valid_row = local_row < expert_count;
+          const int64_t compact_row = valid_row ? (compact_base + local_row) : 0;
+          const half16_t a_reg = load_compact_row_half16<scalar_t>(
+              x, compact_row, in_features, k_base, valid_row);
           const uint8_t* __restrict__ tile = valid_col
               ? q4_t16_tile_ptr(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row)
               : tiles;
           half16_t b_reg;
           load_q4_t16_b_reg(tile, sb, kt, lane16, valid_col, b_reg);
-          if (tm == 0) {
-            acc0 = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc0);
-          } else {
-            acc1 = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc1);
-          }
+          acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
         }
       }
     }
-  }
 
-#pragma unroll
-  for (int tm = 0; tm < 2; ++tm) {
-    const int64_t global_out_col = col_start + tm * 16 + lane16;
+    const int64_t global_out_col = global_col_base + lane16;
     if (global_out_col >= out_features_total) continue;
-    const float8_t acc = (tm == 0) ? acc0 : acc1;
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
       const int64_t local_out_row = tile_row_in_expert + half_id + j * 2;

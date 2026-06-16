@@ -97,40 +97,48 @@ artifacts after a tuning candidate is accepted.
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1647.390` | `127.012` | `21.335 GiB` | `21.952 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `1855.806` | `115.805` | `21.335 GiB` | `21.954 GiB` | stable final token `570`, finite logits |
+| 512/128 | `1816.758` | `126.473` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
+| 4K/128 | `2151.851` | `115.798` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
 
 Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `115.805 tok/s` after
-G-D3 relaxed the selected single-output T16 GEMV launch-bound default from `4` to
-`2` on top of the retained selected dual+SiLU and selected-WMMA launch-bound
-changes.
+multiloop metric is the minimum gate decode rate, currently `115.798 tok/s` after
+G-P1 rewrote the selected dual Q4_K T16 WMMA prefill kernel to compute the two
+16-column halves sequentially with one FP32 accumulator while preserving the
+per-lane output-store bounds guard. That change is a prefill promotion
+(`512/128` +`10.3%`, `4K/128` +`16.0%` versus the selected-down-lb2 baseline);
+decode is effectively flat against the prior `115.805 tok/s` gate row and was
+not counted as a decode promotion.
 
 ## Active GPU1 profile findings
 
 G-M2 paired `rocprofv3` captures were taken initially on 2026-06-15 with
-`decode_tokens=16` and refreshed for the retained-default 4K path on 2026-06-16.
+`decode_tokens=16`, refreshed for the retained-default 4K path on 2026-06-16,
+and refreshed again after the G-P1 selected-WMMA half-sequential rewrite.
 Prefill-only traces are used to strip the prefill prefix from decode traces. Raw
-CSV/summary files live under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`
-and `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup`; the
-compact retained-refresh artifact is
-`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-retained-4k-rocprof-diagnostic.json`.
+CSV/summary files live under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`,
+`/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup`, and
+`/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-safe-4k-d16`; the compact
+retained half-seq artifact is
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`.
+The `512/16` rows below remain the initial profile; the `4K/16` rows reflect the
+current half-seq default.
 
 | Shape | Phase | Total kernel time | Top buckets |
 | --- | --- | ---: | --- |
 | 512/16 | prefill | `289.487 ms` | selected dual Q4_K WMMA `111.306 ms` (`38.45%`); dense Q8_0 WMMA `54.196 ms` (`18.72%`); GDN prefill recurrent `41.706 ms` (`14.41%`) |
 | 512/16 | decode | `131.242 ms` (`8.203 ms/token`) | dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`); selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`); lm-head Q6 T16 `10.158 ms` (`7.74%`) |
-| 4K/16 | prefill | `2094.198 ms` | selected dual Q4_K WMMA `800.455 ms` (`38.22%`); GDN prefill recurrent `351.231 ms` (`16.77%`); dense Q8_0 WMMA `329.473 ms` (`15.73%`); full-attn prefill `87.719 ms` (`4.19%`) |
-| 4K/16 | decode | `138.513 ms` (`8.657 ms/token`) | dense Q8_0 T16 GEMV `49.758 ms` (`35.92%`); selected dual Q4_K T16 GEMV `17.154 ms` (`12.38%`); full-attn decode `13.912 ms` (`10.04%`); lm-head Q6 T16 `10.087 ms` (`7.28%`) |
+| 4K/16 | prefill | `1761.552 ms` | selected dual Q4_K WMMA `454.370 ms` (`25.79%`); GDN prefill recurrent `349.534 ms` (`19.84%`); dense Q8_0 WMMA `331.169 ms` (`18.80%`); full-attn prefill `87.787 ms` (`4.98%`) |
+| 4K/16 | decode | `143.418 ms` (`8.964 ms/token`) | dense Q8_0 T16 GEMV `50.638 ms` (`35.31%`); selected dual Q4_K T16 GEMV `18.503 ms` (`12.90%`); full-attn decode `13.989 ms` (`9.75%`); lm-head Q6 T16 `10.055 ms` (`7.01%`) |
 
 G-M3 resource census on the refreshed 4K/16 trace is recorded in
-`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-resource-census-diagnostic.json`.
-`qwen35_gguf_rocprof_summary.py` now emits VGPR/SGPR/scratch/LDS/workgroup/grid
-summaries per bucket and per kernel.
+`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-resource-census-diagnostic.json`;
+the G-P1 half-seq artifact refreshes the selected-WMMA resource row after the
+kernel rewrite. `qwen35_gguf_rocprof_summary.py` now emits
+VGPR/SGPR/scratch/LDS/workgroup/grid summaries per bucket and per kernel.
 
 | Phase | Bucket | Scratch | VGPR | LDS | Read |
 | --- | --- | ---: | ---: | ---: | --- |
-| prefill | selected dual Q4_K WMMA | `676 B` | `256` | `0` | dominant prefill bucket is register-pressure/spill-limited; inspect ISA/codegen before more launch-bound pokes. |
+| prefill | selected dual Q4_K WMMA | `160 B` | `256` | `0` | half-seq rewrite cut spill footprint and moved the 4K/16 bucket `800.455 -> 454.370 ms`; still VGPR-capped, but no longer the dominant 4K prefill bucket. |
 | prefill | dense Q8_0 WMMA | `0/8 B` | `96/128/192` | `0` | mostly scratch-free, with one tiny-spill shape; do tile-specific census before changing tile policy. |
 | prefill | full-attn prefill | `3200 B` | `256` | `0` | AOTriton/full-attn spill exists but is only `~4%` of the 4K prefill trace. |
 | decode | dense Q8_0 T16 GEMV | `0 B` | `64` | `512` | top decode bucket is scratch-free; blind launch-bound retuning has little evidence now. |
@@ -139,17 +147,34 @@ summaries per bucket and per kernel.
 
 G-P1 ISA audit for the selected dual Q4T16 WMMA prefill kernel is recorded in
 `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-isa-audit.json`.
-The active BF16 kernel metadata matches rocprof: `private_segment_fixed_size=676`,
+The pre-rewrite BF16 kernel metadata matched rocprof: `private_segment_fixed_size=676`,
 `vgpr_count=256`, `vgpr_spill_count=320`, and `42` scratch loads / `80` scratch
 stores in the disassembly. Building the same kernel with
-`HIPENGINE_DISABLE_UNROLL600=1` produced identical metadata, so do not spend more
-iterations on the global unroll-600 knob for this kernel. Next useful probes
-should reduce live state in the kernel itself (for example split the 32-column
-dual tile or shorten `b_reg`/accumulator lifetimes) and measure whether extra
-launches beat the spill cost.
+`HIPENGINE_DISABLE_UNROLL600=1` produced identical metadata. The retained
+half-seq rewrite computes/stores one 16-column half at a time while preserving
+the original per-lane store bounds guard, reducing the metadata to
+`private_segment_fixed_size=160`, `vgpr_spill_count=113`, and `57` scratch loads /
+`33` scratch stores while preserving the same `32` WMMA ops.
+Further selected-WMMA work should now target the remaining 256-VGPR cap or a
+true 16-column code-object variant without giving back the prefill win.
 
 Retained notes:
 
+- **G-P1 selected-WMMA half-sequential rewrite retained (2026-06-16).** The
+  selected dual Q4_K T16 WMMA prefill kernel now computes/stores each 16-column
+  half sequentially with one accumulator instead of keeping two accumulators live
+  across the K loop. Gate IDs stayed stable, tracked peak stayed `21.335 GiB`,
+  focused CPU-reference tests passed (`9 passed`), and the targeted GGUF guard
+  passed (`154 passed`). The retained safe gate moved `512/128` to
+  `1816.758 / 126.473 tok/s` and `4K/128` to `2151.851 / 115.798 tok/s`; two
+  intermediate same-command runs without the restored per-lane store guard
+  measured higher prefill but were superseded. This is a prefill promotion, not a
+  decode promotion: the 4K/16 rocprof selected-WMMA bucket fell
+  `800.455 -> 454.370 ms` and total prefill kernel time fell
+  `2094.198 -> 1761.552 ms`, while gate decode stayed within noise of the
+  selected-down-lb2 row. GPU1 `128K/128` final promotion is
+  blocked by HIP OOM during session construction and needs a W7900 fallback or a
+  G-P4 memory-policy gate.
 - **G-P1 launch-bound default retained (2026-06-15).** Lowering
   `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS` from `2` to `1` in the selected Q4_K
   T16 WMMA prefill kernel kept gate IDs stable, kept tracked peak at
@@ -168,17 +193,20 @@ Retained notes:
   (`512/128`) and `1855.806 / 115.805 tok/s` (`4K/128`). Final promotion still
   needs the `128K/128` memory/throughput check.
 
-Initial focused lanes from evidence:
+Current focused lanes from evidence:
 
 1. **G-D2 first for decode:** dense Q8_0 T16 GEMV is the dominant decode bucket
-   on both gates (`~37-38%` of decode kernel time), so launch-bound/tile-shape
+   on both gates (`~36-38%` of decode kernel time), so launch-bound/tile-shape
    tuning has the cleanest same-suite decode upside.
-2. **G-P1 first for prefill:** selected dual Q4_K WMMA prefill is the largest
-   prefill bucket on both gates (`~38%`), so any prefill push should start there
-   before chasing smaller glue kernels.
-3. **Secondary decode checks:** full-attention decode matters at 4K (`10.10%`)
-   and lm-head Q6 T16 is stable at `~7.4-7.7%`; keep them as follow-ups after
-   the Q8_0 T16 decode bucket is audited.
+2. **G-P4/G-M4 before final long-context promotion:** the primary gates fit at
+   `21.335 GiB`, but GPU1 `128K/128` currently fails with HIP OOM during session
+   construction, so long-context claims need W7900 fallback evidence or lower
+   prefill/KV/scratch residency.
+3. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
+   WMMA is no longer the dominant 4K prefill bucket; GDN prefill recurrent and
+   dense Q8_0 WMMA are now comparable follow-up targets, and any further G-P1
+   live-state work must beat the remaining 256-VGPR cap without extra decode
+   noise.
 
 No-hold notes:
 
@@ -620,7 +648,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 
 | ID | Candidate | Starting hypothesis | Gate |
 | --- | --- | --- | --- |
-| G-P1 | Revisit selected-MoE raw GGUF-K WMMA redesign from P9.C with the latest T16/repack context. | P9.C ended with a `~30 ms` 512/0 target-bucket gap; shallow sidecars regressed, but a deeper layout may still be needed. | Target bucket moves materially without >24 GiB duplicate storage. |
+| G-P1 | Follow up the retained selected-MoE half-seq WMMA rewrite only if a 16-column/codegen variant can reduce the remaining 256-VGPR cap. | Half-seq moved the 4K/16 target bucket `800.455 -> 454.370 ms`; remaining upside is smaller and must not trade back decode stability. | Target bucket moves materially beyond half-seq without >24 GiB duplicate storage or decode noise. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
 | G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | Same throughput class with lower peak, or clear W7900-only label. |

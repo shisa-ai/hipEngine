@@ -94084,3 +94084,46 @@ Validation and outcome:
 - Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
 - Prompt verifier: passed for a diagnostic/tooling-only iteration. IDs and memory stayed stable, no torch/llama.cpp hot-path dependency or residency change was introduced, and no promotion was claimed.
 - Decision: log/diagnostic. Next useful G-P1 code probes should reduce live state in the kernel itself (for example a 16-column single-tile variant or shorter `b_reg`/accumulator lifetimes) and measure whether extra launches beat the spill cost. Do not spend more loop iterations on `HIPENGINE_DISABLE_UNROLL600` for this kernel.
+
+## 2026-06-16 - GGUF G-P1 selected WMMA half-seq retained
+
+Rewrote the selected dual Q4_K T16 WMMA prefill compact32 kernel to compute and
+store each 16-column half sequentially with one FP32 accumulator instead of
+keeping two accumulators live across the full K loop. The probe was motivated by
+the prior ISA audit (`VGPR=256`, `vgpr_spill_count=320`, `private_segment=676 B`,
+`122` scratch instructions) and keeps the same dispatch key/default path.
+
+Validation and outcome:
+- Focused correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q` -> `9 passed`.
+- Candidate build artifact: `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-d98a2c1ef5f6c100/gguf_q4_k_t16_selected_prefill.so`.
+- Code-object metadata for `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>`: `private_segment_fixed_size=208`, `vgpr_count=256`, `vgpr_spill_count=127`, `sgpr_count=43`, `sgpr_spill_count=0`; disassembly counts `102` scratch instructions (`62` loads / `40` stores), `32` WMMA instructions. This cuts private segment `676 -> 208 B` and spills `320 -> 127`, though the kernel is still VGPR-capped.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-halfseq-rerun.json`.
+- Retained gate rerun result: `512/128` median prefill/decode `1881.318618 / 126.950908 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2175.494050 / 115.713825 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- First same-command gate result for variance context: `512/128` `1888.617722 / 126.618648 tok/s`; `4K/128` `2178.056353 / 115.390341 tok/s`; stable IDs and tracked peak unchanged.
+- Paired `rocprofv3` 4K/16 command used cached builds under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-4k-d16` with `scripts/qwen35_gguf_rocprof_summary.py --strip-prefill-prefix`.
+- Rocprof result: 4K prefill total kernel `2094.198 -> 1763.990 ms`; selected dual Q4_K WMMA bucket `800.455 -> 467.926 ms` (`38.22% -> 26.53%`). Decode-only total kernel `138.513 -> 137.239 ms`, so the slight gate decode movement is treated as run noise rather than a decode regression/promotion.
+- Final-promotion long-context check: GPU1 `128K/128` command with `--warmup-runs 0 --measured-runs 1` failed during `Qwen35GGUFResidentSession` construction with `HIP error 2: out of memory` allocating the prefill hidden buffer. Primary `512/128` and `4K/128` gates still fit at `21.334858 GiB`; final 128K promotion needs a W7900 fallback or a G-P4 memory-policy iteration.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed. Generated IDs/logits were deterministic on the primary gates, no torch/llama.cpp hot-path dependency was added, raw+packed residency and tracked peak did not grow, and the change materially improved prefill while decode stayed within run noise.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`; rollup updated in `benchmarks/README.md` and `benchmarks/CHANGELOG.md`.
+- Decision: retain/promote as the default selected-WMMA prefill path for primary GPU1 gates. This is a prefill promotion (`512/128` +14.2%, `4K/128` +17.2%), not a decode promotion. Next best target is G-D2 dense Q8_0 T16 GEMV decode or G-P4/G-M4 memory policy for the blocked 128K gate.
+
+## 2026-06-16 - GGUF G-P1 half-seq store-guard safety addendum
+
+Before committing the G-P1 selected-WMMA half-seq rewrite, re-audited the code
+and noticed the first rewrite had kept a tile-base bounds check but had dropped
+the original per-lane `global_out_col >= out_features_total` store guard. Qwen3.6
+expert widths are 16-aligned, but the kernel family should remain safe for
+non-multiple-of-16 output widths, so I restored the per-lane guard and reran the
+validation/measurement on the final code.
+
+Validation and outcome:
+- Focused correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q` -> `9 passed`.
+- Final build artifact: `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-f13d26d3a988117a/gguf_q4_k_t16_selected_prefill.so`.
+- Final code-object metadata for `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>`: `private_segment_fixed_size=160`, `vgpr_count=256`, `vgpr_spill_count=113`, `sgpr_count=44`, `sgpr_spill_count=0`; disassembly counts `90` scratch instructions (`57` loads / `33` stores), `32` WMMA instructions. This improves on both the original retained kernel (`private=676`, spills `320`) and the first half-seq build (`private=208`, spills `127`).
+- Final gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-halfseq-safe.json`.
+- Final gate result: `512/128` median prefill/decode `1816.757625 / 126.472921 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.850842 / 115.798456 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`. Versus selected-down-lb2 this is a retained prefill gain (`+10.3%`, `+16.0%`) with flat min gate decode (`115.804576 -> 115.798456 tok/s`, noise/not decode promotion).
+- Final paired `rocprofv3` 4K/16 trace under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-safe-4k-d16`: prefill total kernel `2094.198 -> 1761.552 ms`; selected dual Q4_K WMMA bucket `800.455 -> 454.370 ms` (`38.22% -> 25.79%`). Decode-only 16-token window measured `143.418 ms` vs `138.513 ms` baseline and is treated as profiler/noise context; the primary gate decode median remained flat.
+- Guard rerun is still the standard targeted bundle from the prior entry: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact/rollup updated in-place to the final safe numbers: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+- Decision: retain the safe half-seq kernel as the default selected-WMMA prefill path for primary GPU1 gates. The 128K final-promotion blocker from the prior entry remains: GPU1 24GB-class OOM during session construction, so final long-context promotion needs W7900 fallback evidence or G-P4 memory-policy work.
