@@ -8822,6 +8822,8 @@ class Qwen35ParoResidentSession:
                 retained_counts.ptr,
                 1,
                 self.vocab_size,
+                out_indices_i64_ptr=self.lm_out_index.ptr,
+                out_values_f32_ptr=self.lm_out_value.ptr,
                 step_index=state.step_index,
                 threads=128,
                 library=library,
@@ -8839,6 +8841,8 @@ class Qwen35ParoResidentSession:
                 1,
                 self.vocab_size,
                 top_k,
+                out_indices_i64_ptr=self.lm_out_index.ptr,
+                out_values_f32_ptr=self.lm_out_value.ptr,
                 step_index=state.step_index,
                 threads=128,
                 library=library,
@@ -8853,6 +8857,8 @@ class Qwen35ParoResidentSession:
                 out_logprobs.ptr,
                 1,
                 self.vocab_size,
+                out_indices_i64_ptr=self.lm_out_index.ptr,
+                out_values_f32_ptr=self.lm_out_value.ptr,
                 step_index=state.step_index,
                 threads=128,
                 library=library,
@@ -8867,14 +8873,7 @@ class Qwen35ParoResidentSession:
         if token_id < 0 or token_id >= self.vocab_size:
             raise RuntimeError(f"native sampler selected invalid token id {token_id}")
         value_host = np.empty((1,), dtype=np.float32)
-        copy_device_to_host(
-            host_array_ptr(value_host),
-            DeviceBuffer(int(logits_ptr) + token_id * DType.FP32.itemsize, DType.FP32.itemsize),
-            runtime=self.runtime,
-        )
-        index_i64 = np.asarray([token_id], dtype=np.int64)
-        copy_host_to_device(self.lm_out_index, host_array_ptr(index_i64), runtime=self.runtime)
-        copy_host_to_device(self.lm_out_value, host_array_ptr(value_host), runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(value_host), self.lm_out_value, runtime=self.runtime)
         state.observe(token_id)
         return Qwen35ParoAutoregressiveStepResult(
             token_id=token_id,

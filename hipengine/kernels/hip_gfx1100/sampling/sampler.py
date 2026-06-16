@@ -139,6 +139,8 @@ def sample_temperature_f32_rows_i32(
     rows: int,
     vocab_size: int,
     *,
+    out_indices_i64_ptr: int | None = None,
+    out_values_f32_ptr: int | None = None,
     step_index: int = 0,
     threads: int = 128,
     stream: int = 0,
@@ -166,6 +168,8 @@ def sample_temperature_f32_rows_i32(
         ctypes.c_void_p,  # row seeds u64
         ctypes.c_void_p,  # out selected indices i32
         ctypes.c_void_p,  # out selected logprobs f32 (nullable)
+        ctypes.c_void_p,  # out selected indices i64 commit (nullable)
+        ctypes.c_void_p,  # out selected logits f32 commit (nullable)
         ctypes.c_int64,   # rows
         ctypes.c_int64,   # vocab size
         ctypes.c_uint64,  # step index
@@ -179,6 +183,8 @@ def sample_temperature_f32_rows_i32(
         ctypes.c_void_p(row_seeds_u64_ptr),
         ctypes.c_void_p(out_indices_i32_ptr),
         ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_indices_i64_ptr) if out_indices_i64_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
         ctypes.c_uint64(step_index),
@@ -201,6 +207,8 @@ def sample_top_p_temperature_f32_rows_i32(
     rows: int,
     vocab_size: int,
     *,
+    out_indices_i64_ptr: int | None = None,
+    out_values_f32_ptr: int | None = None,
     step_index: int = 0,
     threads: int = 128,
     stream: int = 0,
@@ -233,6 +241,8 @@ def sample_top_p_temperature_f32_rows_i32(
         ctypes.c_void_p,  # out selected indices i32
         ctypes.c_void_p,  # out selected logprobs f32 (nullable)
         ctypes.c_void_p,  # out retained counts i32 (nullable)
+        ctypes.c_void_p,  # out selected indices i64 commit (nullable)
+        ctypes.c_void_p,  # out selected logits f32 commit (nullable)
         ctypes.c_int64,   # rows
         ctypes.c_int64,   # vocab size
         ctypes.c_uint64,  # step index
@@ -249,6 +259,8 @@ def sample_top_p_temperature_f32_rows_i32(
         ctypes.c_void_p(out_indices_i32_ptr),
         ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_candidate_counts_i32_ptr) if out_candidate_counts_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_indices_i64_ptr) if out_indices_i64_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
         ctypes.c_uint64(step_index),
@@ -271,6 +283,8 @@ def sample_topk_temperature_f32_rows_i32(
     vocab_size: int,
     top_k: int,
     *,
+    out_indices_i64_ptr: int | None = None,
+    out_values_f32_ptr: int | None = None,
     step_index: int = 0,
     threads: int = 128,
     stream: int = 0,
@@ -307,6 +321,8 @@ def sample_topk_temperature_f32_rows_i32(
         ctypes.c_void_p,  # out selected logprobs f32 (nullable)
         ctypes.c_void_p,  # out top indices i32 (nullable)
         ctypes.c_void_p,  # out top logprobs f32 (nullable)
+        ctypes.c_void_p,  # out selected indices i64 commit (nullable)
+        ctypes.c_void_p,  # out selected logits f32 commit (nullable)
         ctypes.c_int64,   # rows
         ctypes.c_int64,   # vocab size
         ctypes.c_int64,   # top k
@@ -323,6 +339,8 @@ def sample_topk_temperature_f32_rows_i32(
         ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_top_indices_i32_ptr) if out_top_indices_i32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_top_logprobs_f32_ptr) if out_top_logprobs_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_indices_i64_ptr) if out_indices_i64_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
         ctypes.c_int64(top_k),

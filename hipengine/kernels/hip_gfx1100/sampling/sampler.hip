@@ -50,6 +50,20 @@ __device__ inline float sampler_uniform01(uint64_t row_seed, uint64_t step_index
   return static_cast<float>(unit);
 }
 
+__device__ inline void write_sampler_commit(
+    int64_t* __restrict__ out_indices_i64,
+    float* __restrict__ out_values,
+    int64_t row,
+    int32_t index,
+    float value) {
+  if (out_indices_i64 != nullptr) {
+    out_indices_i64[row] = static_cast<int64_t>(index);
+  }
+  if (out_values != nullptr) {
+    out_values[row] = value;
+  }
+}
+
 __global__ void sampler_topk_temperature_rows_i32_kernel(
     const float* __restrict__ logits,
     const float* __restrict__ temperatures,
@@ -58,6 +72,8 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
     float* __restrict__ out_logprobs,
     int32_t* __restrict__ out_top_indices,
     float* __restrict__ out_top_logprobs,
+    int64_t* __restrict__ out_indices_i64_commit,
+    float* __restrict__ out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
     int32_t top_k,
@@ -125,6 +141,7 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
     if (out_logprobs != nullptr) {
       out_logprobs[row] = kNegInf;
     }
+    write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, -1, kNegInf);
     for (int pos = 0; pos < top_k; ++pos) {
       if (out_top_indices != nullptr) {
         out_top_indices[top_out_base + pos] = -1;
@@ -142,6 +159,7 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
     if (out_logprobs != nullptr) {
       out_logprobs[row] = 0.0f;
     }
+    write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, final_indices[0], final_values[0]);
     for (int pos = 0; pos < top_k; ++pos) {
       const bool valid = pos < top_count && final_indices[pos] != INT32_MAX;
       if (out_top_indices != nullptr) {
@@ -194,6 +212,8 @@ __global__ void sampler_topk_temperature_rows_i32_kernel(
   if (out_logprobs != nullptr) {
     out_logprobs[row] = candidate_logprobs[selected_pos];
   }
+  write_sampler_commit(
+      out_indices_i64_commit, out_values_f32_commit, row, final_indices[selected_pos], final_values[selected_pos]);
   for (int pos = 0; pos < top_k; ++pos) {
     const bool valid = pos < top_count && final_indices[pos] != INT32_MAX;
     if (out_top_indices != nullptr) {
@@ -211,6 +231,8 @@ __global__ void sampler_temperature_rows_i32_kernel(
     const uint64_t* __restrict__ row_seeds,
     int32_t* __restrict__ out_indices,
     float* __restrict__ out_logprobs,
+    int64_t* __restrict__ out_indices_i64_commit,
+    float* __restrict__ out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
     uint64_t step_index) {
@@ -253,6 +275,7 @@ __global__ void sampler_temperature_rows_i32_kernel(
       if (out_logprobs != nullptr) {
         out_logprobs[row] = kNegInf;
       }
+      write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, -1, kNegInf);
     }
     return;
   }
@@ -264,6 +287,7 @@ __global__ void sampler_temperature_rows_i32_kernel(
       if (out_logprobs != nullptr) {
         out_logprobs[row] = 0.0f;
       }
+      write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     }
     return;
   }
@@ -292,6 +316,7 @@ __global__ void sampler_temperature_rows_i32_kernel(
     if (out_logprobs != nullptr) {
       out_logprobs[row] = 0.0f;
     }
+    write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     return;
   }
 
@@ -316,6 +341,7 @@ __global__ void sampler_temperature_rows_i32_kernel(
   if (out_logprobs != nullptr) {
     out_logprobs[row] = selected_logit / temperature - (logf(weight_sum) + max_scaled);
   }
+  write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, selected_index, selected_logit);
 }
 
 __device__ inline bool sorted_after_previous(float value, int32_t index, bool has_previous, float prev_value, int32_t prev_index) {
@@ -362,6 +388,8 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     int32_t* __restrict__ out_indices,
     float* __restrict__ out_logprobs,
     int32_t* __restrict__ out_candidate_counts,
+    int64_t* __restrict__ out_indices_i64_commit,
+    float* __restrict__ out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
     uint64_t step_index) {
@@ -407,6 +435,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
       if (out_candidate_counts != nullptr) {
         out_candidate_counts[row] = 0;
       }
+      write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, -1, kNegInf);
     }
     return;
   }
@@ -421,6 +450,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
       if (out_candidate_counts != nullptr) {
         out_candidate_counts[row] = 1;
       }
+      write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     }
     return;
   }
@@ -453,6 +483,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     if (out_candidate_counts != nullptr) {
       out_candidate_counts[row] = 1;
     }
+    write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     return;
   }
 
@@ -517,6 +548,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     if (out_candidate_counts != nullptr) {
       out_candidate_counts[row] = 1;
     }
+    write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     return;
   }
 
@@ -526,6 +558,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
   prev_index = -1;
   float cumulative = 0.0f;
   int32_t selected_index = row_argmax;
+  float selected_logit = row_max;
   float selected_weight = 1.0f;
   for (int32_t rank = 0; rank < retained_count; ++rank) {
     float value = 0.0f;
@@ -536,6 +569,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     const float weight = expf(value / temperature - max_scaled);
     cumulative += weight;
     selected_index = index;
+    selected_logit = value;
     selected_weight = weight;
     if (threshold <= cumulative) {
       break;
@@ -552,6 +586,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
   if (out_candidate_counts != nullptr) {
     out_candidate_counts[row] = retained_count;
   }
+  write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, selected_index, selected_logit);
 }
 
 __global__ void sampler_apply_processors_rows_kernel(
@@ -633,6 +668,8 @@ extern "C" int hipengine_sampler_top_p_temperature_f32_rows_i32(
     int32_t* out_indices,
     float* out_logprobs,
     int32_t* out_candidate_counts,
+    int64_t* out_indices_i64_commit,
+    float* out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
     uint64_t step_index,
@@ -660,6 +697,8 @@ extern "C" int hipengine_sampler_top_p_temperature_f32_rows_i32(
       out_indices,
       out_logprobs,
       out_candidate_counts,
+      out_indices_i64_commit,
+      out_values_f32_commit,
       rows,
       vocab_size,
       step_index);
@@ -717,6 +756,8 @@ extern "C" int hipengine_sampler_temperature_f32_rows_i32(
     const uint64_t* row_seeds,
     int32_t* out_indices,
     float* out_logprobs,
+    int64_t* out_indices_i64_commit,
+    float* out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
     uint64_t step_index,
@@ -741,6 +782,8 @@ extern "C" int hipengine_sampler_temperature_f32_rows_i32(
       row_seeds,
       out_indices,
       out_logprobs,
+      out_indices_i64_commit,
+      out_values_f32_commit,
       rows,
       vocab_size,
       step_index);
@@ -755,6 +798,8 @@ extern "C" int hipengine_sampler_topk_temperature_f32_rows_i32(
     float* out_logprobs,
     int32_t* out_top_indices,
     float* out_top_logprobs,
+    int64_t* out_indices_i64_commit,
+    float* out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
     int64_t top_k,
@@ -783,6 +828,8 @@ extern "C" int hipengine_sampler_topk_temperature_f32_rows_i32(
       out_logprobs,
       out_top_indices,
       out_top_logprobs,
+      out_indices_i64_commit,
+      out_values_f32_commit,
       rows,
       vocab_size,
       static_cast<int32_t>(top_k),

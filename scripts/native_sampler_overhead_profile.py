@@ -22,6 +22,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import json
 import os
+import shlex
 import statistics
 import time
 from typing import Any
@@ -315,6 +316,64 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _profile_command(args: argparse.Namespace) -> str:
+    env_parts = []
+    for name in ("HIP_VISIBLE_DEVICES", "HIPENGINE_HIP_ARCH", "PYTHONPATH"):
+        value = os.environ.get(name)
+        if value is not None:
+            env_parts.append(f"{name}={shlex.quote(value)}")
+    cmd = ["python3", "scripts/native_sampler_overhead_profile.py"]
+    if args.model != DEFAULT_MODEL:
+        cmd.extend(["--model", str(args.model)])
+    if args.backend != "hip_gfx1100":
+        cmd.extend(["--backend", args.backend])
+    if args.shared_expert_format != "packed_paro_w4":
+        cmd.extend(["--shared-expert-format", args.shared_expert_format])
+    if args.prompt_token != 9707:
+        cmd.extend(["--prompt-token", str(args.prompt_token)])
+    if args.prompt_length != 45:
+        cmd.extend(["--prompt-length", str(args.prompt_length)])
+    if args.warmup_decode_tokens != 4:
+        cmd.extend(["--warmup-decode-tokens", str(args.warmup_decode_tokens)])
+    if args.decode_tokens != 64:
+        cmd.extend(["--decode-tokens", str(args.decode_tokens)])
+    if args.max_layers != 40:
+        cmd.extend(["--max-layers", str(args.max_layers)])
+    if args.attn_aotriton_min_tokens != 512:
+        cmd.extend(["--attn-aotriton-min-tokens", str(args.attn_aotriton_min_tokens)])
+    if args.json is not None:
+        cmd.extend(["--json", str(args.json)])
+    return " ".join([*env_parts, *(shlex.quote(part) for part in cmd)])
+
+
+def _assessment(lanes: dict[str, Any]) -> dict[str, str]:
+    native_profile = lanes["native_topk_eager"]["profile"]
+    h2d = native_profile["copy_host_to_device"]["calls_per_decode_token"]
+    d2h = native_profile["copy_device_to_host"]["calls_per_decode_token"]
+    uploads = native_profile["native_uploads"]["calls_per_decode_token"]
+    if h2d is not None and uploads is not None and h2d <= uploads:
+        return {
+            "primary_next_step": "request-constant scalar buffer caching (#10)",
+            "secondary_next_step": "host result-readback coalescing or device-side continuation plumbing",
+            "reason": (
+                "Device-side selected-token/logit writeback removes the legacy post-sample H2D writes: "
+                f"native top-k now has {h2d:g} H2D and {d2h:g} D2H Python-visible copies/token, all H2D "
+                f"traffic accounted for by {uploads:g} scalar uploads/token. Native remains much faster than "
+                "host logits but still trails greedy eager by the sampler kernel, scalar uploads, and host "
+                "result readback."
+            ),
+        }
+    return {
+        "primary_next_step": "device-side selected-token/logit writeback (#11)",
+        "secondary_next_step": "request-constant scalar buffer caching (#10)",
+        "reason": (
+            "Native top-k remains much faster than host logits but trails greedy eager by the sampler "
+            f"kernel plus {h2d:g} H2D and {d2h:g} D2H Python-visible copies/token; graph replay accounts for "
+            "only a smaller part of the greedy graph gap in this diagnostic."
+        ),
+    }
+
+
 def main() -> int:
     args = _parse_args()
     shared_expert_format = None if args.shared_expert_format == "auto" else args.shared_expert_format
@@ -365,17 +424,13 @@ def main() -> int:
     artifact = {
         "schema": "hipengine.native_sampler_overhead_profile.v1",
         "date": "2026-06-16",
-        "task": "#9 Profile native sampler overhead against greedy",
+        "task": "Native sampler overhead diagnostic",
         "hardware": "AMD Radeon Pro W7900 / gfx1100, HIP_VISIBLE_DEVICES=0",
         "model": "Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
         "model_path": str(args.model),
         "quant": "w4_paro",
         "command": {
-            "profile": (
-                "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. "
-                "python3 scripts/native_sampler_overhead_profile.py "
-                "--json benchmarks/results/2026-06-16-native-sampler-overhead-profile.json"
-            )
+            "profile": _profile_command(args)
         },
         "workload": {
             "prompt_source": "repeated_token_id",
@@ -401,15 +456,7 @@ def main() -> int:
             "native_vs_greedy_eager": native / greedy_eager if greedy_eager else None,
             "native_vs_host": native / host if host else None,
         },
-        "assessment": {
-            "primary_next_step": "device-side selected-token/logit writeback (#11)",
-            "secondary_next_step": "request-constant scalar buffer caching (#10)",
-            "reason": (
-                "Native top-k remains much faster than host logits but trails greedy eager by the sampler "
-                "kernel plus 4 H2D and 3 D2H Python-visible copies per token; graph replay accounts for "
-                "only a smaller part of the greedy graph gap in this diagnostic."
-            ),
-        },
+        "assessment": _assessment(lanes),
     }
     text = json.dumps(artifact, indent=2)
     print(json.dumps(artifact["summary"], indent=2), flush=True)
