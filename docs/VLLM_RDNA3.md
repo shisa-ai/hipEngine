@@ -295,6 +295,120 @@ Older CLI/model-card equivalent:
 Always keep a no-MTP baseline because MTP can lose on small batches or hit loader
 layout issues.
 
+## FP8 on gfx1151 (Strix Halo / Radeon 8060S), 2026-06-17
+
+`Qwen/Qwen3.6-35B-A3B-FP8` was tested on the gfx1151 host as an FP8 route that
+sidesteps the W4A16 MoE deadlock blocking GPTQ/AWQ on RDNA 3.5 (see
+`docs/handoff-vllm-gfx1151.md` Task B: the deadlock is a duplicate-pointer
+K-dim unpacking pattern in `moe_q_gemm_rdna3.cu` / the Triton MoE kernel; FP8
+has no such unpacking, so it does not trip the L1 vector-cache hazard).
+
+### Required patch: `RocmPlatform.supports_fp8()` excludes gfx1151
+
+Out of the box vLLM HEAD (`470229c37` in the `vllm` conda env) raises
+`NotImplementedError: No FP8 MoE backend supports the deployment configuration.`
+for any FP8 MoE model on gfx1151. The cause is a one-line platform gate, not a
+kernel issue: `vllm/platforms/rocm.py` `RocmPlatform.supports_fp8()` returns
+`on_gfx9() or on_gfx12x()`, omitting gfx1151 (RDNA 3.5) even though Strix Halo
+has native FP8 WMMA. Patch:
+
+```python
+# vllm/platforms/rocm.py, RocmPlatform.supports_fp8 (was line 843)
+@classmethod
+def supports_fp8(cls) -> bool:
+    # gfx1151 (RDNA 3.5, Strix Halo Radeon 8060S) has native FP8 WMMA.
+    return on_gfx9() or on_gfx12x() or on_gfx1151()
+```
+
+After the patch vLLM selects the **Triton Fp8 MoE backend** (`TritonExperts`; the
+`aiter` package is not installed in this env, so the AITER path is unavailable).
+The model loads cleanly: 42 safetensors shards, **33.58 GiB in ~60 s**, then
+enters the dummy `profile_run`.
+
+### Launch command (gfx1151)
+
+```bash
+source /home/lhl/miniforge3/etc/profile.d/conda.sh; conda activate vllm
+export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
+export VLLM_TARGET_DEVICE=rocm
+export TORCHINDUCTOR_AUTOGRAD_CACHE=0 HSA_NO_SCRATCH_RECLAIM=1
+export PYTHONPATH=/home/lhl/vllm/vllm-main
+
+python3 -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen3.6-35B-A3B-FP8 \
+  --served-model-name qwen36-fp8 \
+  --language-model-only \
+  --dtype auto \
+  --max-model-len 8192 --max-num-seqs 8 --max-num-batched-tokens 8192 \
+  --gpu-memory-utilization 0.85 \
+  --enforce-eager \
+  --host 127.0.0.1 --port 8008
+```
+
+`--language-model-only` skips the ViT/multimodal stack (avoids the separate
+gfx1151 ViT-SDPA OOM, `docs/handoff-vllm-gfx1151.md` Task A). `--enforce-eager`
+avoids the torch.compile/Inductor graph-capture path on RDNA 3.5.
+
+### First cold compile is slow but not deadlocked
+
+The `profile_run` triggers first-time Triton JIT of the FP8 block-scaled MoE
+GEMMs (`w8a8_triton_block_scaled_mm`) plus the Q8-activation `fused_moe_kernel`.
+py-spy confirms EngineCore is inside the Triton AMD backend `make_amdgcn` ->
+LLVM `translate_to_mir` / `dump_sched_dag` / `translate_to_asm`. Each distinct
+FP8 kernel shape takes **~8 min** to codegen on first run. GPU sits at 0% during
+compile (CPU-bound LLVM); this is expected, not a hang. Progress is visible in
+the log as successive `Using default W8A8 Block FP8 kernel config` / `Using
+default MoE config` warnings, one per new shape.
+
+Results persist to `~/.triton/cache`; subsequent runs of the same model/arch are
+instant. After a full compile the cache holds 326 each of `.ttir/.ttgir/.llir/
+.amdgcn/.hsaco` per kernel.
+
+### `dump_sched_dag` is always-on dead debug overhead
+
+The Triton AMD backend (`triton/backends/amd/compiler.py` v3.7.0) runs **three**
+full LLVM AMDGPU passes per kernel in the default config, when only one is
+needed:
+
+- `compiler.py:472` `llvm.translate_to_mir(...)` -> result assigned to `_` and
+  discarded; only read back if `knobs.amd.swap_mir` is set (it is `None`).
+- `compiler.py:474` `llvm.dump_sched_dag(...)` -> returns `None`, output never
+  read, no `.dot`/`.mir`/`.dag` persisted (checked cache, `/tmp`, cwd).
+- `compiler.py:483` `llvm.translate_to_asm(...)` -> the only real output (the
+  `.hsaco`).
+
+Measured on `_w8a8_triton_block_scaled_mm` (the FP8 MoE GEMM): the `src` IR fed
+to `dump_sched_dag` is **2,507,750 B (2.4 MB)** of post-O3 LLVM IR; the resulting
+AMDGCN is 58,205 lines of asm, so the sched DAG is built over tens of thousands
+of machine instructions. `dump_sched_dag` is a scheduling-heuristic tuning aid
+for compiler engineers; for inference it is pure overhead. There is **no knob**
+to disable it (`knobs.amd` exposes `dump_amdgcn`/`dump_mir`/`swap_mir` but no
+`dump_sched_dag` toggle). Gating lines 472+474 behind `knobs.amd.dump_mir` would
+remove ~1/3 of per-kernel cold-compile time. This only helps the *next* cold
+compile or any new kernel shape; a warmed cache is unaffected.
+
+### Cold compile is single-threaded by nature
+
+During compile EngineCore uses ~1 core (main thread 99% in `R`, one extra
+`python3` thread ~13% is the async engine loop, not the compiler). This is
+fundamental, not a misconfiguration:
+
+- The Triton AMD LLVM codegen is one synchronous call into `libtriton` on the
+  calling thread. `libtriton.so` links `libpthread` but **not** OpenMP
+  (`libgomp`/`libomp` absent). LLVM's `llvm::parallel` framework is linked
+  (`_ZTHN4llvm8parallel11threadIndexE` symbol present) but a single Triton
+  kernel compiles to a single-function module, so there is nothing to
+  parallelize across.
+- No `TRITON_*` env knob or `knobs.amd` field enables parallel codegen.
+- vLLM's `compilation_config` parallel-compile / `compile_threads` machinery
+  applies only to the `torch.compile` / Inductor graph-capture path
+  (`CompilationMode.VLLM_COMPILE`), **not** to the Triton MoE JIT used under
+  `--enforce-eager` + FP8.
+
+So the only real levers for cold-compile cost are: (1) remove the two discarded
+LLVM passes above, (2) keep `~/.triton/cache` warm. There is no way to throw
+more cores at a single kernel's codegen in this stack.
+
 ## Qwen3.6-35B-A3B model candidates and sizes
 
 Sizes below are approximate GiB of model tensor files (`.safetensors`/`.bin`) as
