@@ -94,6 +94,69 @@ What differs from our first `gfx1151` attempt:
   `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`, `VLLM_TARGET_DEVICE=rocm`,
   `VLLM_USE_TRITON_AWQ=1`, `MIOPEN_FIND_MODE=FAST`,
   `VLLM_DISABLE_COMPILE_CACHE=1`, and `PYTHONNOUSERSITE=1`.
+
+### Verified: ViT SDPA 256 GiB OOM root cause and fix (2026-06-17)
+
+The ViT SDPA OOM is **not a vLLM bug** and **gfx1151-only**. It is PyTorch's
+ROCm SDPA selecting the naive "math" backend on experimentally-AOTriton-supported
+devices, which materializes the full `[B,nh,seq,seq]` attention matrix. Full
+write-up with evidence: `~/vllm/FIX-vit.md`.
+
+**Root cause.** `vllm/platforms/rocm.py:get_vit_attn_backend()` auto-selects
+`TORCH_SDPA` on gfx1151 because `flash_attn_triton_available()` fails
+(`flash_attn` is not installed in our gfx1151 env, and it also needs
+`FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`). `TORCH_SDPA` calls
+`F.scaled_dot_product_attention` via `MMEncoderAttention._forward_sdpa` →
+`vit_torch_sdpa_wrapper` → `vit_attn_wrappers.py:202`. PyTorch's SDPA backend
+selector prioritizes flash → mem-efficient → math; gfx1151 (RDNA3.5/Strix Halo)
+is only *experimentally* supported by AOTriton, so SDPA falls to "math" and
+allocates `[16,65536,65536]` ≈ 256-269 GiB.
+
+**Fix (verified this session, direct `F.sdpa` scaling sweep):**
+
+| seq_len | WITHOUT env var | WITH `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1` |
+|---------|-----------------|--------------------------------------------------|
+| 1,024 / 4,096 / 16,384 | OK (0.2 / 2.6 / 39.1 GB) | OK |
+| 32,768 | **OOM — tried to alloc 64 GiB** | OK |
+| 65,536 | ~269 GB (would OOM) | OK |
+
+With the env var set, PyTorch selects AOTriton flash/mem-efficient for SDPA on
+gfx1151 and no large intermediate is materialized. PyTorch prints the exact hint
+at the call site when the var is missing.
+
+**gfx1100 (W7900, RDNA3) is NOT affected** — it has "full" AOTriton support, so
+SDPA selects flash/mem-efficient natively with no warning and no env var needed.
+`TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1` is a gfx1151/Strix Halo (and
+gfx1101/RX 7800 XT) requirement only. Setting it on gfx1100 is harmless but
+unnecessary.
+
+**Two independent workarounds (either alone resolves the ViT OOM):**
+1. `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1` — fixes `F.scaled_dot_product_attention`
+   globally (recommended; covers any model-internal `F.sdpa` too).
+2. `--mm-encoder-attn-backend TRITON_ATTN` — routes the ViT through vLLM's own
+   `vit_triton_attn_wrapper`, bypassing `F.sdpa` entirely (ViT scope only;
+   kyuz0's approach).
+
+Note: `vit_torch_sdpa_wrapper` (vLLM's custom op, the `TORCH_SDPA` backend) is
+itself safe at all scales (~2.5 GB peak) — it tiles via Triton. The bug is purely
+in the bare `F.scaled_dot_product_attention` call that `apply_sdpa` makes inside
+the custom-op's per-sequence chunk loop.
+
+**Upstream tracking (do not duplicate):**
+- Issue [vllm-project/vllm#27706](https://github.com/vllm-project/vllm/issues/27706)
+  (CLOSED, `bug,rocm`) — our exact bug: Strix Halo + 256 GiB `F.sdpa` OOM on
+  Qwen2.5-VL/Qwen3-VL. Workaround `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1`
+  confirmed by `visago`, `mgehre-amd`, `r4dm`; root-cause writeup by AMD engineer
+  `amd-callumm` (reproduced on Strix Halo). Closed as "external to vLLM
+  (PyTorch/aotriton)."
+- PR [vllm-project/vllm#40289](https://github.com/vllm-project/vllm/pull/40289)
+  (OPEN) — adjacent prior art: fixes `flash_attn_triton_available()` to find
+  Triton-AMD kernels at their new `aiter.ops.triton._triton_kernels` location
+  after the 2026-03-12 aiter migration. A "default gfx1x ViT → TRITON_ATTN" PR
+  would collide with it — do not open a competing PR.
+- No vLLM PR/issue is warranted. The only optional upstream nudge is a tiny
+  `logger.warning_once` on gfx1x SDPA fallback (materially different from #40289,
+  low-risk), deferred unless we want it.
 - Their patch set still treats `amdsmi` as fragile in containers, forces the ROCm
   arch to `gfx1151`, disables unsafe AITER MoE/RMSNorm paths on `gfx1x`, adds
   RDNA AITER header fallbacks, and patches the WNA16 MoE loader's `tp_size`
