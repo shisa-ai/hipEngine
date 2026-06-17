@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-17
+
+- [diagnostic refresh] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 GPU0 README sweep: prefill `2142.4/2364.0/2367.6/1793.7/1392.7/960.8 -> 2198.4/2436.7/2453.3/1833.7/1412.5/973.8 tok/s` (+2.6/+3.1/+3.6/+2.2/+1.4/+1.4%) after the Q4_K_M correctness-restored rerun; decode stayed within `-0.5%..+0.0%`, stable IDs `318/220/220/332/22/63`, tracked peak flat `24.985 GiB` (`-1.279 GiB` vs the 2026-06-16 high-memory row); `benchmarks/results/2026-06-17-w7900-gpu0-gguf-q4km-correctness-restored-readme-sweep.json`.
+
 ## 2026-06-16
 
 - [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_s / GPU1 512/128+4K/128+128K/128: resident Q8_0 T16 1024-row `in=2048,out=2048` square tile `TN32 -> TN16` moved primary gate to `512/128` `1958.536/127.263 -> 1965.587/127.250 tok/s` and `4K/128` `2292.684/114.991 -> 2293.367/115.168 tok/s` with stable IDs `220/570`, flat `21.335 GiB`; required 128K final check `741.581/67.636 tok/s`, stable ID `[220]`, `23.310 GiB`; `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-square2048-tn16-gate.json`.

@@ -1146,7 +1146,7 @@ processes spawn `hipcc`. The active tuning loop uses GPU1
 verify the sysfs card name before llama.cpp peak-memory runs.
 
 ```bash
-# From /home/lhl/hipEngine-gguf-tuning
+# From /home/lhl/hipEngine
 ROOT=/home/lhl/mambaforge/envs/therock
 PY=$ROOT/bin/python3.12
 $ROOT/bin/hipcc --version > /tmp/hipengine-hipcc-version-713.txt
@@ -1155,37 +1155,7 @@ $ROOT/bin/hipcc --version > /tmp/hipengine-hipcc-version-713.txt
 ### hipEngine GGUF sweep
 
 ```bash
-GGUF_S=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf
-HIP_VISIBLE_DEVICES=1 \
-HIPENGINE_GGUF_DECODE_REPACK=1 \
-HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
-PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
-  --engine gguf --model "$GGUF_S" --quant gguf_q4_k_s \
-  --workloads 512/128 4K/128 \
-  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
-  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-  --use-wmma-prefill --use-gemv-decode \
-  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
-  --json benchmarks/results/<date>-gpu1-gguf-tuning-gate-hipengine-q4ks.json
-
-# Promotion/final check, after a candidate survives the primary gates.
-HIP_VISIBLE_DEVICES=1 \
-HIPENGINE_GGUF_DECODE_REPACK=1 \
-HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
-PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
-  --engine gguf --model "$GGUF_S" --quant gguf_q4_k_s \
-  --workloads 128K/128 \
-  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
-  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-  --use-wmma-prefill --use-gemv-decode \
-  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
-  --json benchmarks/results/<date>-gpu1-gguf-tuning-final-128k-hipengine-q4ks.json
-```
-
-Also run Q4_K_M when it fits the intended target:
-
-```bash
-GGUF_M=/home/lhl/hipEngine/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+GGUF_M=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_GGUF_DECODE_REPACK=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
@@ -1197,7 +1167,23 @@ PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --use-wmma-prefill --use-gemv-decode \
   --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
   --json benchmarks/results/<date>-gpu1-gguf-tuning-gate-hipengine-q4km.json
+
+# Promotion/final check, after a candidate survives the primary gates.
+HIP_VISIBLE_DEVICES=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
+PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
+  --engine gguf --model "$GGUF_M" --quant gguf_q4_k_m \
+  --workloads 128K/128 \
+  --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
+  --json benchmarks/results/<date>-gpu1-gguf-tuning-final-128k-hipengine-q4km.json
 ```
+
+Run Q4_K_S only as an explicit secondary memory/consumer-card diagnostic; it is
+not part of the active 1:1 llama.cpp parity gate.
 
 ### llama.cpp refresh
 
@@ -1205,7 +1191,7 @@ Use the checked-out local binaries so we compare against what the user is
 actually seeing:
 
 ```bash
-MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf
+MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_bench_with_peak.py \
   --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
   --model "$MODEL" --backend hip \
@@ -1213,7 +1199,7 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_bench_with_peak.py \
   --repetitions 3 --ngl 99 --flash-attn 1 \
   --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card0 \
   --extra-args "-dev ROCm0" \
-  --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-hip-q4ks.json
+  --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-hip-q4km.json
 
 python3 scripts/llamacpp_bench_with_peak.py \
   --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
@@ -1222,7 +1208,7 @@ python3 scripts/llamacpp_bench_with_peak.py \
   --repetitions 3 --ngl 99 --flash-attn 1 \
   --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card0 \
   --extra-args "-dev Vulkan0" \
-  --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-vulkan-q4ks.json
+  --output benchmarks/results/<date>-gpu1-gguf-tuning-baseline-llamacpp-vulkan-q4km.json
 ```
 
 ### PARO c=1 reference on the same host
@@ -1273,7 +1259,7 @@ Warm the JIT outside the profiler, then trace only cached runs. Store raw CSVs
 under `/tmp`; commit only compact summaries.
 
 ```bash
-RUN=/tmp/hipengine-gguf-tuning/<date>-q4ks-512
+RUN=/tmp/hipengine-gguf-tuning/<date>-q4km-512
 mkdir -p "$RUN"
 
 # Warmup/build outside rocprofv3.
@@ -1281,22 +1267,22 @@ HIP_VISIBLE_DEVICES=1 \
 HIPENGINE_GGUF_DECODE_REPACK=1 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
 PYTHONPATH=. "$PY" scripts/qwen35_gguf_bench.py \
-  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
-  --quant gguf_q4_k_s --prompt-length 512 --decode-tokens 16 \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 16 \
   --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk \
   --use-wmma-prefill --use-gemv-decode \
   --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
   --json "$RUN/warmup.json"
 
 # Trace a short decode window for kernel mix.
-rocprofv3 --kernel-trace -d "$RUN/rocprof" -o q4ks512 -f csv -- \
+rocprofv3 --kernel-trace -d "$RUN/rocprof" -o q4km512 -f csv -- \
   env HIP_VISIBLE_DEVICES=1 \
       HIPENGINE_GGUF_DECODE_REPACK=1 \
       HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt \
       PYTHONPATH=. \
       "$PY" scripts/qwen35_gguf_bench.py \
-        --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
-        --quant gguf_q4_k_s --prompt-length 512 --decode-tokens 16 \
+        --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+        --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 16 \
         --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk \
         --use-wmma-prefill --use-gemv-decode \
         --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
@@ -1304,7 +1290,7 @@ rocprofv3 --kernel-trace -d "$RUN/rocprof" -o q4ks512 -f csv -- \
 
 # Summarize the CSV into a compact artifact.
 python3 scripts/qwen35_gguf_rocprof_summary.py \
-  --csv "$RUN/rocprof/q4ks512_kernel_trace.csv" \
+  --csv "$RUN/rocprof/q4km512_kernel_trace.csv" \
   --tokens-decode 16 \
   --json benchmarks/results/<date>-gpu1-gguf-tuning-rocprof-summary.json
 ```
@@ -1361,9 +1347,11 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 
 ## First sprint checklist
 
-1. Create GPU1 gate artifacts for hipEngine GGUF Q4_K_S/Q4_K_M, local llama.cpp
-   HIP/Vulkan, and PARO where it fits on TheRock 7.13. Keep W7900 comparison
-   artifacts only when GPU1 cannot fit a required final/promotion shape.
+1. Create GPU1 gate artifacts for hipEngine GGUF Q4_K_M, local llama.cpp
+   HIP/Vulkan Q4_K_M, and PARO where it fits on TheRock 7.13. Keep W7900
+   comparison artifacts only when GPU1 cannot fit a required final/promotion
+   shape. Q4_K_S artifacts are secondary memory/consumer-card diagnostics only
+   when explicitly requested.
 2. Generate `G-M2` rocprof bucket summaries for at least `512/128` and `4K/128`.
 3. Answer these from data before editing kernels:
    - Is the gap primarily decode kernels, prefill kernels, host overhead, or memory/chunk policy?
@@ -1406,9 +1394,11 @@ A GGUF tuning change is promoted only when all of the following hold:
 
 - Is the user's latest `~/llama.cpp/` faster than the stale README HIP rows, and
   if so, which commit/build flag changed the target?
-- Does Q4_K_S or Q4_K_M become the canonical tuning target for hipEngine GGUF?
-- Can Q4_K_S fit the 24 GiB-class envelope after replacement-layout and scratch
-  cleanup, or is Q4_K_M the consumer-card default?
+- Q4_K_M is the canonical tuning target for hipEngine GGUF when comparing with
+  local llama.cpp rows; Q4_K_S is secondary memory/consumer-card context only.
+- Does the Q4_K_M path fit the 24 GiB-class envelope at the required contexts
+  after replacement-layout and scratch cleanup, or does consumer-card support
+  need an explicit Q4_K_S diagnostic/default decision?
 - Which GGUF path should get native sampling/logprob parity first: c=1 greedy
   only, c=1 sampled, or c>N batch?
 - Is any approximate/relaxed GGUF math acceptable, or do we keep strict GGML
