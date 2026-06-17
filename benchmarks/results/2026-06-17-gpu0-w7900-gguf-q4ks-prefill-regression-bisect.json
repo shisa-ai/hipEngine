@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-17",
+  "artifact_type": "diagnostic_bisect",
+  "status": "culprit_identified",
+  "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "note": "Bisect probes used the same isolated TheRock-style env as scripts/run_w7900_readme_refresh.sh and a direct max_sequence_length=131202 harness that only ran 512/128 and 4K/128. Each row used one warmup and two measured runs."
+  },
+  "prior_reference": {
+    "artifact": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json",
+    "commit": "fbbc7bf8",
+    "512/128": {"prefill_tok_s_median": 2226.422215144837, "decode_tok_s_median": 108.17261460961619, "final_token_id": 220, "tracked_peak_gib": 25.107746124267578},
+    "4K/128": {"prefill_tok_s_median": 2515.478112698793, "decode_tok_s_median": 98.5158626903348, "final_token_id": 570, "tracked_peak_gib": 25.107746124267578}
+  },
+  "probe_rows": [
+    {
+      "label": "before G-P4 memory fix",
+      "commit": "ee28d6f8",
+      "raw_json": "/tmp/hipengine-bisect-before_memfix-ee28d6f8-w7900-max131202.json",
+      "512/128": {"prefill_tok_s_median": 2286.0820246298226, "decode_tok_s_median": 109.3014429548912, "final_token_ids": [220, 220], "tracked_peak_gib": 24.864596366882324},
+      "4K/128": {"prefill_tok_s_median": 2532.888084300956, "decode_tok_s_median": 100.23011687150222, "final_token_ids": [570, 570], "tracked_peak_gib": 24.864596366882324}
+    },
+    {
+      "label": "G-P4 chunk-outer loop prefill memory fix",
+      "commit": "4c0a2521",
+      "raw_json": "/tmp/hipengine-bisect-memfix-4c0a2521-w7900-max131202.json",
+      "512/128": {"prefill_tok_s_median": 2181.710420438694, "decode_tok_s_median": 109.22929874587572, "final_token_ids": [220, 220], "tracked_peak_gib": 23.8284273147583},
+      "4K/128": {"prefill_tok_s_median": 2479.5575807021405, "decode_tok_s_median": 100.17947923619876, "final_token_ids": [570, 570], "tracked_peak_gib": 23.8284273147583},
+      "delta_vs_before_pct": {"512_prefill": -4.565523155628193, "4K_prefill": -2.1055215163023666, "peak_gib": -1.0361690521240234}
+    },
+    {
+      "label": "before fused MoE / Q8_0 raw drop",
+      "commit": "8bbda8c9",
+      "raw_json": "/tmp/hipengine-bisect-before_moe_fused-8bbda8c9-w7900-max131202.json",
+      "512/128": {"prefill_tok_s_median": 2186.3005972168685, "decode_tok_s_median": 109.38278836995708, "final_token_ids": [220, 220], "tracked_peak_gib": 23.8284273147583},
+      "4K/128": {"prefill_tok_s_median": 2479.1327386712583, "decode_tok_s_median": 100.2530273827374, "final_token_ids": [570, 570], "tracked_peak_gib": 23.8284273147583}
+    },
+    {
+      "label": "GGUF MoE fused activate+down and drop Q8_0 T16 repack",
+      "commit": "e089d1c2",
+      "raw_json": "/tmp/hipengine-bisect-moe_fused_drop_q8t16-e089d1c2-w7900-max131202.json",
+      "512/128": {"prefill_tok_s_median": 2143.889486763462, "decode_tok_s_median": 107.52864994292685, "final_token_ids": [1813, 1813], "tracked_peak_gib": 23.8284273147583},
+      "4K/128": {"prefill_tok_s_median": 2250.1508009117374, "decode_tok_s_median": 98.32729845544492, "final_token_ids": [151531, 151531], "tracked_peak_gib": 23.8284273147583},
+      "delta_vs_parent_pct": {"512_prefill": -1.9398572413782067, "4K_prefill": -9.236372630948697}
+    },
+    {
+      "label": "e089d1c2 with Q8_0 T16 materialization restored (temp patch)",
+      "commit": "e089d1c2+q8t16-restore-temp",
+      "raw_json": "/tmp/hipengine-bisect-e089-q8t16restore-w7900-max131202.json",
+      "512/128": {"prefill_tok_s_median": 2218.378608235057, "decode_tok_s_median": 109.19385396247338, "final_token_ids": [1813, 1813], "tracked_peak_gib": 23.8284273147583},
+      "4K/128": {"prefill_tok_s_median": 2485.4163745207643, "decode_tok_s_median": 100.22014227923829, "final_token_ids": [151531, 151531], "tracked_peak_gib": 23.8284273147583},
+      "interpretation": "Restoring Q8_0 T16 dispatch recovers nearly all of the 4K prefill regression, but does not restore the old final token IDs, so the correctness/ID change is from another part of e089d1c2."
+    },
+    {
+      "label": "current main script-env diagnostic",
+      "commit": "779fb1a5",
+      "raw_json": "/tmp/hipengine-current-w7900-script-env-max131202-512-4k-20260617-152310.json",
+      "512/128": {"prefill_tok_s_median": 2116.021977406076, "decode_tok_s_median": 107.7288942517429, "final_token_ids": [1813, 1813], "tracked_peak_gib": 23.8284273147583},
+      "4K/128": {"prefill_tok_s_median": 2242.428222311117, "decode_tok_s_median": 98.48969540157808, "final_token_ids": [151531, 151531], "tracked_peak_gib": 23.8284273147583}
+    }
+  ],
+  "conclusion": {
+    "memory_fix_effect": "4c0a2521 saved about 1.04 GiB and caused a modest W7900 prefill loss (~4.6% at 512/128, ~2.1% at 4K/128) with IDs still 220/570.",
+    "main_regression_culprit": "e089d1c2 is the first tested commit where IDs changed to 1813/151531 and the large 4K prefill drop appeared.",
+    "subchange_evidence": "A temporary e089d1c2 patch restoring Q8_0 T16 materialization recovered prefill to ~2218/2485 tok/s, implicating the Q8_0 raw-layout/drop-T16 part for most of the prefill regression; IDs remained changed, implicating another e089d1c2 runtime/kernel change for correctness."
+  }
+}

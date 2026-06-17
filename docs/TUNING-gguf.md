@@ -492,16 +492,22 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
-- **GPU0/W7900 current 512/4K diagnostic is regressed (2026-06-17).** A
-  current clean-`main` spot-check on GPU0 (`AMD Radeon Pro W7900`, TheRock HIP
-  `7.13`) with only `512/128` and `4K/128` workloads measured `512/128`
-  `1680.586` prefill / `107.931` decode tok/s and `4K/128` `1892.216` /
-  `98.004` tok/s, stable IDs `1813/151531`, peak `21.331 GiB`. Versus the
-  prior W7900 README refresh artifact (`2226.422` and `2515.478` prefill tok/s,
-  stable IDs `220/570`, peak `25.108 GiB` from the full default workload list),
-  this is about `-24.5%` / `-24.8%` prefill and the generated IDs differ. Treat
-  the current W7900 row as a diagnostic regression until investigated; do not
-  update the README scorecard from it. Artifact:
+- **GPU0/W7900 prefill regression bisect (2026-06-17).** The first current
+  W7900 spot-check without the isolated README script env exaggerated the drop;
+  rerunning under the same TheRock env style as `scripts/run_w7900_readme_refresh.sh`
+  and forcing `max_sequence_length=131202` shows two effects. The G-P4 chunk-outer
+  memory fix (`4c0a2521`) saved about `1.04 GiB` and moved W7900 prefill from
+  `2286.082 -> 2181.710 tok/s` (`512/128`, `-4.6%`) and `2532.888 ->
+  2479.558 tok/s` (`4K/128`, `-2.1%`) while keeping IDs `220/570`. The later
+  `e089d1c2` bundle (`GGUF MoE fused activate+down and drop Q8_0 T16 repack`)
+  is the first tested commit where IDs changed to `1813/151531` and where 4K
+  prefill fell sharply (`2479.133 -> 2250.151 tok/s`, `-9.2%`). A temporary
+  e089 patch restoring Q8_0 T16 materialization recovered prefill to
+  `2218.379/2485.416 tok/s` but did not restore IDs, so Q8_0 raw-layout dispatch
+  is the main prefill culprit and another e089 runtime/kernel change is the
+  correctness culprit. Treat current W7900 rows as diagnostic until e089 is split
+  or fixed. Artifacts:
+  `benchmarks/results/2026-06-17-gpu0-w7900-gguf-q4ks-prefill-regression-bisect.json`,
   `benchmarks/results/2026-06-17-gpu0-w7900-gguf-q4ks-current-512-4k-diagnostic.json`.
 
 - **G-D5 lm-head argmax fusion rejected (2026-06-17).** Reapplied the
