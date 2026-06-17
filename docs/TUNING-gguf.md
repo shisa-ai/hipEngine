@@ -1,8 +1,8 @@
 # GGUF Tuning Plan
 
-Date: 2026-06-16
-Branch/worktree: `gguf-tuning` / `/home/lhl/hipEngine-gguf-tuning`
-Scope: Qwen3.6-35B-A3B GGUF on GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`, 24 GiB-class) as the active eval/testbed, with W7900 rows kept as comparison references and the 0.8B GGUF fixtures kept as fast correctness sentinels.
+Date: 2026-06-17
+Branch/worktree: `main` / `/home/lhl/hipEngine`
+Scope: Qwen3.6-35B-A3B GGUF on GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`, 24 GiB-class) as the active eval/testbed. The canonical performance target is now `Q4_K_M` to match the local `llama.cpp` rows 1:1; `Q4_K_S` remains a secondary memory/consumer-card diagnostic unless explicitly requested. W7900 rows are comparison references and the 0.8B GGUF fixtures are fast correctness sentinels.
 
 ## Thesis
 
@@ -18,9 +18,10 @@ This file is the active GGUF-specific tuning playbook and punchlist. The running
 
 Active gates:
 
-- **Primary acceptance gates:** GPU1 `512/128` and `4K/128`, measuring both prefill and decode.
+- **Primary acceptance gates:** GPU1 `512/128` and `4K/128` on `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` / `gguf_q4_k_m`, measuring the full vector: prefill median, decode median, final generated IDs/logits, tracked peak, and sampled HIP-used peak when available. The scalar multiloop metric is advisory only; it is not an acceptance criterion by itself.
 - **Promotion check:** run `128K/128` before claiming a default-path GGUF win; if GPU1 cannot fit, record the blocker and rerun on the W7900 only as an explicitly labeled fallback.
 - **Correctness/memory:** stable generated IDs/logits on the gates, targeted GGUF tests green, and no raw+packed duplicate residency or unexplained peak-memory growth.
+- **Tradeoff policy:** do not unilaterally retain a candidate that regresses any gate dimension (prefill, decode, correctness, tracked/sampled memory, or launch/kernel fallback mix), even if another dimension improves. Re-run to separate noise from signal; if a tradeoff remains, park it as no-hold and ask the user/human lead to decide whether the tradeoff is acceptable.
 
 It complements:
 
@@ -48,18 +49,19 @@ Close the GGUF gap without weakening the architecture:
 3. **Keep the GGUF value proposition:** no torch hot path, no llama.cpp FFI shim
    on the hot path, no backend/quant branches in model/dispatch code, and no
    raw+packed duplicate residency in promoted paths.
-4. **Restore 24 GiB-class viability where possible.** The active GPU1 Q4_K_S
-   gate baseline fits `512/128` and `4K/128` at `21.335 GiB` tracked peak
-   (`21.954 GiB` sampled HIP used), but the stale W7900 full-sweep diagnostic
-   peaked at `25.108 GiB`. Promoted consumer-card rows need a specific memory
-   plan or must be labeled W7900-only.
+4. **Restore 24 GiB-class viability where possible.** The Q4_K_M primary gate
+   currently fits `512/128` and `4K/128` at about `22.49 GiB` tracked peak
+   (`~23.04 GiB` sampled HIP-used), leaving less than 1 GiB free on GPU1. Any
+   promoted consumer-card row needs a specific memory plan and must not trade
+   away prefill/decode/correctness unless the user explicitly accepts it.
 
 ## Current scorecard to explain, not yet the final baseline
 
-The table below stitches together the latest documented rows. Treat it as the
-first hypothesis map; the first tuning sprint must rerun the relevant rows from
-this branch/worktree under one clean TheRock ROCm 7.13 environment before making
-new claims.
+The table below stitches together older documented rows and is no longer the
+active 1:1 baseline because it mixes hipEngine `Q4_K_S` with llama.cpp `Q4_K_M`.
+Treat it as historical context only. New active GGUF tuning must use Q4_K_M
+across hipEngine and llama.cpp unless the user explicitly asks for a Q4_K_S
+memory/consumer-card diagnostic.
 
 | Workload | hipEngine GGUF Q4_K_S, W7900 TheRock 7.13 | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M | PARO parent c=1 target |
 | --- | ---: | ---: | ---: | ---: |
@@ -71,8 +73,10 @@ new claims.
 Sources: `benchmarks/README.md` 2026-06-14/15 rows and the source-lineage
 PARO table. Caveats:
 
-- The current GGUF row is Q4_K_S, while the stale llama.cpp comparison rows are
-  Q4_K_M. Rerun both Q4_K_S and Q4_K_M when possible.
+- The hipEngine column is Q4_K_S while the llama.cpp columns are Q4_K_M; do not
+  use this table for 1:1 performance acceptance. The current active loop should
+  instead use `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` with
+  `--quant gguf_q4_k_m`.
 - The GGUF README rows are retained diagnostics and explicitly carry
   `performance_claim=false`; promotion requires the full `docs/BENCHMARK.md`
   evidence and correctness gate.
@@ -88,25 +92,37 @@ than file parsing or Python host code.
 
 ## Active GPU1 gate baseline
 
-Established on 2026-06-15 from `/home/lhl/hipEngine-gguf-tuning` with
-`HIP_VISIBLE_DEVICES=1`, TheRock HIP `7.13.26162-1140233ffe`, cached HIP builds,
-`Qwen3.6-35B-A3B-UD-Q4_K_S.gguf`, `HIPENGINE_GGUF_DECODE_REPACK=1`, bulk prefill,
-WMMA prefill, and GEMV decode. Raw JSON lives at
-`/tmp/hipengine-gguf-tuning-gpu1-acceptance.json`; commit only compact retained
-artifacts after a tuning candidate is accepted.
+Canonical GGUF tuning is now `Q4_K_M`, not `Q4_K_S`, so comparisons to
+llama.cpp are 1:1. The last documented Q4_K_M correctness-good diagnostic before
+the `e089d1c2` regression is
+`benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`
+(commit `192335cc`):
+
+| Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Correctness sanity |
+| --- | ---: | ---: | ---: | --- |
+| 512/128 | `1866.036` | `124.537` | `22.491 GiB` | stable final token `318` |
+| 4K/128 | `2133.917` | `114.075` | `22.491 GiB` | stable final token `220` |
+
+A current `main` Q4_K_M diagnostic under the isolated TheRock env is
+`benchmarks/results/2026-06-17-gpu1-gguf-q4km-current-512-4k-diagnostic.json`:
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `1958.693` | `126.924` | `21.335 GiB` | `21.909 GiB` | stable final token `220`, finite logits |
-| 4K/128 | `2293.994` | `114.991` | `21.335 GiB` | `21.911 GiB` | stable final token `570`, finite logits |
+| 512/128 | `2229.888` | `125.865` | `22.487 GiB` | `23.039 GiB` | stable but token changed `318 -> 38118` |
+| 4K/128 | `2400.617` | `114.768` | `22.487 GiB` | `23.041 GiB` | stable but token changed `220 -> 1076` |
 
-Configured targeted GGUF guard tests also passed (`154 passed`). The primary
-multiloop metric is the minimum gate decode rate, currently `114.991 tok/s` after
-the resident Q8_0 T16 WMMA prefill tile policy was retuned again for small
-shared-expert shapes on rows > 512. This is a primary-gate prefill promotion
-(`512/128` +`0.35%`, `4K/128` +`0.68%` versus the prior T16 tile default), with
-flat memory and stable generated IDs; decode is mixed/in-noise (`4K/128` improved
-+`0.22%`, `512/128` moved -`0.17%`).
+Therefore the current row is diagnostic-only, not a promotion baseline: it uses
+the correct Q4_K_M model/quant and shows hipEngine decode still ahead of the
+user-provided llama.cpp Q4_K_M tg128 row, but it also confirms that current
+`main` still has the e089-family ID regression. Before resuming optimization,
+restore Q4_K_M gate IDs to `318/220` (or replace them only with a deliberate,
+reviewed correctness-oracle update). The primary multiloop scalar metric remains
+the minimum gate decode rate, but acceptance is the full gate vector; do not keep
+any prefill/decode/memory tradeoff without user approval.
+
+The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
+114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
+not the active 1:1 llama.cpp comparison.
 
 ## Active GPU1 profile findings
 
@@ -299,24 +315,34 @@ Retained notes:
 
 Current focused lanes from evidence:
 
-1. **Decode work should move above blind Q8 launch-bound tweaks:** dense Q8_0
+0. **Recovery before more tuning:** split or revert `e089d1c2` before resuming
+   optimization. The W7900 bisect shows the G-P4 memory fix is a modest, ID-safe
+   prefill cost, while `e089d1c2` is the first tested commit with the large 4K
+   prefill drop and the `220/570 -> 1813/151531` ID change on Q4_K_S; the
+   current Q4_K_M diagnostic similarly changed `318/220 -> 38118/1076`. Restore
+   Q8_0 T16 materialization for any covered promoted path, then audit the fused
+   selected-expert runtime/kernel changes separately. Do not treat current `main`
+   GGUF rows as a valid baseline until the Q4_K_M primary IDs are back to
+   `318/220` or an updated correctness oracle is deliberately approved.
+1. **llama.cpp prefill parity:** the 2026-06-16 local llama.cpp
+   `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` bench on GPU1 reported HIP
+   `pp512=2736.98 ± 53.51 tok/s`, `tg128=94.13 ± 1.29 tok/s`, and Vulkan
+   `pp512=2389.53 ± 16.94 tok/s`, `tg128=79.90 ± 0.22 tok/s` with `-fa 1`.
+   The correctness-good hipEngine Q4_K_M decode gate is still ahead of those
+   llama.cpp tg128 rows, but llama.cpp HIP pp512 is far ahead of hipEngine
+   prefill. Treat this as the main parity target after recovery, not as
+   permission to trade away decode/memory.
+2. **Decode work should move above blind Q8 launch-bound tweaks:** dense Q8_0
    T16 GEMV is still the largest decode bucket (`~35-38%`), but the active code
    object is scratch-free and low-VGPR and prior Q8 launch-bound/load variants
    no-held. Prefer dispatch/graph/full-attention or an algorithmic Q8 reduction
    over more occupancy pokes.
-2. **G-P4/P3 long-context follow-up:** GPU1 `128K/128` now fits and completes,
+3. **G-P4/P3 long-context follow-up:** GPU1 `128K/128` now fits and completes,
    but low-memory throughput is prefill-limited (`730.191 tok/s` vs the stale
    W7900 diagnostic `995.295 tok/s`). Next targets are lower-overhead
    long-context prefill staging, full-attention prefill chunk/AOTriton tuning,
-   or KV/cache residency reductions that permit larger chunks.
-3. **llama.cpp parity detour (new):** the 2026-06-16 local llama.cpp
-   `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` bench on GPU1 reported HIP
-   `pp512=2736.98 ± 53.51 tok/s`, `tg128=94.13 ± 1.29 tok/s`, and Vulkan
-   `pp512=2389.53 ± 16.94 tok/s`, `tg128=79.90 ± 0.22 tok/s` with `-fa 1`.
-   Decode remains behind the current hipEngine Q4_K_S decode gate, but HIP
-   pp512 is `+50.7%` over the current Q4_K_S `512/128` prefill median
-   (`1816.758 tok/s`) despite the larger `Q4_K_M` model. Treat this as a
-   prefill-priority signal, not a decode target.
+   or KV/cache residency reductions that permit larger chunks without regressing
+   short gates.
 4. **Secondary prefill checks:** after the half-seq rewrite, selected dual Q4_K
    WMMA is no longer the dominant 4K prefill bucket; GDN prefill recurrent and
    dense Q8_0 WMMA are now comparable follow-up targets, and any further G-P1
@@ -472,23 +498,22 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   `ggml-vulkan.cpp:3448-3496`, `3651-3753`, `4318-4332`). **Next test:** run a
   rocprofv3/RGP-equivalent llama.cpp HIP pp512 capture and a Vulkan pipeline log,
   then compare launch families against hipEngine's current `512/128` profile.
-- Apples-to-apples before adopting: the user benchmark is `Q4_K_M`, while the
-  active loop gates are `Q4_K_S`. The first refreshed current hipEngine
-  `Q4_K_M` GPU1 diagnostic is
+- Apples-to-apples before adopting: the user benchmark is `Q4_K_M`, so the
+  active loop gates must also be `Q4_K_M`. The first refreshed hipEngine Q4_K_M
+  GPU1 diagnostic was
   `benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`:
-  `512/128` measured `1866.036` prefill / `124.537` decode tok/s with stable
-  ID `[318, 318, 318]`; `4K/128` measured `2133.917` / `114.075` tok/s with
-  stable ID `[220, 220, 220]`; tracked peak was `22.491 GiB` and sampled HIP
-  used was about `23.068 GiB`. Against the user's same-model llama.cpp row,
-  llama.cpp HIP pp512 is `+46.7%` and Vulkan pp512 is `+28.1%`, while
-  hipEngine decode is still faster (`+32.3%` vs llama.cpp HIP tg128, `+55.9%`
-  vs Vulkan tg128). This confirms the immediate parity gap is short prefill,
-  not decode. Q4_K_M leaves less than 1 GiB sampled headroom on GPU1 at 4K, so
-  keep `Q4_K_S` as the active 128K promotion gate unless a Q4_K_M memory plan is
-  added. Prior hipEngine Q4_K_M rows (`2140.225` pp512 / `2640.840` 4K prefill)
-  are stale relative to this loop's Q4_K_S changes and should not be used as
-  final gap math. If a `Q4_K_S` llama.cpp model is available, still rerun
-  llama.cpp `Q4_K_S` before comparing the active gate directly.
+  `512/128` `1866.036` prefill / `124.537` decode tok/s with stable ID `[318]`,
+  and `4K/128` `2133.917` / `114.075` with stable ID `[220]`, tracked peak
+  `22.491 GiB`. A newer current-main diagnostic using the same Q4_K_M model is
+  `benchmarks/results/2026-06-17-gpu1-gguf-q4km-current-512-4k-diagnostic.json`:
+  `512/128` `2229.888` / `125.865`, `4K/128` `2400.617` / `114.768`, tracked
+  peak `22.487 GiB`, sampled HIP used `~23.04 GiB`, but IDs changed to
+  `38118/1076`. Therefore current-main Q4_K_M numbers are diagnostic only until
+  the e089 ID regression is fixed. Against the user's same-model llama.cpp row,
+  current hipEngine Q4_K_M pp512 is still behind llama.cpp HIP by `22.7%` and
+  Vulkan by `7.2%`, while decode remains faster (`+33.7%` vs llama.cpp HIP
+  tg128, `+57.5%` vs Vulkan tg128). The immediate 1:1 parity gap is short
+  prefill, but correctness recovery comes first.
 
 No-hold notes:
 
@@ -873,8 +898,8 @@ No-hold notes:
   rows `>512` policy. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-down512-tn16-rejected.json`.
 
-- **G-D2 Drop T16 decode-repack for Q8_0 (2026-06-17).** Removed `gguf_q8_0` from the T16 repack layout list. Tested against `Q4_K_M`. Saved ~0.55 GiB with neutral to slightly lower decode speeds (114.47 -> 113.72 tok/s).
-- **G-D3 fused activate+down for selected experts (2026-06-17).** Fused SiLU and the second/down GEMV for MoE selected experts into `qk_t16_selected_silu_x_direct_gemv_kernel`. Throughput impact was roughly neutral/negative so retained solely for reduced launch overhead.
+- **G-D2 drop T16 decode-repack for Q8_0 now no-hold pending split (2026-06-17).** Removing `gguf_q8_0` from the T16 repack layout looked like a memory win in the bundled `e089d1c2` run, but the W7900 bisect showed that restoring Q8_0 T16 materialization recovers most of the prefill loss (`4K/128` about `2250 -> 2485 tok/s`) while staying in the same tracked peak in the max-sequence probe. Do not keep the raw-Q8_0 replacement as a default without a fresh exact gate and explicit human approval for any memory/speed tradeoff.
+- **G-D3 fused activate+down for selected experts now correctness-blocked (2026-06-17).** The `e089d1c2` fused selected-expert bundle is the first tested point with deterministic ID drift (`220/570 -> 1813/151531`). Treat the fused `qk_t16_selected_silu_x_direct_gemv_kernel` / runtime changes as no-hold until split, covered by a targeted oracle, and proven on the full GGUF gate with no prefill/decode/memory regression.
 - **G-P4 chunk-outer loop prefill memory fix (2026-06-17).** Changed `_run_bulk_prefill_and_sample` to use a chunk-outer layer-inner loop when `use_expert_sidecar=False`, allocating `_prefill_hidden_a/b` and `_GGUFFullAttentionPrefillScratch` using `chunk_size` instead of `max_positions`. This saved ~1.25 GiB of memory, allowing 128K/128 prefill on `Q4_K_S` to fit easily within 24 GiB using the standard 4096-query chunks (`22.746 GiB` peak), superseding the previous 768-token low-memory limit.
 - **G-P4 low-memory non-attn chunks=512 not retained (2026-06-16).** Raising
   linear/MoE/post/RoPE chunks from 256 to 512 while keeping full-attn query at
@@ -1369,7 +1394,7 @@ A GGUF tuning change is promoted only when all of the following hold:
 
 - Relevant GGUF correctness fixtures pass, including qwen35moe when 35B paths are touched.
 - `rocprofv3 --kernel-trace` confirms the intended kernel(s) ran and no unexpected fallback dominates.
-- Same-suite benchmark improves prefill and/or decode on the GPU1 `512/128` and `4K/128` gates, or removes memory/launch/KV overhead without throughput regression.
+- Same-suite Q4_K_M benchmark improves prefill and/or decode on the GPU1 `512/128` and `4K/128` gates, or removes memory/launch/KV overhead without throughput regression in any primary gate dimension. A candidate with a remaining prefill/decode/memory/correctness tradeoff is no-hold until the user/human lead explicitly accepts it.
 - Benchmark artifact follows `docs/BENCHMARK.md` and rollup updates are made for accepted performance rows.
 - No torch hot-path import, no llama.cpp hot-path FFI, no model/dispatch `if backend == ...` or `if quant == ...` branch.
 - No unbounded duplicate residency; GPU1 `128K/128` is checked before promotion, and W7900-only rows are labeled as such.
@@ -1401,6 +1426,6 @@ A GGUF tuning change is promoted only when all of the following hold:
 - Is any approximate/relaxed GGUF math acceptable, or do we keep strict GGML
   dequant parity for all promoted rows?
 
-- **G-D2 Pack8 layout optimization.** Disabled `LAYOUT_Q4_K_PACK8` layout materialization and reverted back to using `LAYOUT_RAW_GGUF` for dense Q4_K tensors. Peak memory dropped by 1.15 GiB (from 22.48 GiB to 21.34 GiB). Decode throughput slightly dropped (114.60 -> 114.42 tok/s) and prefill throughput slightly dropped (2293 -> 2072 tok/s) but this is an acceptable tradeoff for memory. Retained.
+- **G-D2 Pack8 layout optimization tradeoff needs human review.** Disabling `LAYOUT_Q4_K_PACK8` layout materialization and reverting dense Q4_K tensors to `LAYOUT_RAW_GGUF` was recorded as a memory win, but it also recorded prefill/decode losses. Under the current policy this is not an agent-auto-retain decision: keep it only if a fresh full-vector gate proves no regression, or if the user/human lead explicitly accepts the speed-for-memory tradeoff after reviewing the artifact.
 - **G-H1 C-dispatch for GGUF MoE.** Invalidated. Analysis showed that GGUF uses HIP graph capture for decode (if enabled, as it is by default), so Python dispatch overhead is already bypassed entirely. This also applied to other optimizations involving C-dispatch, confirming that the current logic is optimal without relying on `moe_c1_dispatch` which was designed for PARO where graph capture is not always available.
 - **G-H2 Fuse RMSNorm+rotate.** Invalidated. GGUF doesn't use AWQ input-rotation; this optimization is specific to PARO's w4a16 layout. The current GGUF architecture uses rotary position embeddings (`gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight`) applied directly to the query/key outputs AFTER the linear layer, making this specific fusion inapplicable to GGUF.

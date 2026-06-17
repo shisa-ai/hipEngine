@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-17",
+  "artifact_type": "diagnostic_q4km_primary_gate",
+  "performance_claim": false,
+  "status": "diagnostic_only_correctness_baseline_mismatch",
+  "commit": "7b249536",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX gfx1100, 24 GiB class",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "command": "env -i ... HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gpu1-q4km-current-512-4k-20260617-064721.json",
+  "raw_json": "/tmp/hipengine-gpu1-q4km-current-512-4k-20260617-064721.json",
+  "previous_q4km_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json",
+  "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+  "workloads": [
+    "512/128",
+    "4K/128"
+  ],
+  "warmup_runs": 2,
+  "measured_runs": 5,
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s_median": 2229.88776087867,
+      "decode_tok_s_median": 125.86529440312968,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        38118,
+        38118,
+        38118,
+        38118,
+        38118
+      ],
+      "final_token_ids_stable": true,
+      "hip_used_peak_sampled_gib_median": 23.03943634033203,
+      "previous_q4km_correctness_good_baseline": {
+        "decode_tok_s_median": 124.53699190945986,
+        "final_token_ids": [
+          318,
+          318,
+          318
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 1866.0357135873373,
+        "tracked_peak_allocated_gib_median": 22.491091787815094
+      },
+      "delta_vs_previous_prefill_pct": 19.498664716971035,
+      "delta_vs_previous_decode_pct": 1.0665927234178918,
+      "ids_match_previous_baseline": false
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2400.6172106638014,
+      "decode_tok_s_median": 114.76842506077143,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        1076,
+        1076,
+        1076,
+        1076,
+        1076
+      ],
+      "final_token_ids_stable": true,
+      "hip_used_peak_sampled_gib_median": 23.04138946533203,
+      "previous_q4km_correctness_good_baseline": {
+        "decode_tok_s_median": 114.07508492127434,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2133.917447563812,
+        "tracked_peak_allocated_gib_median": 22.491091787815094
+      },
+      "delta_vs_previous_prefill_pct": 12.4981293631798,
+      "delta_vs_previous_decode_pct": 0.607792788386341,
+      "ids_match_previous_baseline": false
+    }
+  },
+  "comparison_to_user_llamacpp_q4km_512": {
+    "llamacpp_hip_pp512_tok_s": 2736.98,
+    "llamacpp_vulkan_pp512_tok_s": 2389.53,
+    "llamacpp_hip_tg128_tok_s": 94.13,
+    "llamacpp_vulkan_tg128_tok_s": 79.9,
+    "llamacpp_hip_prefill_advantage_pct": 22.740706865062755,
+    "llamacpp_vulkan_prefill_advantage_pct": 7.159205136783386,
+    "hipengine_decode_advantage_vs_llamacpp_hip_pct": 33.71432529812992,
+    "hipengine_decode_advantage_vs_llamacpp_vulkan_pct": 57.52852866474303
+  },
+  "interpretation": [
+    "This is the correct Q4_K_M model/quant for 1:1 comparison with the user-provided llama.cpp rows.",
+    "The current code is not a promotion baseline because final IDs changed versus the previous Q4_K_M correctness-good diagnostic (512/128 318 -> 38118; 4K/128 220 -> 1076).",
+    "Current hipEngine Q4_K_M 512 prefill is still behind llama.cpp HIP by about 22.74% and Vulkan by about 7.16%, while decode remains ahead of both llama.cpp rows.",
+    "Use Q4_K_M across future active GGUF loop gates; Q4_K_S should be secondary memory/consumer-card diagnostics unless explicitly requested."
+  ]
+}
