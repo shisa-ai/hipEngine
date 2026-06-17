@@ -410,3 +410,154 @@ extern "C" int hipengine_mtp_dense_attn_f32(
       tokens, heads, kv_heads, qk_head_dim, value_head_dim, cache_tokens, scale);
   return static_cast<int>(hipGetLastError());
 }
+
+// ---- MTP NextN FFN sub-kernels (F32, correctness-first) ----
+
+// SiLU-mul fused: out[i] = silu(gate[i]) * up[i], where silu(x) = x/(1+exp(-x)).
+extern "C" __global__ void hipengine_mtp_silu_mul_f32_kernel(
+    const float* __restrict__ gate,
+    const float* __restrict__ up,
+    float* __restrict__ out,
+    int64_t n) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < n;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    float g = gate[i];
+    out[i] = g / (1.0f + __expf(-g)) * up[i];
+  }
+}
+
+extern "C" int hipengine_mtp_silu_mul_f32(
+    const float* gate,
+    const float* up,
+    float* out,
+    int64_t n,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int block = 256;
+  const int grid = static_cast<int>((n + block - 1) / block);
+  hipLaunchKernelGGL(
+      hipengine_mtp_silu_mul_f32_kernel,
+      dim3(static_cast<unsigned int>(grid)),
+      dim3(block),
+      0,
+      stream,
+      gate, up, out, n);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Elementwise mul: out[i] = a[i] * b[i].
+extern "C" __global__ void hipengine_mtp_mul_f32_kernel(
+    const float* __restrict__ a,
+    const float* __restrict__ b,
+    float* __restrict__ out,
+    int64_t n) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < n;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    out[i] = a[i] * b[i];
+  }
+}
+
+extern "C" int hipengine_mtp_mul_f32(
+    const float* a,
+    const float* b,
+    float* out,
+    int64_t n,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int block = 256;
+  const int grid = static_cast<int>((n + block - 1) / block);
+  hipLaunchKernelGGL(
+      hipengine_mtp_mul_f32_kernel,
+      dim3(static_cast<unsigned int>(grid)),
+      dim3(block),
+      0,
+      stream,
+      a, b, out, n);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Scalar scale: out[i] = scalar * x[i].
+extern "C" __global__ void hipengine_mtp_scale_f32_kernel(
+    const float* __restrict__ x,
+    float* __restrict__ out,
+    float scalar,
+    int64_t n) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < n;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    out[i] = scalar * x[i];
+  }
+}
+
+extern "C" int hipengine_mtp_scale_f32(
+    const float* x,
+    float* out,
+    float scalar,
+    int64_t n,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int block = 256;
+  const int grid = static_cast<int>((n + block - 1) / block);
+  hipLaunchKernelGGL(
+      hipengine_mtp_scale_f32_kernel,
+      dim3(static_cast<unsigned int>(grid)),
+      dim3(block),
+      0,
+      stream,
+      x, out, scalar, n);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Row scale (broadcast): out[t, d] = scale[t] * x[t, d].  One block per row.
+extern "C" __global__ void hipengine_mtp_row_scale_f32_kernel(
+    const float* __restrict__ scale,
+    const float* __restrict__ x,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t hidden) {
+  const int64_t t = static_cast<int64_t>(blockIdx.x);
+  if (t >= tokens) {
+    return;
+  }
+  const float s = scale[t];
+  const int64_t base = t * hidden;
+  for (int64_t d = static_cast<int64_t>(threadIdx.x); d < hidden;
+       d += static_cast<int64_t>(blockDim.x)) {
+    out[base + d] = s * x[base + d];
+  }
+}
+
+extern "C" int hipengine_mtp_row_scale_f32(
+    const float* scale,
+    const float* x,
+    float* out,
+    int64_t tokens,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  int block = 256;
+  if (hidden < block) {
+    block = static_cast<int>(hidden);
+  }
+  if (block < 1) {
+    block = 1;
+  }
+  hipLaunchKernelGGL(
+      hipengine_mtp_row_scale_f32_kernel,
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(block)),
+      0,
+      stream,
+      scale, x, out, tokens, hidden);
+  return static_cast<int>(hipGetLastError());
+}

@@ -304,6 +304,123 @@ def mtp_dense_attn_f32(
     _check_launch(runtime, err)
 
 
+# ptr(gate) + ptr(up) + ptr(out) + n + stream
+_ARGTYPES_SILU_MUL_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def mtp_silu_mul_f32(
+    gate_ptr: int,
+    up_ptr: int,
+    out_ptr: int,
+    n: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused ``out = silu(gate) * up`` (SiLU = x/(1+exp(-x)))."""
+
+    _check_positive("n", n)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_mtp_silu_mul_f32", _ARGTYPES_SILU_MUL_F32, ctypes.c_int)
+    err = fn(gate_ptr, up_ptr, out_ptr, n, stream)
+    _check_launch(runtime, err)
+
+
+# ptr(a) + ptr(b) + ptr(out) + n + stream
+_ARGTYPES_MUL_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def mtp_mul_f32(
+    a_ptr: int,
+    b_ptr: int,
+    out_ptr: int,
+    n: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch elementwise ``out = a * b``."""
+
+    _check_positive("n", n)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_mtp_mul_f32", _ARGTYPES_MUL_F32, ctypes.c_int)
+    err = fn(a_ptr, b_ptr, out_ptr, n, stream)
+    _check_launch(runtime, err)
+
+
+# ptr(x) + ptr(out) + scalar(float) + n + stream
+_ARGTYPES_SCALE_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_float,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def mtp_scale_f32(
+    x_ptr: int,
+    out_ptr: int,
+    scalar: float,
+    n: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch ``out = scalar * x``."""
+
+    _check_positive("n", n)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_mtp_scale_f32", _ARGTYPES_SCALE_F32, ctypes.c_int)
+    err = fn(x_ptr, out_ptr, float(scalar), n, stream)
+    _check_launch(runtime, err)
+
+
+# ptr(scale) + ptr(x) + ptr(out) + tokens + hidden + stream
+_ARGTYPES_ROW_SCALE_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def mtp_row_scale_f32(
+    scale_ptr: int,
+    x_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch broadcast row-scale ``out[t, d] = scale[t] * x[t, d]``."""
+
+    _check_positive("tokens", tokens)
+    _check_positive("hidden", hidden)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_mtp_row_scale_f32", _ARGTYPES_ROW_SCALE_F32, ctypes.c_int
+    )
+    err = fn(scale_ptr, x_ptr, out_ptr, tokens, hidden, stream)
+    _check_launch(runtime, err)
+
+
 def qwen35_gguf_mtp_eh_proj_f32(
     hidden_seed: "np.ndarray",
     token_embedding: "np.ndarray",
@@ -553,6 +670,242 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
             free(buf, runtime=runtime)
 
 
+def qwen35_gguf_mtp_moe_routing_f32(
+    hidden: "np.ndarray",
+    router_weight: "np.ndarray",
+    *,
+    experts_used: int,
+    expert_weights_scale: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_moe_routing``.
+
+    Router linear on GPU, softmax/top-k/renorm on host (correctness-first for
+    the tiny [tokens, experts] fixture; M6 GPU-accelerates the softmax/top-k).
+    """
+
+    x = np.ascontiguousarray(hidden, dtype=np.float32)
+    router = np.ascontiguousarray(router_weight, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    tokens, hidden_size = x.shape
+    top_k = int(experts_used)
+    experts = router.shape[0]
+    if top_k <= 0:
+        raise ValueError("experts_used must be positive")
+    if top_k > experts:
+        raise ValueError("experts_used must be <= number of experts")
+
+    runtime = get_hip_runtime()
+    buffers: list = []
+    try:
+        x_dev = malloc(x.nbytes, runtime=runtime); buffers.append(x_dev)
+        router_dev = malloc(router.nbytes, runtime=runtime); buffers.append(router_dev)
+        logits_dev = malloc(tokens * experts * 4, runtime=runtime); buffers.append(logits_dev)
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+        copy_host_to_device(router_dev, host_array_ptr(router), runtime=runtime)
+        mtp_linear_f32(x_dev.ptr, router_dev.ptr, logits_dev.ptr, tokens, hidden_size, experts,
+                       runtime=runtime)
+        logits = np.empty((tokens, experts), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+    # softmax + top-k + renorm on host (correctness-first)
+    shifted = logits - np.max(logits, axis=-1, keepdims=True)
+    exp = np.exp(shifted)
+    probs = (exp / np.sum(exp, axis=-1, keepdims=True)).astype(np.float32)
+    selected = np.argsort(-probs, axis=-1, kind="stable")[:, :top_k].astype(np.int64)
+    selected_weights = np.take_along_axis(probs, selected, axis=-1).astype(np.float32)
+    weight_sum = np.maximum(
+        np.sum(selected_weights, axis=-1, keepdims=True), np.float32(6.103515625e-5)
+    )
+    selected_weights = (selected_weights / weight_sum).astype(np.float32)
+    scale_value = float(expert_weights_scale)
+    if scale_value != 0.0 and scale_value != 1.0:
+        selected_weights = (selected_weights * np.float32(scale_value)).astype(np.float32)
+    return selected, selected_weights
+
+
+def qwen35_gguf_mtp_ffn_sublayer_f32(
+    hidden: "np.ndarray",
+    attn_post_norm_weight: "np.ndarray",
+    router_weight: "np.ndarray",
+    gate_qweight: "np.ndarray",
+    up_qweight: "np.ndarray",
+    down_qweight: "np.ndarray",
+    gate_qtype: "GGMLQuantizationType",
+    up_qtype: "GGMLQuantizationType",
+    down_qtype: "GGMLQuantizationType",
+    shared_gate_logit_weight: "np.ndarray",
+    shared_gate_qweight: "np.ndarray",
+    shared_up_qweight: "np.ndarray",
+    shared_down_qweight: "np.ndarray",
+    shared_qtype: "GGMLQuantizationType",
+    *,
+    experts_used: int,
+    expert_weights_scale: float = 1.0,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_ffn_sublayer``.
+
+    M3 scope (correctness-first): F32 qtype only (all quant-gemv = x @ W.T).
+    K-quant (Q4_K/Q5_K/Q8_0) expert paths raise NotImplementedError (M6).  Router
+    softmax/top-k on host; expert FFN + shared expert + residual on GPU.
+    """
+
+    from hipengine.quant.gguf import GGMLQuantizationType
+
+    for qt, name in (
+        (gate_qtype, "gate_qtype"), (up_qtype, "up_qtype"), (down_qtype, "down_qtype"),
+        (shared_qtype, "shared_qtype"),
+    ):
+        if qt != GGMLQuantizationType.F32:
+            raise NotImplementedError(
+                f"{name}={qt.name} not supported in M3 (F32-only); K-quant is M6 work"
+            )
+
+    x = np.ascontiguousarray(hidden, dtype=np.float32)
+    norm_weight = np.ascontiguousarray(attn_post_norm_weight, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    tokens, hidden_size = x.shape
+    if norm_weight.shape != (hidden_size,):
+        raise ValueError("attn_post_norm_weight must have shape [hidden]")
+
+    gate_q = np.ascontiguousarray(gate_qweight, dtype=np.float32)
+    up_q = np.ascontiguousarray(up_qweight, dtype=np.float32)
+    down_q = np.ascontiguousarray(down_qweight, dtype=np.float32)
+    if gate_q.ndim != 3 or up_q.ndim != 3 or down_q.ndim != 3:
+        raise ValueError("expert weights must be rank-3 [E, out, in]")
+    num_experts = gate_q.shape[0]
+    inter_dim = gate_q.shape[1]
+    shared_gate_q = np.ascontiguousarray(shared_gate_qweight, dtype=np.float32)
+    shared_up_q = np.ascontiguousarray(shared_up_qweight, dtype=np.float32)
+    shared_down_q = np.ascontiguousarray(shared_down_qweight, dtype=np.float32)
+    gate_vec = np.ascontiguousarray(shared_gate_logit_weight, dtype=np.float32)
+
+    runtime = get_hip_runtime()
+    buffers: list = []
+    try:
+        # normed = rmsnorm(hidden, attn_post_norm)
+        normed_dev = malloc(x.nbytes, runtime=runtime); buffers.append(normed_dev)
+        x_dev = malloc(x.nbytes, runtime=runtime); buffers.append(x_dev)
+        norm_dev = malloc(norm_weight.nbytes, runtime=runtime); buffers.append(norm_dev)
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+        copy_host_to_device(norm_dev, host_array_ptr(norm_weight), runtime=runtime)
+        mtp_rmsnorm_f32(x_dev.ptr, norm_dev.ptr, normed_dev.ptr, tokens, hidden_size, eps=eps,
+                        runtime=runtime)
+
+        # routing (router linear on GPU, softmax/topk on host)
+        selected_experts, routing_weights = qwen35_gguf_mtp_moe_routing_f32(
+            x.copy(),  # host copy of hidden for the host-side routing shim
+            router_weight,
+            experts_used=experts_used,
+            expert_weights_scale=expert_weights_scale,
+        )
+        top_k = selected_experts.shape[1]
+
+        # selected_out = sum over selected experts of routing_weight * down(silu(gate)*up)
+        selected_out_dev = malloc(tokens * hidden_size * 4, runtime=runtime)
+        buffers.append(selected_out_dev)
+        # zero-init
+        zero = np.zeros((tokens, hidden_size), dtype=np.float32)
+        copy_host_to_device(selected_out_dev, host_array_ptr(zero), runtime=runtime)
+
+        normed_host = np.empty((tokens, hidden_size), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(normed_host), normed_dev, runtime=runtime)
+
+        for t in range(tokens):
+            xt = np.ascontiguousarray(normed_host[t : t + 1])
+            xt_dev = malloc(xt.nbytes, runtime=runtime); buffers.append(xt_dev)
+            copy_host_to_device(xt_dev, host_array_ptr(xt), runtime=runtime)
+            for k in range(top_k):
+                e = int(selected_experts[t, k])
+                w = float(routing_weights[t, k])
+                g_w = np.ascontiguousarray(gate_q[e])  # [inter, hidden]
+                u_w = np.ascontiguousarray(up_q[e])    # [inter, hidden]
+                d_w = np.ascontiguousarray(down_q[e])  # [hidden, inter]
+                g_dev = malloc(g_w.nbytes, runtime=runtime); buffers.append(g_dev)
+                u_dev = malloc(u_w.nbytes, runtime=runtime); buffers.append(u_dev)
+                d_dev = malloc(d_w.nbytes, runtime=runtime); buffers.append(d_dev)
+                copy_host_to_device(g_dev, host_array_ptr(g_w), runtime=runtime)
+                copy_host_to_device(u_dev, host_array_ptr(u_w), runtime=runtime)
+                copy_host_to_device(d_dev, host_array_ptr(d_w), runtime=runtime)
+                gate_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(gate_out)
+                up_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(up_out)
+                inter_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(inter_out)
+                down_out = malloc(1 * hidden_size * 4, runtime=runtime); buffers.append(down_out)
+                scaled = malloc(1 * hidden_size * 4, runtime=runtime); buffers.append(scaled)
+                mtp_linear_f32(xt_dev.ptr, g_dev.ptr, gate_out.ptr, 1, hidden_size, inter_dim,
+                               runtime=runtime)
+                mtp_linear_f32(xt_dev.ptr, u_dev.ptr, up_out.ptr, 1, hidden_size, inter_dim,
+                               runtime=runtime)
+                mtp_silu_mul_f32(gate_out.ptr, up_out.ptr, inter_out.ptr, inter_dim,
+                                 runtime=runtime)
+                mtp_linear_f32(inter_out.ptr, d_dev.ptr, down_out.ptr, 1, inter_dim, hidden_size,
+                               runtime=runtime)
+                mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, runtime=runtime)
+                # selected_out[t] += scaled
+                row_dev = malloc(hidden_size * 4, runtime=runtime); buffers.append(row_dev)
+                mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr, row_dev.ptr,
+                            hidden_size, runtime=runtime)
+                # copy row back
+                import ctypes as _ct
+                runtime.memcpy(selected_out_dev.ptr + t * hidden_size * 4, row_dev.ptr,
+                               hidden_size * 4, 0)  # 0 = hipMemcpyDeviceToDevice
+
+        # shared expert
+        sg_dev = malloc(shared_gate_q.nbytes, runtime=runtime); buffers.append(sg_dev)
+        su_dev = malloc(shared_up_q.nbytes, runtime=runtime); buffers.append(su_dev)
+        sd_dev = malloc(shared_down_q.nbytes, runtime=runtime); buffers.append(sd_dev)
+        copy_host_to_device(sg_dev, host_array_ptr(shared_gate_q), runtime=runtime)
+        copy_host_to_device(su_dev, host_array_ptr(shared_up_q), runtime=runtime)
+        copy_host_to_device(sd_dev, host_array_ptr(shared_down_q), runtime=runtime)
+        s_gate = malloc(tokens * inter_dim * 4, runtime=runtime); buffers.append(s_gate)
+        s_up = malloc(tokens * inter_dim * 4, runtime=runtime); buffers.append(s_up)
+        s_inter = malloc(tokens * inter_dim * 4, runtime=runtime); buffers.append(s_inter)
+        s_out = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(s_out)
+        mtp_linear_f32(normed_dev.ptr, sg_dev.ptr, s_gate.ptr, tokens, hidden_size, inter_dim,
+                       runtime=runtime)
+        mtp_linear_f32(normed_dev.ptr, su_dev.ptr, s_up.ptr, tokens, hidden_size, inter_dim,
+                       runtime=runtime)
+        mtp_silu_mul_f32(s_gate.ptr, s_up.ptr, s_inter.ptr, tokens * inter_dim, runtime=runtime)
+        mtp_linear_f32(s_inter.ptr, sd_dev.ptr, s_out.ptr, tokens, inter_dim, hidden_size,
+                       runtime=runtime)
+
+        # shared_gate_logit = normed @ gate_vec  -> [tokens, 1]
+        gv_dev = malloc(gate_vec.nbytes, runtime=runtime); buffers.append(gv_dev)
+        sgl_dev = malloc(tokens * 1 * 4, runtime=runtime); buffers.append(sgl_dev)
+        copy_host_to_device(gv_dev, host_array_ptr(gate_vec), runtime=runtime)
+        mtp_linear_f32(normed_dev.ptr, gv_dev.ptr, sgl_dev.ptr, tokens, hidden_size, 1,
+                       runtime=runtime)
+        sgl_host = np.empty((tokens, 1), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(sgl_host), sgl_dev, runtime=runtime)
+        sigmoid_vec = (1.0 / (1.0 + np.exp(-sgl_host))).astype(np.float32).reshape(tokens)
+        sig_dev = malloc(tokens * 4, runtime=runtime); buffers.append(sig_dev)
+        copy_host_to_device(sig_dev, host_array_ptr(sigmoid_vec), runtime=runtime)
+        gated_shared = malloc(tokens * hidden_size * 4, runtime=runtime)
+        buffers.append(gated_shared)
+        mtp_row_scale_f32(sig_dev.ptr, s_out.ptr, gated_shared.ptr, tokens, hidden_size,
+                          runtime=runtime)
+
+        # out = hidden + selected_out + gated_shared
+        tmp = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(tmp)
+        out_dev = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(out_dev)
+        mtp_add_f32(x_dev.ptr, selected_out_dev.ptr, tmp.ptr, tokens * hidden_size,
+                    runtime=runtime)
+        mtp_add_f32(tmp.ptr, gated_shared.ptr, out_dev.ptr, tokens * hidden_size,
+                    runtime=runtime)
+        runtime.device_synchronize()
+        out = np.empty((tokens, hidden_size), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+        return out
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+
 def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         register(
@@ -563,6 +916,16 @@ def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey(backend, "mtp_nextn_attention", "gguf_f32", "qwen35_dense"),
             qwen35_gguf_mtp_attention_sublayer_f32,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "mtp_nextn_moe_routing", "gguf_f32", "qwen35"),
+            qwen35_gguf_mtp_moe_routing_f32,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "mtp_nextn_ffn", "gguf_f32", "qwen35"),
+            qwen35_gguf_mtp_ffn_sublayer_f32,
             replace=replace,
         )
 
@@ -576,10 +939,16 @@ __all__ = [
     "mtp_dense_attn_f32",
     "mtp_eh_proj_f32",
     "mtp_linear_f32",
+    "mtp_mul_f32",
     "mtp_rmsnorm_f32",
+    "mtp_row_scale_f32",
+    "mtp_scale_f32",
     "mtp_sigmoid_gate_mul_f32",
+    "mtp_silu_mul_f32",
     "plan_mtp_nextn_build",
     "qwen35_gguf_mtp_attention_sublayer_f32",
     "qwen35_gguf_mtp_eh_proj_f32",
+    "qwen35_gguf_mtp_ffn_sublayer_f32",
+    "qwen35_gguf_mtp_moe_routing_f32",
     "register_mtp_nextn_kernels",
 ]
