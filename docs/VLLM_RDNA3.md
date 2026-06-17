@@ -309,21 +309,67 @@ Out of the box vLLM HEAD (`470229c37` in the `vllm` conda env) raises
 `NotImplementedError: No FP8 MoE backend supports the deployment configuration.`
 for any FP8 MoE model on gfx1151. The cause is a one-line platform gate, not a
 kernel issue: `vllm/platforms/rocm.py` `RocmPlatform.supports_fp8()` returns
-`on_gfx9() or on_gfx12x()`, omitting gfx1151 (RDNA 3.5) even though Strix Halo
-has native FP8 WMMA. Patch:
+`on_gfx9() or on_gfx12x()`, omitting gfx11 entirely. **That gate is
+architecturally correct for *native* FP8** (see the ISA section below): native
+FP8 matrix/compute is CDNA3 (`gfx9`, MI300) and RDNA4 (`gfx12xx`) only. Neither
+RDNA3 (`gfx1100`) nor RDNA3.5 (`gfx1151`) has native FP8. The patch below does
+**not** enable native FP8 — it lets Triton fall back to its *emulated* FP8 path
+(fp8 -> fp16 upcast + native `v_wmma_f32_16x16x16_f16`). Patch:
 
 ```python
 # vllm/platforms/rocm.py, RocmPlatform.supports_fp8 (was line 843)
 @classmethod
 def supports_fp8(cls) -> bool:
-    # gfx1151 (RDNA 3.5, Strix Halo Radeon 8060S) has native FP8 WMMA.
+    # NOTE: gfx11 (RDNA3/3.5) has NO native FP8. This enables Triton's EMULATED
+    # fp8 path (upcast to fp16 + native fp16 WMMA), not a native fp8 datapath.
+    # Correct but no FP8 compute throughput; only saves weight memory/bandwidth.
     return on_gfx9() or on_gfx12x() or on_gfx1151()
 ```
 
-After the patch vLLM selects the **Triton Fp8 MoE backend** (`TritonExperts`; the
-`aiter` package is not installed in this env, so the AITER path is unavailable).
-The model loads cleanly: 42 safetensors shards, **33.58 GiB in ~60 s**, then
-enters the dummy `profile_run`.
+After the patch vLLM selects the **Triton Fp8 MoE backend** (`TritonExperts`;
+AITER is unavailable — see ISA section). The model loads cleanly: 42 safetensors
+shards, **33.58 GiB in ~60 s**, then enters the dummy `profile_run`.
+
+### ISA reality: gfx1100 vs gfx1151 FP8, and what AITER targets
+
+Verified directly against the TheRock LLVM assembler (`llvm-mc -mcpu=...`):
+
+| instruction | gfx1100 (RDNA3) | gfx1151 (RDNA3.5) | meaning |
+|---|---|---|---|
+| `v_wmma_f32_16x16x16_f16` | OK | OK | native FP16/BF16 WMMA on both |
+| `v_wmma_f32_16x16x16_fp8` | invalid instr | invalid instr | no FP8 WMMA on either |
+| `v_wmma_f32_16x16x16_f8f6f4` | invalid instr | invalid instr | that mnemonic is CDNA3 (MI300) |
+| `v_cvt_f32_fp8` | not supported on GPU | not supported on GPU | CDNA3/RDNA4 only |
+| `v_cvt_pk_bf8_f32` / `v_cvt_f32_bf8` | not supported on GPU | not supported on GPU | CDNA3/RDNA4 only |
+
+("invalid instruction" = mnemonic absent for that arch; "not supported on this
+GPU" = mnemonic exists but gated to a different arch.) Conclusions:
+
+- **FP8 is emulated, not native, on both RDNA3 and RDNA3.5.** The FP8/RDNA3.5
+  divide does not exist; the real architectural divide for native FP8 is
+  **CDNA3 (`gfx942`/`gfx950`, MI300) + RDNA4 (`gfx12xx`, RX 9000) vs
+everything below**. RDNA3 and RDNA3.5 are in the same (no-native-FP8) bucket.
+- Confirmed by inspecting the Triton-compiled FP8 kernel
+  `_w8a8_triton_block_scaled_mm.amdgcn` for gfx1151: it contains **128 uses of
+  `v_wmma_f32_16x16x16_f16`** and **zero** FP8-specific instructions. Triton
+  upcasts fp8 weights/activations to fp16 in software (8481 fp8-related bit-op
+  mentions = the software cvt), then runs the native fp16 WMMA. So the FP8 model
+  runs correctly but gets **no FP8 compute speedup** — actual math is fp16, plus
+  conversion overhead. The only benefit is weight memory/bandwidth (35B-A3B fits
+  in ~35 GiB vs ~70 GiB for fp16), which is exactly why this path is still
+  useful on a 48 GiB W7900 or 120 GiB Strix Halo.
+- **gfx1100 would behave identically.** It has the same `v_wmma_f32_16x16x16_f16`
+  and the same lack of native fp8. Applying the same `supports_fp8` patch on the
+  gfx1100 host would run the Qwen FP8 checkpoint via the same emulated path.
+- **AITER is not a misnomer and does NOT support RDNA3/3.5.** AITER = *AI Tensor
+  Engine for ROCm* (ROCm/aiter on GitHub), AMD's production operator library
+  (Triton + Composable Kernel + hand-tuned ASM). In vLLM it is hard-gated to
+  `on_mi3xx()` (`vllm/_aiter_ops.py:91` `is_aiter_found_and_supported()` returns
+  `current_platform.is_rocm() and IS_AITER_FOUND and on_mi3xx()`). Its tuned
+  configs target MI300X/MI355X/DeepSeek/Kimi — all CDNA Instinct. It is not
+  built for, and will not load on, gfx1100 or gfx1151 regardless of the
+  `supports_fp8` patch. So on RDNA3/3.5 the only FP8 MoE backend is Triton
+  (emulated); the fast CK/ASM AITER path is structurally unavailable.
 
 ### Launch command (gfx1151)
 
