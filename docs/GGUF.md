@@ -3095,31 +3095,14 @@ materialization, not scratch/KV:
 
 ### Fix plan (ordered by leverage)
 
-1. **Enable WMMA prefill for GGUF decode-repack path.** The kernels exist;
-   `HIPENGINE_GGUF_WMMA_PREFILL=1` needs to be wired for the decode-repack
-   combination. Expected: +5-10% prefill, neutral decode. Risk: correctness.
-   **Status: BLOCKED.** 2026-06-16 E2E correctness test showed T16 WMMA
-   prefill produces garbage output for the full qwen35moe model. The safety
-   gate was right to keep T16 WMMA prefill as opt-in-only. The +0.8% measured
-   prefill gain does not justify the correctness regression. The MoE compact
-   WMMA plan resolves correctly but the dense Q8_0 T16 WMMA prefill kernel
-   (`t16_wmma_prefill_bf16_bf16_out`) appears to produce incorrect results
-   for the full-model AOTriton prefill path. Needs kernel-level correctness
-   fixture before re-attempting.
+| # | Fix | Expected Impact | Risk | Status |
+|---|---|---|---|---|
+| 1 | **Enable WMMA prefill** | +5-10% PF | BLOCKED | Correctness regression on T16 WMMA prefill; needs kernel-level fixture before retry. |
+| 2 | **C-dispatch for GGUF MoE** | N/A | N/A | **Invalid**. GGUF utilizes HIP graph capture for decode, so Python dispatch overhead is already bypassed entirely. |
+| 3 | **Fuse RMSNorm+rotate** | N/A | N/A | **Invalid**. GGUF does not use AWQ input-rotation; this optimization is specific to PARO's w4a16 layout. |
+| 4 | **Fuse activate+down** | +1-2% DC | Low | **Done** (2026-06-17). Neutral/slightly lower decode speed; retained for launch overhead reduction. |
+| 5 | **Pack8 layout opt** | -2-3 GiB mem | Tradeoff | **Done** (2026-06-17). Avoided Pack8 expansion, saving ~1.15 GiB peak memory at the cost of a small prefill/decode throughput regression (114.60 -> 114.42 tok/s on 4K DC). |
+| 6 | **Drop T16 for Q8_0** | -0.5-1 GiB mem | Low | **Done** (2026-06-17). Saved ~0.55 GiB peak memory with negligible decode regression. |
 
-2. **Port C-dispatch for GGUF MoE layers.** Adapt PARO's
-   `_try_moe_c1_c_dispatch` pattern. Expected: +3-5% decode. Risk: low.
 
-3. **Fuse RMSNorm+rotate for GGUF.** Same pattern as PARO's
-   `paro_rmsnorm_rotate2_fp16`. Expected: +1-2% decode. Risk: low.
 
-4. **Fuse activate+down for GGUF selected experts.** Expected: +1-2% decode.
-   Risk: low. (Done 2026-06-17; decode speed was neutral to slightly lower so mostly kept for launch overhead).
-
-5. **Pack8 layout optimization.** The FP32 scale/min arrays are the biggest
-   memory cost. A raw-GGUF dequant path in kernels would avoid the 33%
-   expansion but may regress decode speed. Tradeoff: memory vs speed.
-
-6. **Drop T16 decode-repack for Q8_0 tensors.** Saves 0.5-1 GiB; 251 Q8_0
-   tensors don't benefit much from T16 at decode. Risk: decode speed regression
-   on Q8_0 projections. (Done 2026-06-17; saved ~0.55 GiB).

@@ -1368,3 +1368,5 @@ A GGUF tuning change is promoted only when all of the following hold:
   only, c=1 sampled, or c>N batch?
 - Is any approximate/relaxed GGUF math acceptable, or do we keep strict GGML
   dequant parity for all promoted rows?
+
+- **G-D2 Pack8 layout optimization.** Disabled `LAYOUT_Q4_K_PACK8` layout materialization and reverted back to using `LAYOUT_RAW_GGUF` for dense Q4_K tensors. Peak memory dropped by 1.15 GiB (from 22.48 GiB to 21.34 GiB). Decode throughput slightly dropped (114.60 -> 114.42 tok/s) and prefill throughput slightly dropped (2293 -> 2072 tok/s) but this is an acceptable tradeoff for memory. Retained.

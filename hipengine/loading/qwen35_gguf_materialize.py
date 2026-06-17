@@ -273,8 +273,9 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q4_k",
-            layout=LAYOUT_Q4_K_PACK8,
-            allocation_names=("qweight", "scales", "mins"),
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+            sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q5_K:
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
