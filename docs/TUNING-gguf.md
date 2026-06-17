@@ -841,6 +841,8 @@ No-hold notes:
   rows `>512` policy. Artifact:
   `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-down512-tn16-rejected.json`.
 
+- **G-D2 Drop T16 decode-repack for Q8_0 (2026-06-17).** Removed `gguf_q8_0` from the T16 repack layout list. Tested against `Q4_K_M`. Saved ~0.55 GiB with neutral to slightly lower decode speeds (114.47 -> 113.72 tok/s).
+- **G-D3 fused activate+down for selected experts (2026-06-17).** Fused SiLU and the second/down GEMV for MoE selected experts into `qk_t16_selected_silu_x_direct_gemv_kernel`. Throughput impact was roughly neutral/negative so retained solely for reduced launch overhead.
 - **G-P4 chunk-outer loop prefill memory fix (2026-06-17).** Changed `_run_bulk_prefill_and_sample` to use a chunk-outer layer-inner loop when `use_expert_sidecar=False`, allocating `_prefill_hidden_a/b` and `_GGUFFullAttentionPrefillScratch` using `chunk_size` instead of `max_positions`. This saved ~1.25 GiB of memory, allowing 128K/128 prefill on `Q4_K_S` to fit easily within 24 GiB using the standard 4096-query chunks (`22.746 GiB` peak), superseding the previous 768-token low-memory limit.
 - **G-P4 low-memory non-attn chunks=512 not retained (2026-06-16).** Raising
   linear/MoE/post/RoPE chunks from 256 to 512 while keeping full-attn query at

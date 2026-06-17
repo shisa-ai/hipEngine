@@ -3088,7 +3088,7 @@ materialization, not scratch/KV:
 | Component | Delta | Source |
 | --- | --- | --- |
 | Pack8 expansion for dense Q4_K | **+2-3 GiB** | `repack_gguf_q4_k_pack8()` precomputes FP32 scale/min arrays (33% larger than raw) |
-| Q8_0 T16 tile overhead | **+0.5-1 GiB** | 251 Q8_0 tensors get T16 layout with decode-repack |
+| Q8_0 T16 tile overhead | **~0.5 GiB** (fixed 2026-06-17) | Dropped T16 decode-repack for Q8_0 |
 | GGUF Q4_K larger than PARO W4 | **+0.6 GiB** | Q4_K is 4.5 bits/value vs AWQ ~4.16 bits/value |
 | Expert T16 expansion | +0.1 GiB | 2.8% over raw |
 | Scratch/KV/other | **~1.25 GiB** (fixed 2026-06-17) | Chunk-outer prefill bug fixed in `qwen35_gguf_runner.py` |
@@ -3114,7 +3114,7 @@ materialization, not scratch/KV:
    `paro_rmsnorm_rotate2_fp16`. Expected: +1-2% decode. Risk: low.
 
 4. **Fuse activate+down for GGUF selected experts.** Expected: +1-2% decode.
-   Risk: low.
+   Risk: low. (Done 2026-06-17; decode speed was neutral to slightly lower so mostly kept for launch overhead).
 
 5. **Pack8 layout optimization.** The FP32 scale/min arrays are the biggest
    memory cost. A raw-GGUF dequant path in kernels would avoid the 33%
@@ -3122,4 +3122,4 @@ materialization, not scratch/KV:
 
 6. **Drop T16 decode-repack for Q8_0 tensors.** Saves 0.5-1 GiB; 251 Q8_0
    tensors don't benefit much from T16 at decode. Risk: decode speed regression
-   on Q8_0 projections.
+   on Q8_0 projections. (Done 2026-06-17; saved ~0.55 GiB).

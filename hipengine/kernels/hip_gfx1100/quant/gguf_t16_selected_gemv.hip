@@ -917,3 +917,184 @@ extern "C" int hipengine_gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_ou
                                     compact_rows, in_features, out_features,
                                     num_experts, stream);
 }
+
+
+template <typename scalar_t, int qtype>
+__global__ __launch_bounds__(128, 4) void qk_t16_selected_silu_x_direct_gemv_kernel(
+    const scalar_t* __restrict__ gate_up,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  static_assert(qtype == 4 || qtype == 5 || qtype == 6, "qtype must be 4, 5, or 6");
+  const int64_t out_tile = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const scalar_t* __restrict__ gate_row = gate_up + x_row_idx * in_features;
+  const scalar_t* __restrict__ up_row = gate_up + rows * in_features + x_row_idx * in_features;
+
+  float acc[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile;
+    if constexpr (qtype == 4) {
+      tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else if constexpr (qtype == 5) {
+      tile = expert_tile_ptr<Q5_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else {
+      tile = expert_tile_ptr<Q6_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    }
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const float g = scalar_to_float<scalar_t>(gate_row[k_base + k_in_block]);
+      const float u = scalar_to_float<scalar_t>(up_row[k_base + k_in_block]);
+      const float sig = 1.0f / (1.0f + expf(-g));
+      const float xv = g * sig * u;
+      if constexpr (qtype == 4) {
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float wv = t16_q4_weight(tile, k_in_block, col);
+          acc[col] += xv * wv;
+        }
+      } else if constexpr (qtype == 5) {
+        const int sb = k_in_block >> 5;
+        const int lane32 = k_in_block & 31;
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float d = fp16_bytes_to_float(tile + Q5_T16_D_OFFSET + col * 2);
+          const float dmin = fp16_bytes_to_float(tile + Q5_T16_DMIN_OFFSET + col * 2);
+          const float scale = d * static_cast<float>(tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+          const float minv = dmin * static_cast<float>(tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+          const float q = static_cast<float>(t16_q5_quant(tile, sb, lane32, col));
+          acc[col] += xv * (scale * q - minv);
+        }
+      } else {
+        const int g16 = k_in_block >> 4;
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float d = fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+          const int8_t* __restrict__ scales = reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+          const float scale = d * static_cast<float>(scales[g16 * T16_COLS + col]);
+          const float q = static_cast<float>(t16_q6_quant(tile, k_in_block, col));
+          acc[col] += xv * (scale * q);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc[col]);
+
+  __shared__ float xchg[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) xchg[sub_id * T16_COLS + col] = acc[col];
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row = out + row * out_features + out_tile * T16_COLS;
+    const int sub_groups = blockDim.x >> 5;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total = 0.0f;
+      for (int g = 0; g < sub_groups; ++g) total += xchg[g * T16_COLS + col];
+      out_row[col] = float_to_scalar<scalar_t>(total);
+    }
+  }
+}
+
+template <typename scalar_t, int qtype>
+int launch_qk_silu_x_direct(const void* gate_up,
+                     const void* selected,
+                     const void* tiles,
+                     void* out,
+                     int64_t x_rows,
+                     int64_t rows,
+                     int64_t in_features,
+                     int64_t out_features,
+                     int64_t num_experts,
+                     hipStream_t stream) {
+  if (!gate_up || !selected || !tiles || !out || x_rows <= 0 || rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || (rows % x_rows) != 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL((qk_t16_selected_silu_x_direct_gemv_kernel<scalar_t, qtype>), grid, block, 0, stream,
+                     reinterpret_cast<const scalar_t*>(gate_up), reinterpret_cast<const int64_t*>(selected),
+                     reinterpret_cast<const uint8_t*>(tiles), reinterpret_cast<scalar_t*>(out),
+                     x_rows, rows, in_features, out_features, num_experts);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_silu_x_gemv_bf16_bf16_out(
+    const void* gate_up, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_silu_x_direct<uint16_t, 4>(gate_up, selected, tiles, out, x_rows, rows,
+                                      in_features, out_features, num_experts,
+                                      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_silu_x_gemv_fp16_fp16_out(
+    const void* gate_up, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_silu_x_direct<half_t, 4>(gate_up, selected, tiles, out, x_rows, rows,
+                                    in_features, out_features, num_experts,
+                                    stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_selected_silu_x_gemv_bf16_bf16_out(
+    const void* gate_up, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_silu_x_direct<uint16_t, 5>(gate_up, selected, tiles, out, x_rows, rows,
+                                      in_features, out_features, num_experts,
+                                      stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_selected_silu_x_gemv_fp16_fp16_out(
+    const void* gate_up, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_silu_x_direct<half_t, 5>(gate_up, selected, tiles, out, x_rows, rows,
+                                    in_features, out_features, num_experts,
+                                    stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out(
+    const void* gate_up, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_silu_x_direct<uint16_t, 6>(gate_up, selected, tiles, out, x_rows, rows,
+                                      in_features, out_features, num_experts,
+                                      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_selected_silu_x_gemv_fp16_fp16_out(
+    const void* gate_up, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_silu_x_direct<half_t, 6>(gate_up, selected, tiles, out, x_rows, rows,
+                                    in_features, out_features, num_experts,
+                                    stream);
+}
+

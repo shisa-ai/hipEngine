@@ -318,13 +318,13 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
-    if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
+    if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
-            quant_key="gguf_q8_0_t16_v1",
-            layout=LAYOUT_GGUF_Q8_0_T16,
-            allocation_names=("tiles",),
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
         )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
