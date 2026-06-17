@@ -57,6 +57,14 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp import (
     plan_mtp_speculative_build,
     register_mtp_speculative_kernels,
 )
+from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
+    build_mtp_nextn,
+    mtp_eh_proj_f32,
+    mtp_rmsnorm_f32,
+    plan_mtp_nextn_build,
+    qwen35_gguf_mtp_eh_proj_f32,
+    register_mtp_nextn_kernels,
+)
 
 __all__ = [
     "build_dflash_accept",
@@ -108,4 +116,10 @@ __all__ = [
     "register_dflash_commit_kernels",
     "register_dflash_drafter_kernels",
     "register_mtp_speculative_kernels",
+    "build_mtp_nextn",
+    "mtp_eh_proj_f32",
+    "mtp_rmsnorm_f32",
+    "plan_mtp_nextn_build",
+    "qwen35_gguf_mtp_eh_proj_f32",
+    "register_mtp_nextn_kernels",
 ]

@@ -100410,3 +100410,67 @@ I encountered an OOM killed `api_server` during a test script and the kyuz0 targ
 1. The memory access pattern inside the C++ `moe_q_gemm_rdna3.cu` kernel suffers from the exact same hardware limitation as the Triton kernel on `gfx1151`.
 2. Strix Halo's L1 cache topology cannot handle the specific pointer striding/duplication used to extract W4A16 weights in either of the current vLLM implementations.
 **Conclusion:** vLLM MoE GPTQ/AWQ inference on `gfx1151` is definitively blocked at the kernel level. The `hipEngine` concurrency testing successfully completed (`66.98` to `96.03` tok/s), but vLLM's implementation requires a full rewrite of its MoE quantization kernels to support this specific APU.
+
+## 2026-06-17 — M3 pivot: first native GPU NextN sub-kernel (mtp_nextn_eh_proj)
+
+**Context:** The mtp-gguf multiloop (iter 175) had drifted into elaborating M5
+preflight metadata while the real M3 blocker — no native GPU `mtp_nextn_layer`
+kernel — stayed untouched. Root cause: `hipengine/kernels/registry.py`
+`_candidate_keys` appends `cpu_reference` as a last-resort fallback, so
+`resolve(hip_gfx1100, mtp_nextn_layer, ...)` silently returned the numpy oracle.
+The flat `correctness_gate_pass=1` loop metric stayed green (the gate resolves
+`cpu_reference` explicitly) while "readiness precheck" artifacts correctly
+reported "no native runtime key." Paused the drift loop; pivoted to building the
+missing kernel directly with RED/GREEN discipline.
+
+**De-risk:** `scripts/smoke.py --mode smoke-add-hip` (HIPENGINE_HIP_ARCH=gfx1151)
+compiles+runs the hip_gfx1100 smoke_add source as native gfx1151 and executes
+correctly (first5=[1,4,7,10,13], exit 0, no hang). Contrast with the vLLM saga:
+hand-written HIP kernels run fine on gfx1151; only Triton fused-MoE hung. M3 is
+feasible on this box.
+
+**Compatibility:** `hipengine/kernels/hip_gfx1151/__init__.py` already aliases
+every `hip_gfx1100` kernel key to `hip_gfx1151` and compiles with
+`--offload-arch=gfx1151`. So kernels built in the `hip_gfx1100` tree run on both
+the W7900 and Strix Halo. M3 work builds in `hip_gfx1100/` per the user's
+gfx1100-compat requirement.
+
+**Strategy:** M3's acceptance fixture
+(`benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json`) is F32
+synthetic (n_embd=2, vocab=4, 1 head, 1 expert, all qtype=F32). The
+`dense_gemv` primitive is WMMA-tuned (`_WMMA_TILE_K=16`) and won't run on
+n_embd=2; no F32 matmul exists. So M3 = new, size-agnostic F32 HIP kernels
+mirroring cpu_reference math exactly (correctness-first), gated vs the oracle
+(KL<=0.05 / top-1>=90%). M6 swaps inner GEMVs for WMMA/K-quant on real shapes.
+Existing `dense_gemv`/quant primitives are PARO-shaped (bf16, real-shape-tuned);
+the existing `speculative/mtp.py` PARO-MTP primitives (fuse_inputs, rmsnorm_oneplus,
+softmax_topk, router_topk_softmax, ...) are reusable building blocks but not the
+NextN `w4_gguf`/`gguf_f32` keys. Q5_K is absent from hip_gfx1100 (real NextN down
+weights are Q5_K) — noted as an M6 gap; F32 fixture gate doesn't need it.
+
+**First unit — mtp_nextn_eh_proj (RED then GREEN):**
+- RED: `tests/test_mtp_nextn_eh_proj_hip.py` asserts the exact hip key is
+  registered (not the cpu_reference fallback) + matches cpu_reference within
+  1e-4. Failed RED (MissingKey) before implementation.
+- New `hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.{hip,py}`: F32
+  `hipengine_mtp_rmsnorm_f32` (one block/row, block_reduce_sum) +
+  `hipengine_mtp_eh_proj_f32` (one block/row, threads stride over output
+  features, naive F32 GEMV reading e_norm+h_norm separately against
+  weight[hidden,2*hidden]). Numpy-in/out wrapper
+  `qwen35_gguf_mtp_eh_proj_f32` matches the cpu_reference signature
+  (H2D/launch/D2H via `hipengine.core.memory`). Registered under both
+  `hip_gfx1100` and `hip_gfx1151` as `KernelKey(backend, "mtp_nextn_eh_proj",
+  "gguf_f32", "qwen35")`. Wired into `speculative/__init__.py`.
+- GREEN: 3/3 tests pass on gfx1151. `test_kernel_registry.py` still green.
+- Gotcha: `warpSize` is a `__device__` var; using it in the host launch wrapper
+  fails host compile (`reference to __device__ function 'operator int' in
+  __host__ function`). Fixed by using `constexpr int kWarpSize = 64` in host
+  code. Also: `tests/conftest.py` snapshots `_KERNELS` at collection finish and
+  restores after each test; lazy import-time registration inside test functions
+  is wiped by teardown, so the registration-triggering imports must be at test
+  module top scope.
+
+**Next:** mtp_nextn_attention (wq/wk/wv/wo + IMRoPE + gated sigmoid + dense
+self-attn, KVLiveSpans), then ffn+moe_routing, then shared_head + composite
+`mtp_nextn_layer`. Full-layer rocprofv3 --kernel-trace smoke at the M3 GREEN
+milestone.
