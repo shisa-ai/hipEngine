@@ -3091,7 +3091,7 @@ materialization, not scratch/KV:
 | Q8_0 T16 tile overhead | **+0.5-1 GiB** | 251 Q8_0 tensors get T16 layout with decode-repack |
 | GGUF Q4_K larger than PARO W4 | **+0.6 GiB** | Q4_K is 4.5 bits/value vs AWQ ~4.16 bits/value |
 | Expert T16 expansion | +0.1 GiB | 2.8% over raw |
-| Scratch/KV/other | ~0 | Equivalent architecture |
+| Scratch/KV/other | **~1.25 GiB** (fixed 2026-06-17) | Chunk-outer prefill bug fixed in `qwen35_gguf_runner.py` |
 
 ### Fix plan (ordered by leverage)
 

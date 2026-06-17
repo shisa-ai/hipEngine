@@ -148,36 +148,36 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 2729.701 | 2181.8 | 2515.628 | **2822.688** |
-| 1K/128 | **2906.950** | 2463.6 | 2430.947 | 2710.994 |
-| 4K/128 | **2879.578** | 2490.6 | 2303.237 | 2581.819 |
-| 32K/128 | **2079.424** | 1839.8 | 1685.089 | 1968.760 |
-| 64K/128 | **1559.096** | 1427.2 | 1324.775 | 1411.790 |
-| 128K/128 | 1053.919 | 989.1 | 918.128 | **1081.646** |
+| 512/128 | 2729.701 | 2142.4 | 2515.628 | **2822.688** |
+| 1K/128 | **2906.950** | 2364.0 | 2430.947 | 2710.994 |
+| 4K/128 | **2879.578** | 2367.6 | 2303.237 | 2581.819 |
+| 32K/128 | **2079.424** | 1793.7 | 1685.089 | 1968.760 |
+| 64K/128 | **1559.096** | 1392.7 | 1324.775 | 1411.790 |
+| 128K/128 | 1053.919 | 960.8 | 918.128 | **1081.646** |
 
 ### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.227** | 106.6 | 79.568 | 106.235 |
-| 1K/128 | 102.927 | 96.0 | 79.256 | **106.204** |
-| 4K/128 | **105.253** | 97.5 | 78.688 | 102.556 |
-| 32K/128 | **91.965** | 84.9 | 71.842 | 91.644 |
-| 64K/128 | 77.666 | 72.6 | 66.453 | **83.326** |
+| 512/128 | **115.227** | 107.0 | 79.568 | 106.235 |
+| 1K/128 | 102.927 | 96.6 | 79.256 | **106.204** |
+| 4K/128 | **105.253** | 97.7 | 78.688 | 102.556 |
+| 32K/128 | **91.965** | 85.2 | 71.842 | 91.644 |
+| 64K/128 | 77.666 | 72.8 | 66.453 | **83.326** |
 | 128K/128 | 60.349 | 57.3 | 57.713 | **70.476** |
 
 ### Peak GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 21.029 | 26.264 | 21.621 | **21.261** |
-| 1K/128 | 21.241 | 26.264 | 21.633 | **21.220** |
-| 4K/128 | 21.973 | 26.264 | 21.690 | **21.278** |
-| 32K/128 | 22.082 | 26.264 | 22.232 | **21.855** |
-| 64K/128 | 22.082 | 26.264 | 22.910 | **22.512** |
-| 128K/128 | **22.124** | 26.264 | 24.103 | 23.824 |
+| 512/128 | 21.029 | 24.985 | 21.621 | **21.261** |
+| 1K/128 | 21.241 | 24.985 | 21.633 | **21.220** |
+| 4K/128 | 21.973 | 24.985 | 21.690 | **21.278** |
+| 32K/128 | 22.082 | 24.985 | 22.232 | **21.855** |
+| 64K/128 | 22.082 | 24.985 | 22.910 | **22.512** |
+| 128K/128 | **22.124** | 24.985 | 24.103 | 23.824 |
 
-W7900 row sources: PARO from the prior `2026-06-14` refresh, GGUF/llama.cpp HIP/llama.cpp Vulkan from the `2026-06-16` Q4_K_M standardized sweep ([hipEngine GGUF](benchmarks/results/2026-06-16-w7900-gpu0-gguf-q4km-hipengine-gguf-q4km-readme-sweep.json), [llama.cpp HIP](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json), [llama.cpp Vulkan](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`), so hipEngine peak memory is a max-context persistent-session high-water mark rather than each shape's minimum allocation. The TheRock userspace reports invalid/low `hipMemGetInfo` totals on this host, so hipEngine tracked allocator memory is the retained memory source. All GGUF columns now use Q4_K_M; PARO is a different quant/format (`w4_paro`).
+W7900 row sources: PARO from the prior `2026-06-14` refresh, GGUF from `2026-06-17` post-memory-fix sweep ([hipEngine GGUF](benchmarks/results/2026-06-17-w7900-gpu0-gguf-q4km-post-memory-fix-sweep.json)), llama.cpp from `2026-06-16` Q4_K_M sweep ([HIP](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json), [Vulkan](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`). The GGUF peak memory includes a recent chunk-outer loop prefill rewrite that reduced scratch by ~1.3 GiB (from 26.3 to 25.0 GiB). All GGUF columns use Q4_K_M; PARO is a different quant/format (`w4_paro`).
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
