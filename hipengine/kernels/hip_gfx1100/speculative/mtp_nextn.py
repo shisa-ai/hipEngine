@@ -906,6 +906,138 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             free(buf, runtime=runtime)
 
 
+def qwen35_gguf_mtp_shared_head_logits_f32(
+    nextn_hidden: "np.ndarray",
+    shared_head_norm_weight: "np.ndarray",
+    shared_head_weight: "np.ndarray",
+    *,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_shared_head_logits``.
+
+    RMSNorm (GPU) + LM-head linear ``normed @ head_weight.T`` (GPU).
+    """
+
+    hidden = np.ascontiguousarray(nextn_hidden, dtype=np.float32)
+    norm_weight = np.ascontiguousarray(shared_head_norm_weight, dtype=np.float32)
+    head_weight = np.ascontiguousarray(shared_head_weight, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("nextn_hidden must have shape [rows, hidden]")
+    rows, hidden_size = hidden.shape
+    if norm_weight.shape != (hidden_size,):
+        raise ValueError("shared_head_norm_weight must have shape [hidden]")
+    if head_weight.ndim != 2 or head_weight.shape[1] != hidden_size:
+        raise ValueError("shared_head_weight must have shape [vocab, hidden]")
+    vocab = head_weight.shape[0]
+
+    runtime = get_hip_runtime()
+    buffers: list = []
+    try:
+        hidden_dev = malloc(hidden.nbytes, runtime=runtime); buffers.append(hidden_dev)
+        norm_dev = malloc(norm_weight.nbytes, runtime=runtime); buffers.append(norm_dev)
+        normed_dev = malloc(hidden.nbytes, runtime=runtime); buffers.append(normed_dev)
+        head_dev = malloc(head_weight.nbytes, runtime=runtime); buffers.append(head_dev)
+        out_dev = malloc(rows * vocab * 4, runtime=runtime); buffers.append(out_dev)
+        copy_host_to_device(hidden_dev, host_array_ptr(hidden), runtime=runtime)
+        copy_host_to_device(norm_dev, host_array_ptr(norm_weight), runtime=runtime)
+        copy_host_to_device(head_dev, host_array_ptr(head_weight), runtime=runtime)
+        mtp_rmsnorm_f32(hidden_dev.ptr, norm_dev.ptr, normed_dev.ptr, rows, hidden_size, eps=eps,
+                        runtime=runtime)
+        mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
+                       runtime=runtime)
+        runtime.device_synchronize()
+        out = np.empty((rows, vocab), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+        return out
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+
+def qwen35_gguf_mtp_nextn_layer_logits_f32(
+    hidden_seed: "np.ndarray",
+    token_embedding: "np.ndarray",
+    eh_proj_weight: "np.ndarray",
+    hnorm_weight: "np.ndarray",
+    enorm_weight: "np.ndarray",
+    attn_norm_weight: "np.ndarray",
+    wq_weight: "np.ndarray",
+    wk_weight: "np.ndarray",
+    wv_weight: "np.ndarray",
+    wo_weight: "np.ndarray",
+    q_norm_weight: "np.ndarray",
+    k_norm_weight: "np.ndarray",
+    attn_post_norm_weight: "np.ndarray",
+    router_weight: "np.ndarray",
+    gate_qweight: "np.ndarray",
+    up_qweight: "np.ndarray",
+    down_qweight: "np.ndarray",
+    gate_qtype: "GGMLQuantizationType",
+    up_qtype: "GGMLQuantizationType",
+    down_qtype: "GGMLQuantizationType",
+    shared_gate_logit_weight: "np.ndarray",
+    shared_gate_qweight: "np.ndarray",
+    shared_up_qweight: "np.ndarray",
+    shared_down_qweight: "np.ndarray",
+    shared_qtype: "GGMLQuantizationType",
+    shared_head_norm_weight: "np.ndarray",
+    shared_head_weight: "np.ndarray",
+    *,
+    num_heads: int,
+    num_kv_heads: int,
+    experts_used: int,
+    positions: "np.ndarray | None" = None,
+    context_counts: "np.ndarray | None" = None,
+    key_cache: "np.ndarray | None" = None,
+    value_cache: "np.ndarray | None" = None,
+    kv_base_offsets: "np.ndarray | None" = None,
+    kv_live_counts: "np.ndarray | None" = None,
+    kv_token_positions: "np.ndarray | None" = None,
+    kv_evict_mask: "np.ndarray | None" = None,
+    block_size: int | None = None,
+    rope_cos: "np.ndarray | None" = None,
+    rope_sin: "np.ndarray | None" = None,
+    rotary_dim: int | None = None,
+    scale: float | None = None,
+    expert_weights_scale: float = 1.0,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """Native GPU Qwen35 GGUF MTP NextN draft layer (M3, correctness-first).
+
+    Composes the four GPU sub-kernels in the llama.cpp draft-only order:
+    ``eh_proj`` -> attention -> ffn -> shared_head.  Signature matches
+    ``cpu_reference.qwen35_gguf_mtp_nextn_layer_logits`` exactly so the M3
+    fixture gate runs on a real GPU backend instead of the registry's
+    cpu_reference fallback.
+
+    M3 scope: F32 qtype, DEFAULT dense attention path (no RoPE, no KVLiveSpans
+    paged cache).  K-quant, RoPE and paged-KV branches raise NotImplementedError
+    (M6); the F32 M3 fixture does not exercise them.
+    """
+
+    projected = qwen35_gguf_mtp_eh_proj_f32(
+        hidden_seed, token_embedding, eh_proj_weight, hnorm_weight, enorm_weight, eps=eps,
+    )
+    attended = qwen35_gguf_mtp_attention_sublayer_f32(
+        projected, attn_norm_weight, wq_weight, wk_weight, wv_weight, wo_weight,
+        q_norm_weight, k_norm_weight,
+        num_heads=num_heads, num_kv_heads=num_kv_heads,
+        positions=positions, context_counts=context_counts,
+        key_cache=key_cache, value_cache=value_cache,
+        rope_cos=rope_cos, rope_sin=rope_sin, rotary_dim=rotary_dim, scale=scale, eps=eps,
+    )
+    ffn_out = qwen35_gguf_mtp_ffn_sublayer_f32(
+        attended, attn_post_norm_weight, router_weight,
+        gate_qweight, up_qweight, down_qweight, gate_qtype, up_qtype, down_qtype,
+        shared_gate_logit_weight, shared_gate_qweight, shared_up_qweight, shared_down_qweight,
+        shared_qtype, experts_used=experts_used, expert_weights_scale=expert_weights_scale,
+        eps=eps,
+    )
+    return qwen35_gguf_mtp_shared_head_logits_f32(
+        ffn_out, shared_head_norm_weight, shared_head_weight, eps=eps,
+    )
+
+
 def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         register(
@@ -926,6 +1058,16 @@ def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey(backend, "mtp_nextn_ffn", "gguf_f32", "qwen35"),
             qwen35_gguf_mtp_ffn_sublayer_f32,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "mtp_nextn_shared_head", "gguf_f32", "qwen35_dense_logits"),
+            qwen35_gguf_mtp_shared_head_logits_f32,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"),
+            qwen35_gguf_mtp_nextn_layer_logits_f32,
             replace=replace,
         )
 
@@ -950,5 +1092,7 @@ __all__ = [
     "qwen35_gguf_mtp_eh_proj_f32",
     "qwen35_gguf_mtp_ffn_sublayer_f32",
     "qwen35_gguf_mtp_moe_routing_f32",
+    "qwen35_gguf_mtp_nextn_layer_logits_f32",
+    "qwen35_gguf_mtp_shared_head_logits_f32",
     "register_mtp_nextn_kernels",
 ]
