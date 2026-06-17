@@ -156,3 +156,257 @@ extern "C" int hipengine_mtp_eh_proj_f32(
       e_norm, h_norm, weight, out, rows, hidden);
   return static_cast<int>(hipGetLastError());
 }
+
+// ---- MTP NextN attention sub-kernels (F32, correctness-first) ----
+
+// Generic F32 linear: out[t, j] = sum_k x[t, k] * weight[j, k]  (weight row-major [out, in]).
+// One block per (token, out_feature_chunk); here one block per token, threads stride over j.
+extern "C" __global__ void hipengine_mtp_linear_f32_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ weight,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t t = static_cast<int64_t>(blockIdx.x);
+  if (t >= tokens) {
+    return;
+  }
+  const float* xr = x + t * in_features;
+  float* outr = out + t * out_features;
+  for (int64_t j = static_cast<int64_t>(threadIdx.x); j < out_features;
+       j += static_cast<int64_t>(blockDim.x)) {
+    const float* w = weight + j * in_features;
+    float acc = 0.0f;
+    for (int64_t k = 0; k < in_features; ++k) {
+      acc += xr[k] * w[k];
+    }
+    outr[j] = acc;
+  }
+}
+
+extern "C" int hipengine_mtp_linear_f32(
+    const float* x,
+    const float* weight,
+    float* out,
+    int64_t tokens,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (tokens <= 0 || in_features <= 0 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int block = 256;
+  hipLaunchKernelGGL(
+      hipengine_mtp_linear_f32_kernel,
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(block),
+      0,
+      stream,
+      x, weight, out, tokens, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Sigmoid gate multiply: out[t, h, d] = attn[t, h, d] * sigmoid(gate[t, h, d]).
+// Flattened over (tokens*heads) rows of head_dim.
+extern "C" __global__ void hipengine_mtp_sigmoid_gate_mul_f32_kernel(
+    const float* __restrict__ attn,
+    const float* __restrict__ gate,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t head_dim) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t base = row * head_dim;
+  for (int64_t d = static_cast<int64_t>(threadIdx.x); d < head_dim;
+       d += static_cast<int64_t>(blockDim.x)) {
+    const float g = 1.0f / (1.0f + __expf(-gate[base + d]));
+    out[base + d] = attn[base + d] * g;
+  }
+}
+
+extern "C" int hipengine_mtp_sigmoid_gate_mul_f32(
+    const float* attn,
+    const float* gate,
+    float* out,
+    int64_t rows,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (rows <= 0 || head_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  int block = 256;
+  if (head_dim < block) {
+    block = static_cast<int>(head_dim);
+  }
+  if (block < 1) {
+    block = 1;
+  }
+  hipLaunchKernelGGL(
+      hipengine_mtp_sigmoid_gate_mul_f32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(block)),
+      0,
+      stream,
+      attn, gate, out, rows, head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Elementwise add: out = a + b, flattened.
+extern "C" __global__ void hipengine_mtp_add_f32_kernel(
+    const float* __restrict__ a,
+    const float* __restrict__ b,
+    float* __restrict__ out,
+    int64_t n) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < n;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    out[i] = a[i] + b[i];
+  }
+}
+
+extern "C" int hipengine_mtp_add_f32(
+    const float* a,
+    const float* b,
+    float* out,
+    int64_t n,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int block = 256;
+  const int grid = static_cast<int>((n + block - 1) / block);
+  hipLaunchKernelGGL(
+      hipengine_mtp_add_f32_kernel,
+      dim3(static_cast<unsigned int>(grid)),
+      dim3(block),
+      0,
+      stream,
+      a, b, out, n);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Dense causal GQA attention (F32, correctness-first).
+// query: [tokens, heads, qk_head_dim]
+// key_cache / value_cache: [cache_tokens, kv_heads, head_dim]
+// positions / context_counts: [tokens] int64
+// out: [tokens, heads, value_head_dim]
+// One block per (token, q_head). Thread 0 serially scores visible positions
+// into shared mem; all threads softmax-reduce; threads stride over value_head_dim
+// for the weighted sum.  Correctness-first -- M6 rewrites for real shapes.
+extern "C" __global__ void hipengine_mtp_dense_attn_f32_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key_cache,
+    const float* __restrict__ value_cache,
+    const int64_t* __restrict__ positions,
+    const int64_t* __restrict__ context_counts,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t kv_heads,
+    int64_t qk_head_dim,
+    int64_t value_head_dim,
+    int64_t cache_tokens,
+    float scale) {
+  const int64_t t = static_cast<int64_t>(blockIdx.x);
+  const int64_t qh = static_cast<int64_t>(blockIdx.y);
+  if (t >= tokens || qh >= heads) {
+    return;
+  }
+  const int64_t kv_group = heads / kv_heads;
+  const int64_t kh = qh / kv_group;
+  const int64_t position = positions[t];
+  const int64_t context = context_counts[t];
+  // Visible (causal) cache positions are 0..vcount-1 where vcount = min(position, context-1)+1.
+  int64_t vcount = position;
+  if (context - 1 < vcount) {
+    vcount = context - 1;
+  }
+  vcount += 1;
+  if (vcount <= 0) {
+    vcount = 0;
+  }
+  extern __shared__ float shared[];
+  float* scores = shared;          // [vcount]
+  float* out_acc = shared + cache_tokens;  // [value_head_dim]
+
+  const float* qr = query + (t * heads + qh) * qk_head_dim;
+
+  if (threadIdx.x == 0) {
+    float max_score = -INFINITY;
+    for (int64_t v = 0; v < vcount; ++v) {
+      const float* kr = key_cache + (v * kv_heads + kh) * qk_head_dim;
+      float dot = 0.0f;
+      for (int64_t d = 0; d < qk_head_dim; ++d) {
+        dot += kr[d] * qr[d];
+      }
+      float s = dot * scale;
+      scores[v] = s;
+      if (s > max_score) {
+        max_score = s;
+      }
+    }
+    float exp_sum = 0.0f;
+    for (int64_t v = 0; v < vcount; ++v) {
+      float e = __expf(scores[v] - max_score);
+      scores[v] = e;
+      exp_sum += e;
+    }
+    float inv = (exp_sum > 0.0f) ? (1.0f / exp_sum) : 0.0f;
+    for (int64_t d = 0; d < value_head_dim; ++d) {
+      float acc = 0.0f;
+      for (int64_t v = 0; v < vcount; ++v) {
+        const float* vr = value_cache + (v * kv_heads + kh) * value_head_dim;
+        acc += scores[v] * inv * vr[d];
+      }
+      out_acc[d] = acc;
+    }
+  }
+  __syncthreads();
+  float* outr = out + (t * heads + qh) * value_head_dim;
+  for (int64_t d = static_cast<int64_t>(threadIdx.x); d < value_head_dim;
+       d += static_cast<int64_t>(blockDim.x)) {
+    outr[d] = out_acc[d];
+  }
+}
+
+extern "C" int hipengine_mtp_dense_attn_f32(
+    const float* query,
+    const float* key_cache,
+    const float* value_cache,
+    const int64_t* positions,
+    const int64_t* context_counts,
+    float* out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t kv_heads,
+    int64_t qk_head_dim,
+    int64_t value_head_dim,
+    int64_t cache_tokens,
+    float scale,
+    hipStream_t stream) {
+  if (tokens <= 0 || heads <= 0 || kv_heads <= 0 || qk_head_dim <= 0 ||
+      value_head_dim <= 0 || cache_tokens <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int shbytes = static_cast<int>((cache_tokens + value_head_dim) * sizeof(float));
+  int block = 256;
+  if (value_head_dim < block) {
+    block = static_cast<int>(value_head_dim);
+  }
+  if (block < 1) {
+    block = 1;
+  }
+  dim3 grid(static_cast<unsigned int>(tokens), static_cast<unsigned int>(heads));
+  hipLaunchKernelGGL(
+      hipengine_mtp_dense_attn_f32_kernel,
+      grid,
+      dim3(static_cast<unsigned int>(block)),
+      shbytes,
+      stream,
+      query, key_cache, value_cache, positions, context_counts, out,
+      tokens, heads, kv_heads, qk_head_dim, value_head_dim, cache_tokens, scale);
+  return static_cast<int>(hipGetLastError());
+}
