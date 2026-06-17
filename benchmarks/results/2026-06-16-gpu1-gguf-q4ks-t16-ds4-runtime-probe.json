@@ -1,0 +1,103 @@
+{
+  "change": "Added HIPENGINE_GGUF_T16_DS4_PREFILL=1 guarded runtime route that packs compact BF16 MoE activations to DS4 Q8_1 and feeds the resident gguf_q4_k_t16_v1 WMMA32 selected dual prefill kernel.",
+  "checks": {
+    "default_ids_stable_and_memory_flat": true,
+    "guard_passed": true,
+    "hot_path_torch_or_llamacpp_import_grep": "No matches for import torch or llama.cpp in hipengine/runtime/qwen35_gguf_runner.py",
+    "optin_ids_match_default": false,
+    "optin_ids_stable": true,
+    "routing_test_passed": true
+  },
+  "commands": {
+    "default_verify": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "optin_probe": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_T16_DS4_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-t16-ds4-acceptance.json",
+    "routing_test": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py && python3 -m pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q"
+  },
+  "comparisons": {
+    "4K/128": {
+      "decode_delta_vs_same_iter_default_pct": 0.1081057912289074,
+      "final_token_id_matches_default": false,
+      "peak_gib_delta_vs_same_iter_default": 0.0703125,
+      "prefill_delta_vs_same_iter_default_pct": 9.84770064946725
+    },
+    "512/128": {
+      "decode_delta_vs_same_iter_default_pct": 0.20343817877310766,
+      "final_token_id_matches_default": false,
+      "peak_gib_delta_vs_same_iter_default": 0.0703125,
+      "prefill_delta_vs_same_iter_default_pct": 8.531200839300235
+    }
+  },
+  "date_utc": "2026-06-16",
+  "default_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.22019243211788,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "prefill_tok_s_median": 2159.5606895771843,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.33748734220634,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "prefill_tok_s_median": 1833.1852536169554,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "hardware": "GPU1 gfx1100 / AMD Radeon RX 7900 XTX class, TheRock HIP 7.13",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The guarded path is useful evidence that resident-T16 DS4 MMQ improves full-model prefill, but it is not exact enough for promotion because generated final token IDs changed from default 220/570 to 3241/1510.",
+    "The extra DS4 activation scratch is allocated only when HIPENGINE_GGUF_T16_DS4_PREFILL=1, so the default verify kept tracked peak at 21.334842 GiB.",
+    "128K/128 final promotion was not run because the opt-in path failed the primary correctness/prompt verifier first."
+  ],
+  "optin_t16_ds4_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 115.3447521328021,
+      "final_token_ids": [
+        1510,
+        1510,
+        1510
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "prefill_tok_s_median": 2372.2277616303163,
+      "tracked_peak_allocated_gib_median": 21.405154287815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.59450602556304,
+      "final_token_ids": [
+        3241,
+        3241,
+        3241
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "prefill_tok_s_median": 1989.5779693594534,
+      "tracked_peak_allocated_gib_median": 21.405154287815094
+    }
+  },
+  "performance_claim": false,
+  "primary_metric_min_decode_tok_s": {
+    "default_verify": 115.22019243211788,
+    "optin_probe": 115.3447521328021
+  },
+  "promotion_status": "blocked: opt-in resident-T16 DS4 prefill changes generated final token IDs versus the default gate",
+  "quant": "gguf_q4_k_s",
+  "status": "diagnostic_blocked",
+  "workloads": [
+    "512/128",
+    "4K/128"
+  ]
+}

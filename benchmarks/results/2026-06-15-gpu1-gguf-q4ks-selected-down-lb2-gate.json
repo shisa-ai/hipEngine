@@ -1,0 +1,92 @@
+{
+  "schema": "hipengine.gguf_tuning_gate.v1",
+  "date": "2026-06-15",
+  "loop": "gguf-tuning/run-20260615-103446",
+  "iteration": 12,
+  "branch": "gguf-tuning",
+  "worktree": "/home/lhl/hipEngine-gguf-tuning",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX / gfx1100 24GB-class",
+    "device_selector": "HIP_VISIBLE_DEVICES=1"
+  },
+  "rocm": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "the_rock_hip": "7.13.26162-1140233ffe"
+  },
+  "change": "Relax qk_t16_selected_direct_gemv_kernel launch bounds from __launch_bounds__(128, 4) to __launch_bounds__(128, 2).",
+  "baseline_selected_silu_lb1": {
+    "512/128": {
+      "prefill_tok_s_median": 1644.663784,
+      "decode_tok_s_median": 126.992572,
+      "final_token_id": 220
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 1851.329997,
+      "decode_tok_s_median": 115.703013,
+      "final_token_id": 570
+    },
+    "primary_metric_min_decode_tok_s": 115.703013,
+    "tracked_peak_allocated_gib_median": 21.334858,
+    "artifact": "benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-silu-gemv-lb1-gate.json"
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s_median": 1647.389814,
+      "decode_tok_s_median": 127.011979,
+      "tracked_peak_allocated_gib_median": 21.334858,
+      "sampled_hip_used_peak_gib": 21.952148,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 1855.806476,
+      "decode_tok_s_median": 115.804576,
+      "tracked_peak_allocated_gib_median": 21.334858,
+      "sampled_hip_used_peak_gib": 21.954102,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.804576,
+  "delta_vs_selected_silu_lb1": {
+    "512/128_decode_tok_s": {
+      "old": 126.992572,
+      "new": 127.011979,
+      "percent": 0.015282
+    },
+    "4K/128_decode_tok_s": {
+      "old": 115.703013,
+      "new": 115.804576,
+      "percent": 0.087779
+    },
+    "min_gate_decode_tok_s": {
+      "old": 115.703013,
+      "new": 115.804576,
+      "percent": 0.087779
+    }
+  },
+  "commands": {
+    "prebuild": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c \"from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)\"",
+    "verify": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-down-lb2.json",
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q"
+  },
+  "guard": {
+    "pytest": "154 passed"
+  },
+  "notes": [
+    "Graph capture excluded from measured decode as in qwen35_readme_sweep.",
+    "The launch-bound-only change does not change math, dispatch keys, or raw+packed residency.",
+    "The accepted delta is small but same-suite non-regressive on both primary decode gates.",
+    "128K/128 promotion check not yet run for this micro-tune."
+  ]
+}

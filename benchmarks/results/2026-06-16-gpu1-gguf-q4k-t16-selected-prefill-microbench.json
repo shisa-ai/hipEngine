@@ -1,0 +1,48 @@
+{
+  "memory": {
+    "host_input_mib": 16.0,
+    "host_output_mib": 64.0,
+    "host_tiles_a_mib": 37.0,
+    "host_tiles_b_mib": 37.0,
+    "tracked_peak_allocated_gib": 0.15039266645908356
+  },
+  "performance_claim": false,
+  "reason_not_promoted": "Synthetic kernel microbench baseline only; no runtime dispatch/default change.",
+  "run_tag": "gguf_q4_k_t16_selected_prefill_microbench",
+  "sanity": {
+    "finite_output": true,
+    "output_checksum_f64": 6715252.562845781,
+    "output_max_abs": 136.0
+  },
+  "schema": 1,
+  "shape": {
+    "compact_rows": 4096,
+    "experts": 8,
+    "hidden": 2048,
+    "out_features_a": 4096,
+    "out_features_b": 4096,
+    "out_features_total": 8192,
+    "rows_per_expert": 512,
+    "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+    "wmma_total_rows": 4096
+  },
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "hipengine_commit": "9526119cd46d3180e98408898c6d2a8ab38d2e35",
+    "hipengine_dirty_files": [
+      "?? scripts/gguf_q4_k_t16_selected_prefill_microbench.py"
+    ],
+    "python": "3.12.9"
+  },
+  "status": "diagnostic_retained",
+  "timestamp": "2026-06-16T02:43:10.178768+00:00",
+  "timing": {
+    "calls_per_s": 86.31518191087218,
+    "elapsed_s": 0.11585447401739657,
+    "iters": 10,
+    "logical_fma": 68719476736,
+    "logical_tflops": 11.863068270575578,
+    "ms_per_call": 11.585447401739657,
+    "warmup": 3
+  }
+}

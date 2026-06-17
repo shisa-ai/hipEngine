@@ -1,0 +1,314 @@
+{
+  "schema": "hipengine.gguf_tuning_gate.v1",
+  "date": "2026-06-16",
+  "loop": "gguf-tuning/run-20260615-103446",
+  "iteration": 44,
+  "branch": "gguf-tuning",
+  "worktree": "/home/lhl/hipEngine-gguf-tuning",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX / gfx1100 24GB-class",
+    "device_selector": "HIP_VISIBLE_DEVICES=1"
+  },
+  "rocm": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "the_rock_hip": "7.13.26162-1140233ffe"
+  },
+  "change": "Selected Q4_K T16 dual WMMA prefill computes the two 16-column halves sequentially with one FP32 accumulator and retains per-lane output-column bounds checks before stores.",
+  "baseline_selected_down_lb2": {
+    "512/128": {
+      "prefill_tok_s_median": 1647.389814,
+      "decode_tok_s_median": 127.011979,
+      "tracked_peak_allocated_gib_median": 21.334858,
+      "final_token_id": 220
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 1855.806476,
+      "decode_tok_s_median": 115.804576,
+      "tracked_peak_allocated_gib_median": 21.334858,
+      "final_token_id": 570
+    },
+    "primary_metric_min_decode_tok_s": 115.804576,
+    "artifact": "benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-down-lb2-gate.json"
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s_median": 1816.757625,
+      "decode_tok_s_median": 126.472921,
+      "tracked_peak_allocated_gib_median": 21.334858,
+      "sampled_hip_used_peak_gib": 21.908821,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2151.850842,
+      "decode_tok_s_median": 115.798456,
+      "tracked_peak_allocated_gib_median": 21.334858,
+      "sampled_hip_used_peak_gib": 21.910774,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.798456,
+  "unsafe_intermediate_gate_summaries": {
+    "initial_halfseq_run": {
+      "512/128": {
+        "prefill_tok_s_median": 1888.617722,
+        "decode_tok_s_median": 126.618648,
+        "tracked_peak_allocated_gib_median": 21.334858,
+        "sampled_hip_used_peak_gib": 21.909798,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 2178.056353,
+        "decode_tok_s_median": 115.390341,
+        "tracked_peak_allocated_gib_median": 21.334858,
+        "sampled_hip_used_peak_gib": 21.911751,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ],
+        "final_token_ids_stable": true
+      },
+      "primary_metric_min_decode_tok_s": 115.390341
+    },
+    "initial_halfseq_rerun": {
+      "512/128": {
+        "prefill_tok_s_median": 1881.318618,
+        "decode_tok_s_median": 126.950908,
+        "tracked_peak_allocated_gib_median": 21.334858,
+        "sampled_hip_used_peak_gib": 21.909798,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 2175.49405,
+        "decode_tok_s_median": 115.713825,
+        "tracked_peak_allocated_gib_median": 21.334858,
+        "sampled_hip_used_peak_gib": 21.911751,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ],
+        "final_token_ids_stable": true
+      },
+      "primary_metric_min_decode_tok_s": 115.713825
+    },
+    "note": "Intermediate measurements were superseded because the first rewrite lacked the original per-lane store bounds guard for non-multiple-of-16 output widths."
+  },
+  "delta_vs_selected_down_lb2": {
+    "512/128_prefill_tok_s_median": {
+      "old": 1647.389814,
+      "new": 1816.757625,
+      "percent": 10.28098
+    },
+    "512/128_decode_tok_s_median": {
+      "old": 127.011979,
+      "new": 126.472921,
+      "percent": -0.424415
+    },
+    "4K/128_prefill_tok_s_median": {
+      "old": 1855.806476,
+      "new": 2151.850842,
+      "percent": 15.95233
+    },
+    "4K/128_decode_tok_s_median": {
+      "old": 115.804576,
+      "new": 115.798456,
+      "percent": -0.005285
+    },
+    "min_gate_decode_tok_s": {
+      "old": 115.804576,
+      "new": 115.798456,
+      "percent": -0.005285
+    }
+  },
+  "code_object_metadata": {
+    "artifact_path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-f13d26d3a988117a/gguf_q4_k_t16_selected_prefill.so",
+    "kernel": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<half>",
+    "private_segment_fixed_size_bytes": 160,
+    "vgpr_count": 256,
+    "vgpr_spill_count": 113,
+    "sgpr_count": 44,
+    "sgpr_spill_count": 0,
+    "disassembly_counts": {
+      "lines": 7180,
+      "scratch_ops": 90,
+      "scratch_loads": 57,
+      "scratch_stores": 33,
+      "wmma_ops": 32,
+      "waitcnt": 426
+    },
+    "previous_retained": {
+      "private_segment_fixed_size_bytes": 676,
+      "vgpr_count": 256,
+      "vgpr_spill_count": 320,
+      "scratch_ops": 122,
+      "scratch_loads": 42,
+      "scratch_stores": 80,
+      "wmma_ops": 32
+    }
+  },
+  "rocprof_4k16": {
+    "shape": "4K/16",
+    "prefill_total_kernel_ms": 1761.552,
+    "decode_total_kernel_ms": 143.418,
+    "prefill_dispatches": 5256,
+    "decode_dispatches": 11327,
+    "selected_dual_q4k_wmma_prefill_ms": 454.37,
+    "selected_dual_q4k_wmma_prefill_share_percent": 25.79,
+    "selected_dual_q4k_wmma_prefill_resource_summary": {
+      "vgpr_count": {
+        "min": 256,
+        "max": 256,
+        "values": [
+          256
+        ]
+      },
+      "accum_vgpr_count": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0
+        ]
+      },
+      "sgpr_count": {
+        "min": 128,
+        "max": 128,
+        "values": [
+          128
+        ]
+      },
+      "scratch_bytes": {
+        "min": 160,
+        "max": 160,
+        "values": [
+          160
+        ]
+      },
+      "lds_bytes": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0
+        ]
+      },
+      "workgroup_size": {
+        "min": 32,
+        "max": 32,
+        "values": [
+          32
+        ]
+      },
+      "grid_size": {
+        "min": 524288,
+        "max": 2148352,
+        "values": [
+          524288,
+          525312,
+          526336,
+          527360,
+          528384,
+          529408,
+          530432,
+          531456,
+          532480,
+          533504,
+          534528,
+          535552,
+          536576,
+          537600,
+          538624,
+          539648,
+          540672,
+          541696,
+          542720,
+          546816,
+          548864,
+          549888,
+          551936,
+          555008,
+          557056,
+          558080,
+          559104,
+          561152,
+          564224,
+          565248,
+          566272,
+          567296,
+          568320,
+          570368,
+          571392,
+          572416,
+          575488,
+          2121728,
+          2124800,
+          2127872,
+          2130944,
+          2138112,
+          2145280,
+          2146304,
+          2148352
+        ]
+      }
+    },
+    "baseline_retained_4k16": {
+      "prefill_total_kernel_ms": 2094.198,
+      "selected_dual_q4k_wmma_prefill_ms": 800.455,
+      "selected_dual_q4k_wmma_prefill_share_percent": 38.22,
+      "decode_total_kernel_ms": 138.513
+    },
+    "delta_vs_baseline_retained_4k16": {
+      "prefill_total_kernel_ms_percent": -15.88418,
+      "selected_dual_q4k_wmma_prefill_ms_percent": -43.235979,
+      "decode_total_kernel_ms_percent": 3.541086
+    }
+  },
+  "final_promotion_check_128k128": {
+    "status": "blocked_on_gpu1_oom",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-halfseq-128k.json",
+    "error": "HIP error 2: out of memory allocating prefill hidden buffer during Qwen35GGUFResidentSession construction on GPU1 24GB-class device.",
+    "tracked_peak_primary_gate_gib": 21.334858,
+    "note": "Primary 512/128 and 4K/128 gates fit with unchanged tracked peak; 128K/128 needs W7900 fallback or a G-P4 memory-policy iteration before final long-context promotion."
+  },
+  "commands": {
+    "focused_test": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q",
+    "verify": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-halfseq-safe.json",
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "rocprof_4k16": "rocprofv3 --kernel-trace ... scripts/qwen35_gguf_bench.py --prompt-length 4096 --decode-tokens 0/16 --require-cached-build; summary from scripts/qwen35_gguf_rocprof_summary.py"
+  },
+  "guard": {
+    "focused_prefill_pytest": "9 passed",
+    "targeted_gguf_bundle": "154 passed"
+  },
+  "prompt_verifier": {
+    "passed": true,
+    "evidence": "Generated IDs stable on 512/128 and 4K/128 gate; focused selected-WMMA CPU-reference tests pass; no torch/llama.cpp hot-path changes; tracked peak unchanged at 21.334858 GiB; prefill improved strongly while decode gate movement is within run noise."
+  },
+  "notes": [
+    "The safe half-seq gate supersedes two intermediate measurements from the first half-seq rewrite because the first rewrite did not preserve the original per-lane store guard for non-multiple-of-16 output widths.",
+    "The selected Q4_K WMMA prefill bucket fell from 800.455 ms to 454.370 ms on the 4K/16 trace; the kernel still uses 256 VGPR and has 160 B private segment, so further live-state work may still help.",
+    "Decode primary metric is effectively flat versus selected-down-lb2 (-0.005%) and is not a decode promotion; the profiled 16-token decode window is noisy and measured 143.418 ms vs 138.513 ms baseline.",
+    "128K/128 on GPU1 failed at session construction with HIP OOM; do not mark final long-context promotion complete until a W7900 fallback or memory-policy gate is recorded."
+  ]
+}

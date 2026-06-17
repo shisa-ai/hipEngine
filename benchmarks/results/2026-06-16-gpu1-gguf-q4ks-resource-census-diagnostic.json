@@ -1,0 +1,929 @@
+{
+  "schema": "hipengine_gguf_resource_census_v1",
+  "date": "2026-06-16",
+  "loop": "gguf-tuning/run-20260615-103446",
+  "iteration": 41,
+  "status": "diagnostic",
+  "performance_claim": false,
+  "source_profile_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-retained-4k-rocprof-diagnostic.json",
+  "source_summary_json": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/summary_with_resources.json",
+  "machine": "GPU1/gfx1100 RX 7900 XTX, TheRock HIP 7.13 cached builds",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "profile_shape": "4K/16",
+  "headline_findings": {
+    "decode_top8_scratch_free": true,
+    "decode_top8_scratch": [],
+    "prefill_top8_scratch": [
+      {
+        "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+        "scratch_b": [
+          676
+        ],
+        "vgpr": [
+          256
+        ]
+      },
+      {
+        "bucket": "dense_q8_0_wmma_prefill",
+        "scratch_b": [
+          0,
+          8
+        ],
+        "vgpr": [
+          96,
+          128,
+          192
+        ]
+      },
+      {
+        "bucket": "other",
+        "scratch_b": [
+          0,
+          156
+        ],
+        "vgpr": [
+          8,
+          16,
+          24,
+          256
+        ]
+      },
+      {
+        "bucket": "full_attention_prefill",
+        "scratch_b": [
+          3200
+        ],
+        "vgpr": [
+          256
+        ]
+      },
+      {
+        "bucket": "linear_attn_conv",
+        "scratch_b": [
+          0,
+          20
+        ],
+        "vgpr": [
+          24,
+          32
+        ]
+      },
+      {
+        "bucket": "moe_q6_k_selected_wmma_prefill",
+        "scratch_b": [
+          188
+        ],
+        "vgpr": [
+          256
+        ]
+      }
+    ],
+    "interpretation": "Decode hot kernels are scratch-free; the dominant prefill selected-dual Q4_K WMMA bucket reports VGPR=256 and Scratch_Size=676 B, so prefill work should start with codegen/ISA pressure rather than more blind launch-bound pokes."
+  },
+  "phases": {
+    "prefill": {
+      "total_ms": 2094.198,
+      "dispatches": 5256,
+      "tokens": 4096,
+      "ms_per_token": 0.511279,
+      "top_buckets": [
+        {
+          "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+          "ms": 800.455,
+          "disp": 130,
+          "share_pct": 38.22,
+          "scratch_b": [
+            676
+          ],
+          "vgpr": [
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        },
+        {
+          "bucket": "gdn_prefill_recurrent",
+          "ms": 351.231,
+          "disp": 120,
+          "share_pct": 16.77,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            32
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            64
+          ]
+        },
+        {
+          "bucket": "dense_q8_0_wmma_prefill",
+          "ms": 329.473,
+          "disp": 790,
+          "share_pct": 15.73,
+          "scratch_b": [
+            0,
+            8
+          ],
+          "vgpr": [
+            96,
+            128,
+            192
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        },
+        {
+          "bucket": "other",
+          "ms": 287.724,
+          "disp": 525,
+          "share_pct": 13.74,
+          "scratch_b": [
+            0,
+            156
+          ],
+          "vgpr": [
+            8,
+            16,
+            24,
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0,
+            1024
+          ],
+          "wg": [
+            1,
+            32,
+            128,
+            256
+          ]
+        },
+        {
+          "bucket": "router",
+          "ms": 124.039,
+          "disp": 390,
+          "share_pct": 5.92,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            24,
+            40
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0,
+            512
+          ],
+          "wg": [
+            512
+          ]
+        },
+        {
+          "bucket": "full_attention_prefill",
+          "ms": 87.719,
+          "disp": 10,
+          "share_pct": 4.19,
+          "scratch_b": [
+            3200
+          ],
+          "vgpr": [
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "bucket": "linear_attn_conv",
+          "ms": 21.709,
+          "disp": 240,
+          "share_pct": 1.04,
+          "scratch_b": [
+            0,
+            20
+          ],
+          "vgpr": [
+            24,
+            32
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            256
+          ]
+        },
+        {
+          "bucket": "moe_q6_k_selected_wmma_prefill",
+          "ms": 20.405,
+          "disp": 9,
+          "share_pct": 0.97,
+          "scratch_b": [
+            188
+          ],
+          "vgpr": [
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        }
+      ],
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned s...",
+          "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+          "ms": 800.455,
+          "disp": 130,
+          "scratch_b": [
+            676
+          ],
+          "vgpr": [
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const...",
+          "bucket": "gdn_prefill_recurrent",
+          "ms": 351.231,
+          "disp": 120,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            32
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            64
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 4>(u...",
+          "bucket": "other",
+          "ms": 256.562,
+          "disp": 121,
+          "scratch_b": [
+            156
+          ],
+          "vgpr": [
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 16...",
+          "bucket": "dense_q8_0_wmma_prefill",
+          "ms": 238.008,
+          "disp": 530,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            96
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned s...",
+          "bucket": "router",
+          "ms": 118.814,
+          "disp": 260,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            24
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            512
+          ]
+        },
+        {
+          "kernel": "attn_fwd",
+          "bucket": "full_attention_prefill",
+          "ms": 87.719,
+          "disp": 10,
+          "scratch_b": [
+            3200
+          ],
+          "vgpr": [
+            256
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 64...",
+          "bucket": "dense_q8_0_wmma_prefill",
+          "ms": 80.813,
+          "disp": 130,
+          "scratch_b": [
+            8
+          ],
+          "vgpr": [
+            192
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            32
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigne...",
+          "bucket": "other",
+          "ms": 22.2,
+          "disp": 240,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            16
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            1024
+          ],
+          "wg": [
+            256
+          ]
+        }
+      ]
+    },
+    "decode": {
+      "total_ms": 138.513,
+      "dispatches": 11327,
+      "tokens": 16,
+      "ms_per_token": 8.657086,
+      "top_buckets": [
+        {
+          "bucket": "dense_q8_0_t16_gemv_decode_p9",
+          "ms": 49.758,
+          "disp": 2720,
+          "share_pct": 35.92,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            64
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+          "ms": 17.154,
+          "disp": 680,
+          "share_pct": 12.38,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            200
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            1024
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "bucket": "other",
+          "ms": 15.061,
+          "disp": 2059,
+          "share_pct": 10.87,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            8,
+            16,
+            24,
+            104
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0,
+            512,
+            1024
+          ],
+          "wg": [
+            1,
+            128,
+            256
+          ]
+        },
+        {
+          "bucket": "full_attention_decode",
+          "ms": 13.912,
+          "disp": 340,
+          "share_pct": 10.04,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            16,
+            80
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            256
+          ]
+        },
+        {
+          "bucket": "dense_q6_k_t16_gemv_decode_p9",
+          "ms": 10.087,
+          "disp": 17,
+          "share_pct": 7.28,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            72
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "bucket": "rmsnorm",
+          "ms": 9.14,
+          "disp": 1547,
+          "share_pct": 6.6,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            16,
+            24
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            256
+          ]
+        },
+        {
+          "bucket": "gdn_decode",
+          "ms": 7.924,
+          "disp": 510,
+          "share_pct": 5.72,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            56
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "bucket": "router",
+          "ms": 6.595,
+          "disp": 680,
+          "share_pct": 4.76,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            40
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            256
+          ]
+        }
+      ],
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short>(unsi...",
+          "bucket": "dense_q8_0_t16_gemv_decode_p9",
+          "ms": 19.661,
+          "disp": 510,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            64
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short ...",
+          "bucket": "dense_q8_0_t16_gemv_decode_p9",
+          "ms": 17.898,
+          "disp": 1360,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            64
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>(unsig...",
+          "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+          "ms": 17.154,
+          "disp": 680,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            200
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            1024
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8l, 16l,...",
+          "bucket": "full_attention_decode",
+          "ms": 12.724,
+          "disp": 170,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            80
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            256
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 4>(unsigned short...",
+          "bucket": "other",
+          "ms": 11.254,
+          "disp": 629,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            104
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, float>(unsigned short const*, u...",
+          "bucket": "dense_q6_k_t16_gemv_decode_p9",
+          "ms": 10.087,
+          "disp": 17,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            72
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float ...",
+          "bucket": "gdn_decode",
+          "ms": 7.924,
+          "disp": 510,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            56
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            0
+          ],
+          "wg": [
+            128
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_dual_gemv_kernel<unsigned short, unsigned short>(unsigned s...",
+          "bucket": "dense_q8_0_t16_gemv_decode_p9",
+          "ms": 7.167,
+          "disp": 680,
+          "scratch_b": [
+            0
+          ],
+          "vgpr": [
+            64
+          ],
+          "accum_vgpr": [
+            0
+          ],
+          "sgpr": [
+            128
+          ],
+          "lds_b": [
+            512
+          ],
+          "wg": [
+            128
+          ]
+        }
+      ]
+    }
+  },
+  "verify": {
+    "workloads": {
+      "512/128": {
+        "prefill_tok_s": 1650.529628,
+        "decode_tok_s": 126.666521,
+        "peak_gib": 21.334858,
+        "stable": true,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ]
+      },
+      "4K/128": {
+        "prefill_tok_s": 1857.479694,
+        "decode_tok_s": 115.771004,
+        "peak_gib": 21.334858,
+        "stable": true,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ]
+      }
+    },
+    "primary_metric_min_decode_tok_s": 115.771004
+  },
+  "notes": [
+    "G-M3 resource census from rocprofv3 kernel-trace metadata; not a new performance claim.",
+    "qwen35_gguf_rocprof_summary.py now emits per-bucket/per-kernel resource summaries: VGPR, Accum_VGPR, SGPR, Scratch_Size, LDS, workgroup size, grid size."
+  ]
+}

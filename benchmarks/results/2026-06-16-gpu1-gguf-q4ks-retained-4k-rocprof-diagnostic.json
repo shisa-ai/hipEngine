@@ -1,0 +1,236 @@
+{
+  "schema": "hipengine_gguf_profile_diagnostic_v1",
+  "date": "2026-06-16",
+  "loop": "gguf-tuning/run-20260615-103446",
+  "iteration": 40,
+  "status": "diagnostic",
+  "performance_claim": false,
+  "machine": "GPU1/gfx1100 AMD Radeon RX 7900 XTX, TheRock HIP 7.13 cached builds",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "flags": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version-713.txt",
+    "bulk_prefill_attention_mode": "bulk",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "require_cached_build": true
+  },
+  "profile": {
+    "shape": "4K/16",
+    "tokens_prefill": 4096,
+    "tokens_decode": 16,
+    "raw_tmp_dir": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup",
+    "summary_tmp_json": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/summary.json",
+    "prefill_csv": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/prefill_rocprof/q4ks4k_prefill_kernel_trace.csv",
+    "decode_csv": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/decode_rocprof/q4ks4k_decode16_kernel_trace.csv",
+    "decode_prefill_prefix_dispatches": 5256,
+    "prefill": {
+      "total_kernel_ms": 2094.19766,
+      "total_dispatches": 5256,
+      "tokens": 4096,
+      "ms_per_token": 0.511278726,
+      "top_buckets": [
+        {
+          "bucket": "moe_q4_k_selected_dual_wmma_prefill",
+          "total_ms": 800.454742,
+          "dispatches": 130,
+          "avg_dispatch_ms": 6.157344,
+          "share_pct": 38.2225,
+          "ms_per_token": 0.195423521,
+          "effective_gb_s": 12.2614
+        },
+        {
+          "bucket": "gdn_prefill_recurrent",
+          "total_ms": 351.231034,
+          "dispatches": 120,
+          "avg_dispatch_ms": 2.926925,
+          "share_pct": 16.7716,
+          "ms_per_token": 0.085749764,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "dense_q8_0_wmma_prefill",
+          "total_ms": 329.472581,
+          "dispatches": 790,
+          "avg_dispatch_ms": 0.417054,
+          "share_pct": 15.7326,
+          "ms_per_token": 0.080437642,
+          "effective_gb_s": 10.6855
+        },
+        {
+          "bucket": "other",
+          "total_ms": 287.723975,
+          "dispatches": 525,
+          "avg_dispatch_ms": 0.548046,
+          "share_pct": 13.7391,
+          "ms_per_token": 0.070245111,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "router",
+          "total_ms": 124.038552,
+          "dispatches": 390,
+          "avg_dispatch_ms": 0.318048,
+          "share_pct": 5.923,
+          "ms_per_token": 0.03028285,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "full_attention_prefill",
+          "total_ms": 87.718688,
+          "dispatches": 10,
+          "avg_dispatch_ms": 8.771869,
+          "share_pct": 4.1887,
+          "ms_per_token": 0.021415695,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "linear_attn_conv",
+          "total_ms": 21.70897,
+          "dispatches": 240,
+          "avg_dispatch_ms": 0.090454,
+          "share_pct": 1.0366,
+          "ms_per_token": 0.005300042,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "moe_q6_k_selected_wmma_prefill",
+          "total_ms": 20.404756,
+          "dispatches": 9,
+          "avg_dispatch_ms": 2.267195,
+          "share_pct": 0.9743,
+          "ms_per_token": 0.00498163,
+          "effective_gb_s": 24.2808
+        }
+      ]
+    },
+    "decode": {
+      "total_kernel_ms": 138.513368,
+      "total_dispatches": 11327,
+      "tokens": 16,
+      "ms_per_token": 8.6570855,
+      "top_buckets": [
+        {
+          "bucket": "dense_q8_0_t16_gemv_decode_p9",
+          "total_ms": 49.758034,
+          "dispatches": 2720,
+          "avg_dispatch_ms": 0.018293,
+          "share_pct": 35.9229,
+          "ms_per_token": 3.109877125,
+          "effective_gb_s": 243.6097
+        },
+        {
+          "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+          "total_ms": 17.154215,
+          "dispatches": 680,
+          "avg_dispatch_ms": 0.025227,
+          "share_pct": 12.3845,
+          "ms_per_token": 1.072138438,
+          "effective_gb_s": 374.0938
+        },
+        {
+          "bucket": "other",
+          "total_ms": 15.061492,
+          "dispatches": 2059,
+          "avg_dispatch_ms": 0.007315,
+          "share_pct": 10.8737,
+          "ms_per_token": 0.94134325,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "full_attention_decode",
+          "total_ms": 13.911793,
+          "dispatches": 340,
+          "avg_dispatch_ms": 0.040917,
+          "share_pct": 10.0436,
+          "ms_per_token": 0.869487062,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "dense_q6_k_t16_gemv_decode_p9",
+          "total_ms": 10.086774,
+          "dispatches": 17,
+          "avg_dispatch_ms": 0.59334,
+          "share_pct": 7.2822,
+          "ms_per_token": 0.630423375,
+          "effective_gb_s": 430.1897
+        },
+        {
+          "bucket": "rmsnorm",
+          "total_ms": 9.139889,
+          "dispatches": 1547,
+          "avg_dispatch_ms": 0.005908,
+          "share_pct": 6.5986,
+          "ms_per_token": 0.571243063,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "gdn_decode",
+          "total_ms": 7.923914,
+          "dispatches": 510,
+          "avg_dispatch_ms": 0.015537,
+          "share_pct": 5.7207,
+          "ms_per_token": 0.495244625,
+          "effective_gb_s": null
+        },
+        {
+          "bucket": "router",
+          "total_ms": 6.59496,
+          "dispatches": 680,
+          "avg_dispatch_ms": 0.009698,
+          "share_pct": 4.7612,
+          "ms_per_token": 0.412185,
+          "effective_gb_s": null
+        }
+      ]
+    },
+    "bench_throughput": {
+      "prefill_only_prefill_tok_s": 1798.7740847465436,
+      "decode_run_prefill_tok_s": 1803.5625824923227,
+      "decode_run_decode_tok_s": 96.67757191416368,
+      "tracked_peak_allocated_gib": 21.334858000278473
+    }
+  },
+  "verify": {
+    "command": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --require-cached-build",
+    "json": "/tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "workloads": {
+      "512/128": {
+        "prefill_tok_s_median": 1644.5084512811081,
+        "decode_tok_s_median": 126.31476675085345,
+        "tracked_peak_allocated_gib_median": 21.334858000278473,
+        "final_token_ids_stable": true,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "hip_used_peak_sampled_gib_median": null
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 1856.8420534932725,
+        "decode_tok_s_median": 115.59310680162125,
+        "tracked_peak_allocated_gib_median": 21.334858000278473,
+        "final_token_ids_stable": true,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ],
+        "hip_used_peak_sampled_gib_median": null
+      }
+    },
+    "primary_metric_min_decode_tok_s": 115.59310680162125
+  },
+  "guard": {
+    "command": "python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "result": "154 passed"
+  },
+  "notes": [
+    "No code changes in this iteration; diagnostic refresh only.",
+    "Profile was rerun with --warmup-runs 0 so --strip-prefill-prefix leaves a decode-only 16-token window.",
+    "Top prefill bucket remains selected dual Q4_K WMMA; top decode bucket remains dense Q8_0 T16 GEMV."
+  ]
+}

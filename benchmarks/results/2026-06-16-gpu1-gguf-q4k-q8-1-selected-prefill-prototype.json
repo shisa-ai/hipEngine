@@ -1,0 +1,57 @@
+{
+  "kernel_mode": "q8-1-dot",
+  "memory": {
+    "activation_quantization_in_loop": false,
+    "host_output_mib": 64.0,
+    "host_q8_qs_mib": 8.0,
+    "host_q8_scale_mib": 1.0,
+    "host_q8_sum_mib": 1.0,
+    "host_raw_qweight_a_mib": 36.0,
+    "host_raw_qweight_b_mib": 36.0,
+    "prototype_note": "Prequantized activation scalar integer-dot prototype; not a tiled MMQ implementation.",
+    "tracked_peak_allocated_gib": 0.14258016645908356,
+    "weight_layout": "raw_gguf_q4_k"
+  },
+  "performance_claim": false,
+  "reason_not_promoted": "Synthetic kernel microbench/prototype only; no runtime dispatch/default change.",
+  "run_tag": "gguf_q4_k_selected_prefill_microbench_q8-1-dot",
+  "sanity": {
+    "finite_output": true,
+    "output_checksum_f64": 6691572.208536744,
+    "output_max_abs": 136.0
+  },
+  "schema": 2,
+  "shape": {
+    "compact_rows": 4096,
+    "experts": 8,
+    "hidden": 2048,
+    "out_features_a": 4096,
+    "out_features_b": 4096,
+    "out_features_total": 8192,
+    "rows_per_expert": 512,
+    "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+    "wmma_total_rows": 4096
+  },
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "hipengine_commit": "5da77e192ece1968594660dc776e850c47fdbbb4",
+    "hipengine_dirty_files": [
+      " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+      "?? hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
+      "?? hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
+      "?? tests/test_gguf_q4_k_q8_1_selected_prefill.py"
+    ],
+    "python": "3.12.9"
+  },
+  "status": "diagnostic_retained",
+  "timestamp": "2026-06-16T02:54:58.062215+00:00",
+  "timing": {
+    "calls_per_s": 45.706325671681654,
+    "elapsed_s": 0.06563642900437117,
+    "iters": 3,
+    "logical_fma": 68719476736,
+    "logical_tflops": 6.281829567366334,
+    "ms_per_call": 21.878809668123722,
+    "warmup": 1
+  }
+}

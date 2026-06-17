@@ -1,0 +1,241 @@
+{
+  "change": "Further retuned resident GGUF Q8_0 T16 WMMA prefill default tile selection for small shared-expert shapes: in=2048,out=512 and in=512,out=2048 use TN16 on rows > 512 while preserving the previous TN32 policy for 512-row primary chunks.",
+  "checks": {
+    "final_128k_id_matches_previous_default": true,
+    "final_128k_id_stable": true,
+    "guard_passed": true,
+    "hot_path_torch_or_llamacpp_import_grep": "No matches for import torch or llama.cpp in gguf_q8_0_t16_prefill.py",
+    "memory_non_regressive": true,
+    "primary_ids_match_previous_default": true,
+    "primary_ids_stable": true,
+    "tile_policy_tests_passed": true
+  },
+  "commands": {
+    "final_128k_gate": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-q8t16-smalltiles-128k.json",
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "primary_gate": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "tile_policy_tests": "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy tests/test_gguf_q8_0_t16_wmma_prefill.py::test_p10_b4_q8_0_t16_wmma_prefill_explicit_tile_selection_matches_cpu_reference -q"
+  },
+  "comparisons": {
+    "128K/128": {
+      "decode_delta_vs_previous_default_pct": -0.20131767612439067,
+      "final_token_id_matches_previous_default": true,
+      "peak_gib_delta_vs_previous_default": 0.0,
+      "prefill_delta_vs_previous_default_pct": -0.007011636953468958
+    },
+    "4K/128": {
+      "decode_delta_vs_previous_default_pct": 0.22208658103828327,
+      "final_token_id_matches_previous_default": true,
+      "peak_gib_delta_vs_previous_default": 0.0,
+      "prefill_delta_vs_previous_default_pct": 0.6835263694107141
+    },
+    "512/128": {
+      "decode_delta_vs_previous_default_pct": -0.16796579273720136,
+      "final_token_id_matches_previous_default": true,
+      "peak_gib_delta_vs_previous_default": 0.0,
+      "prefill_delta_vs_previous_default_pct": 0.3515069274294014
+    }
+  },
+  "date_utc": "2026-06-16",
+  "hardware": "GPU1 gfx1100 / AMD Radeon RX 7900 XTX class, TheRock HIP 7.13",
+  "microbench_summary": {
+    "rejected_rows512_full_model_variant": "Applying TN16/TM64 to 512-row in2048,out512 and TN16 to 512-row in512,out2048 regressed the 512/128 full-model prefill median to 1909.506 tok/s, so the retained policy keeps rows<=512 on TN32.",
+    "rows1024_in2048_out512_ms": {
+      "new_32x16": 0.1239,
+      "old_16x32": 0.1958
+    },
+    "rows1024_in512_out2048_ms": {
+      "new_32x16": 0.1214,
+      "old_32x32": 0.164
+    },
+    "rows768_in2048_out512_ms": {
+      "new_32x16": 0.108,
+      "old_16x32": 0.1371
+    },
+    "rows768_in512_out2048_ms": {
+      "new_32x16": 0.1119,
+      "old_32x32": 0.128
+    }
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "new_final_128k_gate": {
+    "128K/128": {
+      "decode_tok_s_median": 67.5918491074238,
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        3642,
+        84,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 768,
+        "full_attn_query": 768,
+        "full_attn_rope": 768,
+        "linear": 768,
+        "moe": 768
+      },
+      "prefill_tok_s_median": 747.0329888967809,
+      "tracked_peak_allocated_gib_median": 23.310420989990234
+    }
+  },
+  "new_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 114.99062517817606,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        179495,
+        570
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2293.994380306796,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.92445877015238,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1958.6929035595517,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "notes": [
+    "Retained for small primary prefill gains on both 512/128 and 4K/128 plus a min-decode improvement versus the previous default.",
+    "128K/128 remained deterministic with flat memory; its single-run prefill/decode were effectively flat/slightly lower versus the immediately previous long-context check and are not claimed improved."
+  ],
+  "performance_claim": true,
+  "previous_default_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-prefill-tiles-gate.json",
+  "previous_final_128k_gate": {
+    "128K/128": {
+      "decode_tok_s_median": 67.72819794160075,
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        3642,
+        84,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 768,
+        "full_attn_query": 768,
+        "full_attn_rope": 768,
+        "linear": 768,
+        "moe": 768
+      },
+      "prefill_tok_s_median": 747.0853718107847,
+      "tracked_peak_allocated_gib_median": 23.310420989990234
+    }
+  },
+  "previous_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 114.73581233533402,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        179495,
+        570
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2278.4207735136984,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 127.13800713170143,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1951.8320785915132,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "primary_metric_min_decode_tok_s": 114.99062517817606,
+  "quant": "gguf_q4_k_s",
+  "status": "retained_default",
+  "workloads": [
+    "512/128",
+    "4K/128",
+    "128K/128"
+  ]
+}

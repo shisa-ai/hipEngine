@@ -1,0 +1,181 @@
+{
+  "candidate_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 111.99786295302611,
+      "final_token_ids": [
+        28944,
+        28944,
+        28944
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        4733,
+        28944
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2294.7406814335704,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 122.69432087737513,
+      "final_token_ids": [
+        97799,
+        97799,
+        97799
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        97799
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1898.1301577312304,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "change": "Candidate changed GGUF Q8_0 T16 GEMV decode kernels (single, dual, dual-split, triple-split) from launch_bounds/blockDim 128 to 64.",
+  "checks": {
+    "guard_passed": true,
+    "memory_non_regressive": true,
+    "primary_ids_match_retained_default": false,
+    "primary_ids_stable": true,
+    "prompt_verifier_passed": false,
+    "q8t16_decode_kernel_tests_passed": true
+  },
+  "commands": {
+    "guard": "cd /home/lhl/hipEngine-gguf-tuning && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "primary_gate": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "q8t16_decode_kernel_tests": "cd /home/lhl/hipEngine-gguf-tuning && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q"
+  },
+  "comparisons": {
+    "4K/128": {
+      "candidate_final_token_ids": [
+        28944,
+        28944,
+        28944
+      ],
+      "decode_delta_vs_retained_default_pct": -2.6026141005083714,
+      "final_token_id_matches_retained_default": false,
+      "peak_gib_delta_vs_retained_default": 0.0,
+      "prefill_delta_vs_retained_default_pct": 0.032532822799447025,
+      "retained_default_final_token_ids": [
+        570,
+        570,
+        570
+      ]
+    },
+    "512/128": {
+      "candidate_final_token_ids": [
+        97799,
+        97799,
+        97799
+      ],
+      "decode_delta_vs_retained_default_pct": -3.332799630398753,
+      "final_token_id_matches_retained_default": false,
+      "peak_gib_delta_vs_retained_default": 0.0,
+      "prefill_delta_vs_retained_default_pct": -3.0919980216531195,
+      "retained_default_final_token_ids": [
+        220,
+        220,
+        220
+      ]
+    }
+  },
+  "date_utc": "2026-06-16",
+  "hardware": "GPU1 gfx1100 / AMD Radeon RX 7900 XTX class, TheRock HIP 7.13",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "The reduced blockDim produced deterministic but incorrect generated IDs on both primary gates, indicating the 32-lane reduction pattern is numerically/ordering sensitive to the number of subgroups.",
+    "Decode throughput regressed by -3.33% at 512/128 and -2.60% at 4K/128 versus the retained Q8T16 small-shape default.",
+    "The 128K final gate was not run because the primary correctness/performance verifier failed.",
+    "The code changes were reverted before committing this rejected-attempt artifact."
+  ],
+  "performance_claim": false,
+  "primary_metric_min_decode_tok_s": 111.99786295302611,
+  "quant": "gguf_q4_k_s",
+  "rejection_reason": "The candidate changed deterministic final token IDs on both primary gates and regressed decode throughput; code was reverted.",
+  "retained_default_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-smallshape-tiles-gate.json",
+  "retained_default_primary_gate": {
+    "4K/128": {
+      "decode_tok_s_median": 114.99062517817606,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        179495,
+        570
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 2293.994380306796,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.92445877015238,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "finite_final_logits_all": true,
+      "generated_tail_token_ids_first_run": [
+        25088,
+        95,
+        220
+      ],
+      "prefill_chunk_sizes_first_run": {
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025,
+        "full_attn_post": 1024,
+        "full_attn_query": 4096,
+        "full_attn_rope": 1024,
+        "linear": 1024,
+        "moe": 1024
+      },
+      "prefill_tok_s_median": 1958.6929035595517,
+      "tracked_peak_allocated_gib_median": 21.334841787815094
+    }
+  },
+  "status": "rejected",
+  "workloads": [
+    "512/128",
+    "4K/128"
+  ]
+}

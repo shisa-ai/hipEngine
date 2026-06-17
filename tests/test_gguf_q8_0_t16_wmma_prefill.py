@@ -8,7 +8,7 @@ defined in ``hipengine/quant/gguf_t16.py``:
 Each tile slab packs 16 fp16 d values plus 32 K-rows x 16 cols of int8
 quant data, so one tile covers a 16-col output slab over a single Q8_0
 32-K block. The kernel mirrors ``gguf_q8_0_prefill_wmma_kernel`` (raw
-GGUF) and uses the same shape-aware (tile_m, tile_n) decision tree.
+GGUF) but keeps a T16-specific shape-aware (tile_m, tile_n) default policy.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    _default_tiles,
     build_gguf_q8_0_t16_prefill,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_f32_out,
@@ -86,6 +87,26 @@ _TOLERANCES: dict[tuple[str, str], dict[str, float]] = {
 # ---------------------------------------------------------------------------
 # No-GPU surface checks.
 # ---------------------------------------------------------------------------
+
+
+def test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy() -> None:
+    assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (64, 32)
+    assert _default_tiles(rows=768, in_features=2048, out_features=4096) == (64, 32)
+    assert _default_tiles(rows=1024, in_features=2048, out_features=4096) == (32, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (64, 32)
+    assert _default_tiles(rows=768, in_features=2048, out_features=8192) == (32, 32)
+    assert _default_tiles(rows=1024, in_features=2048, out_features=8192) == (32, 32)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=1024, in_features=2048, out_features=2048) == (32, 16)
+    assert _default_tiles(rows=512, in_features=2048, out_features=512) == (16, 32)
+    assert _default_tiles(rows=768, in_features=2048, out_features=512) == (32, 16)
+    assert _default_tiles(rows=1024, in_features=2048, out_features=512) == (32, 16)
+    assert _default_tiles(rows=512, in_features=512, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=1024, in_features=512, out_features=2048) == (32, 16)
+    assert _default_tiles(rows=31, in_features=2048, out_features=4096) == (64, 16)
+    assert _default_tiles(rows=31, in_features=2048, out_features=512) == (16, 16)
+    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (32, 16)
 
 
 def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:

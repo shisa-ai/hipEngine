@@ -632,13 +632,13 @@ def test_gdn_prefill_paths_match_cpu_oracle_qwen36_shape() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("tokens", [255, 256, 257])
+@pytest.mark.parametrize("tokens", [1024, 1025, 1026])
 def test_gdn_prefill_segment_boundary_paths_agree(tokens: int) -> None:
     """The segments_k2 and k2 paths must agree at the segment-threshold boundary.
 
     The runtime opts into segments_k2 at rows >=
-    ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 256). This test
-    pins both paths at 255/256/257 against the CPU oracle so neither one
+    ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025). This test
+    pins both paths at 1024/1025/1026 against the CPU oracle so neither one
     silently drifts as we tune the default.
     """
 

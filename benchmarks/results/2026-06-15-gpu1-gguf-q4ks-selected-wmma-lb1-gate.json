@@ -1,0 +1,70 @@
+{
+  "baseline_post_revert": {
+    "4K/128": {
+      "decode_tok_s_median": 114.901837,
+      "final_token_id": 570,
+      "prefill_tok_s_median": 1851.95
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.162259,
+      "final_token_id": 220,
+      "prefill_tok_s_median": 1638.547794
+    },
+    "tracked_peak_allocated_gib_median": 21.334858
+  },
+  "branch": "gguf-tuning",
+  "change": "Default HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS for gguf_q4_k_t16_selected_prefill.hip changed 2 -> 1.",
+  "commands": {
+    "guard": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "prebuild": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c \"from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import build_gguf_q4_k_t16_selected_prefill; print(build_gguf_q4_k_t16_selected_prefill(load=False).output_path)\"",
+    "verify": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-lb1-default.json"
+  },
+  "date": "2026-06-15",
+  "guard": {
+    "pytest": "154 passed"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX / gfx1100 24GB-class",
+    "device_selector": "HIP_VISIBLE_DEVICES=1"
+  },
+  "iteration": 7,
+  "loop": "gguf-tuning/run-20260615-103446",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "notes": [
+    "Graph capture excluded from measured decode as in qwen35_readme_sweep.",
+    "Sampled HIP used peak in full JSON was 21.954102 GiB on the 4K gate.",
+    "128K/128 promotion check not yet run for this micro-tune."
+  ],
+  "primary_metric_min_decode_tok_s": 115.113564,
+  "quant": "gguf_q4_k_s",
+  "rocm": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "the_rock_hip": "7.13.26162-1140233ffe"
+  },
+  "schema": "hipengine.gguf_tuning_gate.v1",
+  "summary_by_workload": {
+    "4K/128": {
+      "decode_tok_s_median": 115.113564,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1850.310922,
+      "tracked_peak_allocated_gib_median": 21.334858
+    },
+    "512/128": {
+      "decode_tok_s_median": 126.333886,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 1658.695065,
+      "tracked_peak_allocated_gib_median": 21.334858
+    }
+  },
+  "worktree": "/home/lhl/hipEngine-gguf-tuning"
+}

@@ -214,13 +214,13 @@ def test_segment_threshold_env_override_invalid_values_fall_back_to_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "not-a-number")
-    assert qgr._gguf_gdn_prefill_segment_threshold() == 256
+    assert qgr._gguf_gdn_prefill_segment_threshold() == 1025
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "0")
     assert qgr._gguf_gdn_prefill_segment_threshold() == 1
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "128")
     assert qgr._gguf_gdn_prefill_segment_threshold() == 128
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", raising=False)
-    assert qgr._gguf_gdn_prefill_segment_threshold() == 256
+    assert qgr._gguf_gdn_prefill_segment_threshold() == 1025
 
 
 def _new_runner() -> qgr.Qwen35GGUFFullStackRunner:

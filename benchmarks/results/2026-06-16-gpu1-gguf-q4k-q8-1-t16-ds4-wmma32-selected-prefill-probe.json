@@ -1,0 +1,163 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-06-16T05:42:09.147683+00:00",
+  "run_tag": "gguf_q4_k_q8_1_t16_ds4_wmma32_selected_prefill_probe_gpu1_20260616",
+  "hardware": {
+    "gpu": "GPU1/gfx1100",
+    "device_note": "24 GiB-class RDNA3"
+  },
+  "software": {
+    "hipengine_commit": "a433de997ca093b9f8d5975833d1e993883e22eb",
+    "dirty_files": [
+      " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip",
+      " M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py",
+      " M scripts/gguf_q4_k_t16_selected_prefill_microbench.py",
+      " M tests/test_gguf_q4_k_t16_selected_wmma_prefill.py"
+    ],
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "python": "TheRock env /home/lhl/mambaforge/envs/therock/bin/python3.12"
+  },
+  "hypothesis": "Test whether the DS4/Q8_1 integer-WMMA prefill idea remains fast when using resident Q4_K T16 tiles instead of raw GGUF Q4_K weights, avoiding raw+packed duplicate residency in a potential runtime path.",
+  "microbench": {
+    "command_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode <mode> --rows-per-expert 512 --warmup 3 --iters 10 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/gguf-micro-<mode>-t16packprobe.json",
+    "shape": {
+      "compact_rows": 4096,
+      "experts": 8,
+      "hidden": 2048,
+      "out_features_a": 4096,
+      "out_features_b": 4096,
+      "out_features_total": 8192,
+      "rows_per_expert": 512,
+      "topology_note": "Uniform selected rows across a reduced expert set; use to compare kernel designs, not as full-model routing evidence.",
+      "wmma_total_rows": 4096
+    },
+    "results": {
+      "q8-1-ds4-t16-wmma32-pack": {
+        "ms_per_call": 7.809768687002361,
+        "logical_tflops": 17.598338565486177,
+        "finite_output": true,
+        "tracked_peak_allocated_gib": 0.15918172895908356,
+        "activation_quantization_in_loop": true,
+        "weight_layout": "gguf_q4_k_t16_v1_resident",
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4"
+      },
+      "q8-1-ds4-t16-wmma32": {
+        "ms_per_call": 7.763817091472447,
+        "logical_tflops": 17.70249760558617,
+        "finite_output": true,
+        "tracked_peak_allocated_gib": 0.14355672895908356,
+        "activation_quantization_in_loop": false,
+        "weight_layout": "gguf_q4_k_t16_v1_resident",
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4"
+      },
+      "selected-wmma": {
+        "ms_per_call": 11.56554447952658,
+        "logical_tflops": 11.883483195736746,
+        "finite_output": true,
+        "tracked_peak_allocated_gib": 0.15039266645908356,
+        "activation_quantization_in_loop": false,
+        "weight_layout": "gguf_q4_k_t16_v1",
+        "activation_layout": null
+      },
+      "q8-1-ds4-wmma32": {
+        "ms_per_call": 8.223803108558059,
+        "logical_tflops": 16.712335115243075,
+        "finite_output": true,
+        "tracked_peak_allocated_gib": 0.14160360395908356,
+        "activation_quantization_in_loop": false,
+        "weight_layout": "raw_gguf_q4_k",
+        "activation_layout": "llama_cpp_block_q8_1_mmq_ds4"
+      }
+    },
+    "derived": {
+      "pack_t16_wmma32_vs_selected_wmma_speedup": 1.4809074305587155,
+      "t16_wmma32_vs_raw_wmma32_speedup": 1.0592474051959373,
+      "pack_overhead_ms_vs_t16_prepacked": 0.0459515955299139
+    }
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-t16-ds4-wmma32-pack-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-t16-wmma32-pack --rows-per-expert 64 --warmup 1 --iters 1 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/gguf-micro-q8-ds4-t16-wmma32-pack-rocprof.json",
+    "trace_csv": "/tmp/hipengine-gguf-t16-ds4-wmma32-pack-trace/epyc/3069367_kernel_trace.csv",
+    "matching_launches": [
+      {
+        "kernel": "gguf_q8_1_mmq_ds4_pack_bf16_kernel",
+        "duration_ns": 23600,
+        "vgpr": 16,
+        "scratch": 0,
+        "lds_bytes": 512,
+        "workgroup_size": 128
+      },
+      {
+        "kernel": "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel",
+        "duration_ns": 1949733,
+        "vgpr": 80,
+        "scratch": 0,
+        "lds_bytes": 0,
+        "workgroup_size": 64
+      },
+      {
+        "kernel": "gguf_q8_1_mmq_ds4_pack_bf16_kernel",
+        "duration_ns": 21680,
+        "vgpr": 16,
+        "scratch": 0,
+        "lds_bytes": 512,
+        "workgroup_size": 128
+      },
+      {
+        "kernel": "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel",
+        "duration_ns": 1690492,
+        "vgpr": 80,
+        "scratch": 0,
+        "lds_bytes": 0,
+        "workgroup_size": 64
+      },
+      {
+        "kernel": "gguf_q8_1_mmq_ds4_pack_bf16_kernel",
+        "duration_ns": 17320,
+        "vgpr": 16,
+        "scratch": 0,
+        "lds_bytes": 512,
+        "workgroup_size": 128
+      },
+      {
+        "kernel": "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel",
+        "duration_ns": 1540211,
+        "vgpr": 80,
+        "scratch": 0,
+        "lds_bytes": 0,
+        "workgroup_size": 64
+      }
+    ]
+  },
+  "correctness": {
+    "targeted_tests": "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q",
+    "targeted_result": "11 passed",
+    "guard_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "guard_result": "154 passed"
+  },
+  "primary_gate": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "results": {
+      "512/128": {
+        "prefill_tok_s_median": 1866.24860227881,
+        "decode_tok_s_median": 126.62049315542917,
+        "tracked_peak_allocated_gib_median": 21.334841787815094,
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 2158.5571084146577,
+        "decode_tok_s_median": 115.39650622225906,
+        "tracked_peak_allocated_gib_median": 21.334841787815094,
+        "final_token_ids_stable": true
+      }
+    },
+    "primary_metric_min_decode_tok_s": 115.39650622225906
+  },
+  "decision": {
+    "promoted_to_runtime_default": false,
+    "reason_not_promoted": "Still a synthetic diagnostic kernel and not wired into model runtime. It is a better runtime candidate than raw-Q4_K DS4 because it consumes resident T16 tiles and avoids raw Q4_K duplicate residency; next step is guarded runtime/fused pack+MMQ integration with memory gate.",
+    "interpretation": "Resident-T16 DS4 WMMA32 with activation pack measured 7.810 ms/call, 1.48x faster than selected-WMMA on the same synthetic shape, and prepacked resident-T16 DS4 measured 7.764 ms/call, faster than raw-Q4_K DS4 WMMA32 at 8.224 ms/call. No default/runtime path changed."
+  }
+}

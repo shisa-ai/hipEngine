@@ -1,0 +1,166 @@
+{
+  "date": "2026-06-16",
+  "lane": "G-M4",
+  "kind": "gguf_memory_census",
+  "status": "diagnostic",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "hardware": "GPU1/gfx1100",
+  "source_json": "/tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+  "commands": {
+    "verify": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json",
+    "guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q"
+  },
+  "primary_gate": {
+    "512/128": {
+      "prefill_tok_s_median": 1860.6984402980847,
+      "decode_tok_s_median": 125.78600233532634,
+      "tracked_peak_allocated_gib_median": 21.334858000278473,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2153.8484481618034,
+      "decode_tok_s_median": 115.75557066344953,
+      "tracked_peak_allocated_gib_median": 21.334858000278473,
+      "final_token_ids": [
+        570,
+        570,
+        570
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "primary_metric_min_decode_tok_s": 115.75557066344953,
+  "observed_4k_owned_breakdown_before_close": {
+    "total_bytes": 22908129344,
+    "total_gib": 21.334858000278473,
+    "families": {
+      "weights": {
+        "total_bytes": 21322787328,
+        "total_gib": 19.85839319229126,
+        "allocation_count": 733,
+        "by_quant_key_bytes": {
+          "gguf_q8_0": 540344320,
+          "f32": 4639232,
+          "gguf_q6_k_t16_v1": 1077780480,
+          "bf16": 49971200,
+          "gguf_q4_k_t16_v1": 18157142016,
+          "gguf_q8_0_t16_v1": 1492910080
+        },
+        "by_layout_bytes": {
+          "raw_gguf": 540344320,
+          "dense_f32": 4639232,
+          "gguf_q6_k_t16_v1": 1077780480,
+          "dense_bf16": 49971200,
+          "gguf_q4_k_t16_v1": 18157142016,
+          "gguf_q8_0_t16_v1": 1492910080
+        },
+        "by_quant_layout_bytes": {
+          "gguf_q8_0:raw_gguf": 540344320,
+          "f32:dense_f32": 4639232,
+          "gguf_q6_k_t16_v1:gguf_q6_k_t16_v1": 1077780480,
+          "bf16:dense_bf16": 49971200,
+          "gguf_q4_k_t16_v1:gguf_q4_k_t16_v1": 18157142016,
+          "gguf_q8_0_t16_v1:gguf_q8_0_t16_v1": 1492910080
+        },
+        "by_allocation_name_bytes": {
+          "raw": 594954752,
+          "tiles": 20727832576
+        }
+      },
+      "decode_scratch": {
+        "total_bytes": 158746412,
+        "total_gib": 0.1478441171348095,
+        "max_positions": 4352,
+        "block_table_len": 17,
+        "by_component_bytes": {
+          "full_attention_kv_cache": 89128960,
+          "linear_attention_state": 66846720,
+          "metadata_tables": 2228308,
+          "decode_workspace_other": 542424
+        }
+      },
+      "session_buffers": {
+        "total_bytes": 1426595604,
+        "total_gib": 1.3286206908524036,
+        "by_component_bytes": {
+          "decode_logits_and_lm_head": 1007312,
+          "prefill_token_buffer": 34816,
+          "prefill_full_sequence_hidden": 35651584,
+          "bulk_prefill_scratch": 1389901892,
+          "session_buffer_other": 0
+        },
+        "bulk_prefill_scratch_rows": 4096,
+        "bulk_prefill_scratch_capacity": 4352
+      }
+    },
+    "notes": [
+      "weights counts unique resident GGUF allocations that own their device buffer; tied aliases are not double-counted.",
+      "decode_scratch is the persistent c=1 decode workspace, including full-attention KV cache and linear-attention recurrent state.",
+      "session_buffers includes logits/lm-head temporaries, full-sequence prefill token/hidden buffers, and the bulk-prefill scratch workspace."
+    ]
+  },
+  "projection": {
+    "method": "static formulas matching Qwen35GGUFResidentSession/_FullStackScratch/_GGUFFullAttentionPrefillScratch; weights from emitted 4K owned_session_breakdown",
+    "device_total_gib": 23.984375,
+    "four_k_capacity_check": {
+      "requested_capacity": 4352,
+      "max_positions": 4352,
+      "blocks": 17,
+      "bulk_prefill_rows": 4096,
+      "decode_scratch_bytes": 158746412,
+      "decode_scratch_gib": 0.1478441171348095,
+      "decode_scratch_components_bytes": {
+        "full_attention_kv_cache": 89128960,
+        "linear_attention_state": 66846720,
+        "metadata_tables": 2228308,
+        "decode_workspace_other": 542424
+      },
+      "session_buffers_bytes": 1426595604,
+      "session_buffers_gib": 1.3286206908524036,
+      "session_buffer_components_bytes": {
+        "decode_logits_and_lm_head": 1007312,
+        "prefill_token_buffer": 34816,
+        "prefill_full_sequence_hidden": 35651584,
+        "bulk_prefill_scratch": 1389901892
+      },
+      "projected_total_bytes": 22908129344,
+      "projected_total_gib": 21.334858000278473,
+      "weights_bytes": 21322787328,
+      "weights_gib": 19.85839319229126
+    },
+    "one28k_capacity_projection": {
+      "requested_capacity": 131202,
+      "max_positions": 131328,
+      "blocks": 513,
+      "bulk_prefill_rows": 4096,
+      "decode_scratch_bytes": 2832418540,
+      "decode_scratch_gib": 2.6378953270614147,
+      "decode_scratch_components_bytes": {
+        "full_attention_kv_cache": 2689597440,
+        "linear_attention_state": 66846720,
+        "metadata_tables": 67242004,
+        "decode_workspace_other": 8732376
+      },
+      "session_buffers_bytes": 2804031252,
+      "session_buffers_gib": 2.6114576049149036,
+      "session_buffer_components_bytes": {
+        "decode_logits_and_lm_head": 1007312,
+        "prefill_token_buffer": 1050624,
+        "prefill_full_sequence_hidden": 1075838976,
+        "bulk_prefill_scratch": 1726134340
+      },
+      "projected_total_bytes": 26959237120,
+      "projected_total_gib": 25.107746124267578,
+      "weights_bytes": 21322787328,
+      "weights_gib": 19.85839319229126
+    },
+    "one28k_projected_over_device_gib": 1.1233711242675781
+  },
+  "conclusion": "The 128K/128 GPU1 blocker is capacity, not hidden duplicate raw+packed residency: resident weights are 19.858 GiB; projected 128K decode KV/state plus prefill buffers raise owned bytes to ~25.108 GiB on a 23.984 GiB device. A 24GB final promotion needs KV/prefill residency reduction or must be labeled W7900-only."
+}

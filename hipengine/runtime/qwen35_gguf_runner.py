@@ -1016,6 +1016,9 @@ class Qwen35GGUFFullStackRunner:
                     hidden_buf.ptr,
                     out_buf.ptr,
                     prefill_scratch,
+                    cos_table_ptr=prefill_scratch.cos_table.ptr,
+                    sin_table_ptr=prefill_scratch.sin_table.ptr,
+                    max_positions=rows,
                 )
                 mode = f"aotriton_{_gguf_aotriton_prefill_mode(0, rows, rows)}" if used_aotriton else "native_gqa_bf16"
             else:
@@ -1051,6 +1054,9 @@ class Qwen35GGUFFullStackRunner:
         out_ptr: int,
         scratch,
         *,
+        cos_table_ptr: int,
+        sin_table_ptr: int,
+        max_positions: int,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> bool:
@@ -1152,8 +1158,8 @@ class Qwen35GGUFFullStackRunner:
             scratch.full_key_raw.ptr,
             layer.weight("attn_q_norm").allocation().tensor.ptr,
             layer.weight("attn_k_norm").allocation().tensor.ptr,
-            scratch.cos_table.ptr,
-            scratch.sin_table.ptr,
+            cos_table_ptr,
+            sin_table_ptr,
             scratch.positions_tensor.ptr,
             scratch.full_query.ptr,
             scratch.full_key.ptr,
@@ -1163,7 +1169,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.head_count_kv,
             cfg.key_length,
             cfg.rope_dimension_count,
-            scratch.max_positions,
+            max_positions,
             stream=stream,
             runtime=runtime,
         )
@@ -2849,10 +2855,11 @@ class Qwen35GGUFResidentSession:
         self._lm_out_index = malloc(DType.INT64.itemsize, runtime=runtime)
         self._lm_out_value = malloc(DType.FP32.itemsize, runtime=runtime)
         prefill_capacity = int(self.scratch.max_positions)
-        self._prefill_token_buf = malloc(prefill_capacity * DType.INT64.itemsize, runtime=runtime)
-        self._prefill_hidden_a = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
-        self._prefill_hidden_b = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
         prefill_rows = self._prefill_scratch_rows(prefill_capacity)
+        alloc_capacity = prefill_capacity if self.use_expert_sidecar else prefill_rows
+        self._prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
+        self._prefill_hidden_a = malloc(alloc_capacity * hidden_bytes, runtime=runtime)
+        self._prefill_hidden_b = malloc(alloc_capacity * hidden_bytes, runtime=runtime)
         self._bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
             self.runner,
             rows=prefill_rows,
@@ -3015,89 +3022,145 @@ class Qwen35GGUFResidentSession:
             if token < 0 or token >= self.runner.vocab_size:
                 raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
         self.reset()
-        copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
-        launch_gguf_embedding(
-            self.runner.weights.root("token_embedding"),
-            self._prefill_token_buf.ptr,
-            self._prefill_hidden_a.ptr,
-            rows=rows,
-            hidden_size=self.runner.hidden_size,
-            vocab_size=self.runner.vocab_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        src = self._prefill_hidden_a
-        dst = self._prefill_hidden_b
-        use_wmma_prefill = gguf_wmma_prefill_enabled(None)
+        alloc_capacity = self._prefill_hidden_a.nbytes // (self.runner.hidden_size * 2)
+        chunk_outer = alloc_capacity < rows
+
         linear_min_rows = int(self.runner.weights.config.ssm_conv_kernel)
-        for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-            expert_sidecar = None
-            if (
-                self.use_expert_sidecar
-                and bulk_attention_mode == "bulk"
-                and self.runner.weights.config.is_moe
-                and not use_wmma_prefill
-            ):
-                expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
-            try:
-                if layer_type == LINEAR_ATTENTION:
-                    chunk_size = self._linear_prefill_layer_chunk_size(rows)
-                    ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
-                elif layer_type == FULL_ATTENTION:
-                    chunk_size = self._full_attention_prefill_layer_chunk_size(rows)
-                    ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=2)
-                else:
-                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                for start, end in ranges:
-                    chunk_rows = end - start
-                    src_chunk_ptr = src.ptr + start * self.runner.hidden_size * 2
-                    dst_chunk_ptr = dst.ptr + start * self.runner.hidden_size * 2
+        use_wmma_prefill = gguf_wmma_prefill_enabled(None)
+
+        if chunk_outer:
+            chunk_size = self._prefill_scratch_rows(rows)
+            ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
+            last_chunk_rows = 0
+            for chunk_start, chunk_end in ranges:
+                chunk_rows = chunk_end - chunk_start
+                last_chunk_rows = chunk_rows
+                chunk_tokens = tokens[chunk_start:chunk_end]
+                copy_host_to_device(self._prefill_token_buf, host_array_ptr(chunk_tokens), chunk_tokens.nbytes, runtime=runtime)
+                launch_gguf_embedding(
+                    self.runner.weights.root("token_embedding"),
+                    self._prefill_token_buf.ptr,
+                    self._prefill_hidden_a.ptr,
+                    rows=chunk_rows,
+                    hidden_size=self.runner.hidden_size,
+                    vocab_size=self.runner.vocab_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                src = self._prefill_hidden_a
+                dst = self._prefill_hidden_b
+                for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                     bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                        start, chunk_rows, total_tokens=rows, runtime=runtime, stream=stream
+                        chunk_start, chunk_rows, total_tokens=rows, runtime=runtime, stream=stream
                     )
+                    expert_sidecar = None
                     if bulk_attention_mode == "native":
                         self.runner._run_native_attention_bulk_ffn_layer_rows(
-                            layer_id,
-                            layer_type,
-                            src_chunk_ptr,
-                            dst_chunk_ptr,
-                            bulk_scratch,
-                            rows=chunk_rows,
-                            stream=stream,
-                            decode_scratch=self.scratch,
+                            layer_id, layer_type, src.ptr, dst.ptr, bulk_scratch, rows=chunk_rows, stream=stream, decode_scratch=self.scratch
                         )
                     elif layer_type == LINEAR_ATTENTION:
                         self.runner._run_linear_attention_prefill_layer_rows(
-                            layer_id,
-                            src_chunk_ptr,
-                            dst_chunk_ptr,
-                            bulk_scratch,
-                            rows=chunk_rows,
-                            stream=stream,
-                            decode_scratch=self.scratch,
-                            expert_sidecar=expert_sidecar,
+                            layer_id, src.ptr, dst.ptr, bulk_scratch, rows=chunk_rows, stream=stream, decode_scratch=self.scratch, expert_sidecar=expert_sidecar
                         )
                     elif layer_type == FULL_ATTENTION:
                         key_cache, value_cache = self.scratch.full_cache(layer_id)
                         layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
                         self.runner._run_full_attention_prefill_layer_aotriton(
-                            layer_id,
-                            src_chunk_ptr,
-                            dst_chunk_ptr,
-                            layer_scratch,
-                            stream=stream,
-                            expert_sidecar=expert_sidecar,
+                            layer_id, src.ptr, dst.ptr, layer_scratch, cos_table_ptr=self.scratch.cos_table_buf.ptr, sin_table_ptr=self.scratch.sin_table_buf.ptr, max_positions=int(self.scratch.max_positions), stream=stream, expert_sidecar=expert_sidecar
                         )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-            finally:
-                if expert_sidecar is not None:
-                    expert_sidecar.free(runtime=runtime)
-            src, dst = dst, src
-        last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-            rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
-        )
-        last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * 2
+                    src, dst = dst, src
+            
+            last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
+            )
+            last_src_ptr = src.ptr + (last_chunk_rows - 1) * self.runner.hidden_size * 2
+        else:
+            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+            launch_gguf_embedding(
+                self.runner.weights.root("token_embedding"),
+                self._prefill_token_buf.ptr,
+                self._prefill_hidden_a.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                vocab_size=self.runner.vocab_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            src = self._prefill_hidden_a
+            dst = self._prefill_hidden_b
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                expert_sidecar = None
+                if (
+                    self.use_expert_sidecar
+                    and bulk_attention_mode == "bulk"
+                    and self.runner.weights.config.is_moe
+                    and not use_wmma_prefill
+                ):
+                    expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
+                try:
+                    if layer_type == LINEAR_ATTENTION:
+                        chunk_size = self._linear_prefill_layer_chunk_size(rows)
+                        ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
+                    elif layer_type == FULL_ATTENTION:
+                        chunk_size = self._full_attention_prefill_layer_chunk_size(rows)
+                        ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=2)
+                    else:
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    for start, end in ranges:
+                        chunk_rows = end - start
+                        src_chunk_ptr = src.ptr + start * self.runner.hidden_size * 2
+                        dst_chunk_ptr = dst.ptr + start * self.runner.hidden_size * 2
+                        bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                            start, chunk_rows, total_tokens=rows, runtime=runtime, stream=stream
+                        )
+                        if bulk_attention_mode == "native":
+                            self.runner._run_native_attention_bulk_ffn_layer_rows(
+                                layer_id,
+                                layer_type,
+                                src_chunk_ptr,
+                                dst_chunk_ptr,
+                                bulk_scratch,
+                                rows=chunk_rows,
+                                stream=stream,
+                                decode_scratch=self.scratch,
+                            )
+                        elif layer_type == LINEAR_ATTENTION:
+                            self.runner._run_linear_attention_prefill_layer_rows(
+                                layer_id,
+                                src_chunk_ptr,
+                                dst_chunk_ptr,
+                                bulk_scratch,
+                                rows=chunk_rows,
+                                stream=stream,
+                                decode_scratch=self.scratch,
+                                expert_sidecar=expert_sidecar,
+                            )
+                        elif layer_type == FULL_ATTENTION:
+                            key_cache, value_cache = self.scratch.full_cache(layer_id)
+                            layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
+                            self.runner._run_full_attention_prefill_layer_aotriton(
+                                layer_id,
+                                src_chunk_ptr,
+                                dst_chunk_ptr,
+                                layer_scratch,
+                                cos_table_ptr=self.scratch.cos_table_buf.ptr,
+                                sin_table_ptr=self.scratch.sin_table_buf.ptr,
+                                max_positions=int(self.scratch.max_positions),
+                                stream=stream,
+                                expert_sidecar=expert_sidecar,
+                            )
+                        else:
+                            raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                finally:
+                    if expert_sidecar is not None:
+                        expert_sidecar.free(runtime=runtime)
+                src, dst = dst, src
+            last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
+            )
+            last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * 2
         gguf_rmsnorm_bf16_f32_weight(
             last_src_ptr,
             self.runner.weights.root("output_norm").allocation().tensor.ptr,
@@ -3663,8 +3726,6 @@ class _GGUFFullAttentionPrefillScratch:
     block_table: object
     positions: object
     context_counts: object
-    cos_table_buf: object
-    sin_table_buf: object
     cu_q: object
     cu_k: object
     softmax_lse: object
@@ -3674,8 +3735,6 @@ class _GGUFFullAttentionPrefillScratch:
     context_counts_tensor: Tensor
     append_spans: KVLiveSpans
     prefill_spans: KVLiveSpans
-    cos_table: Tensor
-    sin_table: Tensor
     block_size: int
     blocks: int
     max_positions: int
@@ -3735,13 +3794,13 @@ class _GGUFFullAttentionPrefillScratch:
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
         prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
-        block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (capacity, 1))
-        positions_arr = np.arange(capacity, dtype=np.int64)
+        block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+        positions_arr = np.arange(rows, dtype=np.int64)
         context_arr = positions_arr + np.int64(1)
         cu_arr = np.asarray([0, rows], dtype=np.int32)
         atomic_arr = np.asarray([0], dtype=np.int32)
         cos_arr, sin_arr = _rope_tables(
-            max_positions=max_positions,
+            max_positions=rows,
             rotary_dim=cfg.rope_dimension_count,
             base=cfg.rope_freq_base,
         )
@@ -3805,8 +3864,6 @@ class _GGUFFullAttentionPrefillScratch:
             "block_table": buf(block_table_arr.nbytes),
             "positions": buf(positions_arr.nbytes),
             "context_counts": buf(context_arr.nbytes),
-            "cos_table_buf": buf(cos_arr.nbytes),
-            "sin_table_buf": buf(sin_arr.nbytes),
             "cu_q": buf(cu_arr.nbytes),
             "cu_k": buf(cu_arr.nbytes),
             "softmax_lse": buf(cfg.head_count * rows * 4),
@@ -3815,8 +3872,6 @@ class _GGUFFullAttentionPrefillScratch:
         copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
         copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
         copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
-        copy_host_to_device(fields["cos_table_buf"], host_array_ptr(cos_arr), runtime=runtime)
-        copy_host_to_device(fields["sin_table_buf"], host_array_ptr(sin_arr), runtime=runtime)
         copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
@@ -3849,8 +3904,6 @@ class _GGUFFullAttentionPrefillScratch:
             row_positions=positions_tensor,
             span_role="prefill",
         )
-        cos_table = Tensor.from_handle(fields["cos_table_buf"].ptr, cos_arr.shape, DType.FP32, device)
-        sin_table = Tensor.from_handle(fields["sin_table_buf"].ptr, sin_arr.shape, DType.FP32, device)
         return cls(
             **fields,
             rows=rows,
@@ -3859,11 +3912,9 @@ class _GGUFFullAttentionPrefillScratch:
             context_counts_tensor=context_tensor,
             append_spans=append_spans,
             prefill_spans=prefill_spans,
-            cos_table=cos_table,
-            sin_table=sin_table,
             block_size=block_size,
             blocks=blocks,
-            max_positions=max_positions,
+            max_positions=capacity,
             moe_group_counts_zero=moe_group_counts_zero,
             moe_scatter_offsets_zero=moe_scatter_offsets_zero,
             moe_wmma_total_host=moe_wmma_total_host,
@@ -3892,20 +3943,25 @@ class _GGUFFullAttentionPrefillScratch:
             self.gdn_cu_seqlens, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime
         )
         _ = stream
+        positions_arr = np.arange(start, start + rows, dtype=np.int64)
+        context_arr = positions_arr + np.int64(1)
+        copy_host_to_device(self.positions, host_array_ptr(positions_arr), positions_arr.nbytes, runtime=runtime)
+        copy_host_to_device(self.context_counts, host_array_ptr(context_arr), context_arr.nbytes, runtime=runtime)
+
         block_table = Tensor.from_handle(
-            self.block_table.ptr + start * self.blocks * DType.INT32.itemsize,
+            self.block_table.ptr,
             (rows, self.blocks),
             DType.INT32,
             self.block_table_tensor.device,
         )
         positions = Tensor.from_handle(
-            self.positions.ptr + start * DType.INT64.itemsize,
+            self.positions.ptr,
             (rows,),
             DType.INT64,
             self.positions_tensor.device,
         )
         context_counts = Tensor.from_handle(
-            self.context_counts.ptr + start * DType.INT64.itemsize,
+            self.context_counts.ptr,
             (rows,),
             DType.INT64,
             self.context_counts_tensor.device,

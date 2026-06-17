@@ -1948,9 +1948,11 @@ Every P9 kernel honours the project policy:
 
 ### Open questions (decide before each Wave lands)
 
-1. Which GDN prefill variant wins at 512: `k2` or `segments_k2`? Parent
-   defaults to `segments_k2` at segment threshold 256, but qwen35moe v6
-   has narrower head dims than the original W4 PARO model; measure both.
+1. Which GDN prefill variant wins at 512: `k2` or `segments_k2`? Resolved for
+   the active GGUF Q4_K_S gate on 2026-06-16: default threshold `1025` keeps the
+   exact single-segment `k2` path for 512/1024-row chunks, while the
+   `segments_k2` path remains available through
+   `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` for larger/batched probes.
 2. Should the new `*_pack8_gemv_decode_*` kernels register under a separate
   `layer="linear_decode"` family or share `layer="linear"` and dispatch via
   `_variant_for_rows(rows=1)`? The latter avoids a new layer key; the former

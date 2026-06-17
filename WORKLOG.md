@@ -94049,3 +94049,1701 @@ Vulkan decode wins at 1K-4K (+9-11%) and 32K-128K (+7-23%). Vulkan prefill
 wins everywhere except 4K/128 where hipEngine is +3.7%.
 
 Artifact: `benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json`
+## 2026-06-15 - GGUF tuning worktree and playbook
+
+Created a separate `gguf-tuning` branch/worktree at
+`/home/lhl/hipEngine-gguf-tuning` from `main` (`efcc321f`) so GGUF performance
+work can proceed without disturbing the shared main worktree. Added
+`docs/TUNING-gguf.md` as the active GGUF tuning playbook: current scorecard,
+baseline refresh commands for hipEngine/llama.cpp/PARO, correctness gates,
+rocprof summary flow, and lane backlog modeled on the successful MTP/DFlash /
+megakernel tuning cadence. Linked the new document from `docs/README.md`.
+
+Validation:
+- Re-read `docs/TUNING-gguf.md` and `docs/README.md` after edits.
+- `git -C ../hipEngine-gguf-tuning diff --check -- docs/TUNING-gguf.md docs/README.md WORKLOG.md` -> clean.
+
+## 2026-06-15 - GGUF GPU1 punchlist loop baseline
+
+Started `pi-multiloop` punchlist lane `gguf-tuning/run-20260615-103446` for
+`docs/TUNING-gguf.md`: improve Qwen3.6-35B-A3B GGUF prefill and decode toward
+local llama.cpp and PARO targets while preserving correctness and avoiding
+memory bloat. The active eval/testbed is GPU1/gfx1100 (`AMD Radeon RX 7900 XTX`,
+24 GiB-class). Primary gates are `512/128` and `4K/128`; `128K/128` is the final
+promotion check.
+
+Setup and hardware checks:
+- `cd /home/lhl/hipEngine-gguf-tuning && git status -sb && git branch --show-current && git rev-parse --short HEAD` -> clean `gguf-tuning` at `f825ddf5` before this doc update.
+- `HIP_VISIBLE_DEVICES=1 python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"` -> `hip OK`.
+- `rocm-smi -d 1 --showmeminfo vram --showuse --showtemp` -> GPU1 total VRAM `25753026560` bytes (`23.984 GiB`), idle at start.
+
+Baseline command notes:
+- First cached run failed because `--require-cached-build` was missing `runtime_state.so`; prebuilt outside rocprof with a one-run `512/128` command without `--require-cached-build`.
+- Prebuild run included lazy build time in prefill (`512/128` `15.445` prefill tok/s) and is not a performance baseline.
+- Then reran the cached gate command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+
+GPU1 Q4_K_S gate baseline (`/tmp/hipengine-gguf-tuning-gpu1-acceptance.json`):
+- `512/128`: median prefill `1652.310818 tok/s`, median decode `125.748702 tok/s`, tracked peak `21.334858 GiB`, stable final token `220`, finite logits.
+- `4K/128`: median prefill `1857.742868 tok/s`, median decode `114.601613 tok/s`, tracked peak `21.334858 GiB`, stable final token `570`, finite logits.
+- Sampled HIP used peak `21.954102 GiB` on `23.984375 GiB` total GPU1 VRAM.
+- Multiloop primary metric `min_gate_decode_tok_s=114.601613` recorded with all configured checks passing.
+
+Guard validation:
+- `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+
+Doc update:
+- Updated `docs/TUNING-gguf.md` to make the punchlist loop explicit, switch baseline/profile examples to GPU1, record the active `512/128` + `4K/128` gate baseline, and document `128K/128` as the promotion check.
+
+G-M2 profile pass:
+- Ran a GPU1 Q4_K_S `512/16` cached-build paired `rocprofv3` capture under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-512-d16/` (prefill-only trace plus full prefill+decode trace, summarized with `scripts/qwen35_gguf_rocprof_summary.py --strip-prefill-prefix`).
+  - Prefill kernel total `289.487 ms`: selected dual Q4_K WMMA prefill `111.306 ms` (`38.45%`), dense Q8_0 WMMA prefill `54.196 ms` (`18.72%`), GDN prefill recurrent `41.706 ms` (`14.41%`).
+  - Decode kernel total `131.242 ms` / `8.203 ms/token`: dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`), selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`), other `15.307 ms` (`11.66%`), lm-head Q6 T16 `10.158 ms` (`7.74%`).
+- Ran the same paired profile for `4K/16` under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-4k-d16/`.
+  - Prefill kernel total `2104.962 ms`: selected dual Q4_K WMMA prefill `808.629 ms` (`38.42%`), GDN prefill recurrent `354.059 ms` (`16.82%`), dense Q8_0 WMMA prefill `329.123 ms` (`15.64%`), full-attn prefill `85.832 ms` (`4.08%`).
+  - Decode kernel total `137.749 ms` / `8.609 ms/token`: dense Q8_0 T16 GEMV `50.620 ms` (`36.75%`), selected dual Q4_K T16 GEMV `16.822 ms` (`12.21%`), full-attn decode `13.913 ms` (`10.10%`), lm-head Q6 T16 `10.137 ms` (`7.36%`).
+- Multiloop iteration 2 logged the profile pass. First focused code lane from evidence: `G-D2` dense Q8_0 T16 GEMV launch-bound/tile-shape audit for decode. First prefill lane after that: `G-P1` selected dual Q4_K WMMA prefill.
+
+## 2026-06-15 - GGUF G-D2 scale-broadcast no-hold
+
+Tried a G-D2 Q8_0 T16 GEMV decode optimization: each wave loaded the 16 fp16
+T16 scale values once in lanes 0-15 and used `__shfl` to broadcast them to all
+32 K lanes, replacing the prior per-lane `d[16]` global loads in the single,
+dual, dual-split, and triple-split Q8_0 T16 GEMV kernels. Hypothesis was lower
+scale-load traffic in the dominant decode bucket.
+
+Validation and outcome:
+- Correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q` -> `24 passed`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Result: `512/128` median prefill/decode `1634.967605 / 116.625481 tok/s`; `4K/128` median prefill/decode `1855.574823 / 106.904545 tok/s`; tracked peak unchanged at `21.334858 GiB`; generated IDs remained stable (`220`, `570`).
+- Baseline was `512/128` decode `125.748702 tok/s`, `4K/128` decode `114.601613 tok/s`, primary metric `114.601613 tok/s`; the candidate primary metric was `106.904545 tok/s` (`-6.7%`).
+- Decision: no-hold/reverted. The original per-lane scale loads are faster than the `__shfl` broadcast path on this GPU/shape mix. Added a no-hold note to `docs/TUNING-gguf.md` so this exact change is not retried without new ISA/rocprof evidence.
+
+## 2026-06-15 - GGUF G-D2 block64 no-hold
+
+Tried a second G-D2 Q8_0 T16 decode probe: changed the single/dual/dual-split/
+triple-split launch helpers from `dim3 block(128)` to `dim3 block(64)`, leaving
+kernel bodies unchanged. Hypothesis was that two wave32 groups per output tile
+would reduce redundant memory/reduction work for rows=1 decode.
+
+Validation and outcome:
+- Correctness fixture: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q` -> `24 passed`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Result: `512/128` median prefill/decode `1657.671726 / 122.386756 tok/s`, `4K/128` median prefill/decode `1856.359915 / 111.796561 tok/s`, tracked peak `21.334858 GiB`.
+- Full-model gate token IDs changed relative to baseline despite within-run stability: `512/128` `220 -> 97799`, `4K/128` `570 -> 28944`. This likely comes from a different accumulation grouping/order that the small synthetic Q8 fixture did not expose.
+- Decision: no-hold/reverted. It regressed decode vs the original baseline (`114.601613 -> 111.796561` primary metric) and failed the generated-token gate. Added a no-hold note to `docs/TUNING-gguf.md`; keep the 128-thread launch unless a new accumulation-order-safe variant is proven.
+
+Post-revert sanity:
+- Reran the GPU1 gate after reverting the Q8_0 T16 source to the original 128-thread/per-lane-scale path.
+- Result: `512/128` median prefill/decode `1638.547794 / 126.162259 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1851.950000 / 114.901837 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Multiloop iteration 5 logged this restoration metric (`114.901837 tok/s`) so future probes do not inherit the rejected block64 state.
+
+## 2026-06-15 - GGUF G-H2 graph4 no-hold
+
+Tried G-H2 graph replay grouping without code changes by running the existing
+GGUF resident sweep with `--graph-steps-per-replay 4`. Hypothesis was lower
+host/graph-launch overhead while preserving device math.
+
+Validation and outcome:
+- Command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-steps-per-replay 4 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-graph4.json`.
+- Result: `512/128` median prefill/decode `1657.147177 / 125.427105 tok/s`, stable IDs `[11, 11, 11]`; `4K/128` median prefill/decode `1857.392622 / 114.908052 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold. `graph_steps_per_replay=4` changed the `512/128` final token from baseline `220` to `11`, so GGUF multi-step graph replay is correctness-blocked until a fixture proves the captured position/token state advances exactly across replay groups.
+
+## 2026-06-15 - GGUF G-P1 selected WMMA launch-bound retained
+
+Changed the default `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS` in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.hip` from
+`2` to `1` after an env-probe showed the top prefill bucket did not need the
+stricter minimum-block launch bound. This targets the selected dual Q4_K T16
+WMMA prefill bucket without changing math, dispatch keys, or residency.
+
+Validation and outcome:
+- Prebuilt the default cached object after the source change: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import build_gguf_q4_k_t16_selected_prefill; print(build_gguf_q4_k_t16_selected_prefill(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-bb67c6136258bf8d/gguf_q4_k_t16_selected_prefill.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-lb1-default.json`.
+- Result: `512/128` median prefill/decode `1658.695065 / 126.333886 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.310922 / 115.113564 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Compared to post-revert sanity, min-gate decode moved `114.901837 -> 115.113564 tok/s` (`+0.18%`); `512/128` prefill moved `1638.547794 -> 1658.695065 tok/s`, while `4K/128` prefill moved `1851.950000 -> 1850.310922 tok/s` (within gate noise).
+- Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-wmma-lb1-gate.json`.
+- Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.
+
+## 2026-06-15 - GGUF G-D2 Q8 T16 launch-bound no-hold
+
+Tried relaxing dense Q8_0 T16 GEMV `__launch_bounds__` minimum resident blocks
+from `4` to `2` while keeping the 128-thread block and accumulation order. The
+change was limited to a source macro/default in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` and was reverted
+after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv; print(build_gguf_q8_0_t16_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-89c6a79f146ab6db/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8lb2.json`.
+- Result: `512/128` median prefill/decode `1646.939924 / 126.397828 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1852.155247 / 115.085170 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed the current lb1 min-gate decode `115.113564 -> 115.085170 tok/s` and hurt `512/128` prefill noise, so keep Q8_0 T16 GEMV at `__launch_bounds__(128, 4)` unless a code-object census shows a concrete occupancy/register-pressure blocker.
+
+## 2026-06-15 - GGUF G-D5 Q6 T16 launch-bound no-hold
+
+Tried relaxing Q6_K T16 GEMV/lm-head `__launch_bounds__` minimum resident blocks
+from `4` to `2` while preserving the 128-thread block and accumulation order.
+The temporary source macro/default in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip` was reverted after
+measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import build_gguf_q6_k_t16_gemv; print(build_gguf_q6_k_t16_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-438ff97c52c2686c/gguf_q6_k_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q6lb2.json`.
+- Result: `512/128` median prefill/decode `1635.484133 / 126.275920 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1848.165695 / 115.012621 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed the current lb1 min-gate decode `115.113564 -> 115.012621 tok/s` and hurt `512/128` prefill noise; keep Q6_K T16 GEMV at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D4 GQA warp-split no-hold
+
+Tried changing the GGUF paged full-attention GQA split default from grouped to
+warp-split by temporarily setting `_gguf_paged_attn_gqa_grouped_enabled()` to
+`False` in `hipengine/runtime/qwen35_gguf_runner.py`. This targeted the `4K/128`
+full-attention decode bucket (`~10%` of decode kernel time) without changing
+KVLiveSpans ABI or memory residency. The code change was reverted after
+measurement.
+
+Validation and outcome:
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-gqa-warp-default.json`.
+- Result: `512/128` median prefill/decode `1635.148420 / 126.905447 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1846.226281 / 112.596686 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed `4K/128` decode `115.113564 -> 112.596686 tok/s`; keep grouped GQA split decode enabled for mid-context GGUF.
+
+## 2026-06-15 - GGUF G-D3 selected dual+SiLU GEMV launch-bound retained
+
+Changed `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip` so
+`q4_k_t16_selected_dual_silu_direct_gemv_kernel` uses
+`__launch_bounds__(256, 1)` instead of `__launch_bounds__(256, 2)`. This targets
+the selected Q4_K T16 dual+SiLU GEMV decode bucket (`~12-13%` of decode kernel
+time) without changing accumulation order, dispatch keys, or residency.
+
+Validation and outcome:
+- Prebuilt cached object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-c04facbc5a800955/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-silu-lb1.json`.
+- Result: `512/128` median prefill/decode `1644.663784 / 126.992572 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1851.329997 / 115.703013 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Compared to the retained selected-WMMA lb1 baseline, min-gate decode moved `115.113564 -> 115.703013 tok/s` (`+0.51%`); `512/128` decode moved `126.333886 -> 126.992572 tok/s` (`+0.52%`).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-silu-gemv-lb1-gate.json`.
+- Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.
+
+## 2026-06-15 - GGUF G-D3 selected down GEMV launch-bound retained
+
+Changed `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip` so
+`qk_t16_selected_direct_gemv_kernel` uses `__launch_bounds__(128, 2)` instead of
+`__launch_bounds__(128, 4)`. This targets the selected single-output T16 GEMV
+selected-down decode path without changing accumulation order, dispatch keys, or
+residency.
+
+Validation and outcome:
+- Prebuilt cached object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-affadca24e7d00cc/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-down-lb2.json`.
+- Result: `512/128` median prefill/decode `1647.389814 / 127.011979 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.806476 / 115.804576 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Compared to the retained selected-SiLU lb1 baseline, min-gate decode moved `115.703013 -> 115.804576 tok/s` (`+0.09%`); `512/128` decode moved `126.992572 -> 127.011979 tok/s` (`+0.02%`).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact: `benchmarks/results/2026-06-15-gpu1-gguf-q4ks-selected-down-lb2-gate.json`.
+- Decision: retained/default. Promotion still needs the final `128K/128` memory/throughput gate before making a broad GGUF release claim.
+
+## 2026-06-15 - GGUF G-D3 selected down GEMV launch-bound=1 no-hold
+
+Tried further relaxing `qk_t16_selected_direct_gemv_kernel` in
+`hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip` from
+`__launch_bounds__(128, 2)` to `__launch_bounds__(128, 1)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-162ba1195624e1a8/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-down-lb1.json`.
+- Result: `512/128` median prefill/decode `1631.069659 / 126.990390 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1849.611095 / 115.570288 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed the retained selected-down lb2 min-gate decode `115.804576 -> 115.570288 tok/s` and lowered both prefill medians; keep selected-down T16 GEMV at `__launch_bounds__(128, 2)`.
+
+## 2026-06-15 - GGUF G-D3 selected SiLU maxThreads=128 no-hold
+
+Tried matching `q4_k_t16_selected_dual_silu_direct_gemv_kernel` launch-bound max
+threads to its actual 128-thread launch by changing `__launch_bounds__(256, 1)`
+to `__launch_bounds__(128, 1)`. The code change was reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv; print(build_gguf_t16_selected_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-6772643db8c6d515/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-silu-max128.json`.
+- Result: `512/128` median prefill/decode `1597.870822 / 126.944294 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1852.346509 / 115.668964 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed the retained selected-down lb2 min-gate decode `115.804576 -> 115.668964 tok/s` and lowered `512/128` prefill; keep selected dual+SiLU T16 GEMV at `__launch_bounds__(256, 1)`.
+
+## 2026-06-15 - GGUF G-D2 Q8 T16 GEMV launch-bound=3 no-hold
+
+Tried relaxing all four Q8_0 T16 GEMV decode kernels in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv; print(build_gguf_q8_0_t16_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-fd466c79c0272058/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-lb3.json`.
+- Result: `512/128` median prefill/decode `1650.818813 / 127.112278 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.893405 / 115.704479 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory and improved `512/128` decode versus the retained selected-down lb2 row (`127.011979 -> 127.112278 tok/s`), but regressed the retained min-gate decode (`115.804576 -> 115.704479 tok/s`) and lowered 4K prefill; keep Q8_0 T16 GEMV decode at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D5 Q6 T16 GEMV launch-bound=3 no-hold
+
+Tried relaxing the Q6_K T16 lm-head GEMV kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import build_gguf_q6_k_t16_gemv; print(build_gguf_q6_k_t16_gemv(load=False).output_path)"` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-f071732e4ee937e3/gguf_q6_k_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q6-lb3.json`.
+- Result: `512/128` median prefill/decode `1632.346653 / 126.931561 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1856.577738 / 115.630963 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed both gate decode medians versus the retained selected-down lb2 row (`127.011979 -> 126.931561 tok/s`, `115.804576 -> 115.630963 tok/s`); keep Q6_K T16 GEMV decode at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-P4 linear/MoE chunk=2048 no-hold
+
+Tried increasing the auto-tuned mid-context linear/MoE prefill chunks in
+`hipengine/runtime/prefill.py` from `1024` to `2048`, leaving the full-attention
+query chunk at `4096`. The code change was reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence; print(resolve_prefill_config_for_sequence(PrefillConfig(), max_sequence_length=4352, total_memory_bytes=25753026560))"` -> resolved `linear=2048`, `moe=2048`, `full_attn_query=4096`, `full_attn_post=1024`, `full_attn_rope=1024` with the same `13.191406 GiB` budget metadata.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-chunk2048.json`.
+- Result: `512/128` median prefill/decode `1661.258076 / 126.873746 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1859.452178 / 115.670240 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved IDs and memory and improved prefill versus the retained selected-down lb2 row (`1647.389814 -> 1661.258076 tok/s`, `1855.806476 -> 1859.452178 tok/s`), but regressed both decode medians (`127.011979 -> 126.873746 tok/s`, `115.804576 -> 115.670240 tok/s`); keep mid-context linear/MoE chunks at `1024`.
+
+## 2026-06-15 - GGUF G-P4 MoE-only chunk=2048 no-hold
+
+Tried increasing only the auto-tuned mid-context MoE prefill chunk in
+`hipengine/runtime/prefill.py` from `1024` to `2048`, leaving linear chunks at
+`1024` and the full-attention query chunk at `4096`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -c "from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence; print(resolve_prefill_config_for_sequence(PrefillConfig(), max_sequence_length=4352, total_memory_bytes=25753026560))"` -> resolved `linear=1024`, `moe=2048`, `full_attn_query=4096`, `full_attn_post=1024`, `full_attn_rope=1024` with the same `13.191406 GiB` budget metadata.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-moechunk2048.json`.
+- Result: `512/128` median prefill/decode `1646.916954 / 126.958585 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.310557 / 115.716965 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved IDs and memory and improved `4K/128` prefill versus the retained selected-down lb2 row (`1855.806476 -> 1857.310557 tok/s`), but left `512/128` prefill flat/slightly lower and regressed both decode medians (`127.011979 -> 126.958585 tok/s`, `115.804576 -> 115.716965 tok/s`); keep mid-context MoE chunks at `1024`.
+
+## 2026-06-15 - GGUF G-D4 grouped-GQA min-context=512 no-hold
+
+Tried lowering the grouped GQA split full-attention decode threshold in
+`hipengine/runtime/qwen35_gguf_runner.py` from `4096` to `512`, so the short
+`512/128` gate used grouped GQA instead of the warp-split path while `4K/128`
+kept grouped GQA. The code change was reverted after measurement.
+
+Validation and outcome:
+- Selection check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+import hipengine.runtime.qwen35_gguf_runner as r
+print('min_context', r._gguf_paged_attn_gqa_grouped_min_context())
+print('use_grouped_512', r._use_gguf_paged_attn_gqa_grouped(512, 2))
+print('use_grouped_4k', r._use_gguf_paged_attn_gqa_grouped(4096, 16))
+PY` -> `min_context=512`, `use_grouped_512=True`, `use_grouped_4k=True`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-gqa-min512.json`.
+- Result: `512/128` median prefill/decode `1574.586083 / 126.935278 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.747112 / 115.652327 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved IDs and memory, but regressed both retained decode medians (`127.011979 -> 126.935278 tok/s`, `115.804576 -> 115.652327 tok/s`) and sharply lowered `512/128` prefill; keep grouped GQA min-context default at `4096`.
+
+## 2026-06-15 - GGUF G-P2 AOTriton threshold=1024 no-hold
+
+Tried raising the GGUF full-attention prefill AOTriton threshold from `512` to
+`1024` in both `hipengine/runtime/prefill.py` and the
+`scripts/qwen35_readme_sweep.py --attn-aotriton-min-tokens` default so the short
+`512/128` gate stayed on the native GQA prefill path while `4K/128` kept
+AOTriton. The code change was reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.runtime import PrefillConfig
+print('prefill_default_attn_aotriton_min_tokens', PrefillConfig().attn_aotriton_min_tokens)
+PY
+python3 - <<'PY'
+from pathlib import Path
+text = Path('scripts/qwen35_readme_sweep.py').read_text()
+needle = 'parser.add_argument("--attn-aotriton-min-tokens", type=int, default=1024)'
+print('readme_sweep_default_1024', needle in text)
+PY` -> `prefill_default_attn_aotriton_min_tokens 1024`, `readme_sweep_default_1024 True`; JSON reported `attn_aotriton_min_tokens=1024`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-aot1024.json`.
+- Result: `512/128` median prefill/decode `1516.828501 / 127.077740 tok/s`, stable candidate IDs `[318, 318, 318]`; `4K/128` median prefill/decode `1858.539787 / 115.795352 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved memory and the `4K/128` ID, but changed the `512/128` final token versus retained/default (`220 -> 318`) and lowered short-prefill throughput (`1647.389814 -> 1516.828501 tok/s`); keep the GGUF AOTriton prefill threshold default at `512`.
+
+## 2026-06-15 - GGUF G-D4 split threshold=512 no-hold
+
+Tried lowering the GGUF full-attention split/gate fused decode threshold in
+`hipengine/runtime/qwen35_gguf_runner.py` from `1024` to `512`, so the short
+`512/128` gate used the existing warp-split fused decode path instead of the
+separate context + gate-mul path while `4K/128` stayed on grouped split decode.
+The code change was reverted after measurement.
+
+Validation and outcome:
+- Selection check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+import hipengine.runtime.qwen35_gguf_runner as r
+print('split_threshold', r._gguf_full_attention_split_decode_min_context())
+print('use_split_512', r._use_gguf_full_attention_split_decode(512))
+print('use_split_4k', r._use_gguf_full_attention_split_decode(4096))
+print('use_grouped_512_splits2', r._use_gguf_paged_attn_gqa_grouped(512, 2))
+print('use_grouped_4k_splits16', r._use_gguf_paged_attn_gqa_grouped(4096, 16))
+PY` -> `split_threshold=512`, `use_split_512=True`, `use_split_4k=True`, `use_grouped_512_splits2=False`, `use_grouped_4k_splits16=True`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-split512.json`.
+- Result: `512/128` median prefill/decode `1664.867098 / 113.634923 tok/s`, stable candidate IDs `[17, 17, 17]`; `4K/128` median prefill/decode `1853.810844 / 115.741708 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The candidate preserved memory and the `4K/128` ID, but changed the `512/128` final token versus retained/default (`220 -> 17`) and regressed decode sharply (`127.011979 -> 113.634923 tok/s`); keep the full-attention split decode threshold default at `1024`.
+
+## 2026-06-15 - GGUF G-D4 split threshold=8192 no-hold
+
+Tried raising the GGUF full-attention split/gate fused decode threshold in
+`hipengine/runtime/qwen35_gguf_runner.py` from `1024` to `8192`, so the `4K/128`
+gate used the direct context + gate-mul path instead of grouped split decode
+while `512/128` remained on the direct path and 128K-scale contexts would still
+split. The code change was reverted after measurement.
+
+Validation and outcome:
+- Selection check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+import hipengine.runtime.qwen35_gguf_runner as r
+print('split_threshold', r._gguf_full_attention_split_decode_min_context())
+print('use_split_512', r._use_gguf_full_attention_split_decode(512))
+print('use_split_4k', r._use_gguf_full_attention_split_decode(4096))
+print('use_split_128k', r._use_gguf_full_attention_split_decode(131072))
+print('use_grouped_4k_splits16', r._use_gguf_paged_attn_gqa_grouped(4096, 16))
+PY` -> `split_threshold=8192`, `use_split_512=False`, `use_split_4k=False`, `use_split_128k=True`, `use_grouped_4k_splits16=True`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-split8192.json`.
+- Result: `512/128` median prefill/decode `1660.866404 / 127.009660 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1852.976669 / 125.592313 tok/s`, stable candidate IDs `[263, 263, 263]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Decision: no-hold/reverted. The direct `4K/128` path looked faster (`115.804576 -> 125.592313 tok/s`) and preserved memory, but changed the final token versus retained/default (`570 -> 263`); keep the full-attention split decode threshold default at `1024` until direct 4K decode is correctness-equivalent.
+
+## 2026-06-15 - GGUF G-P4 chunk-min=8192 no-hold
+
+Tried raising the auto-tuned prefill chunk minimum in
+`hipengine/runtime/prefill.py` from `1025` to `8192`, so the shared
+`512/128`+`4K/128` session (`max_sequence_length=4352`) resolved to no
+linear/MoE/full-attention chunking while 128K-scale runs would still use the
+existing `1024`/`4096` chunks. The code change was reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
+for n in (640, 4352, 8192, 131201):
+    cfg, meta = resolve_prefill_config_for_sequence(PrefillConfig(), max_sequence_length=n, total_memory_bytes=25753026560)
+    print(n, cfg.linear_chunk_size, cfg.moe_chunk_size, cfg.full_attn_query_chunk_size, cfg.chunk_tune_min_tokens, meta['applied'], meta['reason'])
+PY` -> `4352 0 0 0 8192 False below_min_tokens`; `8192` and `131201` still applied the existing chunks.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-chunkmin8192.json`.
+- Result: `512/128` median prefill/decode `1592.473844 / 126.951867 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1864.259809 / 115.617059 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.415609 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. The candidate preserved IDs and improved `4K/128` prefill (`1855.806476 -> 1864.259809 tok/s`), but increased tracked peak (`21.334858 -> 21.415609 GiB`), lowered `512/128` prefill, and regressed both retained decode medians (`127.011979 -> 126.951867 tok/s`, `115.804576 -> 115.617059 tok/s`); keep the auto-chunk minimum at `1025`.
+
+## 2026-06-15 - GGUF G-D2 Q8 T16 GEMV launch-bound=5 no-hold
+
+Tried tightening all four Q8_0 T16 GEMV decode kernels in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 5)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+print(build_gguf_q8_0_t16_gemv(load=False).output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-bdaaf7a5080401d3/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-lb5.json`.
+- Result: `512/128` median prefill/decode `1644.936657 / 126.870195 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.359776 / 115.565466 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed both retained decode medians versus the selected-down lb2 row (`127.011979 -> 126.870195 tok/s`, `115.804576 -> 115.565466 tok/s`) and did not improve either prefill gate; keep Q8_0 T16 GEMV decode at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D5 Q6 T16 GEMV launch-bound=5 no-hold
+
+Tried tightening the Q6_K T16 lm-head GEMV kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 5)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import build_gguf_q6_k_t16_gemv
+print(build_gguf_q6_k_t16_gemv(load=False).output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-70118469ccf487ac/gguf_q6_k_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q6-lb5.json`.
+- Result: `512/128` median prefill/decode `1624.292662 / 126.783708 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.724109 / 115.604041 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed both retained decode medians versus the selected-down lb2 row (`127.011979 -> 126.783708 tok/s`, `115.804576 -> 115.604041 tok/s`) and lowered both prefill medians; keep Q6_K T16 GEMV decode at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-P2 Q8 T16 prefill launch-bound=4 no-hold
+
+Tried relaxing the dense Q8_0 T16 WMMA prefill kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.hip` from
+`__launch_bounds__(32, 8)` to `__launch_bounds__(32, 4)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import build_gguf_q8_0_t16_prefill
+print(build_gguf_q8_0_t16_prefill(load=False).output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_prefill-438c30f76a266639/gguf_q8_0_t16_prefill.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-prefill-lb4.json`.
+- Result: `512/128` median prefill/decode `1655.202065 / 126.995038 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1859.870955 / 115.609689 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved both prefill medians versus the selected-down lb2 row (`1647.389814 -> 1655.202065 tok/s`, `1855.806476 -> 1859.870955 tok/s`), but regressed both retained decode medians (`127.011979 -> 126.995038 tok/s`, `115.804576 -> 115.609689 tok/s`); keep Q8_0 T16 prefill WMMA at `__launch_bounds__(32, 8)` until a shape-specific policy can protect decode.
+
+## 2026-06-15 - GGUF G-P2 Q8 T16 prefill tile_n=16 no-hold
+
+Tried changing the dense Q8_0 T16 WMMA prefill default tile policy in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py` so rows `<2048`
+resolved to `tile_n=16` instead of `tile_n=32`, while larger rows stayed on
+`tile_n=32`. The code change was reverted after measurement.
+
+Validation and outcome:
+- Policy check: `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import _default_tiles
+for rows in (16, 512, 1024, 2048, 4096):
+    print(rows, _default_tiles(rows, 4096, 4096))
+PY` -> rows `512` and `1024` resolved to `(64, 16)`, while `2048+` resolved to `(64, 32)`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-prefill-tn16.json`.
+- Result: `512/128` median prefill/decode `1621.701360 / 126.991134 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1806.887191 / 115.624385 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed both prefill medians versus the selected-down lb2 row (`1647.389814 -> 1621.701360 tok/s`, `1855.806476 -> 1806.887191 tok/s`) and both retained decode medians (`127.011979 -> 126.991134 tok/s`, `115.804576 -> 115.624385 tok/s`); keep the default Q8_0 T16 WMMA prefill `tile_n=32` for rows `>=32`.
+
+## 2026-06-15 - GGUF G-P1 selected-down T16 prefill launch-bound=1 no-hold
+
+Tried relaxing the compact selected single-output/down T16 WMMA prefill kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip` from
+`__launch_bounds__(32, 2)` to `__launch_bounds__(32, 1)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import build_gguf_k_t16_selected_prefill
+artifact = build_gguf_k_t16_selected_prefill(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_k_t16_selected_prefill-f52604c5090d253c/gguf_k_t16_selected_prefill.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-down-prefill-lb1.json`.
+- Result: `512/128` median prefill/decode `1654.917229 / 127.066363 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.369054 / 115.757573 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved the short gate versus the selected-down lb2 row (`1647.389814 / 127.011979 -> 1654.917229 / 127.066363 tok/s`), but regressed the retained `4K/128` prefill/decode medians (`1855.806476 / 115.804576 -> 1850.369054 / 115.757573 tok/s`); keep selected-down T16 WMMA prefill at `__launch_bounds__(32, 2)`.
+
+## 2026-06-15 - GGUF G-D2 Q8 dual-split launch-bound=3 no-hold
+
+Tried relaxing only the Q8_0 T16 dual-split GEMV decode kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+artifact = build_gguf_q8_0_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-97cfdf365581aaef/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-dualsplit-lb3.json`.
+- Result: `512/128` median prefill/decode `1664.016558 / 126.959995 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1853.900023 / 115.687811 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved `512/128` prefill versus the selected-down lb2 row (`1647.389814 -> 1664.016558 tok/s`), but regressed both retained decode medians (`127.011979 -> 126.959995 tok/s`, `115.804576 -> 115.687811 tok/s`) and `4K/128` prefill (`1855.806476 -> 1853.900023 tok/s`); keep all Q8_0 T16 GEMV decode variants at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D2 Q8 single launch-bound=3 no-hold
+
+Tried relaxing only the Q8_0 T16 single-output GEMV decode kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+artifact = build_gguf_q8_0_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-4681bd759fd24253/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-single-lb3.json`.
+- Result: `512/128` median prefill/decode `1624.323941 / 127.189829 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.903833 / 115.740425 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved `512/128` decode (`127.011979 -> 127.189829 tok/s`) plus `4K/128` prefill (`1855.806476 -> 1857.903833 tok/s`), but regressed `512/128` prefill (`1647.389814 -> 1624.323941 tok/s`) and the retained `4K/128` decode gate (`115.804576 -> 115.740425 tok/s`); keep the single Q8_0 T16 GEMV variant at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D2 Q8 dual launch-bound=3 no-hold
+
+Tried relaxing only the Q8_0 T16 dual GEMV decode kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+artifact = build_gguf_q8_0_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-0252e95e33d30975/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-dual-lb3.json`.
+- Result: `512/128` median prefill/decode `1645.534739 / 127.140470 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1859.268619 / 115.692321 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved `512/128` decode (`127.011979 -> 127.140470 tok/s`) plus `4K/128` prefill (`1855.806476 -> 1859.268619 tok/s`), but regressed `512/128` prefill (`1647.389814 -> 1645.534739 tok/s`) and the retained `4K/128` decode gate (`115.804576 -> 115.692321 tok/s`); keep the dual Q8_0 T16 GEMV variant at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D2 Q8 triple-split launch-bound=3 no-hold
+
+Tried relaxing only the Q8_0 T16 triple-split GEMV decode kernel in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip` from
+`__launch_bounds__(128, 4)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+artifact = build_gguf_q8_0_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-870eba5d8e1ac6ba/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-triple-split-lb3.json`.
+- Result: `512/128` median prefill/decode `1665.443666 / 126.936653 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1856.538667 / 115.632577 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved both prefill medians (`1647.389814 -> 1665.443666 tok/s`, `1855.806476 -> 1856.538667 tok/s`), but regressed both retained decode gates (`127.011979 -> 126.936653 tok/s`, `115.804576 -> 115.632577 tok/s`); keep the triple-split Q8_0 T16 GEMV variant at `__launch_bounds__(128, 4)`.
+
+## 2026-06-15 - GGUF G-D3 selected down launch-bound=3 no-hold
+
+Tried tightening the retained selected single-output/down T16 GEMV decode kernel
+in `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip` from
+`__launch_bounds__(128, 2)` to `__launch_bounds__(128, 3)`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import build_gguf_t16_selected_gemv
+artifact = build_gguf_t16_selected_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_t16_selected_gemv-daa14cf2ce9a4977/gguf_t16_selected_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-selected-down-lb3.json`.
+- Result: `512/128` median prefill/decode `1618.595927 / 127.040141 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.922509 / 115.616891 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and nudged `512/128` decode up (`127.011979 -> 127.040141 tok/s`), but regressed `512/128` prefill (`1647.389814 -> 1618.595927 tok/s`), `4K/128` prefill (`1855.806476 -> 1850.922509 tok/s`), and the retained `4K/128` decode gate (`115.804576 -> 115.616891 tok/s`); keep selected-down T16 GEMV at `__launch_bounds__(128, 2)`.
+
+## 2026-06-15 - GGUF G-P3/G-P4 full-attn query chunk=2048 no-hold
+
+Tried lowering the auto-tuned full-attention query chunk in
+`hipengine/runtime/prefill.py` from `4096` to `2048`. The code change was
+reverted after measurement.
+
+Validation and outcome:
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-fullattn-query2048.json`.
+- Result: `512/128` median prefill/decode `1647.371639 / 126.880581 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1814.442744 / 115.545829 tok/s`, stable IDs `[15, 15, 15]`; tracked peak dropped to `20.688847 GiB` and sampled HIP used peak dropped to `~21.31 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. The smaller query chunk reduced memory materially, but changed the retained `4K/128` final token (`570 -> 15`) and regressed both retained decode gates plus `4K/128` prefill; keep the full-attention query chunk at `4096` until chunked-attention exactness is fixed.
+
+## 2026-06-15 - GGUF G-D5 Q6 per-tile d preload no-hold
+
+Tried preloading the Q6_K T16 lm-head GEMV per-column `d[16]` and scales pointer
+outside the `k_in_block` loop in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip`. The code change
+was reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import build_gguf_q6_k_t16_gemv
+artifact = build_gguf_q6_k_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-c76fa26803ac1f4d/gguf_q6_k_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q6-d-preload.json`.
+- Result: `512/128` median prefill/decode `1656.157989 / 127.017897 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.016593 / 115.579481 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and improved `512/128` prefill (`1647.389814 -> 1656.157989 tok/s`), but regressed `4K/128` prefill (`1855.806476 -> 1855.016593 tok/s`) and the retained `4K/128` decode gate (`115.804576 -> 115.579481 tok/s`); keep the original in-loop Q6 `d` loads unless an ISA/occupancy profile proves the preload no longer costs the 4K path.
+
+## 2026-06-15 - GGUF G-D2 Q8 half-pointer d-load no-hold
+
+Tried loading all four Q8_0 T16 GEMV decode variants' fp16 `d[16]` scales via
+`reinterpret_cast<const half_t*>(tile)[col]` instead of the existing
+`fp16_bytes_to_float(tile + col * 2)`. The code change was reverted after
+measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import build_gguf_q8_0_t16_gemv
+artifact = build_gguf_q8_0_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-dddef4d13fbba941/gguf_q8_0_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8-half-dload.json`.
+- Result: `512/128` median prefill/decode `1626.168141 / 126.941481 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1853.322643 / 115.559754 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory, but regressed both prefill medians (`1647.389814 -> 1626.168141 tok/s`, `1855.806476 -> 1853.322643 tok/s`) and both retained decode gates (`127.011979 -> 126.941481 tok/s`, `115.804576 -> 115.559754 tok/s`); keep the byte/union `fp16_bytes_to_float` loads for Q8_0 T16 GEMV.
+
+## 2026-06-15 - GGUF G-D5 Q6 half-pointer d-load no-hold
+
+Tried loading the Q6_K T16 lm-head GEMV fp16 `d[16]` scales via
+`reinterpret_cast<const half_t*>(tile + Q6_T16_D_OFFSET)[col]` instead of the
+existing `fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2)`. The code change
+was reverted after measurement.
+
+Validation and outcome:
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import build_gguf_q6_k_t16_gemv
+artifact = build_gguf_q6_k_t16_gemv(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q6_k_t16_gemv-fb7c3b72ce5c35fa/gguf_q6_k_t16_gemv.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q6-half-dload.json`.
+- Result: `512/128` median prefill/decode `1593.583942 / 127.089431 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1852.881742 / 115.639946 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. It preserved IDs and memory and slightly improved `512/128` decode (`127.011979 -> 127.089431 tok/s`), but regressed `512/128` prefill (`1647.389814 -> 1593.583942 tok/s`), `4K/128` prefill (`1855.806476 -> 1852.881742 tok/s`), and the retained `4K/128` decode gate (`115.804576 -> 115.639946 tok/s`); keep the byte/union `fp16_bytes_to_float` Q6 `d` load unless a disassembly-guided variant avoids the prefill/4K loss.
+
+## 2026-06-16 - GGUF G-P2 Q8T16 dual WMMA prefill no-hold
+
+Tried a G-P2 resident Q8_0 T16 dual gate+up WMMA prefill path: added a fused
+concat-output T16 dual WMMA prefill kernel/wrapper/registry key and routed
+`launch_gguf_linear_pair_concat()` rows>1 Q8T16 gate/up prefill through it with
+`tile_m=16`, `tile_n=32`. The goal was to reduce dense Q8_0 WMMA prefill launch
+and dispatch overhead versus two singleton T16 WMMA prefill launches while
+preserving per-side accumulation order and the existing resident T16 layout.
+The candidate code was reverted after measurement.
+
+Validation and outcome:
+- Focused correctness/dispatch: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py tests/test_gguf_linear_dispatch.py -q -k 'dual_prefill or t16_pair_concat_routes_q8_shared_gate_up_to_wmma_prefill_when_enabled or registry_and_build_plan'` -> `9 passed`.
+- Prebuilt candidate object: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import build_gguf_q8_0_t16_prefill
+artifact = build_gguf_q8_0_t16_prefill(load=False)
+print(artifact.output_path)
+PY` -> `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_prefill-f45276cf22bd6a03/gguf_q8_0_t16_prefill.so`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8t16-dual-wmma-prefill.json`.
+- Result: `512/128` median prefill/decode `1621.517799 / 127.188882 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1850.688664 / 115.764465 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: no-hold/reverted. The fused path preserved IDs, memory, and focused bit-exact dual-vs-single tests, and improved `512/128` decode (`127.011979 -> 127.188882 tok/s`), but regressed retained prefill (`512/128` `1647.389814 -> 1621.517799 tok/s`, `4K/128` `1855.806476 -> 1850.688664 tok/s`) plus the retained `4K/128` decode gate (`115.804576 -> 115.764465 tok/s`). Keep Q8_0 T16 rows>1 gate/up prefill on the existing singleton WMMA path unless a tile/codegen profile proves a fused variant avoids the prefill loss.
+
+## 2026-06-16 - GGUF clean retained gate refresh after Q8T16 dual no-hold
+
+After reverting and documenting the Q8T16 dual WMMA prefill no-hold, reran the
+standard GPU1 Q4_K_S gate on the clean retained default path so the loop state
+matches the code that remains checked in.
+
+Validation and outcome:
+- Worktree: `git status -sb` -> clean on `gguf-tuning`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-clean-retained.json`.
+- Result: `512/128` median prefill/decode `1641.504355 / 127.254321 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.480116 / 115.799902 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` dots / exit 0).
+- Decision: clean retained sanity only; no code change. The retained selected-down lb2 path remains the default and still matches the expected generated-token gate and memory envelope.
+
+## 2026-06-16 - GGUF G-M2 retained 4K rocprof refresh
+
+Refreshed the retained-default GPU1 Q4_K_S 4K/16 paired `rocprofv3` bucket
+summary before making more prefill code changes. This was a diagnostic/profile
+iteration only; no source code changed.
+
+Validation and outcome:
+- Profile commands: profiled `scripts/qwen35_gguf_bench.py` with `HIP_VISIBLE_DEVICES=1`, `HIPENGINE_GGUF_DECODE_REPACK=1`, cached TheRock 7.13 builds, `--prompt-length 4096`, retained `--force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode`, and `--warmup-runs 0` for both the prefill-only (`--decode-tokens 0`) and full (`--decode-tokens 16 --warmup-decode-tokens 1`) traces so `qwen35_gguf_rocprof_summary.py --strip-prefill-prefix` leaves a decode-only window.
+- Raw profile directory: `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup`; compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-retained-4k-rocprof-diagnostic.json`.
+- Profile result: 4K prefill total kernel `2094.198 ms`; top buckets selected dual Q4_K WMMA `800.455 ms` (`38.22%`), GDN recurrent `351.231 ms` (`16.77%`), dense Q8_0 WMMA `329.473 ms` (`15.73%`), full-attn prefill `87.719 ms` (`4.19%`). Decode-only 16-token window total kernel `138.513 ms` (`8.657 ms/token`); top buckets dense Q8_0 T16 GEMV `49.758 ms` (`35.92%`), selected dual Q4_K T16 GEMV `17.154 ms` (`12.38%`), full-attn decode `13.912 ms` (`10.04%`), Q6 lm-head T16 `10.087 ms` (`7.28%`).
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1644.508451 / 126.314767 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1856.842053 / 115.593107 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`; sampled HIP used peak `21.952-21.954 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic no-change iteration. Generated IDs stayed deterministic, memory stayed at the retained envelope, no torch/llama.cpp hot-path dependency or raw+packed residency change was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. The refreshed profile still points to selected dual Q4_K WMMA for prefill work and dense Q8_0 T16 GEMV for decode work; blind Q8/Q6 launch-bound changes should stay parked until code-object/ISA evidence identifies a pressure issue.
+
+## 2026-06-16 - GGUF G-M3 resource census metadata
+
+Added resource metadata to `scripts/qwen35_gguf_rocprof_summary.py` so GGUF
+rocprof summaries preserve VGPR, Accum_VGPR, SGPR, Scratch_Size, LDS,
+workgroup-size, and grid-size sets per bucket and per kernel. Generated a G-M3
+resource census from the retained-default 4K/16 trace captured in the previous
+iteration. This is a diagnostic/tooling iteration, not a performance-claiming
+runtime change.
+
+Validation and outcome:
+- Tooling test: `python3 -m pytest tests/test_qwen35_gguf_rocprof_summary.py -q` -> passed (`71` tests).
+- Resource summary command: `python3 scripts/qwen35_gguf_rocprof_summary.py --prefill-csv /tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/prefill_rocprof/q4ks4k_prefill_kernel_trace.csv --decode-csv /tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/decode_rocprof/q4ks4k_decode16_kernel_trace.csv --strip-prefill-prefix --tokens-prefill 4096 --tokens-decode 16 --json /tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup/summary_with_resources.json --top 20 --quiet`.
+- Compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-resource-census-diagnostic.json`.
+- Resource finding: decode top buckets are scratch-free (`dense_q8_0_t16_gemv_decode_p9` VGPR `64`, scratch `0`; selected dual Q4_K T16 GEMV VGPR `200`, scratch `0`; Q6 lm-head T16 GEMV VGPR `72`, scratch `0`). Prefill is not: selected dual Q4_K WMMA reports VGPR `256` and Scratch_Size `676 B`; dense Q8_0 WMMA reports VGPR `96/128/192` and scratch `0/8 B`; full-attn prefill reports VGPR `256` and scratch `3200 B`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1650.529628 / 126.666521 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1857.479694 / 115.771004 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic/tooling-only change. The runtime path was not changed, generated IDs stayed stable, tracked peak stayed `21.334858 GiB`, no torch/llama.cpp hot-path dependency was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. Next prefill work should inspect selected dual Q4_K WMMA ISA/codegen/register pressure before more launch-bound or fusion probes. Dense Q8_0 T16 decode is already scratch-free, so more blind launch-bound sweeps are lower priority.
+
+## 2026-06-16 - GGUF G-P1 selected WMMA ISA audit
+
+Audited the active Q4T16 selected dual WMMA prefill code object after the G-M3
+resource census showed the dominant prefill bucket spilling. This was a
+diagnostic/codegen-audit iteration only; no runtime math or dispatch path was
+changed.
+
+Validation and outcome:
+- Active build artifact: `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-bb67c6136258bf8d/gguf_q4_k_t16_selected_prefill.so` with flags `-mllvm -amdgpu-unroll-threshold-local=600 -mcumode`.
+- Extraction: dumped `.hip_fatbin`, unbundled `hipv4-amdgcn-amd-amdhsa--gfx1100`, then ran `llvm-readobj --notes` and `llvm-objdump -d --mcpu=gfx1100` under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q4t16-selected-wmma-isa`.
+- Compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-isa-audit.json`.
+- Active BF16 symbol result: `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>` has `private_segment_fixed_size=676`, `vgpr_count=256`, `vgpr_spill_count=320`, `sgpr_count=44`, `sgpr_spill_count=0`; disassembly count for the symbol is `122` scratch instructions (`42` loads / `80` stores), `32` WMMA instructions.
+- Diagnostic knob: rebuilding the same family with `HIPENGINE_DISABLE_UNROLL600=1` (`-mcumode` only) produced identical metadata and scratch counts, so the global unroll-600 knob is not the spill source for this kernel.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1641.729896 / 127.044609 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `1855.991956 / 115.776786 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic/tooling-only iteration. IDs and memory stayed stable, no torch/llama.cpp hot-path dependency or residency change was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. Next useful G-P1 code probes should reduce live state in the kernel itself (for example a 16-column single-tile variant or shorter `b_reg`/accumulator lifetimes) and measure whether extra launches beat the spill cost. Do not spend more loop iterations on `HIPENGINE_DISABLE_UNROLL600` for this kernel.
+
+## 2026-06-16 - GGUF G-P1 selected WMMA half-seq retained
+
+Rewrote the selected dual Q4_K T16 WMMA prefill compact32 kernel to compute and
+store each 16-column half sequentially with one FP32 accumulator instead of
+keeping two accumulators live across the full K loop. The probe was motivated by
+the prior ISA audit (`VGPR=256`, `vgpr_spill_count=320`, `private_segment=676 B`,
+`122` scratch instructions) and keeps the same dispatch key/default path.
+
+Validation and outcome:
+- Focused correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q` -> `9 passed`.
+- Candidate build artifact: `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-d98a2c1ef5f6c100/gguf_q4_k_t16_selected_prefill.so`.
+- Code-object metadata for `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>`: `private_segment_fixed_size=208`, `vgpr_count=256`, `vgpr_spill_count=127`, `sgpr_count=43`, `sgpr_spill_count=0`; disassembly counts `102` scratch instructions (`62` loads / `40` stores), `32` WMMA instructions. This cuts private segment `676 -> 208 B` and spills `320 -> 127`, though the kernel is still VGPR-capped.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-halfseq-rerun.json`.
+- Retained gate rerun result: `512/128` median prefill/decode `1881.318618 / 126.950908 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2175.494050 / 115.713825 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`.
+- First same-command gate result for variance context: `512/128` `1888.617722 / 126.618648 tok/s`; `4K/128` `2178.056353 / 115.390341 tok/s`; stable IDs and tracked peak unchanged.
+- Paired `rocprofv3` 4K/16 command used cached builds under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-4k-d16` with `scripts/qwen35_gguf_rocprof_summary.py --strip-prefill-prefix`.
+- Rocprof result: 4K prefill total kernel `2094.198 -> 1763.990 ms`; selected dual Q4_K WMMA bucket `800.455 -> 467.926 ms` (`38.22% -> 26.53%`). Decode-only total kernel `138.513 -> 137.239 ms`, so the slight gate decode movement is treated as run noise rather than a decode regression/promotion.
+- Final-promotion long-context check: GPU1 `128K/128` command with `--warmup-runs 0 --measured-runs 1` failed during `Qwen35GGUFResidentSession` construction with `HIP error 2: out of memory` allocating the prefill hidden buffer. Primary `512/128` and `4K/128` gates still fit at `21.334858 GiB`; final 128K promotion needs a W7900 fallback or a G-P4 memory-policy iteration.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed. Generated IDs/logits were deterministic on the primary gates, no torch/llama.cpp hot-path dependency was added, raw+packed residency and tracked peak did not grow, and the change materially improved prefill while decode stayed within run noise.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`; rollup updated in `benchmarks/README.md` and `benchmarks/CHANGELOG.md`.
+- Decision: retain/promote as the default selected-WMMA prefill path for primary GPU1 gates. This is a prefill promotion (`512/128` +14.2%, `4K/128` +17.2%), not a decode promotion. Next best target is G-D2 dense Q8_0 T16 GEMV decode or G-P4/G-M4 memory policy for the blocked 128K gate.
+
+## 2026-06-16 - GGUF G-P1 half-seq store-guard safety addendum
+
+Before committing the G-P1 selected-WMMA half-seq rewrite, re-audited the code
+and noticed the first rewrite had kept a tile-base bounds check but had dropped
+the original per-lane `global_out_col >= out_features_total` store guard. Qwen3.6
+expert widths are 16-aligned, but the kernel family should remain safe for
+non-multiple-of-16 output widths, so I restored the per-lane guard and reran the
+validation/measurement on the final code.
+
+Validation and outcome:
+- Focused correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q` -> `9 passed`.
+- Final build artifact: `/home/lhl/.cache/hipengine/build/gguf_q4_k_t16_selected_prefill-f13d26d3a988117a/gguf_q4_k_t16_selected_prefill.so`.
+- Final code-object metadata for `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>`: `private_segment_fixed_size=160`, `vgpr_count=256`, `vgpr_spill_count=113`, `sgpr_count=44`, `sgpr_spill_count=0`; disassembly counts `90` scratch instructions (`57` loads / `33` stores), `32` WMMA instructions. This improves on both the original retained kernel (`private=676`, spills `320`) and the first half-seq build (`private=208`, spills `127`).
+- Final gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-halfseq-safe.json`.
+- Final gate result: `512/128` median prefill/decode `1816.757625 / 126.472921 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.850842 / 115.798456 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`. Versus selected-down-lb2 this is a retained prefill gain (`+10.3%`, `+16.0%`) with flat min gate decode (`115.804576 -> 115.798456 tok/s`, noise/not decode promotion).
+- Final paired `rocprofv3` 4K/16 trace under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-safe-4k-d16`: prefill total kernel `2094.198 -> 1761.552 ms`; selected dual Q4_K WMMA bucket `800.455 -> 454.370 ms` (`38.22% -> 25.79%`). Decode-only 16-token window measured `143.418 ms` vs `138.513 ms` baseline and is treated as profiler/noise context; the primary gate decode median remained flat.
+- Guard rerun is still the standard targeted bundle from the prior entry: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Artifact/rollup updated in-place to the final safe numbers: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+- Decision: retain the safe half-seq kernel as the default selected-WMMA prefill path for primary GPU1 gates. The 128K final-promotion blocker from the prior entry remains: GPU1 24GB-class OOM during session construction, so final long-context promotion needs W7900 fallback evidence or G-P4 memory-policy work.
+
+## 2026-06-16 - GGUF G-D2 Q8T16 decode ISA audit
+
+Audited the active Q8_0 T16 GEMV decode code object after the selected-WMMA
+half-seq prefill promotion. This is a diagnostic/docs iteration, not a runtime
+path change. The goal was to determine whether the still-dominant dense Q8 decode
+bucket has an obvious pressure/scratch issue before trying more Q8 launch-bound
+or data-load variants.
+
+Validation and outcome:
+- Build artifact: `/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-4e393c8a22cdef00/gguf_q8_0_t16_gemv.so` (`build_gguf_q8_0_t16_gemv(load=False, require_cached=True)`).
+- Extraction: dumped `.hip_fatbin`, unbundled `hipv4-amdgcn-amd-amdhsa--gfx1100`, then ran `llvm-readobj --notes` and `llvm-objdump -d --mcpu=gfx1100` under `/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q8t16-gemv-isa`.
+- Compact artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-isa-audit.json`.
+- Code-object result: all nine Q8T16 decode kernels are scratch-free and spill-free: `private_segment_fixed_size=0`, `vgpr_count=56/57`, `sgpr_count=28/31/33/41`, `vgpr_spill_count=0`, `group_segment_fixed_size=256 B`, and disassembly count `0` scratch ops.
+- Current profile context from the half-seq 4K/16 trace: dense Q8_0 T16 decode remains the largest decode bucket at `50.638 ms` (`35.31%`) over `2720` dispatches, with rocprof resource summary `VGPR=64`, scratch `0`, LDS `512 B`.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-q8t16-isa-audit.json`.
+- Gate result: `512/128` median prefill/decode `1874.005150 / 126.155284 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.216240 / 115.746497 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334858 GiB`. No runtime path changed, so this is variance/context only.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> `154 passed`.
+- Prompt verifier: passed for a diagnostic/no-runtime-change iteration. Generated IDs stayed deterministic, tracked peak stayed at `21.334858 GiB`, no torch/llama.cpp hot-path dependency or raw+packed residency change was introduced, and no promotion was claimed.
+- Decision: log/diagnostic. Do not repeat blind Q8T16 launch-bound or scale-load tweaks without a new algorithmic/dispatch reason; the active Q8 decode code object is already clean. Next decode work should look at dispatch/graph overhead, full-attention decode, or a true algorithmic Q8 reduction. The final 128K promotion blocker remains G-P4/G-M4 memory policy or W7900 fallback evidence.
+
+## 2026-06-16 - GGUF G-M4 memory census instrumentation
+
+Added an owned-session memory breakdown to the GGUF benchmark memory snapshots
+(`scripts/qwen35_gguf_bench.py`), so `qwen35_readme_sweep.py` now records resident
+weights by quant/layout plus decode scratch and session buffer families. This is
+a diagnostic/tooling iteration only; no runtime math, dispatch, or allocation
+policy changed.
+
+Validation and outcome:
+- Code sanity: `python3 -m py_compile scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py` passed.
+- Gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Gate result: `512/128` median prefill/decode `1860.698440 / 125.786002 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2153.848448 / 115.755571 tok/s`, stable IDs `[570, 570, 570]`; tracked peak stayed `21.334858 GiB`. No runtime path changed, so throughput movement is variance/context only.
+- Emitted 4K owned-session breakdown: `21.334858 GiB` total = `19.858393 GiB` weights/T16 tiles, `0.147844 GiB` decode scratch, and `1.328621 GiB` session buffers. Session buffers include `1.294447 GiB` bulk-prefill scratch and `0.033203 GiB` full-sequence prefill hidden at `max_positions=4352`.
+- Static 128K/128 projection from the same resident-session formulas: `max_positions=131328`, projected owned bytes `25.107746 GiB` on GPU1 total `23.984375 GiB`, i.e. `+1.123371 GiB` over device capacity. Components: weights `19.858393 GiB`, decode scratch `2.637895 GiB` (full-attention KV `2.504883 GiB`), session buffers `2.611458 GiB` (bulk prefill scratch `1.607588 GiB`, full-sequence prefill hidden `1.001953 GiB`).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-memory-census.json`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for diagnostic/tooling. Generated IDs stayed deterministic, tracked peak stayed flat, the new snapshot fields introduce no torch/llama.cpp hot-path dependency and no extra residency, and no perf promotion is claimed.
+- Decision: log/diagnostic. The 128K GPU1 blocker is real capacity, not hidden raw+packed duplicate residency; final long-context promotion needs W7900 fallback evidence or a G-P4 reduction in KV/prefill-hidden/bulk-prefill scratch residency.
+
+## 2026-06-16 - GGUF G-P4 128K memory policy
+
+Retained a 128K-class memory policy after the G-M4 census showed GPU1 session
+construction was over capacity. The change lowers the 24GB low-memory prefill
+threshold to 128K-class contexts, keeps the primary 512/4K policy unchanged,
+compacts dense bulk-prefill block-table metadata to scratch rows, and uses a
+single full-sequence prefill hidden buffer plus a chunk staging buffer when the
+low-memory policy is active.
+
+Validation and outcome:
+- Code sanity/unit: `python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py` passed; `python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` passed.
+- Staging correctness probe: forced the low-memory threshold to `1` with `max_sequence_length=2048` and compared a 512-token prompt against a manual 256-token full-hidden run. The staged low-memory path matched the manual-256 path exactly (`token=25088`, logit `9.275147438049316`, KL `0.0`). A separate forced comparison against the normal 1024/4096 chunk policy preserved top-1 but had KL `~0.171`; that is chunk-policy behavior, not the new staging copy.
+- 128K construction smoke command: instantiate `Qwen35GGUFResidentSession(/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf, max_sequence_length=131072+1+128+1, require_cached_build=True, use_wmma_prefill=True, use_gemv_decode=True)` on GPU1 with decode repack and cached compiler version.
+- 128K construction result: succeeded with `scratch.max_positions=131328`, low-memory chunks `(linear, moe, full_attn_query, full_attn_post, full_attn_rope)=(256,256,256,256,256)`, tuning reason `low_memory_full_context_24gb`, owned memory `23.145987 GiB`, sampled HIP used `23.658203 GiB`, weights `19.858393 GiB`, decode scratch `2.637895 GiB`, session buffers `0.649698 GiB`, bulk-prefill scratch `0.145828 GiB`, prefill hidden `0.501953 GiB`, and `prefill_hidden_b_rows=256`. This replaces the prior G-M4 pre-policy projection of `25.107746 GiB` owned and resolves the session-construction OOM.
+- Primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Primary gate result: `512/128` median prefill/decode `1845.958863 / 126.640689 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2153.050660 / 115.751631 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB` (slightly lower from compact block-table metadata). Primary gates do not use the low-memory staging path.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-memory-policy.json`.
+- Prompt verifier: passed for a memory-policy/runtime change. Primary generated IDs stayed deterministic, primary tracked peak did not grow, no torch/llama.cpp hot-path dependency was added, and raw+packed residency did not increase. This is a memory/residency promotion, not a primary-gate throughput promotion. Full `128K/128` throughput/correctness remains pending before final long-context promotion.
+
+## 2026-06-16 - GGUF G-P4 128K final gate
+
+Ran the pending GPU1 `128K/128` final check after the 128K session-construction
+memory policy. The first full-run attempt with all low-memory chunk sizes at 256
+failed in the paged full-attention prefill fallback with `HIP error 1: invalid
+argument` because 256 query rows stayed below the AOTriton threshold. I changed
+the 24GB low-memory policy to use 512-token full-attention query chunks while
+keeping linear/MoE/post/RoPE chunks at 256. The larger query chunk keeps the
+AOTriton full-attention prefill path active and still fits inside GPU1 memory.
+
+Validation and outcome:
+- Code sanity/unit: `python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py` passed; `python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` passed.
+- 128K construction smoke with final policy: chunks `(linear, moe, full_attn_query, full_attn_post, full_attn_rope)=(256,256,512,256,256)`, owned `23.228204 GiB`, sampled HIP used `23.742188 GiB`, session buffers `0.731915 GiB`, bulk-prefill scratch `0.227069 GiB`, and `prefill_hidden_b_rows=512`.
+- Staging correctness probe: forced the low-memory threshold to `1` with `max_sequence_length=2048` and compared a 512-token prompt against a manual `(256,256,512,256,256)` chunk config. The staged low-memory path matched exactly (`token=25088`, logit `9.077764511108398`, KL `0.0`).
+- 128K gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-128k.json`.
+- 128K gate result: `572.096268` prefill tok/s, `67.697217` decode tok/s, stable final ID `[220]`, generated tail `[3642, 84, 220]`, finite final logits, tracked/owned peak `23.228204 GiB`, sampled HIP used `23.815723 GiB`, load `61.040s`, prefill `229.108s`, decode excluding graph capture `1.891s`, warmup-decode `0.090s`.
+- Primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Primary gate result: `512/128` median prefill/decode `1841.689938 / 126.628985 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2144.513670 / 115.662126 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`. The small min-decode dip vs the prior `115.751631` row is run noise; the low-memory policy does not activate at the 512/4K primary gate.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-gate.json`; benchmark rollup updated with the new GPU1 128K row.
+- Prompt verifier: passed. Deterministic IDs/logits were preserved on the primary gates and 128K single run, no torch/llama.cpp hot-path dependency was introduced, tracked peak did not grow on the primary gate, raw+packed residency did not increase, and the 128K memory evidence is explicit. This is a long-context capacity/final-check promotion; it does not promote a primary-gate throughput improvement.
+- Decision: retain/log. GPU1 128K is no longer blocked by session-construction memory; next long-context work should target prefill speed under the low-memory policy, not another memory-only construction tweak.
+
+## 2026-06-16 - GGUF G-P4/P3 128K query chunk tuning
+
+Tuned the 24GB low-memory full-attention query chunk after the 512-query final
+gate showed GPU1 `128K/128` was now capacity-safe but prefill-limited. Linear,
+MoE, full-attn post, and RoPE chunks stay at 256 rows; only the full-attention
+query chunk changed from 512 to 768 rows so AOTriton has fewer long-context
+windows without giving back too much memory headroom.
+
+Validation and outcome:
+- Code sanity/unit: `python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py` passed; `python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` passed.
+- Construction smoke with the retained 768-query policy: chunks `(256,256,768,256,256)`, owned `23.310421 GiB`, sampled HIP used `23.830078 GiB` at construction, sampled peak `23.897949 GiB` during the full gate, session buffers `0.814132 GiB`, bulk-prefill scratch `0.308310 GiB`, and `prefill_hidden_b_rows=768`.
+- A 1024-query probe also fit but was not retained: `618.641724` prefill tok/s, `67.145983` decode tok/s, tracked peak `23.392638 GiB`, sampled HIP peak `23.968994 GiB`. It was slower than 768 and nearly exhausted GPU1 headroom.
+- Staging correctness probe: forced the low-memory threshold to `1` with `max_sequence_length=2048` and compared a 512-token prompt against a manual `(256,256,768,256,256)` chunk config. The staged low-memory path matched exactly (`token=25088`, logit `9.077764511108398`, KL `0.0`).
+- 128K gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-128k-q768.json`.
+- 128K gate result: `650.366726` prefill tok/s, `67.541447` decode tok/s, stable final ID `[220]`, generated tail `[3642, 84, 220]`, finite final logits, tracked/owned peak `23.310421 GiB`, sampled HIP peak `23.897949 GiB`, load `61.024s`, prefill `201.533s`, decode excluding graph capture `1.895s`, warmup-decode `0.089s`. Versus the previous 512-query row this is `+13.68%` prefill, `-0.23%` decode (single-run noise), and `+0.082 GiB` tracked peak.
+- Primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Primary gate result: `512/128` median prefill/decode `1860.413346 / 126.680908 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2157.074510 / 115.588200 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`. The low-memory policy does not activate at these primary gates; the small min-decode movement is run noise.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-q768-gate.json`; benchmark rollup updated with the retained 768-query row and the 1024-query no-hold note.
+- Prompt verifier: passed. Primary and 128K generated IDs stayed deterministic, 128K logits were finite, no torch/llama.cpp hot-path dependency was added, raw+packed residency did not increase, and the 128K peak growth is explained by the retained query chunk and remains below 24GB. This is a long-context prefill promotion, not a primary-gate decode promotion.
+- Decision: retain/log. Keep the 768-token full-attention query chunk for 24GB-class 128K contexts; next long-context speed work should target remaining 256-row linear/MoE/post/RoPE staging overhead or attention scheduling rather than pushing query chunks to 1024.
+
+## 2026-06-16 - GGUF G-P4/P3 128K all-768 chunks
+
+Raised the remaining 24GB low-memory prefill chunks after the retained 768-query
+row showed the full-attention query chunk already determined the staging rows.
+The retained policy now uses 768-token chunks for linear, MoE, full-attention
+query, full-attention post, and RoPE stages. This is a 128K low-memory policy
+change only; primary 512/4K gates do not activate it.
+
+Validation and outcome:
+- Code sanity/unit: `python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py` passed; `python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` passed.
+- Construction smoke with all-768 chunks: owned `23.310421 GiB`, sampled HIP used `23.830078 GiB` at construction, sampled peak `23.897949 GiB` during the full gate, session buffers `0.814132 GiB`, bulk-prefill scratch `0.308310 GiB`, and `prefill_hidden_b_rows=768`.
+- A 512-token non-attn chunk probe also improved the prior row but was not retained: `718.895024` prefill tok/s, `67.339742` decode tok/s, same `23.310421 GiB` tracked peak. All-768 was faster at the same scratch footprint.
+- Staging correctness probe: forced the low-memory threshold to `1` with `max_sequence_length=2048` and compared a 512-token prompt against a manual all-768 chunk config. The staged low-memory path matched exactly (`token=25088`, logit `9.077764511108398`, KL `0.0`).
+- 128K gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-128k-lm768q768.json`.
+- 128K gate result: `730.191282` prefill tok/s, `67.732875` decode tok/s, stable final ID `[220]`, generated tail `[3642, 84, 220]`, finite final logits, tracked/owned peak `23.310421 GiB`, sampled HIP peak `23.897949 GiB`, load `61.711s`, prefill `179.504s`, decode excluding graph capture `1.890s`, warmup-decode `0.091s`. Versus the previous 256/768 row this is `+12.27%` prefill, `+0.28%` decode, and flat tracked peak; versus the original 512-query row this is `+27.63%` prefill for `+0.082 GiB` tracked peak.
+- Primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Primary gate result: `512/128` median prefill/decode `1863.661723 / 126.492215 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.058435 / 115.553929 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`. The low-memory policy does not activate at these primary gates; min-decode movement is run noise.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-128k-all768-gate.json`; benchmark rollup updated with the retained all-768 row and the 512-probe no-hold note.
+- Prompt verifier: passed. Primary and 128K generated IDs stayed deterministic, 128K logits were finite, no torch/llama.cpp hot-path dependency was added, raw+packed residency did not increase, and 128K memory stayed below 24GB. This is a long-context prefill promotion, not a primary-gate decode promotion.
+- Decision: retain/log. Keep all 24GB low-memory prefill chunks at 768 for now. User-provided llama.cpp HIP/Vulkan numbers show local llama.cpp Q4_K_M pp512 is substantially ahead of hipEngine GGUF primary prefill, so the next iteration should detour into llama.cpp HIP/Vulkan codepath review and update `docs/TUNING-gguf.md` with concrete adoption/test hypotheses.
+
+## 2026-06-16 - GGUF llama.cpp HIP/Vulkan codepath detour
+
+User provided fresh local llama.cpp GPU1 Q4_K_M numbers: HIP `pp512=2736.98 ± 53.51 tok/s`, `tg128=94.13 ± 1.29 tok/s`; Vulkan `pp512=2389.53 ± 16.94 tok/s`, `tg128=79.90 ± 0.22 tok/s`, both with `-fa 1` on `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. Decode is still behind the current hipEngine Q4_K_S primary gate, but HIP pp512 is `+50.7%` over the current `1816.758 tok/s` Q4_K_S prefill row, so this is a prefill-source-review signal.
+
+Reviewed local llama.cpp source trees:
+- HIP: `~/llama.cpp/llama.cpp-hip` HEAD `e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6`; note the user benchmark binary itself reports build `263cc04a5`, so verify binary/source SHA before porting exact code.
+- Vulkan: `~/llama.cpp/llama.cpp-vulkan` HEAD `263cc04a5405fc55122bf59383dd8195519b30f4`.
+
+Findings recorded in `docs/TUNING-gguf.md`:
+- HIP prefill likely uses llama.cpp's quantized MMQ path for Q4_K on RDNA3: `ggml_cuda_mul_mat` chooses `ggml_cuda_mul_mat_q` when the small-vector path is not selected and `ggml_cuda_should_use_mmq()` returns true for RDNA3/WMMA. The path quantizes activations to Q8_1, tiles up to `mmq_x=128` / `mmq_y=128`, and uses a Q4_K loader/trait that repacks Q4_K nibbles/scales into the Q8_1 MMA tile shape (`ggml/src/ggml-cuda/ggml-cuda.cu:2590-2668`, `mmq.cu:77-160`, `mmq.cu:267-374`, `mmq.cuh:109-160`, `mmq.cuh:2100-2237`, `mmq.cuh:3358-3363`).
+- HIP decode/MoE fusion is useful but lower priority because hipEngine decode is already faster: llama.cpp fuses top-k MoE and `MUL_MAT(_ID)+GLU`/bias patterns and only uses fused `mul_mat_vec_q` for `ncols_dst=1` (`ggml-cuda.cu:3447-4162`, `mmvq.cu:475-672`).
+- HIP `-fa 1` dispatches through `ggml_cuda_flash_attn_ext`; RDNA3 chooses among vector/tile/WMMA/MMA based on head size/GQA/effective query batch (`fattn.cu:332-596`). Do not assume attention is the pp512 limiter without a llama.cpp rocprof family breakdown.
+- Vulkan first tries an integer-dot/Q8_1 activation pipeline before dequant+f16 matmul: `ggml_vk_mul_mat_q_f16` quantizes F32 Y to Q8_1 when possible and selects `pipeline_dequant_mul_mat_mat_q8_1`; Q4_K shader uses `dotPacked4x8EXT` with K-quant warptiles set to `WMITER=1` to control register pressure (`ggml-vulkan.cpp:6848-6917`, `8279-8387`, `3448-3496`, `3651-3753`, `4318-4332`, `vulkan-shaders/mul_mmq_funcs.glsl:303-374`).
+
+Next tests/hypotheses:
+1. Rerun apples-to-apples current hipEngine Q4_K_M on GPU1 and, if available, llama.cpp Q4_K_S, because the user benchmark is Q4_K_M while the active gates are Q4_K_S.
+2. Build a same-shape Q4_K_M/Q4_K_S microbench comparing hipEngine selected-WMMA prefill against a llama-style Q8_1-activation MMQ tile on attention/FFN/MoE shapes.
+3. Capture llama.cpp HIP pp512 with rocprofv3 kernel families and compare launch counts/buckets against hipEngine's current `512/128` profile before more selected-WMMA/Q8 live-state tweaks.
+
+Validation and outcome:
+- Docs/source-review check: `git diff --check` passed. Re-read the added `docs/TUNING-gguf.md` detour section against the local llama.cpp code references before committing.
+- Primary gate evidence reused from `/tmp/hipengine-gguf-tuning-gpu1-acceptance.json` generated at `2026-06-16T11:12:51+0900`: `512/128` median prefill/decode `1882.104447 / 126.557668 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2163.534507 / 115.722842 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.722842 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a documentation/planning detour. No runtime code changed, generated IDs stayed stable on the primary gate, memory stayed flat, no torch/llama.cpp dependency was added to the hot path, and the documented next steps are apples-to-apples measurement/microbench/profile tasks rather than unverified adoption.
+- Decision: log only. The codepath review sharpens the GGUF punchlist around llama.cpp's Q8_1-activation MMQ and Vulkan int-dot paths; it does not claim a hipEngine performance promotion yet.
+
+## 2026-06-16 - GGUF Q4_K_M parity refresh
+
+Ran the apples-to-apples current hipEngine `Q4_K_M` GPU1 primary shapes before attempting any llama.cpp MMQ/Q8_1 adoption. This uses the same current resident GGUF path and `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`; the user's llama.cpp row is the same model/quant with `-fa 1`.
+
+Measurement command:
+- `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-q4km-current.json`.
+
+Results:
+- hipEngine `Q4_K_M` `512/128`: `1866.035714` prefill tok/s, `124.536992` decode tok/s, stable final IDs `[318, 318, 318]`.
+- hipEngine `Q4_K_M` `4K/128`: `2133.917448` prefill tok/s, `114.075085` decode tok/s, stable final IDs `[220, 220, 220]`.
+- Q4_K_M tracked peak `22.491092 GiB`; sampled HIP-used peak in the raw sweep was about `23.068489 GiB`, leaving less than 1 GiB sampled free on the 24GB GPU1 card at these primary shapes.
+- Versus the user's same-model llama.cpp rows, llama.cpp HIP pp512 is `+46.7%` over hipEngine and Vulkan pp512 is `+28.1%`; hipEngine decode remains faster (`+32.3%` vs llama.cpp HIP tg128 and `+55.9%` vs Vulkan tg128). This confirms the current parity gap to chase is short prefill, not decode.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1835.966261 / 126.558150 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2157.072306 / 115.667375 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.667375 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`; benchmark rollup/changelog updated as a diagnostic comparison-baseline refresh.
+- Prompt verifier: passed for a diagnostic baseline refresh. No runtime code changed, IDs stayed stable on Q4_K_M and Q4_K_S gates, the memory increase is explained by Q4_K_M selected-weight residency and leaves little GPU1 headroom, and no torch/llama.cpp hot-path dependency was added. No performance promotion is claimed.
+- Decision: log only. Next prefill work should profile or microbench the llama.cpp-style Q8_1-activation MMQ path against hipEngine selected-WMMA at the Q4_K_M/Q4_K_S shapes before adopting code.
+
+## 2026-06-16 - GGUF llama.cpp HIP pp512 rocprof
+
+Captured a focused llama.cpp HIP `Q4_K_M` pp512 kernel-family profile on GPU1 to validate the MMQ/Q8_1 hypothesis before any hipEngine adoption work.
+
+Commands:
+- Warm profiled capture: `rocprofv3 --kernel-trace -d /tmp/hipengine-gguf-tuning/20260616-llamacpp-hip-q4km-pp512-warm/rocprof -o llamacpp-q4km-pp512-warm -f csv -- env HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 512 -n 0 -r 1 -o json -dev ROCm0`.
+- Non-profiled confirmation: `HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 512 -n 0 -r 3 -o json -dev ROCm0`.
+
+Findings:
+- Non-profiled confirmation matched the user row: `2754.638 tok/s ± 53.972` for pp512 (`samples 2813.27, 2707.03, 2743.62`).
+- Profiled run reported `2746.089 tok/s`; the trace includes one warmup pp512 pass and one measured pp512 pass. The measured pass was isolated as all dispatches after the warmup pass's first `mul_mat_vec_q` lm-head dispatch.
+- Isolated measured pass: `2259` dispatches, `176.818 ms` total kernel time.
+- Top families: `mul_mat_q_type12_q4k` `64.261 ms / 80 dispatches / 36.34%`; `mul_mat_q_type13_q5k` `30.524 ms / 37 / 17.26%`; `mul_mat_q_type8_q8_0` `26.909 ms / 250 / 15.22%`; `gated_delta_net` `15.534 ms / 30 / 8.79%`; rocBLAS GEMM `7.821 ms / 140 / 4.42%`; `quantize_mmq_q8_1` `3.961 ms / 370 / 2.24%`; `mul_mat_q_type14_q6k` `3.332 ms / 3 / 1.88%`; flash attention only `2.883 ms / 20 / 1.63%`.
+- Interpretation: llama.cpp's pp512 lead is dominated by quantized MMQ/Q8_1 activation matrix work (`mul_mat_q` plus activation quantization is `72.95%` of kernel time), not attention. This directly supports a hipEngine microbench/prototype for llama-style Q8_1-activation MMQ tiles before more selected-WMMA live-state tweaks.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json`.
+
+Configured loop verification after the profile:
+- Docs/artifact check: `git diff --check` passed; `python3 -m json.tool benchmarks/results/2026-06-16-gpu1-llamacpp-hip-q4km-pp512-rocprof-diagnostic.json >/dev/null` passed.
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1844.274383 / 126.142689 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.048448 / 115.727869 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.727869 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for an external-profile diagnostic. No runtime code changed, Q4_K_S IDs stayed stable, memory stayed flat, no torch/llama.cpp hot-path dependency was added to hipEngine, and the profile only sharpens the next prefill hypothesis. No performance promotion is claimed.
+- Decision: log only. Proceed to a hipEngine-side Q8_1-activation MMQ microbench/prototype or a more direct selected-WMMA-vs-MMQ same-shape comparison.
+
+## 2026-06-16 - GGUF selected-WMMA prefill microbench harness
+
+Added `scripts/gguf_q4_k_t16_selected_prefill_microbench.py` as the hipEngine-side baseline harness for the llama.cpp MMQ/Q8_1 detour. The script builds a synthetic compact-selected MoE fixture, repacks Q4_K gate/up weights into Q4T16 tiles, times the current selected-dual WMMA prefill kernel, and records shape/timing/memory plus finite-output sanity. It is a synthetic kernel-design baseline, not a model-quality or runtime-promotion benchmark.
+
+Validation and diagnostic run:
+- `python3 -m py_compile scripts/gguf_q4_k_t16_selected_prefill_microbench.py` passed.
+- Small HIP smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 512 --out-features-a 256 --out-features-b 256 --experts 2 --rows-per-expert 16 --warmup 1 --iters 3 --json /tmp/hipengine-gguf-t16-selected-microbench-smoke.json` -> finite output, `0.0881 ms/call` smoke latency.
+- Qwen-like reduced-expert diagnostic command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 2048 --out-features-a 4096 --out-features-b 4096 --experts 8 --rows-per-expert 512 --warmup 3 --iters 10 --json benchmarks/results/2026-06-16-gpu1-gguf-q4k-t16-selected-prefill-microbench.json`.
+- Qwen-like reduced-expert result: `compact_rows=4096`, gate/up `4096+4096`, finite output, `11.585447 ms/call`, `86.315 calls/s`, logical `11.863 TFLOP/s`, tracked peak `0.150393 GiB`, host tiles `37 MiB` each, output `64 MiB`.
+- Interpretation: this provides the same-harness selected-WMMA baseline that a llama-style Q8_1 activation/MMQ prototype must beat. It is not directly comparable to llama.cpp's full graph bucket because the expert topology is reduced/uniform and the output ABI is compact-expanded.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-t16-selected-prefill-microbench.json`.
+
+Configured loop verification after adding the harness:
+- Docs/artifact check: `git diff --check` passed; `python3 -m json.tool benchmarks/results/2026-06-16-gpu1-gguf-q4k-t16-selected-prefill-microbench.json >/dev/null` passed.
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1868.974573 / 126.668168 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2155.394411 / 115.794747 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.794747 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic harness addition. No runtime dispatch/default changed, Q4_K_S IDs stayed stable, memory stayed flat on the primary gate, no torch/llama.cpp hot-path dependency was added, and the new microbench is explicitly marked diagnostic/non-promotional.
+- Decision: log only. The next code iteration can add a Q8_1-activation/MMQ candidate to this harness and compare directly against the `11.585 ms/call` selected-WMMA baseline.
+
+## 2026-06-16 - GGUF Q8_1 selected-prefill scalar prototype
+
+Added a standalone diagnostic kernel/wrapper for the llama.cpp MMQ direction: `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}`. The kernel consumes raw GGUF Q4_K gate/up expert weights and prequantized Q8_1-style activation blocks (`int8 qs`, `float d`, `float sum`) and writes BF16 compact selected-MoE output. This is intentionally a scalar 16x16-tile integer-dot baseline, not a tiled llama.cpp MMQ clone and not wired into model dispatch. Extended `scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode {selected-wmma,q8-1-dot}` and added `tests/test_gguf_q4_k_q8_1_selected_prefill.py` CPU-reference correctness coverage.
+
+Validation and microbench evidence:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py` passed.
+- No-GPU surface tests: `python3 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract -q` -> `2 passed`.
+- HIP correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `4 passed`; the GPU output matches a CPU Q4_K reference fed with the dequantized Q8_1 activations.
+- Q8_1 scalar prototype smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-dot --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 512 --out-features-a 256 --out-features-b 256 --experts 2 --rows-per-expert 16 --warmup 1 --iters 3 --json /tmp/hipengine-gguf-q8-1-dot-microbench-smoke.json` -> finite output, `0.034454 ms/call` on the tiny shape.
+- Qwen-like reduced-expert Q8_1 scalar command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-dot --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 2048 --out-features-a 4096 --out-features-b 4096 --experts 8 --rows-per-expert 512 --warmup 1 --iters 3 --json benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-selected-prefill-prototype.json`.
+- Qwen-like reduced-expert Q8_1 scalar result: finite output, `21.878810 ms/call`, `45.706 calls/s`, logical `6.282 TFLOP/s`, tracked peak `0.142580 GiB`; raw Q4_K weights are `36 MiB` each, Q8 activations `8 MiB` plus `1 MiB` scales and `1 MiB` sums. Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-selected-prefill-prototype.json`.
+- Same-script selected-WMMA comparison on the identical shape (`--mode selected-wmma --warmup 1 --iters 3`, JSON at `/tmp/hipengine-gguf-selected-wmma-schema2-compare.json`) measured finite output, `11.933000 ms/call`, logical `11.518 TFLOP/s`, tracked peak `0.150393 GiB`. The scalar Q8_1 dot is therefore ~1.83x slower than current selected-WMMA on this shape; not a promotion candidate.
+- `rocprofv3 --kernel-trace` smoke after cached build: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-q8-1-selected-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-dot --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 512 --out-features-a 256 --out-features-b 256 --experts 2 --rows-per-expert 16 --warmup 0 --iters 1 --json /tmp/hipengine-gguf-q8-1-selected-trace-smoke.json`; trace `/tmp/hipengine-gguf-q8-1-selected-trace/epyc/2848915_kernel_trace.csv` contained two launches of `(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_prefill_compact32_kernel(...)` at `21121 ns` and `17240 ns`.
+- Interpretation: the Q8_1/MMQ hypothesis is still plausible because llama.cpp's advantage comes from a tiled MMQ implementation, but this naive scalar mapping does not recover it. Next useful work is to inspect/port the actual llama.cpp tile decomposition rather than optimizing this scalar prototype.
+
+Configured loop verification after Q8_1 prototype:
+- Combined check command passed: `git diff --check`; `python3 -m json.tool benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-selected-prefill-prototype.json >/dev/null`; `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py`; `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> passed (`4` tests).
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1836.043107 / 126.223999 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2160.340538 / 115.902839 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.902839 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic prototype. Runtime model dispatch/defaults were unchanged; the new kernel is standalone and registered only as a diagnostic variant, no torch/llama.cpp hot-path dependency was added, Q4_K_S generated IDs remained stable, memory remained flat on the primary gate, and the Q8_1 scalar result was explicitly rejected as slower than current selected-WMMA.
+- Decision: log only. The scalar Q8_1 prototype is not a promotion path; inspect/port the real llama.cpp tiled MMQ decomposition next.
+
+## 2026-06-16 - llama.cpp HIP MMQ source audit for next port
+
+Audited the local llama.cpp HIP source at `/home/lhl/llama.cpp/llama.cpp-hip` commit `e37abd6b5fc91ba951d5b08ac7cdf2bc225512b6` to identify what the rejected scalar Q8_1 prototype missed. Updated `docs/TUNING-gguf.md` with the concrete Q4_K MMQ tile path and next port target.
+
+Source findings:
+- `ggml/src/ggml-cuda/quantize.cu:277-415`: `quantize_mmq_q8_1` writes `block_q8_1_mmq` blocks and `quantize_mmq_q8_1_cuda` dispatches the DS layout chosen by source weight type. For Q4_K, `mmq_get_q8_1_ds_layout` maps to `MMQ_Q8_1_DS_LAYOUT_DS4` (`mmq.cuh:82-84`), i.e. scale+sum half2 pairs, not separate float arrays like the scalar prototype.
+- `ggml/src/ggml-cuda/mmq.cuh:28-58`: `block_q8_1_mmq` groups 128 activation values, stores four Q8_1 subblocks and four scale/sum records, and is size-equal to four `block_q8_1` blocks.
+- `ggml/src/ggml-cuda/mmq.cuh:2093-2165`: `load_tiles_q4_K` stages raw Q4_K rows into shared memory. On AMD WMMA it stores low/high nibbles as int matrices at `MMQ_MMA_TILE_X_K_Q8_1` stride and stores half2 `dm * (scale, min)` products next to them.
+- `ggml/src/ggml-cuda/mmq.cuh:3358-3363`: the Q4_K MMQ trait uses `load_tiles_q4_K` and, on AMD WMMA, `vec_dot_q8_1_q8_1_mma`; the DP4A Q4_K dot is only fallback.
+- `ggml/src/ggml-cuda/mmq.cuh:1330-1380`: `vec_dot_q8_1_q8_1_mma` loads 16x8 int tiles with `load_ldmatrix`, accumulates a 16x16 int tile, then applies Q4_K `dm` and Q8_1 `ds` terms. This is the key shape to port into the hipEngine microbench.
+- `ggml/src/ggml-cuda/mmq.cuh:3447-3518`: `mul_mat_q_process_tile` stages `mmq_x` activation columns and `mmq_y` weight rows in shared memory. For Q4_K, one 256-wide weight block is paired with two 128-value `block_q8_1_mmq` activation blocks and two `vec_dot` calls (`k00=0`, `k00=MMQ_TILE_NE_K`).
+- `ggml/src/ggml-cuda/mmq.cuh:3943-4138`: the launcher uses `mmq_y=get_mmq_y_host(cc)` (RDNA3 => 128) and chooses the largest `mmq_x` up to 128 that satisfies granularity/shared-memory constraints and minimizes output-column tiles.
+- Porting implication: the next useful hipEngine kernel should be a minimal Q4_K/DS4 shared-memory + WMMA-tile microbench path (probably no stream-k/fixup initially), not further tuning of `gguf_q4_k_selected_dual_q8_1_prefill_compact32_kernel`.
+
+Configured loop verification after the source audit:
+- Docs check: `git diff --check` passed.
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1879.334668 / 126.043052 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2151.685314 / 115.777082 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.777082 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a source-audit/docs-only iteration. Runtime code and dispatch were unchanged, no torch/llama.cpp hot-path dependency was added, generated IDs stayed stable, memory stayed flat, and the note explicitly keeps the scalar Q8_1 path rejected while narrowing the next kernel target.
+- Decision: log only. Next code iteration should implement the minimal shared-memory + WMMA tile kernel in the microbench harness.
+
+## 2026-06-16 - GGUF Q8_1 DS4 selected-prefill scalar prototype
+
+Added a follow-up diagnostic DS4 variant for the Q4_K x Q8_1 selected-prefill microbench. The new HIP entry point consumes llama.cpp-style `block_q8_1_mmq` activation blocks (four FP16 scale/sum pairs plus 128 int8 quants) but intentionally keeps the same scalar raw-Q4_K integer-dot loop. This isolates DS4 activation layout effects before attempting the real shared-memory + WMMA/MMQ tile port. Runtime model dispatch/defaults are unchanged.
+
+Changed files:
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}`: added `selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out` diagnostic kernel/wrapper/registry entry.
+- `scripts/gguf_q4_k_t16_selected_prefill_microbench.py`: added `--mode q8-1-ds4-dot` and DS4 activation packing.
+- `tests/test_gguf_q4_k_q8_1_selected_prefill.py`: added DS4 CPU-formula reference coverage and GPU correctness checks.
+- `docs/TUNING-gguf.md`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-selected-prefill-prototype.json`: recorded the rejection evidence.
+
+Validation and microbench evidence:
+- Syntax/correctness command: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> passed (`6` tests).
+- Same-shape qwen-like microbench command family: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --mode {selected-wmma,q8-1-dot,q8-1-ds4-dot} --hidden 2048 --out-features-a 4096 --out-features-b 4096 --experts 8 --rows-per-expert 512 --warmup 1 --iters 3 --json /tmp/hipengine-<mode>-ds4-qwenlike-iter57.json`.
+- Same-shape qwen-like result: selected-WMMA `11.951425 ms/call` (`11.4998` logical TFLOP/s), separate-array Q8_1 scalar `21.727135 ms/call` (`6.3257` logical TFLOP/s), DS4 scalar `22.496759 ms/call` (`6.1093` logical TFLOP/s), finite output, tracked peak `0.141604 GiB` for DS4. DS4 layout alone is ~`1.88x` slower than selected-WMMA and ~`3.5%` slower than the separate-array scalar Q8_1 prototype, so it is not a promotion candidate.
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-q8-1-ds4-selected-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-dot --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 512 --out-features-a 256 --out-features-b 256 --experts 2 --rows-per-expert 16 --warmup 0 --iters 1 --json /tmp/hipengine-gguf-q8-1-ds4-selected-trace-smoke.json`; trace `/tmp/hipengine-gguf-q8-1-ds4-selected-trace/epyc/2885449_kernel_trace.csv` contained two launches of `(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(...)` at `23201 ns` and `18440 ns`.
+
+Configured loop verification after DS4 prototype:
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1860.860422 / 126.957044 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2148.273061 / 115.419823 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.419823 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a rejected diagnostic prototype. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, no raw+packed runtime residency changed, and the non-improving DS4 scalar path is explicitly not promoted.
+- Decision: log only. Layout-only scalar variants are exhausted/rejected; the next useful code iteration is the actual llama.cpp-style `load_tiles_q4_K` + `vec_dot_q8_1_q8_1_mma` shared-memory/WMMA tile path in the microbench harness.
+
+## 2026-06-16 - GGUF Q4_K MMQ tile preview scaffold
+
+Added a host-side scaffold for the next llama.cpp-style Q4_K/DS4 MMQ port. `hipengine/quant/gguf_q4_k.py` now centralizes DS4 `block_q8_1_mmq` packing (`pack_q8_1_mmq_ds4_from_bf16`) and exposes `GGUFQ4KMMQTile16Preview`, `pack_gguf_q4_k_mmq_tile16_preview`, and `gguf_q4_k_mmq_tile16_preview_matmul`. The preview stores 16-column unpacked Q4_K nibbles plus FP32 `d*scale` and `dmin*min` terms, matching the operands the future shared-memory/WMMA tile kernel must consume. The microbench now uses the shared DS4 packer instead of a local duplicate. Runtime dispatch/defaults are unchanged.
+
+Validation:
+- `python3 -m py_compile hipengine/quant/gguf_q4_k.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py` passed.
+- `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `7 passed`, including the new preview reconstruction oracle and the existing DS4 GPU correctness checks.
+- DS4 helper smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-dot --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --hidden 512 --out-features-a 256 --out-features-b 256 --experts 2 --rows-per-expert 16 --warmup 1 --iters 3 --json /tmp/hipengine-gguf-q8-1-ds4-helper-smoke.json` -> finite output, `0.035950 ms/call`, activation layout `llama_cpp_block_q8_1_mmq_ds4`.
+- `git diff --check` passed.
+
+Configured loop verification after the scaffold:
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1829.863351 / 126.211496 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2155.233361 / 114.850901 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `114.850901 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a host-side scaffold only. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable.
+- Decision: log only. Next useful code iteration remains the actual `load_tiles_q4_K` + `vec_dot_q8_1_q8_1_mma` shared-memory/WMMA kernel in the microbench harness.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 RDNA3 i8 WMMA probe
+
+Added a standalone diagnostic RDNA3 int8/uint8 WMMA probe to de-risk the future Q4_K/DS4 MMQ kernel. `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip` now exposes `hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16`, a tiny `__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32` kernel that multiplies `int8[16,16]` rows by `uint8[16,16]` column rows and writes `int32[16,16]`. The Python wrapper and pytest compare it against CPU int32 matmul. This is a fragment-layout probe only; runtime dispatch/defaults are unchanged.
+
+Validation:
+- Correctness command: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `8 passed`, including the new WMMA probe and existing DS4 selected-prefill checks.
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-wmma-i8-probe-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_wmma_i8_probe_16x16_matches_cpu_matmul -q`; trace `/tmp/hipengine-gguf-wmma-i8-probe-trace/epyc/2921039_kernel_trace.csv` contained one `(anonymous namespace)::gguf_q4_k_q8_1_wmma_i8_probe_16x16_kernel(...)` launch at `3040 ns`.
+- `git diff --check` passed.
+
+Configured loop verification after the probe:
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1821.586068 / 126.249927 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2146.939523 / 115.030317 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.030317 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a standalone probe. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable.
+- Decision: log only. Next code iteration should use this verified fragment/store mapping inside the real shared-memory Q4_K/DS4 MMQ microbench kernel.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 integer-WMMA prototype
+
+Added a first raw-Q4_K + DS4 `block_q8_1_mmq` integer-WMMA selected-prefill prototype. `hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out` computes one 16-row x 16-column selected-MoE tile per wave32 block, uses the previously verified RDNA3 `__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32` mapping for two 16-wide K halves per Q4_K subblock, and applies the Q4_K scale/min plus DS4 Q8_1 d/sum terms in FP32 before BF16 output. The path is exposed through the diagnostic microbench as `--mode q8-1-ds4-wmma`; it is not used by the model runtime/default path.
+
+Correctness/trace validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `10 passed` (including two DS4 WMMA cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma-trace/epyc/2937987_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_kernel` (`23641 ns`, `61962 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma`: `8.232671 ms/call`, `16.694` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.580591 ms/call`, `11.868` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.842151 ms/call`, `6.292` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma-selected-prefill-prototype.json`.
+- Interpretation: the integer-WMMA decomposition is promising (`1.41x` faster than current selected-WMMA and `2.65x` faster than DS4 scalar on this synthetic shape), but it is still diagnostic-only because it uses raw Q4_K global loads instead of llama.cpp-style shared-memory `load_tiles_q4_K` staging and is not full-model gated.
+
+Configured loop verification after the prototype:
+- Q4_K_S primary gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json`.
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1873.768759 / 127.061042 tok/s`, stable IDs `[220, 220, 220]`; `4K/128` median prefill/decode `2154.106460 / 115.488536 tok/s`, stable IDs `[570, 570, 570]`; tracked peak `21.334842 GiB`; min gate decode `115.488536 tok/s`.
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only prototype. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a full runtime path is promoted.
+- Decision: log only. Next code iteration should add shared-memory Q4_K tile staging / wider MMQ tiling to reduce raw global loads before any full-model wiring.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 WMMA32 prototype
+
+Added a diagnostic `q8-1-ds4-wmma32` variant that packs two independent 16-column RDNA3 integer-WMMA waves into one 64-thread block. The math is identical to the one-wave DS4 WMMA prototype; the change halves the x-dimension block count for the synthetic selected-prefill shape. The path is exposed through the microbench and registry diagnostics, but it is not used by the model runtime/default path.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `12 passed` (including two WMMA32 cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma32-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma32-trace/epyc/2956726_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel` (`22240 ns`, `35440 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma32`: `8.191302 ms/call`, `16.779` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma`: `8.250445 ms/call`, `16.658` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.573812 ms/call`, `11.875` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.802224 ms/call`, `6.304` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-selected-prefill-prototype.json`.
+- Interpretation: widening to 32 columns helps only `~0.7%` over the one-wave DS4 WMMA prototype, while remaining `1.41x` faster than selected-WMMA on this synthetic shape. The next limiter is likely raw Q4_K global loads, so the next useful code step is shared-memory `load_tiles_q4_K`-style staging rather than more block-count tuning.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 WMMA32 LDS staging probe
+
+Added a diagnostic `q8-1-ds4-wmma32-lds` selected-prefill variant that keeps the two-wave/32-column integer-WMMA mapping but has the half-0 lanes unpack each Q4_K column tile into LDS before both half-waves consume it. This is intentionally microbench-only and not wired into the model runtime/default path.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `14 passed` (including two WMMA32-LDS cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma32-lds-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma32_lds_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma32-lds-trace/epyc/2972404_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_kernel` (`35920 ns`, `61561 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma32-lds`: `18.257292 ms/call`, `7.528` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.210021 ms/call`, `16.740` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma`: `8.231761 ms/call`, `16.696` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.591099 ms/call`, `11.857` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.827885 ms/call`, `6.296` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-lds-selected-prefill-probe.json`.
+- Interpretation: naive expanded-Q4 LDS staging is rejected (`2.22x` slower than raw WMMA32 and slower than current selected-WMMA). The extra unpack/store/synchronization/LDS-read work outweighs the saved duplicate global Q4 loads. Future MMQ work should either mimic llama.cpp's packed `load_tiles_q4_K`/`load_ldmatrix` staging more closely or widen the tile to reuse staged data across more work, not keep this exact staging shape.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1850.918774 / 126.986741 tok/s`, stable IDs true; `4K/128` median prefill/decode `2154.550156 / 115.198696 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.198696 tok/s` (same default path/no runtime wiring; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a rejected diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 WMMA32 packed-LDS staging probe
+
+Added a diagnostic `q8-1-ds4-wmma32-ldspack` selected-prefill variant. It keeps the two-wave/32-column integer-WMMA mapping, but stages only each column's packed Q4_K `qs` bytes plus scale/min products into LDS before the two half-waves consume the packed payload. This tests a narrower staging shape after the expanded-Q4 LDS probe regressed badly. The path is microbench-only and not wired into the model runtime/default path.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `16 passed` (including two WMMA32-LDSPACK cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma32-ldspack-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma32_ldspack_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma32-ldspack-trace/epyc/2989588_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma32_ldspack_prefill_compact32_kernel` (`30640 ns`, `64723 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma32-ldspack`: `11.438101 ms/call`, `12.016` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.265111 ms/call`, `16.629` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32-lds`: `18.258658 ms/call`, `7.527` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.587870 ms/call`, `11.861` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.830409 ms/call`, `6.296` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma32-ldspack-selected-prefill-probe.json`.
+- Interpretation: packed-Q4 LDS staging recovers much of the expanded-LDS regression and is slightly faster than selected-WMMA in this synthetic run, but it is still `1.38x` slower than raw WMMA32. Do not wire it into runtime. The next useful staging attempt needs true ldmatrix-style consumption or a wider tile that reuses staged packed data across more work.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1860.926155 / 127.096309 tok/s`, stable IDs true; `4K/128` median prefill/decode `2153.042586 / 115.303486 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.303486 tok/s` (runtime defaults unchanged; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 pre-unpacked preview WMMA32 probe
+
+Added a diagnostic `q8-1-ds4-preview-wmma32` selected-prefill variant. It keeps the two-wave/32-column DS4 integer-WMMA mapping but consumes host-pre-unpacked `GGUFQ4KMMQTile16Preview` operands (`q4` nibbles plus FP32 scale/min arrays) instead of decoding raw GGUF Q4_K metadata in the kernel. The path is microbench-only and not wired into model runtime/default dispatch.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `18 passed` (includes two preview-WMMA32 cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-preview-wmma32-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_preview_wmma32_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-preview-wmma32-trace/epyc/3009142_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_kernel` (`18880 ns`, `28680 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-preview-wmma32`: `12.020456 ms/call`, `11.434` logical TFLOP/s, finite output, tracked peak `0.227541 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.209058 ms/call`, `16.742` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32-ldspack`: `11.457638 ms/call`, `11.995` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.583752 ms/call`, `11.865` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.811544 ms/call`, `6.301` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-preview-wmma32-selected-prefill-probe.json`.
+- Interpretation: pre-unpacking q4/scales/mins does not fix the bottleneck. Preview-WMMA32 is `1.46x` slower than raw WMMA32, slightly slower than selected-WMMA, and larger in memory. Do not promote. Stop adding same-shape staging/pre-unpack variants; next useful code target is a true wider MMQ tile with reuse, or a different prefill bottleneck.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1867.833462 / 127.185680 tok/s`, stable IDs true; `4K/128` median prefill/decode `2152.102273 / 115.134666 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.134666 tok/s` (runtime defaults unchanged; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only rejected path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and the preview layout is not promoted so no runtime raw+packed duplicate residency. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 WMMA64 output-width probe
+
+Added a diagnostic `q8-1-ds4-wmma64` selected-prefill variant. It keeps the raw-Q4_K/DS4 integer-WMMA math but uses a 128-thread block with four independent wave32 groups to cover 64 output columns per block. This tests a larger `mmq_x`/block-count geometry after same-shape staging and pre-unpack probes showed Q4_K metadata decode is not the standalone limiter. The path is microbench-only and not wired into model runtime/default dispatch.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `20 passed` (includes two WMMA64 cases vs exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-wmma64-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py::test_q4_k_q8_1_ds4_wmma64_selected_prefill_bf16_matches_ds4_cpu_reference -q`; trace `/tmp/hipengine-gguf-ds4-wmma64-trace/epyc/3025163_kernel_trace.csv` contained two launches of `gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_kernel` (`23800 ns`, `36760 ns`).
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma64`: `8.216205 ms/call`, `16.728` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.267787 ms/call`, `16.623` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma`: `8.279705 ms/call`, `16.599` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.578569 ms/call`, `11.870` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.846943 ms/call`, `6.291` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-wmma64-selected-prefill-probe.json`.
+- Interpretation: four-wave/64-column widening is only a tiny `~0.6%` synthetic gain over same-run WMMA32 and is within the flat-returns pattern seen from one-wave to two-wave. It remains diagnostic-only. Real MMQ parity likely requires shared-tile reuse across rows/columns, not more independent waves.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1865.150242 / 126.988484 tok/s`, stable IDs true; `4K/128` median prefill/decode `2153.718014 / 115.307882 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.307882 tok/s` (runtime defaults unchanged; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no torch/llama.cpp hot-path dependency was added, and no raw+packed runtime residency or default path changed. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 DS4 activation-pack + WMMA32 viability probe
+
+Added a diagnostic GPU BF16→DS4 `block_q8_1_mmq` activation pack kernel, Python wrapper, and `q8-1-ds4-wmma32-pack` microbench mode. The new mode times activation packing plus the raw-Q4_K DS4 WMMA32 selected-prefill prototype in the measured loop, answering whether Q8_1 activation quantization erases the synthetic WMMA headroom. This path remains microbench-only and is not wired into model runtime/default dispatch.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_q8_1_selected_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_q8_1_selected_prefill.py -q` -> `22 passed` (includes two GPU DS4 pack byte-for-byte checks against `pack_q8_1_mmq_ds4_from_bf16`).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-ds4-pack-wmma32-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-wmma32-pack --rows-per-expert 64 --warmup 1 --iters 1 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build`; trace `/tmp/hipengine-gguf-ds4-pack-wmma32-trace/epyc/3046731_kernel_trace.csv` contained 3 launches each of `gguf_q8_1_mmq_ds4_pack_bf16_kernel` (`21920`, `20400`, `18280 ns`) and `gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel` (`1914232`, `1732233`, `1641152 ns`). Pack kernel metadata: scratch `0`, VGPR `16`, LDS `512 B`, workgroup `128`.
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-wmma32-pack`: `8.390917 ms/call`, `16.379` logical TFLOP/s, finite output, tracked peak `0.157229 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.260894 ms/call`, `16.637` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode q8-1-ds4-wmma64`: `8.228563 ms/call`, `16.703` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- `--mode selected-wmma`: `11.579378 ms/call`, `11.869` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-dot`: `21.825536 ms/call`, `6.297` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-ds4-pack-wmma32-selected-prefill-probe.json`.
+- Interpretation: GPU DS4 activation packing adds only about `0.130 ms/call` over same-run raw WMMA32 on this synthetic shape, and pack+WMMA32 remains `1.38x` faster than selected-WMMA. Activation quantization is not the obvious blocker; the next useful step is a guarded runtime/fused pack+MMQ integration or a switch to the now-comparable GDN/Q8 prefill buckets, not more same-shape staging/pre-unpack probes.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1847.291551 / 126.127161 tok/s`, stable IDs true; `4K/128` median prefill/decode `2156.531579 / 114.786146 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `114.786146 tok/s` (runtime defaults unchanged; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no `import torch` or llama.cpp hot-path dependency was added, and no runtime raw+packed duplicate residency/default path changed. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF Q4_K/Q8_1 resident-T16 DS4 WMMA32 probe
+
+Added a diagnostic `q8-1-ds4-t16-wmma32` selected-prefill kernel that consumes the resident `gguf_q4_k_t16_v1` tile layout instead of raw GGUF Q4_K weights, plus a `q8-1-ds4-t16-wmma32-pack` microbench mode that includes the GPU BF16→DS4 Q8_1 activation pack in the measured loop. This keeps the DS4 integer-WMMA idea compatible with the current no-raw-duplicate runtime residency plan. The path remains microbench-only and is not wired into model runtime/default dispatch.
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py scripts/gguf_q4_k_t16_selected_prefill_microbench.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q` -> `11 passed` (includes two resident-T16 DS4 WMMA32 cases vs the exact CPU DS4 preview formula).
+- rocprof smoke: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-gguf-t16-ds4-wmma32-pack-trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_q4_k_t16_selected_prefill_microbench.py --mode q8-1-ds4-t16-wmma32-pack --rows-per-expert 64 --warmup 1 --iters 1 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build`; trace `/tmp/hipengine-gguf-t16-ds4-wmma32-pack-trace/epyc/3069367_kernel_trace.csv` contained 3 launches each of `gguf_q8_1_mmq_ds4_pack_bf16_kernel` (`23600`, `21680`, `17320 ns`) and `gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_kernel` (`1949733`, `1690492`, `1540211 ns`). T16 DS4 kernel metadata: scratch `0`, VGPR `80`, LDS `0`, workgroup `64`.
+
+Synthetic qwen-like microbench (`hidden=2048`, gate/up `4096+4096`, `experts=8`, `rows_per_expert=512`, warmup 3, iters 10, GPU1, cached builds):
+- `--mode q8-1-ds4-t16-wmma32-pack`: `7.809769 ms/call`, `17.598` logical TFLOP/s, finite output, tracked peak `0.159182 GiB`.
+- `--mode q8-1-ds4-t16-wmma32`: `7.763817 ms/call`, `17.702` logical TFLOP/s, finite output, tracked peak `0.143557 GiB`.
+- `--mode selected-wmma`: `11.565544 ms/call`, `11.883` logical TFLOP/s, finite output, tracked peak `0.150393 GiB`.
+- `--mode q8-1-ds4-wmma32`: `8.223803 ms/call`, `16.712` logical TFLOP/s, finite output, tracked peak `0.141604 GiB`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4k-q8-1-t16-ds4-wmma32-selected-prefill-probe.json`.
+- Interpretation: resident-T16 DS4 is the best same-shape MMQ diagnostic so far. With activation packing included it is `1.48x` faster than selected-WMMA on the synthetic shape, and prepacked resident-T16 is `~5.9%` faster than raw-Q4_K DS4 WMMA32 while avoiding raw Q4_K duplicate residency. Next useful step is a guarded runtime/fused pack+T16-DS4 path with full-model prefill/memory gates, not more raw-Q4_K staging probes.
+
+Configured loop verification after the diagnostic:
+- Q4_K_S primary gate result: `512/128` median prefill/decode `1866.248602 / 126.620493 tok/s`, stable IDs true; `4K/128` median prefill/decode `2158.557108 / 115.396506 tok/s`, stable IDs true; tracked peak `21.334842 GiB`; min gate decode `115.396506 tok/s` (runtime defaults unchanged; decode movement is run noise).
+- Guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a diagnostic-only path. Generated IDs remained stable, tracked gate memory stayed flat, no `import torch` or runtime llama.cpp dependency was added, and the new kernel consumes resident T16 tiles rather than requiring raw+packed Q4_K duplicate residency. 128K final-promotion gate is not applicable until a runtime path is promoted.
+
+## 2026-06-16 - GGUF resident-T16 DS4 runtime probe (blocked)
+
+Wired the resident `gguf_q4_k_t16_v1` DS4/Q8_1 selected-prefill path into the full Qwen3.6 GGUF compact-MoE prefill route behind `HIPENGINE_GGUF_T16_DS4_PREFILL=1`. The route packs compact BF16 selected rows into DS4 Q8_1 scratch and feeds `gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out`. The extra scratch is allocated only when the flag is enabled, so default-path memory is unchanged.
+
+Validation and measurements:
+- Routing/unit smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py && python3 -m pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` -> `4 passed`.
+- Opt-in full-model probe: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_T16_DS4_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-t16-ds4-acceptance.json` -> `512/128` median `1989.577969` prefill / `126.594506` decode tok/s, IDs `[3241,3241,3241]`, peak `21.405154 GiB`; `4K/128` median `2372.227762` prefill / `115.344752` decode tok/s, IDs `[1510,1510,1510]`, peak `21.405154 GiB`; min gate decode `115.344752 tok/s`.
+- Same-iteration default verify (no DS4 flag): `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1833.185254` prefill / `126.337487` decode tok/s, IDs `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2159.560690` prefill / `115.220192` decode tok/s, IDs `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.220192 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: default path passes (stable IDs `220/570`, finite logits, no `import torch`/llama.cpp hot-path dependency, no default memory growth). The opt-in DS4 path is blocked from promotion despite `+8.53%/+9.85%` prefill because it changes generated final token IDs (`220/570 -> 3241/1510`) and adds `+0.070 GiB` opt-in activation scratch. `128K/128` final promotion gate was not run because the primary correctness/prompt verifier failed first.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-t16-ds4-runtime-probe.json`.
+
+## 2026-06-16 - GGUF GDN prefill k2 threshold retained
+
+Raised the default GGUF GDN prefill recurrent-segments threshold from `256` to `1025`. This keeps the primary 512/1024-row chunks and the 128K low-memory 768-row chunks on the exact single-segment `qwen35_gdn_prefill_recurrent_k2_f32` path while leaving `segments_k2` available via `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` for larger/batched probes.
+
+Validation and measurements:
+- Routing/unit smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_gdn_prefill_correctness.py && python3 -m pytest tests/test_qwen35_gguf_gdn_prefill_routing.py -q` -> `7 passed`.
+- GDN boundary correctness: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segment_boundary_paths_agree -q` -> `3 passed`.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1837.509013` prefill / `126.698845` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2212.931869` prefill / `115.335018` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.335018 tok/s`.
+- Required 128K final-promotion check: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-gdn-th1025-128k-default.json` -> `737.108248` prefill / `67.821808` decode tok/s, stable ID `[220]`, peak `23.310421 GiB`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed. Generated IDs stayed stable and matched the previous default gate (`220/570`) plus the retained 128K final ID (`[220]`), tracked memory stayed flat on primary gates and within prior 128K noise, no `import torch` or llama.cpp hot-path dependency was added, and there is no new raw+packed residency.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-gdn-k2-th1025-gate.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 prefill tile policy retained
+
+Retuned the resident Q8_0 T16 WMMA prefill default tile policy for the active qwen35moe shape mix. The old T16 wrapper inherited the raw-Q8 heuristic (`in<=2048,out>=4096 -> TM16`, `in>=4096,out>=2048 -> TM64`); synthetic resident-T16 probes showed faster tiles for the actual T16 layout, so the retained default now uses TM64 for 512-row large-output chunks (and selected 768-row `out<8192` chunks), TM32 for 1024-row large-output chunks, and TM32 instead of TM64 for `in>=4096,out>=2048` projections.
+
+Validation and measurements:
+- Tile-policy/unit smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy tests/test_gguf_q8_0_t16_wmma_prefill.py::test_p10_b4_q8_0_t16_wmma_prefill_explicit_tile_selection_matches_cpu_reference -q` -> `7 passed`.
+- Representative synthetic resident-T16 timings (GPU1, BF16/BF16, cached build): rows512/in2048/out4096 old `(16,32)` `0.544 ms` vs new `(64,32)` `0.244 ms`; rows1024/in2048/out4096 old `(16,32)` `0.665 ms` vs new `(32,32)` `0.398 ms`; rows1024/in4096/out2048 old `(64,32)` `0.503 ms` vs new `(32,32)` `0.428 ms`; rows512/in2048/out8192 old `(16,32)` `0.988 ms` vs new `(64,32)` `0.446 ms`; rows1024/in2048/out8192 old `(16,32)` `1.513 ms` vs new `(32,32)` `0.885 ms`.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1951.832079` prefill / `127.138007` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2278.420774` prefill / `114.735812` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.735812 tok/s`.
+- Required 128K final-promotion check: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-q8t16-tiles-128k.json` -> `747.085372` prefill / `67.728198` decode tok/s, stable ID `[220]`, peak `23.310421 GiB`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed for a retained prefill improvement. Generated IDs remained stable and matched the previous default gate (`220/570`) plus the required 128K final ID (`[220]`), tracked memory stayed flat on primary gates and unchanged at `23.310421 GiB` on 128K, no `import torch` or llama.cpp hot-path dependency was added, and the change only retunes a resident-T16 tile heuristic (no new raw+packed duplicate residency). The 4K decode median was lower than the immediately prior run (`115.335 -> 114.736 tok/s`), so decode is not claimed as improved; this is within the same-session GGUF decode variance and the retained claim is the measured prefill gain.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-prefill-tiles-gate.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 small-shape prefill tiles retained
+
+Retuned the resident Q8_0 T16 WMMA prefill tile policy for the shared-expert small shapes. Synthetic T16 probes showed `TN16` was faster for `in=2048,out=512` and `in=512,out=2048` at 768/1024-row chunks, but the first full-model variant that also changed 512-row chunks regressed `512/128` prefill to `1909.505747 tok/s`. The retained policy therefore applies `TN16` only for rows `>512` and preserves the previous `TN32` behavior for 512-row primary chunks.
+
+Validation and measurements:
+- Tile-policy/unit smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy tests/test_gguf_q8_0_t16_wmma_prefill.py::test_p10_b4_q8_0_t16_wmma_prefill_explicit_tile_selection_matches_cpu_reference -q` -> `7 passed`.
+- Representative synthetic resident-T16 timings (GPU1, BF16/BF16, cached build): rows1024/in2048/out512 old `(16,32)` `0.1958 ms` vs retained `(32,16)` `0.1239 ms`; rows768/in2048/out512 old `(16,32)` `0.1371 ms` vs retained `(32,16)` `0.1080 ms`; rows1024/in512/out2048 old `(32,32)` `0.1640 ms` vs retained `(32,16)` `0.1214 ms`; rows768/in512/out2048 old `(32,32)` `0.1280 ms` vs retained `(32,16)` `0.1119 ms`.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1958.692904` prefill / `126.924459` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2293.994380` prefill / `114.990625` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.990625 tok/s`.
+- Required 128K final-promotion check: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-q8t16-smalltiles-128k.json` -> `747.032989` prefill / `67.591849` decode tok/s, stable ID `[220]`, peak `23.310421 GiB`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: passed. Generated IDs stayed stable and matched the previous default gate (`220/570`) plus the required 128K final ID (`[220]`), tracked memory stayed flat on primary gates and unchanged at `23.310421 GiB` on 128K, no `import torch` or llama.cpp hot-path dependency was added, and the change only retunes resident-T16 tile selection. The retained primary-gate claim is prefill (`+0.35%` at `512/128`, `+0.68%` at `4K/128`) and min-decode (`+0.22%`), while the 128K single-run result is treated as flat/in-noise.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-smallshape-tiles-gate.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 shared-down rows=512 TN16 rejected
+
+Tested extending the resident Q8_0 T16 shared-expert down (`in=512,out=2048`) `TN16` tile policy from rows `>512` to rows `>=512`. Synthetic microbenching showed a small isolated 512-row win for `(32,16)` over `(32,32)`, but the full-model gate did not retain it.
+
+Validation and measurements:
+- Tile-policy/unit smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy tests/test_gguf_q8_0_t16_wmma_prefill.py::test_p10_b4_q8_0_t16_wmma_prefill_explicit_tile_selection_matches_cpu_reference -q` -> `7 passed`.
+- Primary GPU1 gate for the candidate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1956.322262` prefill / `126.753122` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2284.550233` prefill / `114.930738` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.930738 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: failed. Generated IDs and memory were stable, but both primary prefill medians and min decode regressed versus the retained small-shape tile default (`512/128` `1958.693 / 126.924 -> 1956.322 / 126.753 tok/s`; `4K/128` `2293.994 / 114.991 -> 2284.550 / 114.931 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Code/test changes were reverted to the prior rows `>512` policy.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-down512-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 4K shared-gate/up TM64 rejected
+
+Tested a 4K-oriented resident Q8_0 T16 WMMA prefill tile override for shared-expert gate/up shapes (`out_features<=512`, rows `>=2048`), changing the retained `TM32/TN16` tile to `TM64/TN16`. Synthetic microbenching favored the candidate on rows4096/in2048/out512 (`0.416 ms` vs retained `0.472 ms`), and a broader screened variant also tried rows4096/in512/out2048 `TM64/TN32`, but full-model gates did not retain the speedup.
+
+Validation and measurements:
+- Tile-policy/unit smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy tests/test_gguf_q8_0_t16_wmma_prefill.py::test_p10_b4_q8_0_t16_wmma_prefill_explicit_tile_selection_matches_cpu_reference -q` -> `7 passed` for the candidate.
+- Primary GPU1 gate for the final candidate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1884.287516` prefill / `126.959162` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2287.070912` prefill / `115.053774` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.053774 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: failed. Generated IDs and memory were stable, but primary prefill regressed versus the retained small-shape tile default (`512/128` `1958.693 -> 1884.288 tok/s`, with one low measured run; `4K/128` `2293.994 -> 2287.071 tok/s`). The small decode gain was not enough to retain the candidate. The `128K/128` final gate was not run because the primary verifier failed. Code/test changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-4k-gateup-tm64-rejected.json`.
+
+## 2026-06-16 - GGUF full-attention query chunk 2048 rejected
+
+Tested a mid-context prefill auto-tune candidate that changed `_PREFILL_FULL_ATTN_QUERY_CHUNK` from `4096` to `2048` while leaving linear/MoE/post/RoPE chunks at `1024` and the 128K low-memory policy at `768`. The goal was to reduce full-attention scratch/memory and possibly improve 4K full-attention staging without touching kernel tile policy.
+
+Validation and measurements:
+- Config/unit smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget tests/test_qwen35_resident_batch_layout.py::test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native -q` -> `2 passed` for the candidate.
+- Primary GPU1 gate for the candidate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1957.174514` prefill / `126.817376` decode tok/s, stable ID `[220,220,220]`, peak `20.688701 GiB`; `4K/128` median `2233.789876` prefill / `115.122307` decode tok/s, stable but wrong ID `[15,15,15]` vs retained default `[570,570,570]`, peak `20.688701 GiB`; min gate decode `115.122307 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: failed. The candidate lowered primary tracked peak from `21.335` to `20.689 GiB` and slightly improved min decode, but deterministic output changed on the `4K/128` gate and 4K prefill regressed (`2293.994 -> 2233.790 tok/s`). The `128K/128` final gate was not run because the primary correctness/prompt verifier failed. Code/test changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-query2048-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 decode block64 rejected
+
+Tested a decode-side Q8_0 T16 GEMV candidate that reduced all resident T16 decode kernels (single, dual, dual-split, triple-split) from `blockDim/launch_bounds=128` to `64`. The hypothesis was that fewer K-lanes per block might improve short/mid decode throughput for the top Q8 decode bucket.
+
+Validation and measurements:
+- Q8T16 decode kernel tests/build: `HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q` -> passed (`24` tests) for the candidate.
+- Primary GPU1 gate for the candidate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1898.130158` prefill / `122.694321` decode tok/s, stable but wrong ID `[97799,97799,97799]`, peak `21.334842 GiB`; `4K/128` median `2294.740681` prefill / `111.997863` decode tok/s, stable but wrong ID `[28944,28944,28944]`, peak `21.334842 GiB`; min gate decode `111.997863 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier: failed. The candidate changed deterministic final IDs on both primary gates and regressed decode versus the retained small-shape default (`512/128` `126.924 -> 122.694 tok/s`, `4K/128` `114.991 -> 111.998 tok/s`) with flat memory. The `128K/128` final gate was not run because the primary correctness/performance verifier failed. Code changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-decode-block64-rejected.json`.
+
+## 2026-06-16 - GGUF decode-policy scratch cache retained
+
+Retained a host-path GGUF decode policy cache: `_FullStackScratch.allocate()` now snapshots the resolved full-attention split threshold, grouped-GQA min split/context settings, grouped enable flag, and warp-split enable flag once per resident session. `_run_full_attention_attn_only()` uses those scratch fields when present and falls back to the existing dynamic env helpers for fake scratch/tests. Kernel math, tensor residency, and hot-path dependencies are unchanged.
+
+Validation and measurements:
+- Focused routing smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py && python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py::test_long_context_routes_full_attention_through_split_k_gqa_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_short_context_keeps_unfused_full_attention_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_decode_repack_flag_does_not_change_split_k_routing -q` -> `3 passed`.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1958.535718` prefill / `127.263440` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2292.683775` prefill / `114.990789` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.990789 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Required `128K/128` promotion check: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-policycache-128k.json` -> `745.976999` prefill / `67.326166` decode tok/s, stable ID `[220]`, peak `23.310421 GiB`.
+- Prompt verifier passed: IDs stayed at retained defaults (`220/570`, 128K `[220]`), memory stayed flat, no torch/llama.cpp hot-path dependency was added, and 512/128 decode improved versus the retained small-shape baseline (`126.924 -> 127.263 tok/s`) while 4K decode was flat and prefill/128K deltas are within run noise.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-decode-policy-cache-gate.json`.
+
+## 2026-06-16 - GGUF cached GQA decode-shape probe rejected
+
+Tested a host-path micro-cache on top of the retained decode-policy cache: `_FullStackScratch` carried a cached Qwen full-attention GQA-shape boolean, and split-gate selection used that field instead of rechecking the config shape on every split decode call. The candidate preserved kernel math and memory but did not pass the full prompt verifier.
+
+Validation and measurements:
+- Focused routing smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_decode_repack_dispatch.py && python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py::test_cached_gqa_shape_field_selects_split_gate_without_env tests/test_qwen35_gguf_decode_repack_dispatch.py::test_long_context_routes_full_attention_through_split_k_gqa_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_short_context_keeps_unfused_full_attention_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_decode_repack_flag_does_not_change_split_k_routing -q` -> `4 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1854.538163` prefill / `126.906843` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2291.258536` prefill / `115.089002` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.089002 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: generated IDs and memory were stable, but `512/128` prefill regressed versus the retained decode-policy cache baseline (`1958.536 -> 1854.538 tok/s`, `-5.31%`). The small 4K decode nudge (`114.991 -> 115.089 tok/s`) was not enough to retain. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-cached-gqa-shape-rejected.json`.
+
+## 2026-06-16 - GGUF scratch library-handle cache rejected
+
+Tested moving cached full-attention decode library handles (cast, paged-KV-write, paged-attention/gate) from runner accessor methods onto `_FullStackScratch`, so `_run_full_attention_attn_only()` could use scratch-resident handles rather than calling the runner cached accessors each token. The runner accessors were already cached, so this was only a host-path micro-cache; kernel math and memory were unchanged.
+
+Validation and measurements:
+- Focused routing/library smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_decode_repack_dispatch.py && python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py::test_full_attention_decode_uses_cached_scratch_libraries tests/test_qwen35_gguf_decode_repack_dispatch.py::test_long_context_routes_full_attention_through_split_k_gqa_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_short_context_keeps_unfused_full_attention_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_decode_repack_flag_does_not_change_split_k_routing -q` -> `4 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1901.610691` prefill / `127.148899` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2288.138275` prefill / `114.694696` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.694696 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but the retained decode-policy cache baseline was better on both gates (`512/128` `1958.536 / 127.263 -> 1901.611 / 127.149 tok/s`; `4K/128` `2292.684 / 114.991 -> 2288.138 / 114.695 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-scratch-library-cache-rejected.json`.
+
+## 2026-06-16 - GGUF full-attention KV pair cache rejected
+
+Tested a host-path micro-cache for resident full-attention decode: `_FullStackScratch` carried a cached per-layer `(key_cache, value_cache)` tuple so `full_cache(layer_id)` became a single tuple lookup instead of two cache-array lookups plus a pair construction. Kernel math, tensor residency, and hot-path dependencies were unchanged.
+
+Validation and measurements:
+- Focused full-cache/routing smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_decode_repack_dispatch.py && python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py::test_full_stack_scratch_full_cache_uses_cached_pair tests/test_qwen35_gguf_decode_repack_dispatch.py::test_long_context_routes_full_attention_through_split_k_gqa_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_short_context_keeps_unfused_full_attention_gate tests/test_qwen35_gguf_decode_repack_dispatch.py::test_decode_repack_flag_does_not_change_split_k_routing -q` -> `4 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1913.471532` prefill / `127.079367` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2288.777371` prefill / `114.916236` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.916236 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but the retained decode-policy cache baseline was better on both gates (`512/128` `1958.536 / 127.263 -> 1913.472 / 127.079 tok/s`; `4K/128` `2292.684 / 114.991 -> 2288.777 / 114.916 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-full-cache-pair-rejected.json`.
+
+## 2026-06-16 - GGUF full-attention post/RoPE chunk 2048 rejected
+
+Tested a mid-context full-attention prefill policy probe: raised the default auto-tuned full-attention post/RoPE chunks from `1024` to `2048` while keeping full-attention query chunks at `4096` and preserving the 128K low-memory `768` chunk policy. The goal was to reduce 4K full-attention post/RoPE chunk overhead without changing attention query chunking, kernel math, or residency.
+
+Validation and measurements:
+- Config/unit smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget tests/test_qwen35_resident_batch_layout.py::test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native -q` -> `2 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1884.846170` prefill / `127.043128` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2294.974810` prefill / `114.711257` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.711257 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but the retained decode-policy cache baseline was better overall (`512/128` `1958.536 / 127.263 -> 1884.846 / 127.043 tok/s`; `4K/128` `2292.684 / 114.991 -> 2294.975 / 114.711 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-postrope2048-rejected.json`.
+
+## 2026-06-16 - GGUF README sweep graph steps-per-replay 2 rejected
+
+Tested a harness-level GGUF decode graph replay probe: changed `scripts/qwen35_readme_sweep.py` default `--graph-steps-per-replay` from `1` to `2` so 128-token c=1 decode windows would replay half as many graphs when divisible. This does not change kernels, tensor residency, torch/llama.cpp dependencies, or decode-repack materialization.
+
+Validation and measurements:
+- CLI/focused smoke: `python3 -m py_compile scripts/qwen35_readme_sweep.py && python3 - <<'PY' ... subprocess run scripts/qwen35_readme_sweep.py --engine gguf --workloads 512/127 --measured-runs 1 ... PY` -> passed; candidate default rejected `512/127` with `must be divisible by --graph-steps-per-replay` before model load.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1958.221491` prefill / `126.837569` decode tok/s, stable but wrong ID `[148536,148536,148536]`, peak `21.334842 GiB`; `4K/128` median `2285.719874` prefill / `114.692653` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.692653 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: `512/128` deterministic output changed (`220 -> 148536`) and decode regressed versus the retained decode-policy cache baseline (`512/128` `127.263 -> 126.838 tok/s`, `4K/128` `114.991 -> 114.693 tok/s`) with flat memory. The `128K/128` final gate was not run because the primary correctness verifier failed. Candidate code change was reverted. Multi-step GGUF graph replay is not safe as a default while decode graph capture bakes fixed position/context scalar arguments.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-readme-graphsteps2-rejected.json`.
+
+## 2026-06-16 - GGUF GDN segment threshold 769 rejected
+
+Tested an exact GDN prefill policy boundary: lowered the GGUF GDN recurrent-segments default threshold from `1025` to `769`, so 1024-row mid-context linear-attention chunks route through registered `segments_k2` while 512-row and 768-row low-memory chunks keep the retained single-segment `k2` path. Kernel math and memory residency were unchanged.
+
+Validation and measurements:
+- Focused routing smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_gdn_prefill_routing.py && python3 -m pytest tests/test_qwen35_gguf_gdn_prefill_routing.py::test_segment_threshold_env_override_invalid_values_fall_back_to_default tests/test_qwen35_gguf_gdn_prefill_routing.py::test_run_gdn_prefill_uses_segments_above_threshold tests/test_qwen35_gguf_gdn_prefill_routing.py::test_run_gdn_prefill_skips_segments_when_scratch_missing -q` -> `3 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1919.168333` prefill / `127.081907` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2236.028885` prefill / `114.977305` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.977305 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but prefill regressed versus the retained decode-policy cache baseline (`512/128` `1958.536 -> 1919.168 tok/s`; `4K/128` `2292.684 -> 2236.029 tok/s`) and 4K decode was flat/slightly lower (`114.991 -> 114.977 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep the default threshold at `1025`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-gdn-th769-rejected.json`.
+
+## 2026-06-16 - GGUF GDN segment-threshold runner cache rejected
+
+Tested an exact host-cache micro-tune for GGUF GDN prefill: snapshot `HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` once on `Qwen35GGUFFullStackRunner` and use that cached value inside `_run_gdn_prefill`, with object-constructed tests falling back to the dynamic helper. No kernels, math, launch shapes, or memory residency changed.
+
+Validation and measurements:
+- Focused routing smoke: `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_gdn_prefill_routing.py && python3 -m pytest tests/test_qwen35_gguf_gdn_prefill_routing.py::test_run_gdn_prefill_uses_cached_segment_threshold tests/test_qwen35_gguf_gdn_prefill_routing.py::test_run_gdn_prefill_uses_segments_above_threshold tests/test_qwen35_gguf_gdn_prefill_routing.py::test_segment_threshold_env_override_invalid_values_fall_back_to_default -q` -> `3 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1930.866662` prefill / `127.050204` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2285.353491` prefill / `115.043965` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.043965 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but prefill regressed versus the retained decode-policy cache baseline (`512/128` `1958.536 -> 1930.867 tok/s`; `4K/128` `2292.684 -> 2285.353 tok/s`), and the 512 decode median also moved down (`127.263 -> 127.050 tok/s`) despite a small 4K decode nudge (`114.991 -> 115.044 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep the dynamic threshold helper unless a host profile shows the parse is material.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-gdn-threshold-cache-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 1024-row up-projection TM64 rejected
+
+Tested an exact Q8_0 T16 WMMA prefill tile-policy boundary: changed the 1024-row `in<=2048,out=4096`-class large projection rule from `TM32/TN32` to `TM64/TN32`, while leaving retained 512-row, 768-row, shared-expert, and `out=8192` rules unchanged. This only changed the registered prefill wrapper tile choice; decode kernels, math, and memory residency were unchanged.
+
+Validation and measurements:
+- Focused policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1921.592178` prefill / `127.022265` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2278.406304` prefill / `115.086944` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.086944 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but prefill regressed versus the retained decode-policy cache baseline (`512/128` `1958.536 -> 1921.592 tok/s`; `4K/128` `2292.684 -> 2278.406 tok/s`) and 512 decode also moved down (`127.263 -> 127.022 tok/s`) despite a small 4K decode nudge (`114.991 -> 115.087 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 1024-row large-projection Q8_0 T16 WMMA prefill on `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-up-tm64-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 out8192 TM64 rejected
+
+Tested an exact Q8_0 T16 WMMA prefill tile-policy boundary distinct from the rejected 1024-row out4096 probe: changed 768/1024-row `in<=2048,out>=8192` large-projection shapes from `TM32/TN32` to `TM64/TN32`, while keeping retained out4096 and shared-expert rules unchanged. This only changed the registered prefill wrapper tile choice; decode kernels, math, and memory residency were unchanged.
+
+Validation and measurements:
+- Focused policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1952.566128` prefill / `126.868080` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2283.734995` prefill / `114.867156` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.867156 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both prefill and decode regressed versus the retained decode-policy cache baseline (`512/128` `1958.536 / 127.263 -> 1952.566 / 126.868 tok/s`; `4K/128` `2292.684 / 114.991 -> 2283.735 / 114.867 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 768/1024-row out8192 Q8_0 T16 WMMA prefill on `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-out8192-tm64-rejected.json`.
+
+## 2026-06-16 - GGUF selected Q4_K WMMA tile16 rejected
+
+Tested an exact selected-MoE prefill tile default change: lowered the selected dual Q4_K WMMA compact prefill default from `32x16` to `16x16`. This targets the remaining VGPR-capped selected-WMMA bucket after the half-seq rewrite while preserving kernel math, weight residency, decode kernels, and registry keys.
+
+Validation and measurements:
+- Focused policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py && python3 -m pytest tests/test_gguf_q4_k_selected_wmma_prefill.py::test_p9_c1_q4_k_selected_default_tile_decision -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1965.114331` prefill / `126.909573` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2288.047483` prefill / `114.999304` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.999304 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but the candidate traded a short-prefill and tiny 4K-decode nudge for regressions versus the retained decode-policy cache baseline in `4K/128` prefill (`2292.684 -> 2288.047 tok/s`) and `512/128` decode (`127.263 -> 126.910 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep selected dual Q4_K WMMA prefill default at `32x16` until a code-object/ISA variant reduces the VGPR cap without cross-gate regressions.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q4selected-tile16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 large-input TM16 rejected
+
+Tested an exact Q8_0 T16 WMMA prefill tile-policy boundary not covered by the recent large-output probes: changed `in>=4096,out>=2048` large-input projections from `TM32/TN32` to `TM16/TN32` (and `TM16/TN16` for rows<32). This only changed the registered prefill wrapper tile choice; decode kernels, math, and memory residency were unchanged.
+
+Validation and measurements:
+- Focused policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1938.858800` prefill / `127.165850` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2270.846066` prefill / `114.831765` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.831765 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both gates regressed versus the retained decode-policy cache baseline (`512/128` `1958.536 / 127.263 -> 1938.859 / 127.166 tok/s`; `4K/128` `2292.684 / 114.991 -> 2270.846 / 114.832 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep large-input Q8_0 T16 WMMA prefill on `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-largein-tm16-rejected.json`.
+
+## 2026-06-16 - GGUF Q6_K T16 lm-head block256 rejected
+
+Tested a dense Q6_K T16 lm-head GEMV decode block-size variant: changed `q6_k_t16_gemv_kernel` from `__launch_bounds__(128,4)` / `blockDim=128` to `__launch_bounds__(256,2)` / `blockDim=256`. This only changed the Q6_K lm-head decode kernel's per-output-tile reduction geometry; prefill kernels, routing, and memory residency were unchanged.
+
+Validation and measurements:
+- Focused Q6 correctness: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py -q` -> passed (`6` tests) and prebuilt the candidate cached `.so` for the require-cached gate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1888.412761` prefill / `125.297409` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2296.862437` prefill / `113.797393` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `113.797393 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but decode regressed sharply on both retained gates versus the decode-policy cache baseline (`512/128` `127.263 -> 125.297 tok/s`; `4K/128` `114.991 -> 113.797 tok/s`) and `512/128` prefill also regressed (`1958.536 -> 1888.413 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code changes were reverted; keep dense Q6_K T16 lm-head GEMV at `128,4` / `blockDim=128`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q6t16-block256-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 row512 out8192 TM32 rejected
+
+Tested a non-duplicated Q8_0 T16 WMMA prefill tile-policy boundary after the initially considered shared-down rows=512 TN16 probe was found already recorded as rejected: changed 512-row `in<=2048,out>=8192` projections from `TM64/TN32` to `TM32/TN32`, while leaving 512/768-row `out=4096` rules and all decode kernels unchanged. This only changed the registered prefill wrapper tile choice; math and memory residency were unchanged.
+
+Validation and measurements:
+- Focused policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1937.571623` prefill / `126.932878` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2298.060893` prefill / `115.308774` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.308774 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable and the `4K/128` gate improved versus the retained decode-policy cache baseline (`2292.684 / 114.991 -> 2298.061 / 115.309 tok/s`), but the `512/128` gate regressed beyond noise (`1958.536 / 127.263 -> 1937.572 / 126.933 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 512-row out8192-like Q8_0 T16 WMMA prefill on `TM64/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-out8192-row512-tm32-rejected.json`.
+
+## 2026-06-16 - GGUF linear dispatch resolve cache rejected
+
+Tested a narrow host/runtime dispatch optimization: added an `lru_cache(maxsize=128)` base-dispatch resolver keyed by `(layout, quant_key, activation_dtype, output_dtype, backend, rows)` so repeated `launch_gguf_linear` calls avoid rebuilding the base `GGUFLinearDispatch`/`KernelKey`. This did not change kernels, math, tile policy, registry keys, or memory residency.
+
+Validation and measurements:
+- Focused dispatch smoke: `python3 -m py_compile hipengine/runtime/gguf_linear.py tests/test_gguf_linear_dispatch.py && python3 -m pytest tests/test_gguf_linear_dispatch.py::test_resolve_gguf_linear_dispatch_reuses_cached_base_dispatch tests/test_gguf_linear_dispatch.py::test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts -q` -> `2 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1953.287860` prefill / `126.951525` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2292.751287` prefill / `115.253036` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.253036 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but the only positive movement was a `4K/128` decode nudge versus the retained decode-policy cache baseline (`114.991 -> 115.253 tok/s`) while `512/128` regressed (`1958.536 / 127.263 -> 1953.288 / 126.952 tok/s`) and `4K/128` prefill was flat. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; do not add dispatch-object caching without a Python-profiled host bottleneck.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-dispatch-resolve-cache-rejected.json`.
+
+## 2026-06-16 - GGUF linear-attention chunk=512 rejected
+
+Tested a focused GDN/linear-attention prefill chunk-policy probe: changed the auto-tuned mid-context linear-attention chunk from `1024` to `512` rows while keeping MoE chunks at `1024`, full-attention query at `4096`, full-attention post/RoPE at `1024`, and all kernels/tile policies unchanged. This targets the GDN recurrent bucket by reducing per-chunk row pressure without changing math or memory residency.
+
+Validation and measurements:
+- Focused config smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1844.457372` prefill / `127.262658` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2131.252124` prefill / `115.086708` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.086708 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but prefill regressed sharply versus the retained decode-policy cache baseline (`512/128` `1958.536 -> 1844.457 tok/s`; `4K/128` `2292.684 -> 2131.252 tok/s`) and decode was only flat/small mixed (`127.263 -> 127.263`, `114.991 -> 115.087 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep the mid-context linear-attention chunk at `1024` rows.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-linear-chunk512-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 768-row out8192 TM64 rejected
+
+Tested a narrower follow-up to the rejected 768/1024-row out8192 Q8_0 T16 tile probe: changed only the resident Q8_0 T16 WMMA prefill policy for `rows == 768`, `in_features <= 2048`, `out_features >= 8192` from `TM32/TN32` to `TM64/TN32`. The 512-row out8192 rule stayed at retained `TM64`, and the 1024-row out8192 rule stayed at retained `TM32`.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1962.721546` prefill / `126.941176` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2294.067267` prefill / `115.368844` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.368844 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Final 128K GPU1 check, run because the candidate targets the 768-row low-memory policy: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-final-128k.json` -> median `739.645891` prefill / `67.551956` decode tok/s, stable ID `[220,220,220]`, peak `23.310421 GiB`.
+- Prompt verifier failed: the 128K path did not improve versus latest retained references (`745.977/747.033 -> 739.646 tok/s` prefill), and `512/128` decode was not clearly non-regressive versus the decode-policy-cache baseline (`127.263 -> 126.941 tok/s`). Candidate code/test changes were reverted; keep 768-row out8192 Q8_0 T16 projections at `TM32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-row768-out8192-tm64-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 1024-row out4096 TM16 rejected
+
+Tested the opposite direction from the earlier 1024-row up-projection TM64 no-hold: changed only resident Q8_0 T16 WMMA prefill `rows == 1024`, `in_features <= 2048`, `out_features == 4096` projections from `TM32/TN32` to `TM16/TN32`. The 512-row, 768-row, out8192, and shared small-shape policies stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1933.731074` prefill / `127.152541` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2272.398869` prefill / `115.117201` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.117201 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: both primary prefill medians regressed versus the retained decode-policy-cache baseline (`512/128` `1958.536 -> 1933.731 tok/s`; `4K/128` `2292.684 -> 2272.399 tok/s`) and the 4K decode nudge was not enough to retain. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 1024-row out4096 Q8_0 T16 projections at `TM32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-out4096-tm16-rejected.json`.
+
+## 2026-06-16 - GGUF MoE chunk=512 rejected
+
+Tested a focused chunk-policy probe: lowered only the auto-tuned mid-context MoE prefill chunk from `1024` to `512` rows while keeping linear-attention chunks at `1024`, full-attention query chunks at `4096`, and full-attention post/RoPE chunks at `1024`. This targets MoE staging/tile pressure without changing attention math, decode kernels, or memory residency.
+
+Validation and measurements:
+- Focused config smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1892.253329` prefill / `127.231996` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2121.682076` prefill / `115.116651` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.116651 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both primary prefill medians regressed sharply versus the retained decode-policy-cache baseline (`512/128` `1958.536 -> 1892.253 tok/s`; `4K/128` `2292.684 -> 2121.682 tok/s`) while decode was only flat/small mixed. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep the mid-context MoE chunk at `1024` rows.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-moe-chunk512-rejected.json`.
+
+## 2026-06-16 - GGUF full-attention post/RoPE chunk=512 rejected
+
+Tested a focused chunk-policy probe: lowered only the auto-tuned mid-context full-attention post/RoPE prefill chunks from `1024` to `512` rows while keeping full-attention query chunks at `4096` and linear/MoE chunks at `1024`. This targets full-attention post/RoPE staging pressure without changing query chunking, decode kernels, or memory residency.
+
+Validation and measurements:
+- Focused config smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1917.323145` prefill / `127.128204` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2294.201487` prefill / `115.074319` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.074319 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but `512/128` regressed versus the retained decode-policy-cache baseline (`1958.536 / 127.263 -> 1917.323 / 127.128 tok/s`) and the `4K/128` prefill nudge was tiny/noisy. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep mid-context post/RoPE chunks at `1024` rows.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-postrope512-rejected.json`.
+
+## 2026-06-16 - GGUF full-attention query chunk=8192 rejected
+
+Tested a focused chunk-policy probe: raised only the auto-tuned mid-context full-attention query prefill chunk from `4096` to `8192` rows while keeping full-attention post/RoPE chunks at `1024` and linear/MoE chunks at `1024`. This checks whether larger-query staging is neutral on the primary gates before considering it for longer-context prefill.
+
+Validation and measurements:
+- Focused config smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1952.309048` prefill / `127.068159` decode tok/s, stable ID `[220,220,220]`, peak `21.415609 GiB`; `4K/128` median `2295.867353` prefill / `115.319623` decode tok/s, stable ID `[570,570,570]`, peak `21.415609 GiB`; min gate decode `115.319623 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs were stable, but peak memory increased (`21.335 -> 21.416 GiB`) and `512/128` regressed versus the retained decode-policy-cache baseline (`1958.536 / 127.263 -> 1952.309 / 127.068 tok/s`). The `4K/128` nudge was not enough to retain. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep mid-context query chunks at `4096`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-fullattn-query8192-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 1024-row out4096 TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 1024`, `in_features <= 2048`, `out_features == 4096` projections from `TM32/TN32` to `TM32/TN16`. The 512-row, 768-row, out8192, shared small-shape, and prior TM16/TM64 no-hold rules stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1950.337399` prefill / `127.072991` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2273.689907` prefill / `115.437717` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.437717 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both primary prefill medians regressed versus the retained decode-policy-cache baseline (`512/128` `1958.536 -> 1950.337 tok/s`; `4K/128` `2292.684 -> 2273.690 tok/s`) and `512/128` decode regressed (`127.263 -> 127.073 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 1024-row out4096 Q8_0 T16 projections at `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-out4096-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 512-row out4096 TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 512`, `in_features <= 2048`, `out_features == 4096` projections from `TM64/TN32` to `TM64/TN16`. The out8192, 768/1024-row, shared small-shape, and prior TM no-hold rules stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1931.443642` prefill / `127.114702` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2288.636492` prefill / `115.172717` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.172717 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both primary prefill medians regressed versus the retained decode-policy-cache baseline (`512/128` `1958.536 -> 1931.444 tok/s`; `4K/128` `2292.684 -> 2288.636 tok/s`) and `512/128` decode regressed (`127.263 -> 127.115 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 512-row out4096 Q8_0 T16 projections at `TM64/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-512-out4096-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF chunk tune min=513 rejected
+
+Tested a focused prefill scheduling probe that lowers `_CHUNKED_PREFILL_MIN_TOKENS` from `1025` to `513`, so `512/128`-class sessions resolve the retained `1024/4096` mid-context prefill chunk policy instead of staying below-min/unchunked. No decode kernels, resident packed weights, or low-memory 128K policy were changed.
+
+Validation and measurements:
+- Focused config smoke: `python3 -m py_compile hipengine/runtime/prefill.py tests/test_qwen35_resident_batch_layout.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_prefill_config_autotunes_gt1k_chunks_from_budget -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1881.895516` prefill / `127.104346` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2296.735539` prefill / `114.735831` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.735831 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but the candidate regressed `512/128` prefill sharply versus the retained decode-policy-cache baseline (`1958.536 -> 1881.896 tok/s`) and regressed both decode medians (`512/128` `127.263 -> 127.104 tok/s`; `4K/128` `114.991 -> 114.736 tok/s`). The tiny `4K/128` prefill nudge (`2292.684 -> 2296.736 tok/s`) was not enough to retain it. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep the auto chunk-tune minimum at `1025`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-prefill-chunk-min513-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 768-row out4096 TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 768`, `in_features <= 2048`, `out_features == 4096` projections from `TM64/TN32` to `TM64/TN16`. The already-rejected 512/1024-row TN16 probes, out8192 rules, shared small-shape rules, decode path, and resident packed weights stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1951.756082` prefill / `127.152903` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2294.545844` prefill / `115.009489` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.009489 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but `512/128` regressed versus the retained decode-policy-cache baseline (`1958.536 / 127.263 -> 1951.756 / 127.153 tok/s`). The small `4K/128` nudge (`2292.684 / 114.991 -> 2294.546 / 115.009 tok/s`) was not enough to retain it. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 768-row out4096 Q8_0 T16 projections at `TM64/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-768-out4096-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 768-row output-projection TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 768`, `in_features >= 4096`, `out_features == 2048` projections from `TM32/TN32` to `TM32/TN16`. The retained shared small-shape TN16 rules, already-rejected up-projection TN16 probes, decode path, and resident packed weights stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1947.156197` prefill / `127.085976` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2295.284662` prefill / `114.971953` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.971953 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but `512/128` regressed versus the retained decode-policy-cache baseline (`1958.536 / 127.263 -> 1947.156 / 127.086 tok/s`) and `4K/128` decode regressed (`114.991 -> 114.972 tok/s`). The small `4K/128` prefill nudge (`2292.684 -> 2295.285 tok/s`) was not enough to retain it. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 768-row `in>=4096,out=2048` Q8_0 T16 projections at `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-768-outproj-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 1024-row output-projection TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 1024`, `in_features >= 4096`, `out_features == 2048` projections from `TM32/TN32` to `TM32/TN16`. The retained shared small-shape TN16 rules, already-rejected 768-row output/up-projection TN16 probes, decode path, and resident packed weights stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1950.269001` prefill / `126.997914` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2285.292128` prefill / `114.947717` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.947717 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both primary gates regressed versus the retained decode-policy-cache baseline (`512/128` `1958.536 / 127.263 -> 1950.269 / 126.998 tok/s`; `4K/128` `2292.684 / 114.991 -> 2285.292 / 114.948 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 1024-row `in>=4096,out=2048` Q8_0 T16 projections at `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-outproj-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 512-row output-projection TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 512`, `in_features >= 4096`, `out_features == 2048` projections from `TM32/TN32` to `TM32/TN16`. The retained shared small-shape TN16 rules, already-rejected 768/1024-row output-projection TN16 probes, decode path, and resident packed weights stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1895.144836` prefill / `127.041562` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2283.900598` prefill / `115.130490` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.130490 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but `512/128` prefill regressed sharply and `4K/128` prefill also regressed versus the retained decode-policy-cache baseline (`512/128` `1958.536 / 127.263 -> 1895.145 / 127.042 tok/s`; `4K/128` `2292.684 / 114.991 -> 2283.901 / 115.130 tok/s`). The `4K/128` decode nudge alone was not enough to retain it, and `512/128` decode regressed. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 512-row `in>=4096,out=2048` Q8_0 T16 projections at `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-512-outproj-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 512-row square-projection TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 512`, `in_features == 2048`, `out_features == 2048` projections from `TM32/TN32` to `TM32/TN16`. The retained shared small-shape TN16 rules, already-rejected large/output projection TN16 probes, decode path, and resident packed weights stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1890.101808` prefill / `126.832932` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2290.778784` prefill / `114.877749` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.877749 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both primary gates regressed versus the retained decode-policy-cache baseline (`512/128` `1958.536 / 127.263 -> 1890.102 / 126.833 tok/s`; `4K/128` `2292.684 / 114.991 -> 2290.779 / 114.878 tok/s`). The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 512-row `in=2048,out=2048` Q8_0 T16 projections at `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-512-square2048-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 768-row square-projection TN16 rejected
+
+Tested a focused tile-policy probe that only narrows the N tile for resident Q8_0 T16 WMMA prefill `rows == 768`, `in_features == 2048`, `out_features == 2048` projections from `TM32/TN32` to `TM32/TN16`. The retained shared small-shape TN16 rules, already-rejected 512-row square and large/output projection TN16 probes, decode path, and resident packed weights stayed unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed` for the candidate.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1956.256531` prefill / `127.047634` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2293.642976` prefill / `114.982865` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.982865 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but `512/128` regressed versus the retained decode-policy-cache baseline (`1958.536 / 127.263 -> 1956.257 / 127.048 tok/s`) and `4K/128` decode slightly regressed (`114.991 -> 114.983 tok/s`). The small `4K/128` prefill nudge (`2292.684 -> 2293.643 tok/s`) was not enough to retain it. The `128K/128` final gate was not run because the primary verifier failed. Candidate code/test changes were reverted; keep 768-row `in=2048,out=2048` Q8_0 T16 projections at `TM32/TN32`.
+- Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-768-square2048-tn16-rejected.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 1024-row square-projection TN16 retained
+
+Promoted a focused resident Q8_0 T16 WMMA prefill tile-policy change: only `rows == 1024`, `in_features == 2048`, `out_features == 2048` medium-square projections move from `TM32/TN32` to `TM32/TN16`. The 512/768-row square TN16 probes, large up-projection TN16 probes, output-projection TN16 probes, decode kernels, and resident packed weights remain unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed`.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1965.587122` prefill / `127.249972` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2293.366700` prefill / `115.168370` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `115.168370 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Required `128K/128` final check: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-128k.json` -> median `741.580509` prefill / `67.636028` decode tok/s, stable ID `[220,220,220]`, peak `23.310421 GiB`.
+- Prompt verifier passed: stable deterministic IDs/logits sanity and flat memory on primary/final gates, no torch or llama.cpp hot-path dependency, 512/128 and 4K/128 prefill improved versus the retained decode-policy-cache baseline (`1958.536 -> 1965.587 tok/s`; `2292.684 -> 2293.367 tok/s`), 4K decode improved (`114.991 -> 115.168 tok/s`), and the tiny 512 decode movement (`127.263 -> 127.250 tok/s`) is within run noise.
+- Updated `docs/TUNING-gguf.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`; artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-square2048-tn16-gate.json`.
+
+## 2026-06-16 - GGUF Q8_0 T16 1024-row out8192 TN16 rejected
+
+Tested an unrecorded resident Q8_0 T16 WMMA prefill tile-policy boundary after the retained 1024-row square TN16 rule: only `rows == 1024`, `in_features == 2048`, `out_features == 8192` projections moved from `TM32/TN32` to `TM32/TN16`. This left the prior out4096 TN16/TM16/TM64 no-holds, 512/768 out8192 TM no-holds, decode kernels, and resident packed weights unchanged.
+
+Validation and measurements:
+- Focused tile-policy smoke on the candidate: `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py tests/test_gguf_q8_0_t16_wmma_prefill.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q8_0_t16_wmma_prefill.py::test_gguf_q8_0_t16_prefill_default_tiles_match_t16_policy -q` -> `1 passed`.
+- Primary GPU1 gate: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance.json` -> `512/128` median `1949.431192` prefill / `127.171326` decode tok/s, stable ID `[220,220,220]`, peak `21.334842 GiB`; `4K/128` median `2255.344119` prefill / `114.688810` decode tok/s, stable ID `[570,570,570]`, peak `21.334842 GiB`; min gate decode `114.688810 tok/s`.
+- Targeted guard: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> passed (`154` tests).
+- Prompt verifier failed: IDs and memory were stable, but both primary prefill medians regressed versus the retained 1024-square TN16 baseline (`512/128` `1965.587 -> 1949.431 tok/s`, `4K/128` `2293.367 -> 2255.344 tok/s`) and `4K/128` decode regressed (`115.168 -> 114.689 tok/s`). The `128K/128` final gate was not run because the primary verifier failed.
+- Candidate code/test changes were reverted; the post-revert focused tile-policy test passed (`1 passed`). Artifact: `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-q8t16-1024-out8192-tn16-rejected.json`.

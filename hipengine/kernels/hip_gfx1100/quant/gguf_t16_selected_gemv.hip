@@ -434,7 +434,7 @@ __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_direct_gemv_ker
 }
 
 template <typename scalar_t>
-__global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_silu_direct_gemv_kernel(
+__global__ __launch_bounds__(256, 1) void q4_k_t16_selected_dual_silu_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ selected,
     const uint8_t* __restrict__ tiles_a,
@@ -525,7 +525,7 @@ __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_silu_direct_gem
 }
 
 template <typename scalar_t, int qtype>
-__global__ __launch_bounds__(128, 4) void qk_t16_selected_direct_gemv_kernel(
+__global__ __launch_bounds__(128, 2) void qk_t16_selected_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ selected,
     const uint8_t* __restrict__ tiles,

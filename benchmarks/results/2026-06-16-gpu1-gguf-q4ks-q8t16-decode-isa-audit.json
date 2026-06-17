@@ -1,0 +1,405 @@
+{
+  "schema": "hipengine.gguf_q8_t16_isa_audit.v1",
+  "date": "2026-06-16",
+  "loop": "gguf-tuning/run-20260615-103446",
+  "iteration": 45,
+  "branch": "gguf-tuning",
+  "worktree": "/home/lhl/hipEngine-gguf-tuning",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX / gfx1100 24GB-class",
+    "device_selector": "HIP_VISIBLE_DEVICES=1"
+  },
+  "rocm": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "the_rock_hip": "7.13.26162-1140233ffe"
+  },
+  "change": "Diagnostic only: active Q8_0 T16 GEMV decode code-object/ISA census after the selected-WMMA half-seq prefill promotion.",
+  "build_artifact": "/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-4e393c8a22cdef00/gguf_q8_0_t16_gemv.so",
+  "raw_audit_dir": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-q8t16-gemv-isa",
+  "profile_context": {
+    "source": "/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-safe-4k-d16/summary.json",
+    "shape": "4K/16 decode-only prefix-stripped profile",
+    "decode_total_kernel_ms": 143.418,
+    "bucket": "dense_q8_0_t16_gemv_decode_p9",
+    "bucket_total_ms": 50.638,
+    "bucket_share_percent": 35.31,
+    "dispatches": 2720,
+    "resource_summary": {
+      "vgpr_count": {
+        "min": 64,
+        "max": 64,
+        "values": [
+          64
+        ]
+      },
+      "accum_vgpr_count": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0
+        ]
+      },
+      "sgpr_count": {
+        "min": 128,
+        "max": 128,
+        "values": [
+          128
+        ]
+      },
+      "scratch_bytes": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0
+        ]
+      },
+      "lds_bytes": {
+        "min": 512,
+        "max": 512,
+        "values": [
+          512
+        ]
+      },
+      "workgroup_size": {
+        "min": 128,
+        "max": 128,
+        "values": [
+          128
+        ]
+      },
+      "grid_size": {
+        "min": 8192,
+        "max": 98304,
+        "values": [
+          8192,
+          16384,
+          73728,
+          98304
+        ]
+      }
+    }
+  },
+  "kernel_metadata": [
+    {
+      "name": "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIttEEvPKT_PKhPT0_lll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 304,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 28,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIttEEvPKT_PKhPT0_lll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 846,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 15,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIDF16_DF16_EEvPKT_PKhPT0_lll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 304,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 28,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIDF16_DF16_EEvPKT_PKhPT0_lll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 821,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 16,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_gemv_kernel<_Float16, _Float16>(_Float16 const*, unsigned char const*, _Float16*, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIftEEvPKT_PKhPT0_lll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 304,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 28,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIftEEvPKT_PKhPT0_lll.kd",
+      "vgpr_count": 56,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 868,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 15,
+        "s_waitcnt": 77,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_gemv_kernel<float, unsigned short>(float const*, unsigned char const*, unsigned short*, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_125q8_0_t16_dual_gemv_kernelIttEEvPKT_PKhS5_PT0_llll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 320,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 31,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_125q8_0_t16_dual_gemv_kernelIttEEvPKT_PKhS5_PT0_llll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 869,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 15,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_dual_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_125q8_0_t16_dual_gemv_kernelIDF16_DF16_EEvPKT_PKhS5_PT0_llll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 320,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 31,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_125q8_0_t16_dual_gemv_kernelIDF16_DF16_EEvPKT_PKhS5_PT0_llll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 844,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 16,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_dual_gemv_kernel<_Float16, _Float16>(_Float16 const*, unsigned char const*, unsigned char const*, _Float16*, long, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIttEEvPKT_PKhS5_PT0_S7_llll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 328,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 33,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIttEEvPKT_PKhS5_PT0_S7_llll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 876,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 15,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIDF16_DF16_EEvPKT_PKhS5_PT0_S7_llll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 328,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 33,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIDF16_DF16_EEvPKT_PKhS5_PT0_S7_llll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 851,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 16,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<_Float16, _Float16>(_Float16 const*, unsigned char const*, unsigned char const*, _Float16*, _Float16*, long, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_133q8_0_t16_triple_split_gemv_kernelIttEEvPKT_PKhS5_S5_PT0_S7_S7_lllll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 352,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 41,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_133q8_0_t16_triple_split_gemv_kernelIttEEvPKT_PKhS5_S5_PT0_S7_S7_lllll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 893,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 15,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_triple_split_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, unsigned short*, long, long, long, long, long)"
+    },
+    {
+      "name": "_ZN12_GLOBAL__N_133q8_0_t16_triple_split_gemv_kernelIDF16_DF16_EEvPKT_PKhS5_S5_PT0_S7_S7_lllll",
+      "group_segment_fixed_size": 256,
+      "kernarg_segment_size": 352,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 41,
+      "sgpr_spill_count": 0,
+      "symbol": "_ZN12_GLOBAL__N_133q8_0_t16_triple_split_gemv_kernelIDF16_DF16_EEvPKT_PKhS5_S5_PT0_S7_S7_lllll.kd",
+      "vgpr_count": 57,
+      "vgpr_spill_count": 0,
+      "disassembly_counts": {
+        "lines": 866,
+        "scratch_ops": 0,
+        "scratch_loads": 0,
+        "scratch_stores": 0,
+        "global_loads": 4,
+        "global_stores": 27,
+        "flat_loads": 0,
+        "flat_stores": 0,
+        "ds_ops": 108,
+        "v_dot": 0,
+        "v_pk_fma": 0,
+        "v_fma": 16,
+        "s_waitcnt": 68,
+        "s_barrier": 1
+      },
+      "demangled": "void (anonymous namespace)::q8_0_t16_triple_split_gemv_kernel<_Float16, _Float16>(_Float16 const*, unsigned char const*, unsigned char const*, unsigned char const*, _Float16*, _Float16*, _Float16*, long, long, long, long, long)"
+    }
+  ],
+  "summary": {
+    "kernel_count": 9,
+    "scratch_bytes_values": [
+      0
+    ],
+    "vgpr_values": [
+      56,
+      57
+    ],
+    "sgpr_values": [
+      28,
+      31,
+      33,
+      41
+    ],
+    "spill_counts": [
+      0
+    ],
+    "lds_bytes_values": [
+      256
+    ],
+    "max_scratch_ops": 0
+  },
+  "decision": "No Q8_0 T16 decode code change recommended from this audit: active kernels are scratch-free, no VGPR spills, 56-57 VGPR, and prior launch-bound/data-load probes already no-held. Next decode work should target dispatch/graph/full-attention or a new algorithmic reduction, not more blind Q8 launch-bound changes.",
+  "primary_gate_rerun": {
+    "json": "/tmp/hipengine-gguf-tuning-gpu1-acceptance-q8t16-isa-audit.json",
+    "summary_by_workload": {
+      "512/128": {
+        "prefill_tok_s_median": 1874.00515,
+        "decode_tok_s_median": 126.155284,
+        "tracked_peak_allocated_gib_median": 21.334858,
+        "sampled_hip_used_peak_gib_median": 21.908821,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 2151.21624,
+        "decode_tok_s_median": 115.746497,
+        "tracked_peak_allocated_gib_median": 21.334858,
+        "sampled_hip_used_peak_gib_median": 21.910774,
+        "final_token_ids": [
+          570,
+          570,
+          570
+        ],
+        "final_token_ids_stable": true
+      },
+      "primary_metric_min_decode_tok_s": 115.746497
+    },
+    "note": "No runtime path changed; gate rerun is a diagnostic sanity check for IDs/memory/noise after adding the ISA artifact/docs."
+  },
+  "guard": {
+    "targeted_gguf_bundle": "154 passed"
+  }
+}

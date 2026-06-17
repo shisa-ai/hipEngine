@@ -1,0 +1,333 @@
+{
+  "commands": {
+    "nonprofiled_confirmation": "HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 512 -n 0 -r 3 -o json -dev ROCm0",
+    "profile": "rocprofv3 --kernel-trace -d /tmp/hipengine-gguf-tuning/20260616-llamacpp-hip-q4km-pp512-warm/rocprof -o llamacpp-q4km-pp512-warm -f csv -- env HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 512 -n 0 -r 1 -o json -dev ROCm0"
+  },
+  "family_breakdown_measured_pass": [
+    {
+      "dispatches": 80,
+      "duration_ms": 64.260593,
+      "duration_pct": 36.342777891092624,
+      "name": "mul_mat_q_type12_q4k"
+    },
+    {
+      "dispatches": 37,
+      "duration_ms": 30.524284,
+      "duration_pct": 17.263103589732395,
+      "name": "mul_mat_q_type13_q5k"
+    },
+    {
+      "dispatches": 250,
+      "duration_ms": 26.908884,
+      "duration_pct": 15.218402894432923,
+      "name": "mul_mat_q_type8_q8_0"
+    },
+    {
+      "dispatches": 30,
+      "duration_ms": 15.533604,
+      "duration_pct": 8.785077971816849,
+      "name": "gated_delta_net"
+    },
+    {
+      "dispatches": 140,
+      "duration_ms": 7.820599,
+      "duration_pct": 4.422964046290408,
+      "name": "rocblas_gemm"
+    },
+    {
+      "dispatches": 660,
+      "duration_ms": 6.591261,
+      "duration_pct": 3.7277081234718934,
+      "name": "elementwise/reduce"
+    },
+    {
+      "dispatches": 120,
+      "duration_ms": 5.3637,
+      "duration_pct": 3.0334571885207087,
+      "name": "mm_ids_helper"
+    },
+    {
+      "dispatches": 370,
+      "duration_ms": 3.960719,
+      "duration_pct": 2.2399969279155343,
+      "name": "quantize_mmq_q8_1"
+    },
+    {
+      "dispatches": 3,
+      "duration_ms": 3.331676,
+      "duration_pct": 1.8842397061770644,
+      "name": "mul_mat_q_type14_q6k"
+    },
+    {
+      "dispatches": 20,
+      "duration_ms": 2.882671,
+      "duration_pct": 1.6303035343308125,
+      "name": "flash_attn"
+    },
+    {
+      "dispatches": 191,
+      "duration_ms": 2.838937,
+      "duration_pct": 1.6055696348430029,
+      "name": "norm"
+    },
+    {
+      "dispatches": 70,
+      "duration_ms": 2.586869,
+      "duration_pct": 1.4630117948079453,
+      "name": "copy/concat"
+    },
+    {
+      "dispatches": 152,
+      "duration_ms": 1.994792,
+      "duration_pct": 1.1281608091436137,
+      "name": "other"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 0.701487,
+      "duration_pct": 0.39672815086672003,
+      "name": "topk/sort"
+    },
+    {
+      "dispatches": 20,
+      "duration_ms": 0.687928,
+      "duration_pct": 0.38905981631796593,
+      "name": "rope"
+    },
+    {
+      "dispatches": 1,
+      "duration_ms": 0.493966,
+      "duration_pct": 0.2793640049937208,
+      "name": "mul_mat_vec_q_lm_head"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 0.220123,
+      "duration_pct": 0.1244912461004053,
+      "name": "softmax"
+    },
+    {
+      "dispatches": 35,
+      "duration_ms": 0.115962,
+      "duration_pct": 0.06558266914541051,
+      "name": "rocclr_copy_fill"
+    }
+  ],
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX, gfx1100, HIP_VISIBLE_DEVICES=1"
+  },
+  "interpretation": [
+    "The measured pp512 pass is dominated by llama.cpp mul_mat_q MMQ kernels: Q4_K type12 36.3%, Q5_K type13 17.3%, Q8_0 type8 15.2%, Q6_K type14 1.9%; with quantize_mmq_q8_1 included, MMQ/Q8_1 activation work is about 72.9% of kernel time.",
+    "Flash attention is only 1.6% of the measured pass kernel time at pp512, so the short-prefill lead is not primarily an attention-kernel issue.",
+    "This supports testing a llama.cpp-style Q8_1 activation + MMQ tile path for hipEngine GGUF prefill before more selected-WMMA live-state tweaks."
+  ],
+  "llama_bench_nonprofiled_confirmation": {
+    "avg_ns": 185915629,
+    "avg_ts": 2754.638403,
+    "samples_ts": [
+      2813.27,
+      2707.03,
+      2743.62
+    ],
+    "stddev_ns": 3622404,
+    "stddev_ts": 53.972226
+  },
+  "llama_bench_profiled": {
+    "avg_ns": 186446949,
+    "avg_ts": 2746.089452,
+    "samples_ns": [
+      186446949
+    ],
+    "samples_ts": [
+      2746.09
+    ]
+  },
+  "performance_claim": false,
+  "profile_method": {
+    "full_trace_dispatches": 4759,
+    "full_trace_kernel_time_ms": 364.314866,
+    "measured_pass_detection": "The profiled command includes one warmup pp512 pass plus one measured pp512 pass. The measured pass is summarized as all dispatches after the first mul_mat_vec_q lm-head dispatch, which terminates the warmup pass.",
+    "measured_pass_dispatches": 2259,
+    "measured_pass_kernel_time_ms": 176.818055,
+    "raw_csv_not_committed": "/tmp/hipengine-gguf-tuning/20260616-llamacpp-hip-q4km-pp512-warm/rocprof/llamacpp-q4km-pp512-warm_kernel_trace.csv"
+  },
+  "reason_not_promoted": "External-baseline profile only; no hipEngine runtime code changed or performance improvement claimed.",
+  "run_tag": "gpu1-llamacpp-hip-q4km-pp512-rocprof",
+  "schema": 2,
+  "software": {
+    "hipengine_commit_for_artifact": "15f8225b1694d4059fc67d32e278ad32d4275ab7",
+    "hipengine_dirty_files_at_artifact_creation": [],
+    "llama_cpp_build_commit": "263cc04a5",
+    "llama_cpp_build_number": 9600,
+    "python": "3.12.9"
+  },
+  "status": "diagnostic_retained",
+  "summary": "llama.cpp HIP Qwen3.6-35B-A3B Q4_K_M pp512 rocprofv3 kernel-family capture on GPU1.",
+  "timestamp": "2026-06-16T02:33:38.599089+00:00",
+  "top_kernels_measured_pass": [
+    {
+      "dispatches": 80,
+      "duration_ms": 64.260593,
+      "duration_pct": 36.342777891092624,
+      "name": "void mul_mat_q<(ggml_type)12, 128, false>(char const*, int const*, int const*, int const*, float*, float*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)"
+    },
+    {
+      "dispatches": 37,
+      "duration_ms": 30.524284,
+      "duration_pct": 17.263103589732395,
+      "name": "void mul_mat_q<(ggml_type)13, 128, false>(char const*, int const*, int const*, int const*, float*, float*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)"
+    },
+    {
+      "dispatches": 250,
+      "duration_ms": 26.908884,
+      "duration_pct": 15.218402894432923,
+      "name": "void mul_mat_q<(ggml_type)8, 128, false>(char const*, int const*, int const*, int const*, float*, float*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)"
+    },
+    {
+      "dispatches": 30,
+      "duration_ms": 15.533604,
+      "duration_pct": 8.785077971816849,
+      "name": "void gated_delta_net_cuda<128, false, false>(float const*, float const*, float const*, float const*, float const*, float const*, float*, long, long, long, long, long, long, long, long, long, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float, int)"
+    },
+    {
+      "dispatches": 120,
+      "duration_ms": 5.3637,
+      "duration_pct": 3.0334571885207087,
+      "name": "void mm_ids_helper<8>(int const*, int*, int*, int*, int, int, int, int, int)"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 3.543075,
+      "duration_pct": 2.0037970669906984,
+      "name": "Cijk_Alik_Bljk_SB_MT64x64x8_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS1_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1100_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR1_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM3_SUS128_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT4_4_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS32_WG16_16_1_WGM1"
+    },
+    {
+      "dispatches": 3,
+      "duration_ms": 3.331676,
+      "duration_pct": 1.8842397061770644,
+      "name": "void mul_mat_q<(ggml_type)14, 128, false>(char const*, int const*, int const*, int const*, float*, float*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)"
+    },
+    {
+      "dispatches": 10,
+      "duration_ms": 2.662628,
+      "duration_pct": 1.5058575324787957,
+      "name": "void flash_attn_tile<256, 256, 4, 8, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)"
+    },
+    {
+      "dispatches": 60,
+      "duration_ms": 2.620382,
+      "duration_pct": 1.481965176011013,
+      "name": "Cijk_Alik_Bljk_SB_MT16x16x8_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS1_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1100_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR1_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM3_SUS128_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT2_2_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS32_WG8_8_1_WGM4"
+    },
+    {
+      "dispatches": 110,
+      "duration_ms": 2.538701,
+      "duration_pct": 1.4357702328532005,
+      "name": "void k_bin_bcast<&(op_mul(float, float)), float, float, float, float const*>(float const*, float const*, float*, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, float const*)"
+    },
+    {
+      "dispatches": 117,
+      "duration_ms": 2.513223,
+      "duration_pct": 1.4213610708476574,
+      "name": "void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)1>(float const*, int const*, void*, long, long, long, long, long, int, int)"
+    },
+    {
+      "dispatches": 30,
+      "duration_ms": 1.898342,
+      "duration_pct": 1.0736132121801703,
+      "name": "void concat_f32_non_cont<0>(char const*, char const*, char*, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, long, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long)"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 1.657142,
+      "duration_pct": 0.937201803288697,
+      "name": "Cijk_Alik_Bljk_SB_MT16x16x16_SN_1LDSB0_APM1_ABV0_ACED0_AF0EM1_AF1EM1_AMAS0_ASE_ASGT_ASLT_ASM_ASAE01_ASCE01_ASEM1_AAC0_BL1_BS1_CLR0_DTLA0_DTLB0_DTVA0_DTVB0_DVO0_ETSP_EPS1_ELFLR0_EMLL0_FSSC10_FL0_GLVWA1_GLVWB1_GRCGA1_GRCGB1_GRPM1_GRVW1_GSU1_GSUASB_GLS0_ISA1100_IU1_K1_KLA_LBSPPA0_LBSPPB0_LPA0_LPB0_LDL1_LRVW1_LWPMn1_LDW0_FMA_MIAV0_MDA2_MO40_MMFGLC_MKFGSU256_NTA0_NTB0_NTC0_NTD0_NEPBS0_NLCA1_NLCB1_ONLL1_OPLV0_PK0_PAP0_PGR1_PLR1_PKA0_SIA1_SLW1_SS0_SU32_SUM3_SUS128_SCIUI1_SPO0_SRVW0_SSO0_SVW4_SNLL0_TSGRA0_TSGRB0_TT2_2_TLDS0_UMLDSA0_UMLDSB0_U64SL1_USFGROn1_VAW1_VSn1_VW1_VWB1_VFLRP0_WSGRA0_WSGRB0_WS32_WG8_8_1_WGM1"
+    },
+    {
+      "dispatches": 110,
+      "duration_ms": 1.524612,
+      "duration_pct": 0.862249050302018,
+      "name": "void unary_gated_op_kernel<&(op_silu(float)), float>(float const*, float const*, float*, long, long, long, long)"
+    },
+    {
+      "dispatches": 253,
+      "duration_ms": 1.447496,
+      "duration_pct": 0.8186358570678769,
+      "name": "void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)0>(float const*, int const*, void*, long, long, long, long, long, int, int)"
+    },
+    {
+      "dispatches": 50,
+      "duration_ms": 1.371928,
+      "duration_pct": 0.7758981400400542,
+      "name": "void rms_norm_f32<256, true, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)"
+    },
+    {
+      "dispatches": 30,
+      "duration_ms": 1.186698,
+      "duration_pct": 0.6711407384274191,
+      "name": "void ssm_conv_long_token_f32<true, 128ul, 4ul, 32l>(float const*, float const*, float const*, int, int, int, int, float*, int, int, int, long)"
+    },
+    {
+      "dispatches": 81,
+      "duration_ms": 0.978886,
+      "duration_pct": 0.5536120166009065,
+      "name": "void rms_norm_f32<1024, true, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 0.720893,
+      "duration_pct": 0.40770327441957216,
+      "name": "void k_bin_bcast<&(op_add(float, float)), float, float, float, float const*, float const*, float const*, float const*, float const*, float const*, float const*>(float const*, float const*, float*, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, float const*, float const*, float const*, float const*, float const*, float const*, float const*)"
+    },
+    {
+      "dispatches": 101,
+      "duration_ms": 0.709052,
+      "duration_pct": 0.4010065601049621,
+      "name": "void k_get_rows_float<float, float>(float const*, int const*, float*, long, long, HIP_vector_type<unsigned int, 3u>, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 0.701487,
+      "duration_pct": 0.39672815086672003,
+      "name": "void k_argsort_f32_i32<(ggml_sort_order)1>(float const*, int*, int, int)"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 0.688527,
+      "duration_pct": 0.3893985826277752,
+      "name": "void cpy_scalar<&(void cpy_1_scalar<float, float>(char const*, char*))>(char const*, char*, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long)"
+    },
+    {
+      "dispatches": 20,
+      "duration_ms": 0.687928,
+      "duration_pct": 0.38905981631796593,
+      "name": "void rope_multi<true, false, float>(float const*, float*, int, int, int, int, int, int, int, int, int, int, int const*, float, float, float, rope_corr_dims, float, float const*, mrope_sections, bool)"
+    },
+    {
+      "dispatches": 40,
+      "duration_ms": 0.512884,
+      "duration_pct": 0.29006313863140276,
+      "name": "void k_bin_bcast<&(op_add(float, float)), float, float, float, float const*, float const*>(float const*, float const*, float*, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, float const*, float const*)"
+    },
+    {
+      "dispatches": 1,
+      "duration_ms": 0.493966,
+      "duration_pct": 0.2793640049937208,
+      "name": "void mul_mat_vec_q<(ggml_type)14, 1, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)"
+    }
+  ],
+  "workload": {
+    "backend": "ROCm",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "devices": "ROCm0",
+    "engine": "llama.cpp HIP",
+    "flash_attn": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_type": "qwen35moe 35B.A3B Q4_K - Medium",
+    "n_batch": 2048,
+    "n_gen": 0,
+    "n_prompt": 512,
+    "n_ubatch": 512
+  }
+}
