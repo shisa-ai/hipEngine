@@ -295,13 +295,19 @@ Older CLI/model-card equivalent:
 Always keep a no-MTP baseline because MTP can lose on small batches or hit loader
 layout issues.
 
-## FP8 on gfx1151 (Strix Halo / Radeon 8060S), 2026-06-17
+## FP8 on gfx1151 (Strix Halo / Radeon 8060S), 2026-06-17 — LOADS, THEN HANGS
 
-`Qwen/Qwen3.6-35B-A3B-FP8` was tested on the gfx1151 host as an FP8 route that
-sidesteps the W4A16 MoE deadlock blocking GPTQ/AWQ on RDNA 3.5 (see
-`docs/handoff-vllm-gfx1151.md` Task B: the deadlock is a duplicate-pointer
-K-dim unpacking pattern in `moe_q_gemm_rdna3.cu` / the Triton MoE kernel; FP8
-has no such unpacking, so it does not trip the L1 vector-cache hazard).
+`Qwen/Qwen3.6-35B-A3B-FP8` was tested on the gfx1151 host as a candidate FP8
+route past the W4A16 MoE deadlock blocking GPTQ/AWQ on RDNA 3.5 (see
+`docs/handoff-vllm-gfx1151.md` Task B). **Result: FP8 does NOT run on gfx1151
+either.** The model loads and JIT-compiles, but the dummy `profile_run` hangs
+the same way W4A16 does — a Triton fused-MoE kernel pins the GPU at 100% and
+never returns. The earlier hypothesis that "FP8 has no K-dim unpacking so it
+skips the L1 vector-cache hazard" was correct about that *one* W4A16-specific
+bug but wrong as a general claim: the FP8 block-scaled fused-MoE path hits its
+own non-terminating kernel on gfx1151. The whole Triton fused-MoE family
+appears to hang on gfx1151 regardless of weight dtype (W4A16, W8A8 block-scaled).
+See the "Profile-run hang" section below for the py-spy evidence.
 
 ### Required patch: `RocmPlatform.supports_fp8()` excludes gfx1151
 
@@ -328,7 +334,8 @@ def supports_fp8(cls) -> bool:
 
 After the patch vLLM selects the **Triton Fp8 MoE backend** (`TritonExperts`;
 AITER is unavailable — see ISA section). The model loads cleanly: 42 safetensors
-shards, **33.58 GiB in ~60 s**, then enters the dummy `profile_run`.
+shards, **33.58 GiB in ~60 s**, then enters the dummy `profile_run` — where it
+hangs (see below).
 
 ### ISA reality: gfx1100 vs gfx1151 FP8, and what AITER targets
 
@@ -454,6 +461,43 @@ fundamental, not a misconfiguration:
 So the only real levers for cold-compile cost are: (1) remove the two discarded
 LLVM passes above, (2) keep `~/.triton/cache` warm. There is no way to throw
 more cores at a single kernel's codegen in this stack.
+
+### Profile-run hang (the actual blocker)
+
+Compilation completes and artifacts cache to `~/.triton/cache`, but the dummy
+`profile_run` (run by `determine_available_memory` to size the KV cache) launches
+the emulated FP8 fused-MoE kernels and never returns. Symptoms on the Strix
+Halo host:
+
+- GPU pinned at 100% use for 28+ min with **zero** log progress and only ~67 W
+  package power (low for real dense compute — consistent with a spinning /
+  non-terminating kernel rather than productive work).
+- py-spy on EngineCore shows the main thread blocked in
+  `torch.accelerator.synchronize` <- `_sync_device`
+  <- `profile_run` (`gpu_model_runner.py:6247`) <- `determine_available_memory`.
+  I.e. the forward launched its kernels and is waiting on a GPU sync that never
+  completes.
+- No new `~/.triton/cache` writes during the hang -> compilation is already
+  done; the hang is in kernel execution (the forward), not in JIT.
+
+This is the **same failure class as the W4A16 deadlock**
+(`docs/handoff-vllm-gfx1151.md` Task B), not the W4A16-specific K-dim-unpack bug.
+The whole Triton fused-MoE family (`moe_q_gemm_rdna3.cu`, `fused_moe_kernel`,
+`w8a8_triton_block_scaled_mm`) does not terminate on gfx1151. FP8 is not a
+workaround. Recovery required `pkill -9` of EngineCore + `rocm-smi --gpureset`.
+
+### Bottom line for gfx1151
+
+- FP8 is emulated (fp16 upcast + native fp16 WMMA) on RDNA3/3.5, giving no FP8
+  compute throughput anyway (see ISA section).
+- Even the emulated path does not run: the FP8 fused-MoE kernel hangs the
+  profile_run, same as W4A16. So neither W4A16 nor FP8 Qwen3.6-35B-A3B serves on
+  gfx1151 under vLLM/Triton as of `470229c37`.
+- AITER (the fast CK/ASM path that *might* have working MoE kernels) is
+  `on_mi3xx()`-gated and unavailable on gfx1151 regardless.
+- The remaining live route is **gfx1100 (W7900)** with a *non-Triton* MoE kernel
+  (the upstream `moe_q_gemm_rdna3.cu` path before the Triton rewrite, or a
+  hipEngine-native kernel), not any quant variant on gfx1151.
 
 ## Qwen3.6-35B-A3B model candidates and sizes
 
