@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-17",
+  "artifact_type": "rejected_benchmark",
+  "candidate": "G-D5 q6_k_t16_lm_head_argmax_bf16",
+  "status": "rejected",
+  "reason": "Full-model deterministic IDs changed on both primary gates; primary metric also regressed slightly. Configured guard currently segfaults in a pre-existing selected_silu_x test, so this candidate cannot be retained.",
+  "hardware": "GPU1/gfx1100 AMD Radeon RX 7900 XTX class",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "environment": {
+    "HIP_VISIBLE_DEVICES": "1",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version-713.txt"
+  },
+  "primary_gate_command": "cd /home/lhl/hipEngine && HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-gd5-argmax.json",
+  "raw_json": "/tmp/hipengine-gguf-tuning-gpu1-acceptance-gd5-argmax.json",
+  "baseline_reference": {
+    "source": "gguf-tuning multiloop current metric before iteration 119",
+    "min_gate_decode_tok_s": 114.67044725762,
+    "expected_final_token_ids": {
+      "512/128": 220,
+      "4K/128": 570
+    }
+  },
+  "measurements": {
+    "512/128": {
+      "prefill_tok_s_median": 1803.3726768138288,
+      "decode_tok_s_median": 125.31910257464796,
+      "tracked_peak_allocated_gib_median": 21.330975774675608,
+      "final_token_ids": [1813, 1813, 1813],
+      "final_token_ids_stable": true,
+      "correctness_vs_retained_gate": false
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2092.5472432516704,
+      "decode_tok_s_median": 114.59063012817414,
+      "tracked_peak_allocated_gib_median": 21.330975774675608,
+      "final_token_ids": [151531, 151531, 151531],
+      "final_token_ids_stable": true,
+      "correctness_vs_retained_gate": false
+    }
+  },
+  "primary_metric_min_decode_tok_s": 114.59063012817414,
+  "focused_correctness": {
+    "command": "cd /home/lhl/hipEngine && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py -q",
+    "result": "21 passed"
+  },
+  "guard": {
+    "command": "cd /home/lhl/hipEngine && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "result": "segfault in tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_t16_weights_route_direct_selected_tiles_allocations at gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out",
+    "pre_existing_on_clean_head": true,
+    "clean_head": "e5a63784"
+  },
+  "decision": "Candidate code and focused test changes were reverted; retain this artifact and docs only."
+}

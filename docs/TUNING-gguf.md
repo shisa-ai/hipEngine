@@ -492,13 +492,19 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
-- **G-D5 lm-head argmax WIP quarantined (2026-06-17).** Iteration 118's
-  Q6T16 lm-head argmax fusion was found as uncommitted WIP in `/home/lhl/hipEngine`
-  while the paused multiloop still targeted the stale `/home/lhl/hipEngine-gguf-tuning`
-  worktree. The WIP was saved externally and reverted during cleanup without a
-  benchmark, so this is **not** a measured performance rejection. Reapply it only
-  intentionally in `main`, with focused correctness coverage and the standard
-  GPU1 `512/128` + `4K/128` gate before any promotion claim.
+- **G-D5 lm-head argmax fusion rejected (2026-06-17).** Reapplied the
+  quarantined Q6T16 lm-head GEMV+argmax fusion to clean `main`, fixed wrapper
+  validation/allocation issues, and added a focused synthetic Q6T16 argmax-vs-
+  GEMV oracle. Focused Q6/dispatch tests passed (`21` tests), but the full
+  GPU1 Q4_K_S primary gate changed deterministic final IDs (`512/128` `220 ->
+  1813`, `4K/128` `570 -> 151531`) and regressed the primary min decode metric
+  to `114.591 tok/s` versus the current `114.670 tok/s`. Code/test changes were
+  reverted; keep only the rejected artifact. The configured `154`-test guard
+  also currently segfaults in `test_t16_weights_route_direct_selected_tiles_allocations`
+  at the selected `silu_x` kernel; the same segfault reproduced on clean
+  `e5a63784`, so it is pre-existing relative to G-D5 but still blocks retention.
+  Artifact:
+  `benchmarks/results/2026-06-17-gpu1-gguf-q4ks-q6t16-lmhead-argmax-rejected.json`.
 
 - **GGUF chunk tune min=513 rejected (2026-06-16).** Lowering the auto
   chunk-tuning minimum from `1025` to `513` max-sequence tokens made

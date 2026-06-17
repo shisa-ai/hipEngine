@@ -95768,3 +95768,20 @@ Validation and measurements:
 ### Decision
 - The G-D5 lm-head Q6T16/argmax fusion was **not accepted** and **not measured**. It was reverted only as cleanup because it existed in `/home/lhl/hipEngine` while the active loop still targeted the stale tuning worktree. Treat the previous handoff as an unvalidated WIP patch, not benchmark evidence.
 - Future GGUF multiloop work should run from `/home/lhl/hipEngine` on `main`; reapply G-D5 only intentionally, then run focused correctness plus the standard GPU1 `512/128` and `4K/128` gates before any retention claim.
+
+
+## 2026-06-17 — GGUF G-D5 Q6T16 lm-head argmax rejected
+
+### Candidate
+- Reapplied the quarantined G-D5 WIP to clean `main`: a Q6_K T16 lm-head GEMV stage that writes per-16-column winners plus a second-stage argmax, using the fused path only when `return_logits=False` and falling back to normal lm-head GEMV + `argmax_f32` when logits are requested.
+- Fixed WIP integration issues before measurement: `HipRuntime` has no `backend`, `Qwen35GGUFDeviceWeight` uses `spec.quant_key` plus `allocation("tiles")`, and the resident lm-head block scratch needed to cover `vocab_size / 16` fused-stage partials rather than only `lm_head_argmax_stage1_blocks(vocab, threads=128)`.
+
+### Validation and measurements
+- Focused correctness: `cd /home/lhl/hipEngine && HIP_VISIBLE_DEVICES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py -q` -> `21 passed`, including synthetic fused Q6T16 argmax vs full GEMV+argmax.
+- Configured guard: `python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` -> segfault in `tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_t16_weights_route_direct_selected_tiles_allocations` at `gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out`. Reproduced the same segfault on clean `HEAD e5a63784`, so this is pre-existing relative to G-D5 but still blocks retention.
+- Primary GPU1 gate command: `HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-tuning-gpu1-acceptance-gd5-argmax.json`.
+- Results: `512/128` median `1803.372677` prefill / `125.319103` decode tok/s, stable final IDs `[1813,1813,1813]`, peak `21.330976 GiB`; `4K/128` median `2092.547243` prefill / `114.590630` decode tok/s, stable final IDs `[151531,151531,151531]`, peak `21.330976 GiB`; primary min decode `114.590630 tok/s`.
+
+### Decision
+- Rejected/no-held. Even though the focused synthetic kernel test passed, full-model deterministic IDs changed versus retained gate sanity (`220/570 -> 1813/151531`) and the primary metric regressed slightly versus current `114.670 tok/s`. Skipped `128K/128` because primary correctness failed.
+- Reverted candidate code/test changes after saving compact artifact `benchmarks/results/2026-06-17-gpu1-gguf-q4ks-q6t16-lmhead-argmax-rejected.json`.
