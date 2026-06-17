@@ -93978,3 +93978,23 @@ Validation:
 - `uv run ruff check hipengine/server/api.py tests/test_server_api.py` -> `All checks passed!`.
 - `python3 -m pytest tests/test_server_api.py -q -k 'literal_marker_text or marker_text_in_arguments or literal_paired_tool_markup or unparseable_tool_markup or duplicated_start_marker or strict_validation_recovers_doubled_tool_call_tag or returns_tool_call_deltas'` -> `11 passed`.
 - `python3 -m pytest tests/test_server_api.py -q -k 'tool_call'` -> `59 passed`.
+
+## 2026-06-17
+
+- docs: added docs/ROADMAP.md — strategic roadmap above PLAN.md. Records where
+  hipEngine chooses to compete (concurrent serving throughput, native sampler +
+  agent runtime, multi-backend portability) and where it doesn't (c=1 kernel
+  race, DMS on 35B-A3B, speculative decode on 35B-A3B). Two strategic shifts
+  captured: (1) GGUF becomes the default quant path, custom PARO/AWQ becomes an
+  opt-in gfx1100 high-perf path; (2) StepFun 3.7 text-only GGUF Q3_K_L on
+  gfx1151 is the next model+backend focus, with perf/NVFP4/vision/MTP deferred.
+  Phased plan: A=bank c=N concurrency moat to retained status on W7900
+  (highest leverage; 7.5x/1.6x diagnostic today), B=retained GGUF rows + Q3_K_L
+  coverage + GGUF-as-default, C=gfx1151 bring-up via StepFun 3.7, D=compounding
+  differentiators (native sampler, agent runtime, spec-decode for dense),
+  E=optional c=1 dp4a layout rewrite.
+- Note: the active stepfun-gguf-correctness multiloop (run-20260529-195720)
+  verifies against docs/STEPFUN.md P0-P12 checklist items. That punchlist is
+  being authored in a parallel branch (separate machine), so it is not present
+  in this tree yet; the loop's progress metric is not meaningful in this
+  branch until the punchlist lands here.
