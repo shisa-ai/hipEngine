@@ -3074,7 +3074,7 @@ Compounds across ~150+ GEMV launches per token.
 **#2 (~25% of gap) — MoE C-dispatch.**
 PARO bundles 6 MoE sub-methods into one `extern "C"` call via
 `_try_moe_c1_c_dispatch`, eliminating ~320 Python→C transitions per token.
-GGUF has no C-dispatch equivalent.
+GGUF has no C-dispatch equivalent, but it utilizes HIP graph capture for decode by default, so Python dispatch overhead is completely bypassed.
 
 **#3 (~15% of gap) — Fewer launches from dual/fused projections.**
 PARO's dual QK GEMV (1 launch for 2 matrices), fused RMSNorm+rotate, and
