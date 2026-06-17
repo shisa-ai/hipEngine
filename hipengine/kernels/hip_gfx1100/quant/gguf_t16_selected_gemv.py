@@ -29,9 +29,6 @@ _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_SINGLE_DIRECT_FP16 = "hipengine_gguf_q5_k_t16_selected_gemv_fp16_fp16_out"
 _Q6_SINGLE_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_gemv_bf16_bf16_out"
 _Q6_SINGLE_DIRECT_FP16 = "hipengine_gguf_q6_k_t16_selected_gemv_fp16_fp16_out"
-_Q4_SILU_X_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_silu_x_gemv_bf16_bf16_out"
-_Q5_SILU_X_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_silu_x_gemv_bf16_bf16_out"
-_Q6_SILU_X_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out"
 _Q4_DUAL_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out"
 _Q4_DUAL_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out"
 _Q4_SINGLE_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out"
@@ -196,58 +193,6 @@ def gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
         runtime=runtime,
     )
 
-
-
-def gguf_q4_k_t16_selected_silu_x_gemv_bf16_bf16_out(
-    gate_up_ptr: int,
-    selected_ptr: int,
-    tiles_ptr: int,
-    out_ptr: int,
-    x_rows: int,
-    rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-    library=None,
-    runtime=None,
-) -> None:
-    _launch_single_direct(_Q4_SILU_X_DIRECT_BF16, gate_up_ptr, selected_ptr, tiles_ptr, out_ptr, x_rows, rows, num_experts, in_features, out_features, stream=stream, library=library, runtime=runtime)
-
-def gguf_q5_k_t16_selected_silu_x_gemv_bf16_bf16_out(
-    gate_up_ptr: int,
-    selected_ptr: int,
-    tiles_ptr: int,
-    out_ptr: int,
-    x_rows: int,
-    rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-    library=None,
-    runtime=None,
-) -> None:
-    _launch_single_direct(_Q5_SILU_X_DIRECT_BF16, gate_up_ptr, selected_ptr, tiles_ptr, out_ptr, x_rows, rows, num_experts, in_features, out_features, stream=stream, library=library, runtime=runtime)
-
-def gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out(
-    gate_up_ptr: int,
-    selected_ptr: int,
-    tiles_ptr: int,
-    out_ptr: int,
-    x_rows: int,
-    rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-    library=None,
-    runtime=None,
-) -> None:
-    _launch_single_direct(_Q6_SILU_X_DIRECT_BF16, gate_up_ptr, selected_ptr, tiles_ptr, out_ptr, x_rows, rows, num_experts, in_features, out_features, stream=stream, library=library, runtime=runtime)
 
 def gguf_q4_k_t16_selected_gemv_bf16_bf16_out(
     x_ptr: int,
@@ -1101,10 +1046,6 @@ register_gguf_t16_selected_gemv_kernels()
 
 
 __all__ = [
-    "gguf_q4_k_t16_selected_silu_x_gemv_bf16_bf16_out",
-    "gguf_q5_k_t16_selected_silu_x_gemv_bf16_bf16_out",
-    "gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out",
-
     "build_gguf_t16_selected_gemv",
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out",

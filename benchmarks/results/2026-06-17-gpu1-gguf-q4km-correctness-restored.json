@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-17",
+  "artifact_type": "correctness_fix_validation",
+  "performance_claim": false,
+  "status": "correctness_restored_diagnostic_baseline",
+  "commit_before_fix": "a2a3a1e5",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX gfx1100, 24 GiB class",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "code_change_summary": "Restored the e089d1c2 correctness-sensitive GGUF runner/materialization/selected-T16-kernel code to the pre-e089 parent 8bbda8c9, removing the fused selected-expert silu_x path, restoring Q8_0 T16 materialization, and returning dense Q4_K materialization to the pre-e089 pack8 policy.",
+  "raw_json": "/tmp/hipengine-gpu1-q4km-correctness-fix-512-4k-20260617-072018.json",
+  "previous_q4km_correctness_good_artifact": "benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json",
+  "wrong_current_q4km_diagnostic_artifact": "benchmarks/results/2026-06-17-gpu1-gguf-q4km-current-512-4k-diagnostic.json",
+  "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+  "command": "env -i ... HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gpu1-q4km-correctness-fix-512-4k-20260617-072018.json",
+  "tests": {
+    "targeted_guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 -m pytest tests/test_gguf_t16_repack.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q",
+    "targeted_guard_result": "154 passed"
+  },
+  "summary_by_workload": {
+    "512/128": {
+      "prefill_tok_s_median": 2307.5147270868915,
+      "decode_tok_s_median": 125.09528707337574,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        318,
+        318,
+        318,
+        318,
+        318
+      ],
+      "final_token_ids_stable": true,
+      "hip_used_peak_sampled_gib_median": 23.03943634033203,
+      "delta_vs_previous_q4km_correctness_good_pct": {
+        "prefill": 23.658658314252644,
+        "decode": 0.4482966509435027,
+        "tracked_peak_gib": -0.0040340423583984375
+      },
+      "delta_vs_wrong_current_diagnostic_pct": {
+        "prefill": 3.4812050888890056,
+        "decode": -0.6117709678473471,
+        "tracked_peak_gib": 0.0
+      },
+      "ids_match_previous_q4km_correctness_good": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2599.3571095449893,
+      "decode_tok_s_median": 114.19493248123041,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        220,
+        220,
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "hip_used_peak_sampled_gib_median": 23.04138946533203,
+      "delta_vs_previous_q4km_correctness_good_pct": {
+        "prefill": 21.811512086025008,
+        "decode": 0.10506024171603734,
+        "tracked_peak_gib": -0.0040340423583984375
+      },
+      "delta_vs_wrong_current_diagnostic_pct": {
+        "prefill": 8.278700077561885,
+        "decode": -0.49969543385940396,
+        "tracked_peak_gib": 0.0
+      },
+      "ids_match_previous_q4km_correctness_good": true
+    }
+  },
+  "comparison_to_user_llamacpp_q4km_512": {
+    "llamacpp_hip_pp512_tok_s": 2736.98,
+    "llamacpp_vulkan_pp512_tok_s": 2389.53,
+    "llamacpp_hip_tg128_tok_s": 94.13,
+    "llamacpp_vulkan_tg128_tok_s": 79.9,
+    "llamacpp_hip_prefill_advantage_pct": 18.61159401809256,
+    "llamacpp_vulkan_prefill_advantage_pct": 3.5542686662133782,
+    "hipengine_decode_advantage_vs_llamacpp_hip_pct": 32.89629987610299,
+    "hipengine_decode_advantage_vs_llamacpp_vulkan_pct": 56.56481486029503
+  },
+  "interpretation": [
+    "Q4_K_M deterministic IDs are restored to the previous correctness-good baseline: 512/128 -> 318 and 4K/128 -> 220.",
+    "Tracked peak remains 22.487 GiB and sampled HIP-used remains about 23.04 GiB, so the restored path still fits the 24 GiB-class GPU1 short gates.",
+    "This is a correctness recovery, not a new performance promotion claim; future optimization should start from this corrected Q4_K_M baseline, and any raw-Q8 or dense-Q4 raw memory tradeoff must be split and explicitly reviewed.",
+    "After correctness recovery, hipEngine Q4_K_M pp512 still trails user llama.cpp HIP by 18.61% and Vulkan by 3.55%; decode remains ahead of both llama.cpp tg128 rows."
+  ]
+}

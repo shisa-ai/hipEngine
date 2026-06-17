@@ -108,9 +108,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
-    gguf_q4_k_t16_selected_silu_x_gemv_bf16_bf16_out,
-    gguf_q5_k_t16_selected_silu_x_gemv_bf16_bf16_out,
-    gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
@@ -2181,6 +2178,101 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _run_post_attention_moe_c1_unfused_selected_ffn(
+        self,
+        gate_weight,
+        up_weight,
+        down_weight,
+        scratch,
+        *,
+        selected_rows: int,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> None:
+        """Unfused selected-expert FFN: gate_up GEMV -> silu*mul -> down GEMV into
+        ``scratch.moe_down_out``. Numerically-equivalent fallback for the fused B1
+        megakernel (architectural invariant), and the default rows==1 path."""
+        cfg = self.weights.config
+        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
+        expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
+            gate_weight,
+            up_weight,
+            scratch.post_norm.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.ffn_intermediate.ptr,
+            x_rows=1,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not expert_silu_ready:
+            if not _launch_selected_raw_gguf_moe_pair(
+                gate_weight,
+                up_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                x_rows=1,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            ):
+                _launch_selected_raw_gguf_moe_linear(
+                    gate_weight,
+                    scratch.post_norm.ptr,
+                    scratch.moe_selected_experts.ptr,
+                    scratch.ffn_gate_up.ptr,
+                    x_rows=1,
+                    rows=selected_rows,
+                    num_experts=cfg.expert_count,
+                    in_features=self.hidden_size,
+                    out_features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                _launch_selected_raw_gguf_moe_linear(
+                    up_weight,
+                    scratch.post_norm.ptr,
+                    scratch.moe_selected_experts.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    x_rows=1,
+                    rows=selected_rows,
+                    num_experts=cfg.expert_count,
+                    in_features=self.hidden_size,
+                    out_features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            silu_mul_separate_out_bf16(
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                scratch.ffn_intermediate.ptr,
+                rows=selected_rows,
+                features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        _launch_selected_raw_gguf_moe_linear(
+            down_weight,
+            scratch.ffn_intermediate.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.moe_down_out.ptr,
+            x_rows=selected_rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=cfg.expert_feed_forward_length,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+
     def _run_post_attention_moe_rows(
         self,
         layer_id: int,
@@ -2241,189 +2333,60 @@ class Qwen35GGUFFullStackRunner:
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
-        
-        expert_silu_ready = False
-        fused_silu_x = False
-
-        if (
-            _env_flag(_GGUF_COMPACT_MOE_C1_ENV, True)
-            and getattr(cfg, "moe_grouped_device_gather", True)
-            and getattr(cfg, "moe_stacked_compact", True)
+        if _try_run_post_attention_moe_rows_compact_wmma(
+            self,
+            layer,
+            gate_weight,
+            up_weight,
+            down_weight,
+            out_ptr,
+            scratch,
+            rows=rows,
+            selected_rows=selected_rows,
+            top_k=top_k,
+            stream=stream,
+            runtime=runtime,
         ):
-            if _try_run_post_attention_moe_rows_compact_wmma(
-                self,
-                layer,
-                gate_weight,
-                up_weight,
-                down_weight,
-                out_ptr,
-                scratch,
-                rows=rows,
-                selected_rows=selected_rows,
-                top_k=top_k,
-                stream=stream,
-                runtime=runtime,
-            ):
-                return
-            compact_plan = _CompactMoeGemvPlan.build(scratch, rows=rows, num_experts=cfg.expert_count, stream=stream, runtime=runtime)
-            if expert_sidecar is not None:
-                expert_silu_ready = _launch_selected_expert_pack8_moe_pair(
-                    expert_sidecar.tensor("ffn_gate_exps"),
-                    expert_sidecar.tensor("ffn_up_exps"),
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + compact_plan.rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
-                    x_rows=rows,
-                    rows=compact_plan.rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                    library=getattr(self, "_expert_pack8_library", None),
-                )
-            else:
-                expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
-                    gate_weight,
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_intermediate.ptr,
-                    x_rows=rows,
-                    rows=compact_plan.rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                if not expert_silu_ready:
-                    if not _launch_selected_raw_gguf_moe_pair(
-                        gate_weight,
-                        up_weight,
-                        scratch.post_norm.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.ffn_gate_up.ptr,
-                        scratch.ffn_gate_up.ptr + compact_plan.rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
-                        x_rows=rows,
-                        rows=compact_plan.rows,
-                        num_experts=cfg.expert_count,
-                        in_features=self.hidden_size,
-                        out_features=cfg.expert_feed_forward_length,
-                        stream=stream,
-                        runtime=runtime,
-                    ):
-                        _launch_selected_raw_gguf_moe_linear(
-                            gate_weight,
-                            scratch.post_norm.ptr,
-                            scratch.moe_selected_experts.ptr,
-                            scratch.ffn_gate_up.ptr,
-                            x_rows=rows,
-                            rows=compact_plan.rows,
-                            num_experts=cfg.expert_count,
-                            in_features=self.hidden_size,
-                            out_features=cfg.expert_feed_forward_length,
-                            stream=stream,
-                            runtime=runtime,
-                        )
-                        _launch_selected_raw_gguf_moe_linear(
-                            up_weight,
-                            scratch.post_norm.ptr,
-                            scratch.moe_selected_experts.ptr,
-                            scratch.ffn_gate_up.ptr + compact_plan.rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
-                            x_rows=rows,
-                            rows=compact_plan.rows,
-                            num_experts=cfg.expert_count,
-                            in_features=self.hidden_size,
-                            out_features=cfg.expert_feed_forward_length,
-                            stream=stream,
-                            runtime=runtime,
-                        )
-            
-            if expert_silu_ready and expert_sidecar is None:
-                fused_silu_x = _launch_selected_raw_gguf_moe_linear_silu_x(
-                    down_weight,
-                    scratch.ffn_gate_up.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_down_out.ptr,
-                    x_rows=rows,
-                    rows=compact_plan.rows,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-
-            if not fused_silu_x:
-                if not expert_silu_ready:
-                    silu_mul_separate_out_bf16(
-                        scratch.ffn_gate_up.ptr,
-                        scratch.ffn_gate_up.ptr + compact_plan.rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
-                        scratch.ffn_intermediate.ptr,
-                        rows=compact_plan.rows,
-                        features=cfg.expert_feed_forward_length,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                if expert_sidecar is not None:
-                    _launch_selected_expert_pack8_moe_linear(
-                        expert_sidecar.tensor("ffn_down_exps"),
-                        scratch.ffn_intermediate.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.moe_down_out.ptr,
-                        x_rows=rows,
-                        rows=compact_plan.rows,
-                        num_experts=cfg.expert_count,
-                        in_features=cfg.expert_feed_forward_length,
-                        out_features=self.hidden_size,
-                        stream=stream,
-                        runtime=runtime,
-                        library=getattr(self, "_expert_pack8_library", None),
-                    )
-                else:
-                    _launch_selected_raw_gguf_moe_linear(
-                        down_weight,
-                        scratch.ffn_intermediate.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.moe_down_out.ptr,
-                        x_rows=rows,
-                        rows=compact_plan.rows,
-                        num_experts=cfg.expert_count,
-                        in_features=cfg.expert_feed_forward_length,
-                        out_features=self.hidden_size,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-
-            weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
-                scratch.moe_down_out.ptr,
-                scratch.moe_routing_weights.ptr,
-                scratch.moe_shared_out.ptr,
-                scratch.moe_shared_gate_logits.ptr,
-                scratch.residual.ptr,
-                out_ptr,
-                rows,
-                top_k,
-                self.hidden_size,
-                1,
-                stream=stream,
-                runtime=runtime,
-            )
             return
-
+        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
         expert_silu_ready = False
-        fused_silu_x = False
-
-        if expert_sidecar is not None:
-            expert_silu_ready = _launch_selected_expert_pack8_moe_pair(
+        if expert_sidecar is not None and _launch_selected_expert_pack8_moe_pair(
+            expert_sidecar.tensor("ffn_gate_exps"),
+            expert_sidecar.tensor("ffn_up_exps"),
+            scratch.post_norm.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.ffn_gate_up.ptr,
+            scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+            x_rows=rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+            library=getattr(self, "_expert_pack8_library", None),
+        ):
+            pass
+        elif expert_sidecar is not None:
+            _launch_selected_expert_pack8_moe_linear(
                 expert_sidecar.tensor("ffn_gate_exps"),
-                expert_sidecar.tensor("ffn_up_exps"),
                 scratch.post_norm.ptr,
                 scratch.moe_selected_experts.ptr,
                 scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
+                x_rows=rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+                library=getattr(self, "_expert_pack8_library", None),
+            )
+            _launch_selected_expert_pack8_moe_linear(
+                expert_sidecar.tensor("ffn_up_exps"),
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
                 x_rows=rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
@@ -2434,12 +2397,16 @@ class Qwen35GGUFFullStackRunner:
                 library=getattr(self, "_expert_pack8_library", None),
             )
         else:
-            expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
+            # The Q4T16 dual+SiLU fusion is decode-only for now.  In rows>1
+            # bulk prefill the extra exp/rounding work in the GEMV accumulator
+            # did not pay for the removed SiLU launch, so keep the split path.
+            if not _launch_selected_raw_gguf_moe_pair(
                 gate_weight,
                 up_weight,
                 scratch.post_norm.ptr,
                 scratch.moe_selected_experts.ptr,
-                scratch.ffn_intermediate.ptr,
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
                 x_rows=rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
@@ -2447,15 +2414,12 @@ class Qwen35GGUFFullStackRunner:
                 out_features=cfg.expert_feed_forward_length,
                 stream=stream,
                 runtime=runtime,
-            )
-            if not expert_silu_ready:
-                if not _launch_selected_raw_gguf_moe_pair(
+            ):
+                _launch_selected_raw_gguf_moe_linear(
                     gate_weight,
-                    up_weight,
                     scratch.post_norm.ptr,
                     scratch.moe_selected_experts.ptr,
                     scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
                     x_rows=rows,
                     rows=selected_rows,
                     num_experts=cfg.expert_count,
@@ -2463,41 +2427,52 @@ class Qwen35GGUFFullStackRunner:
                     out_features=cfg.expert_feed_forward_length,
                     stream=stream,
                     runtime=runtime,
-                ):
-                    _launch_selected_raw_gguf_moe_linear(
-                        gate_weight,
-                        scratch.post_norm.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.ffn_gate_up.ptr,
-                        x_rows=rows,
-                        rows=selected_rows,
-                        num_experts=cfg.expert_count,
-                        in_features=self.hidden_size,
-                        out_features=cfg.expert_feed_forward_length,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                    _launch_selected_raw_gguf_moe_linear(
-                        up_weight,
-                        scratch.post_norm.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.ffn_gate_up.ptr + selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
-                        x_rows=rows,
-                        rows=selected_rows,
-                        num_experts=cfg.expert_count,
-                        in_features=self.hidden_size,
-                        out_features=cfg.expert_feed_forward_length,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-
-        if expert_silu_ready and expert_sidecar is None:
-            fused_silu_x = _launch_selected_raw_gguf_moe_linear_silu_x(
-                down_weight,
+                )
+                _launch_selected_raw_gguf_moe_linear(
+                    up_weight,
+                    scratch.post_norm.ptr,
+                    scratch.moe_selected_experts.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    x_rows=rows,
+                    rows=selected_rows,
+                    num_experts=cfg.expert_count,
+                    in_features=self.hidden_size,
+                    out_features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+        if not expert_silu_ready:
+            silu_mul_separate_out_bf16(
                 scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                scratch.ffn_intermediate.ptr,
+                rows=selected_rows,
+                features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        if expert_sidecar is not None:
+            _launch_selected_expert_pack8_moe_linear(
+                expert_sidecar.tensor("ffn_down_exps"),
+                scratch.ffn_intermediate.ptr,
                 scratch.moe_selected_experts.ptr,
                 scratch.moe_down_out.ptr,
-                x_rows=rows,
+                x_rows=selected_rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=cfg.expert_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+                library=getattr(self, "_expert_pack8_library", None),
+            )
+        else:
+            _launch_selected_raw_gguf_moe_linear(
+                down_weight,
+                scratch.ffn_intermediate.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.moe_down_out.ptr,
+                x_rows=selected_rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
                 in_features=cfg.expert_feed_forward_length,
@@ -2505,47 +2480,6 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-
-        if not fused_silu_x:
-            if not expert_silu_ready:
-                silu_mul_separate_out_bf16(
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize,
-                    scratch.ffn_intermediate.ptr,
-                    rows=selected_rows,
-                    features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            if expert_sidecar is not None:
-                _launch_selected_expert_pack8_moe_linear(
-                    expert_sidecar.tensor("ffn_down_exps"),
-                    scratch.ffn_intermediate.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_down_out.ptr,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                    library=getattr(self, "_expert_pack8_library", None),
-                )
-            else:
-                _launch_selected_raw_gguf_moe_linear(
-                    down_weight,
-                    scratch.ffn_intermediate.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_down_out.ptr,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
 
         if launch_gguf_linear_pair_concat(
             layer.weight("ffn_gate_shexp"),
@@ -2618,7 +2552,6 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-
         weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
             scratch.moe_down_out.ptr,
             scratch.moe_routing_weights.ptr,
@@ -2633,134 +2566,6 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-
-
-    def _run_post_attention_moe_c1_unfused_selected_ffn(
-        self,
-        gate_weight,
-        up_weight,
-        down_weight,
-        scratch,
-        *,
-        selected_rows: int,
-        stream: int,
-        runtime: HipRuntime,
-        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
-    ) -> None:
-        cfg = self.weights.config
-        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
-            gate_weight,
-            up_weight,
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.ffn_intermediate.ptr,
-            x_rows=1,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        fused_silu_x = False
-        if expert_silu_ready and expert_sidecar is None:
-            fused_silu_x = _launch_selected_raw_gguf_moe_linear_silu_x(
-                down_weight,
-                scratch.ffn_gate_up.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.moe_down_out.ptr,
-                x_rows=1,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=cfg.expert_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-
-        if not fused_silu_x:
-            if not expert_silu_ready:
-                if not _launch_selected_raw_gguf_moe_pair(
-                    gate_weight,
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                ):
-                    _launch_selected_raw_gguf_moe_linear(
-                        gate_weight,
-                        scratch.post_norm.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.ffn_gate_up.ptr,
-                        x_rows=1,
-                        rows=selected_rows,
-                        num_experts=cfg.expert_count,
-                        in_features=self.hidden_size,
-                        out_features=cfg.expert_feed_forward_length,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                    _launch_selected_raw_gguf_moe_linear(
-                        up_weight,
-                        scratch.post_norm.ptr,
-                        scratch.moe_selected_experts.ptr,
-                        scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                        x_rows=1,
-                        rows=selected_rows,
-                        num_experts=cfg.expert_count,
-                        in_features=self.hidden_size,
-                        out_features=cfg.expert_feed_forward_length,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                silu_mul_separate_out_bf16(
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    scratch.ffn_intermediate.ptr,
-                    rows=selected_rows,
-                    features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            
-            if expert_sidecar is not None:
-                _launch_selected_expert_pack8_moe_linear(
-                    expert_sidecar.tensor("ffn_down_exps"),
-                    scratch.ffn_intermediate.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_down_out.ptr,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                    library=getattr(self, "_expert_pack8_library", None),
-                )
-            else:
-                _launch_selected_raw_gguf_moe_linear(
-                    down_weight,
-                    scratch.ffn_intermediate.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_down_out.ptr,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
 
     def close(self) -> None:
         if self.weights is not None:
@@ -5931,8 +5736,8 @@ def _launch_selected_raw_gguf_moe_pair_silu(
             runtime=runtime,
         )
         return True
-    # Q5_K and Q6_K don't have fused SiLU yet in `gguf_t16_selected_gemv.hip`
     return False
+
 
 def _launch_selected_raw_gguf_moe_pair(
     weight_a: Qwen35GGUFDeviceWeight,
@@ -6035,44 +5840,6 @@ def _launch_selected_raw_gguf_moe_linear(
         runtime=runtime,
     )
 
-def _launch_selected_raw_gguf_moe_linear_silu_x(
-    weight: Qwen35GGUFDeviceWeight,
-    x_ptr: int,
-    selected_ptr: int,
-    out_ptr: int,
-    *,
-    x_rows: int,
-    rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    stream: int,
-    runtime: HipRuntime,
-) -> bool:
-    quant_key = weight.spec.quant_key
-    if quant_key == "gguf_q4_k_t16_v1":
-        fn = gguf_q4_k_t16_selected_silu_x_gemv_bf16_bf16_out
-    elif quant_key == "gguf_q5_k_t16_v1":
-        fn = gguf_q5_k_t16_selected_silu_x_gemv_bf16_bf16_out
-    elif quant_key == "gguf_q6_k_t16_v1":
-        fn = gguf_q6_k_t16_selected_silu_x_gemv_bf16_bf16_out
-    else:
-        return False
-    allocation = "tiles" if quant_key.endswith("_t16_v1") else "raw"
-    fn(
-        x_ptr,
-        selected_ptr,
-        weight.allocation(allocation).tensor.ptr,
-        out_ptr,
-        x_rows,
-        rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-        runtime=runtime,
-    )
-    return True
 
 def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray, *, stream: int = 0) -> None:
     if zeros.nbytes == buffer.nbytes and bool(np.all(zeros == 0)):

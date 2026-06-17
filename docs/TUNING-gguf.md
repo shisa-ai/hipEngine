@@ -93,32 +93,24 @@ than file parsing or Python host code.
 ## Active GPU1 gate baseline
 
 Canonical GGUF tuning is now `Q4_K_M`, not `Q4_K_S`, so comparisons to
-llama.cpp are 1:1. The last documented Q4_K_M correctness-good diagnostic before
-the `e089d1c2` regression is
-`benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`
-(commit `192335cc`):
-
-| Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Correctness sanity |
-| --- | ---: | ---: | ---: | --- |
-| 512/128 | `1866.036` | `124.537` | `22.491 GiB` | stable final token `318` |
-| 4K/128 | `2133.917` | `114.075` | `22.491 GiB` | stable final token `220` |
-
-A current `main` Q4_K_M diagnostic under the isolated TheRock env is
-`benchmarks/results/2026-06-17-gpu1-gguf-q4km-current-512-4k-diagnostic.json`:
+llama.cpp are 1:1. Current correctness-restored GPU1 Q4_K_M baseline is
+`benchmarks/results/2026-06-17-gpu1-gguf-q4km-correctness-restored.json`, after
+removing the e089 fused selected-expert/raw-Q8 correctness branch and restoring
+the pre-e089 dense Q4_K materialization policy:
 
 | Workload | Prefill tok/s median | Decode tok/s median | Tracked peak | Sampled HIP used peak | Correctness sanity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | `2229.888` | `125.865` | `22.487 GiB` | `23.039 GiB` | stable but token changed `318 -> 38118` |
-| 4K/128 | `2400.617` | `114.768` | `22.487 GiB` | `23.041 GiB` | stable but token changed `220 -> 1076` |
+| 512/128 | `2307.515` | `125.095` | `22.487 GiB` | `23.039 GiB` | stable final token `318` |
+| 4K/128 | `2599.357` | `114.195` | `22.487 GiB` | `23.041 GiB` | stable final token `220` |
 
-Therefore the current row is diagnostic-only, not a promotion baseline: it uses
-the correct Q4_K_M model/quant and shows hipEngine decode still ahead of the
-user-provided llama.cpp Q4_K_M tg128 row, but it also confirms that current
-`main` still has the e089-family ID regression. Before resuming optimization,
-restore Q4_K_M gate IDs to `318/220` (or replace them only with a deliberate,
-reviewed correctness-oracle update). The primary multiloop scalar metric remains
-the minimum gate decode rate, but acceptance is the full gate vector; do not keep
-any prefill/decode/memory tradeoff without user approval.
+This restores the previous Q4_K_M correctness-good IDs from
+`benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`
+while improving both primary prefill medians and keeping tracked memory flat
+(`-0.004 GiB` vs that artifact). The interim current-main diagnostic
+`benchmarks/results/2026-06-17-gpu1-gguf-q4km-current-512-4k-diagnostic.json`
+was invalid because it changed IDs (`318/220 -> 38118/1076`). The primary
+multiloop scalar metric remains the minimum gate decode rate, now `114.195 tok/s`, but acceptance is the full gate vector; do not keep any
+prefill/decode/memory tradeoff without user approval.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -315,15 +307,15 @@ Retained notes:
 
 Current focused lanes from evidence:
 
-0. **Recovery before more tuning:** split or revert `e089d1c2` before resuming
-   optimization. The W7900 bisect shows the G-P4 memory fix is a modest, ID-safe
-   prefill cost, while `e089d1c2` is the first tested commit with the large 4K
-   prefill drop and the `220/570 -> 1813/151531` ID change on Q4_K_S; the
-   current Q4_K_M diagnostic similarly changed `318/220 -> 38118/1076`. Restore
-   Q8_0 T16 materialization for any covered promoted path, then audit the fused
-   selected-expert runtime/kernel changes separately. Do not treat current `main`
-   GGUF rows as a valid baseline until the Q4_K_M primary IDs are back to
-   `318/220` or an updated correctness oracle is deliberately approved.
+0. **Correctness branch fixed; resume from the restored Q4_K_M baseline.** The
+   W7900 bisect showed `e089d1c2` was the first tested point with the large 4K
+   prefill drop and the `220/570 -> 1813/151531` ID change on Q4_K_S; the Q4_K_M
+   diagnostic similarly changed `318/220 -> 38118/1076`. The correctness fix
+   restores the pre-e089 GGUF runner/materialization/selected-T16 code path
+   (including Q8_0 T16 and dense Q4_K pack8 materialization), so Q4_K_M IDs are
+   back to `318/220`. Future fused selected-expert, raw-Q8, or dense-Q4 raw
+   memory work must be reintroduced as split candidates with a targeted oracle
+   plus the full Q4_K_M gate; do not resurrect the bundled e089 path.
 1. **llama.cpp prefill parity:** the 2026-06-16 local llama.cpp
    `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` bench on GPU1 reported HIP
    `pp512=2736.98 ± 53.51 tok/s`, `tg128=94.13 ± 1.29 tok/s`, and Vulkan
@@ -499,21 +491,17 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
   rocprofv3/RGP-equivalent llama.cpp HIP pp512 capture and a Vulkan pipeline log,
   then compare launch families against hipEngine's current `512/128` profile.
 - Apples-to-apples before adopting: the user benchmark is `Q4_K_M`, so the
-  active loop gates must also be `Q4_K_M`. The first refreshed hipEngine Q4_K_M
-  GPU1 diagnostic was
-  `benchmarks/results/2026-06-16-gpu1-gguf-q4km-current-parity-diagnostic.json`:
-  `512/128` `1866.036` prefill / `124.537` decode tok/s with stable ID `[318]`,
-  and `4K/128` `2133.917` / `114.075` with stable ID `[220]`, tracked peak
-  `22.491 GiB`. A newer current-main diagnostic using the same Q4_K_M model is
-  `benchmarks/results/2026-06-17-gpu1-gguf-q4km-current-512-4k-diagnostic.json`:
-  `512/128` `2229.888` / `125.865`, `4K/128` `2400.617` / `114.768`, tracked
-  peak `22.487 GiB`, sampled HIP used `~23.04 GiB`, but IDs changed to
-  `38118/1076`. Therefore current-main Q4_K_M numbers are diagnostic only until
-  the e089 ID regression is fixed. Against the user's same-model llama.cpp row,
-  current hipEngine Q4_K_M pp512 is still behind llama.cpp HIP by `22.7%` and
-  Vulkan by `7.2%`, while decode remains faster (`+33.7%` vs llama.cpp HIP
-  tg128, `+57.5%` vs Vulkan tg128). The immediate 1:1 parity gap is short
-  prefill, but correctness recovery comes first.
+  active loop gates must also be `Q4_K_M`. The current correctness-restored
+  Q4_K_M GPU1 baseline is
+  `benchmarks/results/2026-06-17-gpu1-gguf-q4km-correctness-restored.json`:
+  `512/128` `2307.515` prefill / `125.095` decode tok/s with stable ID `[318]`,
+  and `4K/128` `2599.357` / `114.195` with stable ID `[220]`, tracked peak
+  `22.487 GiB`, sampled HIP used `~23.04 GiB`. This supersedes the invalid
+  current-main diagnostic that changed IDs to `38118/1076`. Against the user's
+  same-model llama.cpp row, hipEngine Q4_K_M pp512 is still behind llama.cpp HIP
+  by `18.6%` and Vulkan by `3.6%`, while decode remains faster (`+32.9%` vs
+  llama.cpp HIP tg128, `+56.6%` vs Vulkan tg128). The immediate 1:1 parity gap
+  is short prefill.
 
 No-hold notes:
 
