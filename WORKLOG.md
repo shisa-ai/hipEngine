@@ -100474,3 +100474,59 @@ weights are Q5_K) — noted as an M6 gap; F32 fixture gate doesn't need it.
 self-attn, KVLiveSpans), then ffn+moe_routing, then shared_head + composite
 `mtp_nextn_layer`. Full-layer rocprofv3 --kernel-trace smoke at the M3 GREEN
 milestone.
+
+## 2026-06-17 — M3 GREEN: native GPU mtp_nextn_layer complete + rocprofv3 trace
+
+**Context:** Continuation of the M3 pivot. Implemented the remaining three
+sub-kernels and the composite layer, then ran the M3 closure gate.
+
+**Sub-kernels landed (RED->GREEN->committed):**
+- `mtp_nextn_attention` (044ba9d5): F32 dense causal GQA + sigmoid gate +
+  residual. New HIP kernels: linear, sigmoid_gate_mul, add, dense_attn.
+- `mtp_nextn_ffn` + `mtp_nextn_moe_routing` (206e7bb4): router linear on GPU +
+  softmax/topk on host (correctness-first); per-expert silu(gate)*up->down +
+  shared expert + sigmoid gate + residual. New HIP kernels: silu_mul, mul,
+  scale, row_scale.
+- `mtp_nextn_shared_head` + composite `mtp_nextn_layer` (2d75978e): RMSNorm +
+  LM-head linear; composite chains eh_proj -> attention -> ffn -> shared_head.
+  Registered under KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_layer, w4_gguf,
+  qwen35_dense_logits) -- the M3 native runtime key.
+
+**Drift root cause fixed:** `resolve(hip_gfx1100|hip_gfx1151, mtp_nextn_layer,
+w4_gguf, qwen35_dense_logits)` now returns the native GPU kernel
+(`qwen35_gguf_mtp_nextn_layer_logits_f32`), NOT the cpu_reference fallback that
+`registry._candidate_keys` had been silently returning. Verified directly.
+
+**M3 scope (documented in each wrapper):** F32 qtype + DEFAULT dense attention
+path (positions=arange, ctx=pos+1, no RoPE, no KVLiveSpans paged cache). K-quant
+(Q4_K/Q5_K/Q8_0), RoPE, and paged-KV branches raise NotImplementedError (M6).
+The F32 M3 fixture does not exercise them.
+
+**M3 closure gate (this unit):**
+- Correctness: official oracle gate `scripts/gguf_mtp_oracle_gate.py
+  --fail-on-fail` passes (reference self-check KL=0.0, top1=1.0). Hip-backend
+  gate `tests/test_mtp_nextn_layer_hip.py` 4/4 pass on gfx1151: KL<=0.05 AND
+  top1>=90% vs cpu_reference, with a guard that resolve() returns the native
+  kernel (not the cpu_reference oracle). Full suite 18/18 pass (eh_proj 3 +
+  attn 3 + ffn 4 + layer 4 + registry 4). max_abs vs cpu_reference = 0.0.
+- rocprofv3 --kernel-trace (rocprofv3 v1.2.2): profiled
+  `scripts/mtp_nextn_rocprof_driver.py` after prebuilding the .so outside the
+  profiler (HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipcc_version.txt +
+  require_cached, per AGENTS.md profiling rule). 74 total kernel dispatches,
+  31 `hipengine_mtp_*` dispatches. All 9 native kernels ran under their expected
+  names with plausible sub-us durations:
+  rmsnorm_f32(x7), linear_f32(x13), eh_proj_f32(x1, 3.3us), dense_attn_f32(x1,
+  7.6us), sigmoid_gate_mul_f32(x1), add_f32(x4), silu_mul_f32(x2), scale_f32(x1),
+  row_scale_f32(x1). No hangs -- clean contrast with the vLLM/Triton fused-MoE
+  hang on gfx1151 (docs/VLLM_RDNA3.md).
+- Artifact: benchmarks/results/2026-06-17-m3-native-nextn-layer-gfx1151.json.
+
+**Compatibility:** built in hip_gfx1100/ -> auto-aliased to hip_gfx1151
+(--offload-arch=gfx1151). Same source compiles for gfx1100 (W7900), satisfying
+the user's gfx1100-compat requirement. Hand-written HIP runs on both.
+
+**Next (M6, not M3):** K-quant (Q4_K/Q5_K/Q8_0) expert gemv -- Q5_K is absent
+from hip_gfx1100 and the real NextN down weights are Q5_K; RoPE; KVLiveSpans
+paged-cache attention path; GPU router softmax/topk; WMMA-tuned real-shape
+kernels. The mtp-gguf multiloop can resume against a real correctness signal now
+that the native runtime key exists.

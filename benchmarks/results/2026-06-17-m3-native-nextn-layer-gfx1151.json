@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "kind": "m3_native_nextn_layer",
+  "status": "accepted",
+  "date": "2026-06-17",
+  "model": "Qwen3.6-35B-A3B (MTP NextN draft head, synthetic F32 fixture)",
+  "quant": "F32 (M3 correctness fixture; K-quant is M6)",
+  "workload": "1-token NextN draft forward on benchmarks/fixtures/qwen35_gguf_mtp_nextn_cpu_reference_fixture.json (n_embd=2, vocab=4, 1 head, 1 kv head, 2 experts, top_k=1)",
+  "hardware": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S Graphics (gfx1151, RDNA 3.5, Strix Halo)",
+  "backend": "hip_gfx1100 kernel source compiled --offload-arch=gfx1151 (auto-aliased to hip_gfx1151)",
+  "correctness_gate": {
+    "max_kl": 0.0,
+    "mean_kl": 0.0,
+    "top1_agreement": 1.0,
+    "max_abs_vs_cpu_reference": 0.0,
+    "thresholds": {"max_kl": 0.05, "min_top1_agreement": 0.90},
+    "passed": true
+  },
+  "rocprofv3_kernel_trace": {
+    "tool": "rocprofv3 v1.2.2 (git c76140fa27)",
+    "command": "rocprofv3 --kernel-trace -d /tmp/mtp_rocprof_out -- python3 scripts/mtp_nextn_rocprof_driver.py",
+    "total_kernel_dispatches": 74,
+    "hipengine_mtp_dispatches": 31,
+    "native_kernels_observed": [
+      {"name": "hipengine_mtp_rmsnorm_f32_kernel", "count": 7, "dur_ns_range": [1853, 3982]},
+      {"name": "hipengine_mtp_linear_f32_kernel", "count": 13, "dur_ns_range": [1084, 3755]},
+      {"name": "hipengine_mtp_eh_proj_f32_kernel", "count": 1, "dur_ns": 3294},
+      {"name": "hipengine_mtp_dense_attn_f32_kernel", "count": 1, "dur_ns": 7588},
+      {"name": "hipengine_mtp_sigmoid_gate_mul_f32_kernel", "count": 1, "dur_ns": 2079},
+      {"name": "hipengine_mtp_add_f32_kernel", "count": 4, "dur_ns_range": [1166, 1589]},
+      {"name": "hipengine_mtp_silu_mul_f32_kernel", "count": 2, "dur_ns_range": [1493, 2415]},
+      {"name": "hipengine_mtp_scale_f32_kernel", "count": 1, "dur_ns": 9693},
+      {"name": "hipengine_mtp_row_scale_f32_kernel", "count": 1, "dur_ns": 2999}
+    ],
+    "all_kernels_completed": true,
+    "hang": false
+  },
+  "registered_keys": [
+    "KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_eh_proj, gguf_f32, qwen35)",
+    "KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_attention, gguf_f32, qwen35_dense)",
+    "KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_moe_routing, gguf_f32, qwen35)",
+    "KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_ffn, gguf_f32, qwen35)",
+    "KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_shared_head, gguf_f32, qwen35_dense_logits)",
+    "KernelKey(hip_gfx1100|hip_gfx1151, mtp_nextn_layer, w4_gguf, qwen35_dense_logits)"
+  ],
+  "m3_scope": "F32 qtype + DEFAULT dense attention path (positions=arange, ctx=pos+1, no RoPE, no KVLiveSpans paged cache). K-quant (Q4_K/Q5_K/Q8_0), RoPE, and paged-KV branches raise NotImplementedError (M6 work).",
+  "tests": "tests/test_mtp_nextn_{eh_proj,attention,ffn,layer}_hip.py + test_kernel_registry.py: 18/18 pass on gfx1151",
+  "commits": ["dd7abb60", "c5bb6b09", "044ba9d5", "206e7bb4", "2d75978e"],
+  "notes": "M3 native GPU NextN draft layer complete. resolve(hip_gfx1100|hip_gfx1151, mtp_nextn_layer, w4_gguf, qwen35_dense_logits) now returns the native GPU kernel, NOT the cpu_reference fallback (the drift root cause is fixed for this key). Built in hip_gfx1100/ -> auto-aliased to hip_gfx1151 (gfx1100-compat). Hand-written HIP kernels run cleanly on gfx1151, in contrast to the vLLM/Triton fused-MoE hang (see docs/VLLM_RDNA3.md)."
+}
