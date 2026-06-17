@@ -492,6 +492,18 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **GPU0/W7900 current 512/4K diagnostic is regressed (2026-06-17).** A
+  current clean-`main` spot-check on GPU0 (`AMD Radeon Pro W7900`, TheRock HIP
+  `7.13`) with only `512/128` and `4K/128` workloads measured `512/128`
+  `1680.586` prefill / `107.931` decode tok/s and `4K/128` `1892.216` /
+  `98.004` tok/s, stable IDs `1813/151531`, peak `21.331 GiB`. Versus the
+  prior W7900 README refresh artifact (`2226.422` and `2515.478` prefill tok/s,
+  stable IDs `220/570`, peak `25.108 GiB` from the full default workload list),
+  this is about `-24.5%` / `-24.8%` prefill and the generated IDs differ. Treat
+  the current W7900 row as a diagnostic regression until investigated; do not
+  update the README scorecard from it. Artifact:
+  `benchmarks/results/2026-06-17-gpu0-w7900-gguf-q4ks-current-512-4k-diagnostic.json`.
+
 - **G-D5 lm-head argmax fusion rejected (2026-06-17).** Reapplied the
   quarantined Q6T16 lm-head GEMV+argmax fusion to clean `main`, fixed wrapper
   validation/allocation issues, and added a focused synthetic Q6T16 argmax-vs-

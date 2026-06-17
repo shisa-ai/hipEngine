@@ -95785,3 +95785,12 @@ Validation and measurements:
 ### Decision
 - Rejected/no-held. Even though the focused synthetic kernel test passed, full-model deterministic IDs changed versus retained gate sanity (`220/570 -> 1813/151531`) and the primary metric regressed slightly versus current `114.670 tok/s`. Skipped `128K/128` because primary correctness failed.
 - Reverted candidate code/test changes after saving compact artifact `benchmarks/results/2026-06-17-gpu1-gguf-q4ks-q6t16-lmhead-argmax-rejected.json`.
+
+
+## 2026-06-17 — GPU0/W7900 current GGUF short-gate diagnostic
+
+- Ran a current clean-`main` (`be1e079e`) GPU0 spot-check on the W7900 for Qwen3.6-35B-A3B `Q4_K_S` with TheRock HIP `7.13.26162-1140233ffe`:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-w7900-gpu0-current-q4ks-512-4k-20260617-150643.json`.
+- Current result: `512/128` median `1680.586` prefill / `107.931` decode tok/s, stable final IDs `[1813]*5`, peak `21.330808 GiB`; `4K/128` median `1892.216` prefill / `98.004` decode tok/s, stable final IDs `[151531]*5`, peak `21.330808 GiB`.
+- Prior W7900 README refresh reference (`benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json`) was `512/128` `2226.422` prefill / `108.173` decode tok/s and `4K/128` `2515.478` / `98.516` tok/s with IDs `220/570`, peak `25.107746 GiB`. The current spot-check is therefore `-24.52%` / `-24.78%` prefill versus that W7900 reference and generated IDs differ. Note: prior W7900 reference was a full default-workload sweep while this spot-check loaded only `512/128` + `4K/128`, so the memory capacity differs; the prefill drop is still large enough to treat as a diagnostic regression.
+- Saved compact artifact `benchmarks/results/2026-06-17-gpu0-w7900-gguf-q4ks-current-512-4k-diagnostic.json`. Do not update the README scorecard from this diagnostic row; investigate the current short-gate prefill/ID regression first.

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-17",
+  "artifact_type": "diagnostic_benchmark",
+  "status": "diagnostic_regression_vs_prior_w7900",
+  "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "commit": "be1e079e",
+  "environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe"
+  },
+  "command": "cd /home/lhl/hipEngine && HIP_VISIBLE_DEVICES=0 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --workloads 512/128 4K/128 --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-w7900-gpu0-current-q4ks-512-4k-20260617-150643.json",
+  "raw_json": "/tmp/hipengine-w7900-gpu0-current-q4ks-512-4k-20260617-150643.json",
+  "prior_reference": {
+    "artifact": "benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-gguf-q4ks-5run.json",
+    "note": "Prior W7900 README refresh used the full default workload list; this diagnostic ran only 512/128 and 4K/128, so memory capacity differs but short-gate prefill comparison still shows a large regression."
+  },
+  "measurements": {
+    "512/128": {
+      "current_prefill_tok_s_median": 1680.586226871812,
+      "prior_prefill_tok_s_median": 2226.422215144837,
+      "prefill_delta_pct": -24.516283774033244,
+      "current_decode_tok_s_median": 107.93057225749727,
+      "prior_decode_tok_s_median": 108.17261460961619,
+      "decode_delta_pct": -0.22375566403051161,
+      "current_tracked_peak_gib_median": 21.330807745456696,
+      "prior_tracked_peak_gib_median": 25.107746124267578,
+      "current_final_token_ids": [1813, 1813, 1813, 1813, 1813],
+      "prior_final_token_ids": [220, 220, 220, 220, 220],
+      "current_final_token_ids_stable": true
+    },
+    "4K/128": {
+      "current_prefill_tok_s_median": 1892.2159271965402,
+      "prior_prefill_tok_s_median": 2515.478112698793,
+      "prefill_delta_pct": -24.77708640579547,
+      "current_decode_tok_s_median": 98.00382853580739,
+      "prior_decode_tok_s_median": 98.5158626903348,
+      "decode_delta_pct": -0.5197479274346772,
+      "current_tracked_peak_gib_median": 21.330807745456696,
+      "prior_tracked_peak_gib_median": 25.107746124267578,
+      "current_final_token_ids": [151531, 151531, 151531, 151531, 151531],
+      "prior_final_token_ids": [570, 570, 570, 570, 570],
+      "current_final_token_ids_stable": true
+    }
+  },
+  "decision": "This is a diagnostic only, not a retained row. Current GPU0/W7900 short-gate prefill is substantially regressed vs the prior W7900 refresh and generated IDs differ; investigate before updating the README scorecard."
+}
