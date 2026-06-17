@@ -95821,3 +95821,22 @@ Validation and measurements:
 - GPU1 Q4_K_M correctness gate under isolated TheRock env (`HIP_VISIBLE_DEVICES=1`, `HSA_OVERRIDE_GFX_VERSION=11.0.0`, `HIPENGINE_HIP_ARCH=gfx1100`, cached builds), `warmup-runs=2`, `measured-runs=5`: `512/128` median `2307.515` prefill / `125.095` decode tok/s, stable final IDs `[318]*5`, tracked peak `22.487058 GiB`, sampled HIP used `23.039436 GiB`; `4K/128` median `2599.357` / `114.195` tok/s, stable IDs `[220]*5`, tracked peak `22.487058 GiB`, sampled HIP used `23.041389 GiB`.
 - Interpretation: correctness is restored versus the previous Q4_K_M oracle (`318/220`) while the invalid current-main diagnostic (`38118/1076`) is superseded. This is a correctness recovery, not a new performance promotion claim. The active ignored multiloop state now uses the restored Q4_K_M full-vector baseline and a 5-run verify command; any future fused selected-expert/raw-Q8 memory idea must be reintroduced as a split candidate with its own oracle and full gate.
 - Saved artifact: `benchmarks/results/2026-06-17-gpu1-gguf-q4km-correctness-restored.json`.
+## 2026-06-17
+
+- docs: added docs/ROADMAP.md — strategic roadmap above PLAN.md. Records where
+  hipEngine chooses to compete (concurrent serving throughput, native sampler +
+  agent runtime, multi-backend portability) and where it doesn't (c=1 kernel
+  race, DMS on 35B-A3B, speculative decode on 35B-A3B). Two strategic shifts
+  captured: (1) GGUF becomes the default quant path, custom PARO/AWQ becomes an
+  opt-in gfx1100 high-perf path; (2) StepFun 3.7 text-only GGUF Q3_K_L on
+  gfx1151 is the next model+backend focus, with perf/NVFP4/vision/MTP deferred.
+  Phased plan: A=bank c=N concurrency moat to retained status on W7900
+  (highest leverage; 7.5x/1.6x diagnostic today), B=retained GGUF rows + Q3_K_L
+  coverage + GGUF-as-default, C=gfx1151 bring-up via StepFun 3.7, D=compounding
+  differentiators (native sampler, agent runtime, spec-decode for dense),
+  E=optional c=1 dp4a layout rewrite.
+- Note: the active stepfun-gguf-correctness multiloop (run-20260529-195720)
+  verifies against docs/STEPFUN.md P0-P12 checklist items. That punchlist is
+  being authored in a parallel branch (separate machine), so it is not present
+  in this tree yet; the loop's progress metric is not meaningful in this
+  branch until the punchlist lands here.
