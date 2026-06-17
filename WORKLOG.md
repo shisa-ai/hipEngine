@@ -95756,3 +95756,15 @@ Validation and measurements:
 - **G-D2 Pack8 layout optimization.** Dropping `LAYOUT_Q4_K_PACK8` layout materialization and using `LAYOUT_RAW_GGUF` for dense Q4_K tensors reduced memory by ~1.15 GiB, taking peak on 128K/128 down from 23.31 GiB (with 768-token chunk) to 22.75 GiB. This tradeoff between memory and speed (small negative delta on decode, 114.60 -> 114.42 tok/s) unlocks future batch scaling while comfortably fitting inside 24GiB limit.
 - **G-H1 C-dispatch for GGUF MoE.** Invalidated. Analysis showed that GGUF uses HIP graph capture for decode (if enabled, as it is by default), so Python dispatch overhead is already bypassed entirely. This also applied to other optimizations involving C-dispatch, confirming that the current logic is optimal without relying on `moe_c1_dispatch` which was designed for PARO where graph capture is not always available.
 - **G-H2 Fuse RMSNorm+rotate.** Invalidated. GGUF doesn't use AWQ input-rotation; this optimization is specific to PARO's w4a16 layout. The current GGUF architecture uses rotary position embeddings (`gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight`) applied directly to the query/key outputs AFTER the linear layer, making this specific fusion inapplicable to GGUF.
+
+
+## 2026-06-17 — GGUF worktree cleanup and G-D5 WIP quarantine
+
+### Cleanup actions
+- Confirmed `/home/lhl/hipEngine-gguf-tuning` was clean and that local branch `gguf-tuning` had no commits missing from `main` (`gguf-tuning` was an ancestor of `main`; `main...gguf-tuning` right-only count was `0`).
+- Paused `gguf-tuning/run-20260615-103446`, rewrote its local `.multiloop` verify/guard/scope strings from `/home/lhl/hipEngine-gguf-tuning` to `/home/lhl/hipEngine`, removed the stale worktree with `git worktree remove /home/lhl/hipEngine-gguf-tuning`, deleted the fully-merged local branch with `git branch -d gguf-tuning`, recorded a cleanup-only skip for iteration 118, and paused the loop again.
+- Quarantined dirty `main` state before reverting: saved the uncommitted G-D5 lm-head argmax patch to `/tmp/hipengine-cleanup-20260617-144442/main-uncommitted-gd5-argmax-wip.patch`, saved status/stat/file manifests in `/tmp/hipengine-cleanup-20260617-144442/`, moved untracked scratch files into `/tmp/hipengine-cleanup-20260617-144442/untracked/`, then restored the tracked WIP files.
+
+### Decision
+- The G-D5 lm-head Q6T16/argmax fusion was **not accepted** and **not measured**. It was reverted only as cleanup because it existed in `/home/lhl/hipEngine` while the active loop still targeted the stale tuning worktree. Treat the previous handoff as an unvalidated WIP patch, not benchmark evidence.
+- Future GGUF multiloop work should run from `/home/lhl/hipEngine` on `main`; reapply G-D5 only intentionally, then run focused correctness plus the standard GPU1 `512/128` and `4K/128` gates before any retention claim.

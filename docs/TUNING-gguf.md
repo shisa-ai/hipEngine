@@ -492,6 +492,14 @@ llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 No-hold notes:
 
+- **G-D5 lm-head argmax WIP quarantined (2026-06-17).** Iteration 118's
+  Q6T16 lm-head argmax fusion was found as uncommitted WIP in `/home/lhl/hipEngine`
+  while the paused multiloop still targeted the stale `/home/lhl/hipEngine-gguf-tuning`
+  worktree. The WIP was saved externally and reverted during cleanup without a
+  benchmark, so this is **not** a measured performance rejection. Reapply it only
+  intentionally in `main`, with focused correctness coverage and the standard
+  GPU1 `512/128` + `4K/128` gate before any promotion claim.
+
 - **GGUF chunk tune min=513 rejected (2026-06-16).** Lowering the auto
   chunk-tuning minimum from `1025` to `513` max-sequence tokens made
   `512/128`-class sessions resolve the retained `1024/4096` mid-context chunk
