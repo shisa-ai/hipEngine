@@ -1038,6 +1038,51 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     )
 
 
+def qwen35_gguf_mtp_q5_k_gemv_f32(
+    x: "np.ndarray",
+    qweight: "np.ndarray",
+) -> np.ndarray:
+    """Numpy-in/out adapter for the existing hip GPU Q5_K gemv kernel.
+
+    Calls the existing ``gguf_q5_k_gemv_f32_f32_out`` hip kernel with H2D/D2H.
+    ``qweight`` is the raw GGUF Q5_K block bytes (not dequanted).  Returns
+    ``[rows, out_features]`` F32 matching ``cpu_reference.gguf_q5_k_gemv``.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        gguf_q5_k_gemv_f32_f32_out as _hip_q5_k_gemv,
+    )
+
+    x_arr = np.ascontiguousarray(x, dtype=np.float32)
+    qw_arr = np.ascontiguousarray(qweight)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [rows, in_features]")
+    rows, in_features = x_arr.shape
+    if qw_arr.ndim != 2:
+        raise ValueError("qweight must be rank-2 [out_features, block_bytes_per_row]")
+    out_features = qw_arr.shape[0]
+
+    runtime = get_hip_runtime()
+    buffers: list = []
+    try:
+        x_dev = malloc(x_arr.nbytes, runtime=runtime); buffers.append(x_dev)
+        qw_dev = malloc(qw_arr.nbytes, runtime=runtime); buffers.append(qw_dev)
+        out_dev = malloc(rows * out_features * 4, runtime=runtime); buffers.append(out_dev)
+        copy_host_to_device(x_dev, host_array_ptr(x_arr), runtime=runtime)
+        copy_host_to_device(qw_dev, host_array_ptr(qw_arr), runtime=runtime)
+        _hip_q5_k_gemv(
+            x_dev.ptr, qw_dev.ptr, out_dev.ptr,
+            rows=rows, in_features=in_features, out_features=out_features,
+        )
+        runtime.device_synchronize()
+        out = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+        return out
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+
 def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         register(
@@ -1070,6 +1115,11 @@ def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
             qwen35_gguf_mtp_nextn_layer_logits_f32,
             replace=replace,
         )
+        register(
+            KernelKey(backend, "mtp_q5_k_gemv", "gguf_f32", "qwen35"),
+            qwen35_gguf_mtp_q5_k_gemv_f32,
+            replace=replace,
+        )
 
 
 register_mtp_nextn_kernels()
@@ -1093,6 +1143,7 @@ __all__ = [
     "qwen35_gguf_mtp_ffn_sublayer_f32",
     "qwen35_gguf_mtp_moe_routing_f32",
     "qwen35_gguf_mtp_nextn_layer_logits_f32",
+    "qwen35_gguf_mtp_q5_k_gemv_f32",
     "qwen35_gguf_mtp_shared_head_logits_f32",
     "register_mtp_nextn_kernels",
 ]

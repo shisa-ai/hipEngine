@@ -75,6 +75,7 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     qwen35_gguf_mtp_ffn_sublayer_f32,
     qwen35_gguf_mtp_moe_routing_f32,
     qwen35_gguf_mtp_nextn_layer_logits_f32,
+    qwen35_gguf_mtp_q5_k_gemv_f32,
     qwen35_gguf_mtp_shared_head_logits_f32,
     register_mtp_nextn_kernels,
 )
@@ -146,6 +147,7 @@ __all__ = [
     "qwen35_gguf_mtp_ffn_sublayer_f32",
     "qwen35_gguf_mtp_moe_routing_f32",
     "qwen35_gguf_mtp_nextn_layer_logits_f32",
+    "qwen35_gguf_mtp_q5_k_gemv_f32",
     "qwen35_gguf_mtp_shared_head_logits_f32",
     "register_mtp_nextn_kernels",
 ]
