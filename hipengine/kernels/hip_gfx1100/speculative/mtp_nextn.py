@@ -447,11 +447,14 @@ def qwen35_gguf_mtp_eh_proj_f32(
     rows, hidden = hidden_arr.shape
     if embed_arr.shape != hidden_arr.shape:
         raise ValueError("token_embedding must match hidden_seed shape")
-    if weight.shape != (hidden, hidden * 2):
-        raise ValueError(
-            f"eh_proj_weight must have shape [hidden, 2*hidden]=[{hidden}, {hidden * 2}]; "
-            f"got {weight.shape}"
-        )
+    from hipengine.quant.gguf import GGMLQuantizationType
+    if eh_proj_qtype is None or eh_proj_qtype == GGMLQuantizationType.F32:
+        if weight.shape != (hidden, hidden * 2):
+            raise ValueError(
+                f"eh_proj_weight must have shape [hidden, 2*hidden]=[{hidden}, {hidden * 2}]; "
+                f"got {weight.shape}"
+            )
+    # K-quant: weight is [hidden, block_bytes] (block-padded)
     if hnorm.shape != (hidden,):
         raise ValueError("hnorm_weight must have shape [hidden]")
     if enorm.shape != (hidden,):
@@ -478,7 +481,6 @@ def qwen35_gguf_mtp_eh_proj_f32(
                         runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, hnorm_dev.ptr, h_norm_dev.ptr, rows, hidden, eps=eps,
                         runtime=runtime)
-        from hipengine.quant.gguf import GGMLQuantizationType
         if eh_proj_qtype is None or eh_proj_qtype == GGMLQuantizationType.F32:
             mtp_eh_proj_f32(e_norm_dev.ptr, h_norm_dev.ptr, weight_dev.ptr, out_dev.ptr,
                             rows, hidden, runtime=runtime)
@@ -567,21 +569,29 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
     if k_norm.shape != (qk_head_dim,):
         raise ValueError("k_norm_weight must have shape [qk_head_dim]")
 
-    wq = np.ascontiguousarray(wq_weight, dtype=np.float32)
-    wk = np.ascontiguousarray(wk_weight, dtype=np.float32)
-    wv = np.ascontiguousarray(wv_weight, dtype=np.float32)
-    wo = np.ascontiguousarray(wo_weight, dtype=np.float32)
-    if wq.shape != (heads * 2 * qk_head_dim, hidden_size):
-        raise ValueError("wq_weight must have shape [num_heads * 2 * qk_head_dim, hidden]")
-    if wk.shape != (kv_heads * qk_head_dim, hidden_size):
-        raise ValueError("wk_weight must have shape [num_kv_heads * qk_head_dim, hidden]")
-    if wv.ndim != 2 or wv.shape[1] != hidden_size or wv.shape[0] % kv_heads != 0:
-        raise ValueError("wv_weight must have shape [num_kv_heads * value_head_dim, hidden]")
-    value_head_dim = wv.shape[0] // kv_heads
-    if value_head_dim != qk_head_dim:
-        raise ValueError("value_head_dim must match qk_head_dim for gated Qwen35 attention")
-    if wo.shape != (hidden_size, heads * value_head_dim):
-        raise ValueError("wo_weight must have shape [hidden, num_heads * value_head_dim]")
+    from hipengine.quant.gguf import GGMLQuantizationType
+    wq = np.ascontiguousarray(wq_weight)
+    wk = np.ascontiguousarray(wk_weight)
+    wv = np.ascontiguousarray(wv_weight)
+    wo = np.ascontiguousarray(wo_weight)
+    # For F32, validate exact shapes; for K-quant, shapes are block-padded
+    if (wq_qtype is None or wq_qtype == GGMLQuantizationType.F32):
+        if wq.shape != (heads * 2 * qk_head_dim, hidden_size):
+            raise ValueError("wq_weight must have shape [num_heads * 2 * qk_head_dim, hidden]")
+    if (wk_qtype is None or wk_qtype == GGMLQuantizationType.F32):
+        if wk.shape != (kv_heads * qk_head_dim, hidden_size):
+            raise ValueError("wk_weight must have shape [num_kv_heads * qk_head_dim, hidden]")
+    if (wv_qtype is None or wv_qtype == GGMLQuantizationType.F32):
+        if wv.ndim != 2 or wv.shape[1] != hidden_size or wv.shape[0] % kv_heads != 0:
+            raise ValueError("wv_weight must have shape [num_kv_heads * value_head_dim, hidden]")
+        value_head_dim = wv.shape[0] // kv_heads
+        if value_head_dim != qk_head_dim:
+            raise ValueError("value_head_dim must match qk_head_dim for gated Qwen35 attention")
+    else:
+        value_head_dim = qk_head_dim  # Q8_0: inferred from model config
+    if (wo_qtype is None or wo_qtype == GGMLQuantizationType.F32):
+        if wo.shape != (hidden_size, heads * value_head_dim):
+            raise ValueError("wo_weight must have shape [hidden, num_heads * value_head_dim]")
 
     from hipengine.quant.gguf import GGMLQuantizationType
 
