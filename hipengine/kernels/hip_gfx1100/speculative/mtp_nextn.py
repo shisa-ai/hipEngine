@@ -584,6 +584,16 @@ def qwen35_gguf_mtp_eh_proj_f32(
                 )
                 _hip_q8_0(concat_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, hidden * 2,
                           hidden, runtime=runtime)
+            elif eh_proj_qtype == GGMLQuantizationType.Q6_K:
+                from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+                    gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_eh,
+                )
+                concat_fp16 = concat.astype(np.float16)
+                concat_fp16_dev = malloc(concat_fp16.nbytes, runtime=runtime)
+                copy_host_to_device(concat_fp16_dev, host_array_ptr(concat_fp16), runtime=runtime)
+                _hip_q6_k_eh(concat_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows,
+                             hidden * 2, hidden, runtime=runtime)
+                free(concat_fp16_dev, runtime=runtime)
             else:
                 raise NotImplementedError(f"eh_proj_qtype={eh_proj_qtype.name} not supported")
         runtime.device_synchronize()
@@ -708,6 +718,18 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
             )
             _hip_q5_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
                       out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q6_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+                gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_attn,
+            )
+            x_f32 = np.empty((rows, in_features), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(x_f32), x_dev, x_f32.nbytes, runtime=runtime)
+            x_fp16 = x_f32.astype(np.float16)
+            x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
+            copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
+            _hip_q6_k_attn(x_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                           out_features, runtime=runtime)
+            free(x_fp16_dev, runtime=runtime)
         else:
             raise NotImplementedError(f"qtype={qtype.name} not supported for attention")
 
@@ -1001,9 +1023,22 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             )
             _hip_q8_0(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
                       out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q6_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+                gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k,
+            )
+            # Convert f32 x → fp16 on host (GPU cast unreliable for this use case)
+            x_f32 = np.empty((rows, in_features), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(x_f32), x_dev, x_f32.nbytes, runtime=runtime)
+            x_fp16 = x_f32.astype(np.float16)
+            x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
+            copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
+            _hip_q6_k(x_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+            free(x_fp16_dev, runtime=runtime)
         else:
             raise NotImplementedError(
-                f"qtype={qtype.name} not supported (F32/Q4_K/Q5_K/Q8_0 only)"
+                f"qtype={qtype.name} not supported (F32/Q4_K/Q5_K/Q6_K/Q8_0 only)"
             )
 
     for qt, name in (
@@ -1011,9 +1046,10 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         (shared_qtype, "shared_qtype"),
     ):
         if qt not in (GGMLQuantizationType.F32, GGMLQuantizationType.Q4_K,
-                      GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q8_0):
+                      GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q8_0,
+                      GGMLQuantizationType.Q6_K):
             raise NotImplementedError(
-                f"{name}={qt.name} not supported (F32/Q4_K/Q5_K/Q8_0 only)"
+                f"{name}={qt.name} not supported (F32/Q4_K/Q5_K/Q6_K/Q8_0 only)"
             )
 
     x = np.ascontiguousarray(hidden, dtype=np.float32)
@@ -1163,23 +1199,32 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
     shared_head_weight: "np.ndarray",
     *,
     eps: float = 1e-6,
+    shared_head_qtype: "GGMLQuantizationType | None" = None,
 ) -> np.ndarray:
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_shared_head_logits``.
 
     RMSNorm (GPU) + LM-head linear ``normed @ head_weight.T`` (GPU).
     """
 
+    from hipengine.quant.gguf import GGMLQuantizationType
     hidden = np.ascontiguousarray(nextn_hidden, dtype=np.float32)
     norm_weight = np.ascontiguousarray(shared_head_norm_weight, dtype=np.float32)
-    head_weight = np.ascontiguousarray(shared_head_weight, dtype=np.float32)
+    head_weight = np.ascontiguousarray(shared_head_weight)
     if hidden.ndim != 2:
         raise ValueError("nextn_hidden must have shape [rows, hidden]")
     rows, hidden_size = hidden.shape
     if norm_weight.shape != (hidden_size,):
         raise ValueError("shared_head_norm_weight must have shape [hidden]")
-    if head_weight.ndim != 2 or head_weight.shape[1] != hidden_size:
-        raise ValueError("shared_head_weight must have shape [vocab, hidden]")
-    vocab = head_weight.shape[0]
+    if shared_head_qtype is not None and shared_head_qtype != GGMLQuantizationType.F32:
+        # K-quant: raw block bytes, shape = [vocab, block_bytes_per_row]
+        if head_weight.ndim != 2:
+            raise ValueError("shared_head_weight must be 2D [vocab, block_bytes]")
+        vocab = head_weight.shape[0]
+    else:
+        head_weight = head_weight.astype(np.float32)
+        if head_weight.ndim != 2 or head_weight.shape[1] != hidden_size:
+            raise ValueError("shared_head_weight must have shape [vocab, hidden]")
+        vocab = head_weight.shape[0]
 
     runtime = get_hip_runtime()
     buffers: list = []
@@ -1194,8 +1239,27 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         copy_host_to_device(head_dev, host_array_ptr(head_weight), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, norm_dev.ptr, normed_dev.ptr, rows, hidden_size, eps=eps,
                         runtime=runtime)
-        mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
-                       runtime=runtime)
+        if shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q6_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+                gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_head,
+            )
+            normed_f32 = np.empty((rows, hidden_size), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(normed_f32), normed_dev, normed_f32.nbytes,
+                                runtime=runtime)
+            normed_fp16 = normed_f32.astype(np.float16)
+            normed_fp16_dev = malloc(normed_fp16.nbytes, runtime=runtime); buffers.append(normed_fp16_dev)
+            copy_host_to_device(normed_fp16_dev, host_array_ptr(normed_fp16), runtime=runtime)
+            _hip_q6_k_head(normed_fp16_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
+                           vocab, runtime=runtime)
+        elif shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q8_0:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q8_0_gemv_f32_f32_out as _hip_q8_0_head,
+            )
+            _hip_q8_0_head(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
+                           vocab, runtime=runtime)
+        else:
+            mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
+                           runtime=runtime)
         runtime.device_synchronize()
         out = np.empty((rows, vocab), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
@@ -1256,6 +1320,7 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     rotary_dim: int | None = None,
     scale: float | None = None,
     expert_weights_scale: float = 1.0,
+    shared_head_qtype: "GGMLQuantizationType | None" = None,
     eps: float = 1e-6,
 ) -> np.ndarray:
     """Native GPU Qwen35 GGUF MTP NextN draft layer (M3, correctness-first).
@@ -1293,6 +1358,7 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     )
     return qwen35_gguf_mtp_shared_head_logits_f32(
         ffn_out, shared_head_norm_weight, shared_head_weight, eps=eps,
+        shared_head_qtype=shared_head_qtype,
     )
 
 

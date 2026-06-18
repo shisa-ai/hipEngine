@@ -4,9 +4,9 @@ M6: Validates the full end-to-end path with real model weights from
 /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf (blk.40 NextN tensors).
 Gates GPU output vs cpu_reference on the same real weights.
 
-Note: shared_head_head (output.weight) is Q6_K [248320, 2048] — Q6_K dispatch
-is not yet implemented, so we use a small F32 stub for the shared head in this
-test. The eh_proj + attention + FFN path is fully validated with real weights.
+Note: shared_head_head (tied to output.weight) is Q6_K [248320, 2048] — now
+supported via Q6_K pack8 gemv dispatch. The full NextN layer runs end-to-end
+with real weights including the shared head.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ import hipengine.kernels.cpu_reference  # noqa: F401,E402
 import hipengine.kernels.hip_gfx1151  # noqa: F401,E402
 
 from hipengine.loading.gguf import GGUFReader  # noqa: E402
-from hipengine.quant.gguf import GGMLQuantizationType  # noqa: E402
+from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data  # noqa: E402
 
 
 def _load_real_weights():
@@ -53,7 +53,7 @@ def _load_real_weights():
     r = GGUFReader(GGUF_PATH)
     weights = {}
     for t in r.info.tensors:
-        if "blk.40" in t.name:
+        if "blk.40" in t.name or t.name == "output.weight":
             data = r.tensor_data(t.name)
             weights[t.name] = (data, t.ggml_type, t.shape)
     return weights, r
@@ -83,15 +83,18 @@ def real_inputs():
     hidden_seed = np.random.randn(1, hidden).astype(np.float32) * 0.1
     token_embed = np.random.randn(1, hidden).astype(np.float32) * 0.1
 
-    # Shared head: output.weight is Q6_K [248320, 2048] — not yet supported.
-    # Use a small F32 stub [16, 2048] for the shared head.
-    vocab_stub = 16
-    shared_head_w = np.random.randn(vocab_stub, hidden).astype(np.float32) * 0.01
+    # Shared head: output.weight is Q6_K [248320, 2048] — now supported via Q6_K dispatch.
+    shared_head_w = get("output.weight")
+    shared_head_qtype = GGMLQuantizationType(weights["output.weight"][1]) if "output.weight" in weights else GGMLQuantizationType.F32
+    # For cpu_reference, dequant to F32
+    cpu_shared_head = dequantize_gguf_data(
+        np.asarray(shared_head_w, dtype=np.uint8),
+        shared_head_qtype,
+    ).astype(np.float32) if shared_head_qtype != GGMLQuantizationType.F32 else np.asarray(shared_head_w, dtype=np.float32)
 
     # The cpu_reference expects already-dequanted F32 weights for eh_proj + attention.
     # The GPU kernel accepts raw Q8_0 block bytes with qtype kwargs for dispatch.
     # So we prepare two sets of weights: dequanted F32 for cpu_reference, raw for GPU.
-    from hipengine.quant.gguf import dequantize_gguf_data
 
     def dequant(name):
         w, qt, shape = weights[name]
@@ -140,6 +143,8 @@ def real_inputs():
         "shared_qtype": qtype("blk.40.ffn_gate_shexp.weight"),
         "shared_head_norm_weight": get("blk.40.nextn.shared_head_norm.weight"),
         "shared_head_weight": shared_head_w,
+        "shared_head_qtype": shared_head_qtype,
+        "cpu_shared_head": cpu_shared_head,
         "num_heads": heads,
         "num_kv_heads": kv_heads,
         "experts_used": top_k,
@@ -184,6 +189,7 @@ def test_real_gguf_nextn_layer_matches_cpu_reference(backend, real_inputs):
         num_kv_heads=real_inputs["num_kv_heads"],
         experts_used=real_inputs["experts_used"],
         eh_proj_qtype=real_inputs["eh_proj_qtype"],
+        shared_head_qtype=real_inputs["shared_head_qtype"],
         wq_qtype=real_inputs["wq_qtype"], wk_qtype=real_inputs["wk_qtype"],
         wv_qtype=real_inputs["wv_qtype"], wo_qtype=real_inputs["wo_qtype"],
         eps=real_inputs["eps"],
@@ -204,7 +210,7 @@ def test_real_gguf_nextn_layer_matches_cpu_reference(backend, real_inputs):
         real_inputs["shared_gate_logit_weight"],
         real_inputs["shared_gate_qweight"], real_inputs["shared_up_qweight"],
         real_inputs["shared_down_qweight"], real_inputs["shared_qtype"],
-        real_inputs["shared_head_norm_weight"], real_inputs["shared_head_weight"],
+        real_inputs["shared_head_norm_weight"], real_inputs["cpu_shared_head"],
     ]
 
     # GPU kernel accepts raw Q8_0 block bytes with qtype kwargs
