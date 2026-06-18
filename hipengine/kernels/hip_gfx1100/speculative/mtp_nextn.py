@@ -498,6 +498,10 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
     *,
     num_heads: int,
     num_kv_heads: int,
+    wq_qtype: "GGMLQuantizationType | None" = None,
+    wk_qtype: "GGMLQuantizationType | None" = None,
+    wv_qtype: "GGMLQuantizationType | None" = None,
+    wo_qtype: "GGMLQuantizationType | None" = None,
     positions: "np.ndarray | None" = None,
     context_counts: "np.ndarray | None" = None,
     key_cache: "np.ndarray | None" = None,
@@ -510,6 +514,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
 ) -> np.ndarray:
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_attention_sublayer``.
 
+    M6: supports K-quant (Q4_K/Q5_K/Q8_0) for wq/wk/wv/wo via _attn_dispatch_gemv.
     M3 scope (correctness-first): implements the DEFAULT dense attention path
     used by the F32 fixture -- ``positions=arange(tokens)``,
     ``context_counts=pos+1``, no RoPE, dense cache = the current tokens' K/V.
@@ -556,6 +561,34 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
     if wo.shape != (hidden_size, heads * value_head_dim):
         raise ValueError("wo_weight must have shape [hidden, num_heads * value_head_dim]")
 
+    from hipengine.quant.gguf import GGMLQuantizationType
+
+    def _attn_dispatch_gemv(x_dev, weight_dev, out_dev, rows, in_features, out_features,
+                            qtype, *, runtime):
+        if qtype is None or qtype == GGMLQuantizationType.F32:
+            mtp_linear_f32(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                           out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q8_0:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
+            )
+            _hip_q8_0(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q4_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+                gguf_q4_k_gemv_f32_f32_out as _hip_q4_k,
+            )
+            _hip_q4_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q5_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q5_k_gemv_f32_f32_out as _hip_q5_k,
+            )
+            _hip_q5_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+        else:
+            raise NotImplementedError(f"qtype={qtype.name} not supported for attention")
+
     if rope_cos is not None or rope_sin is not None:
         raise NotImplementedError("RoPE path is M6 work; F32 M3 fixture does not exercise it")
     if key_cache is not None or value_cache is not None:
@@ -590,8 +623,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         buffers.append(q_full_dev)
         wq_dev = malloc(wq.nbytes, runtime=runtime); buffers.append(wq_dev)
         copy_host_to_device(wq_dev, host_array_ptr(wq), runtime=runtime)
-        mtp_linear_f32(normed_dev.ptr, wq_dev.ptr, q_full_dev.ptr, tokens, hidden_size,
-                       heads * 2 * qk_head_dim, runtime=runtime)
+        _attn_dispatch_gemv(normed_dev, wq_dev, q_full_dev, tokens, hidden_size,
+                            heads * 2 * qk_head_dim, wq_qtype, runtime=runtime)
         # query = rmsnorm(q_full[...,0,:], q_norm)  over qk_head_dim, rows = tokens*heads
         query_dev = malloc(tokens * heads * qk_head_dim * 4, runtime=runtime)
         buffers.append(query_dev)
@@ -618,8 +651,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         k_norm_dev = malloc(k_norm.nbytes, runtime=runtime); buffers.append(k_norm_dev)
         copy_host_to_device(wk_dev, host_array_ptr(wk), runtime=runtime)
         copy_host_to_device(k_norm_dev, host_array_ptr(k_norm), runtime=runtime)
-        mtp_linear_f32(normed_dev.ptr, wk_dev.ptr, key_cur_dev.ptr, tokens, hidden_size,
-                       kv_heads * qk_head_dim, runtime=runtime)
+        _attn_dispatch_gemv(normed_dev, wk_dev, key_cur_dev, tokens, hidden_size,
+                            kv_heads * qk_head_dim, wk_qtype, runtime=runtime)
         mtp_rmsnorm_f32(key_cur_dev.ptr, k_norm_dev.ptr, key_cur_dev.ptr, tokens * kv_heads,
                         qk_head_dim, eps=eps, runtime=runtime)
 
@@ -628,8 +661,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         buffers.append(value_cur_dev)
         wv_dev = malloc(wv.nbytes, runtime=runtime); buffers.append(wv_dev)
         copy_host_to_device(wv_dev, host_array_ptr(wv), runtime=runtime)
-        mtp_linear_f32(normed_dev.ptr, wv_dev.ptr, value_cur_dev.ptr, tokens, hidden_size,
-                       kv_heads * value_head_dim, runtime=runtime)
+        _attn_dispatch_gemv(normed_dev, wv_dev, value_cur_dev, tokens, hidden_size,
+                            kv_heads * value_head_dim, wv_qtype, runtime=runtime)
 
         # dense causal GQA: cache = current tokens (default path), cache_tokens = tokens
         pos_dev = malloc(pos.nbytes, runtime=runtime); buffers.append(pos_dev)
@@ -654,8 +687,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         wo_dev = malloc(wo.nbytes, runtime=runtime); buffers.append(wo_dev)
         copy_host_to_device(wo_dev, host_array_ptr(wo), runtime=runtime)
         wo_out_dev = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(wo_out_dev)
-        mtp_linear_f32(gated_dev.ptr, wo_dev.ptr, wo_out_dev.ptr, tokens, heads * value_head_dim,
-                       hidden_size, runtime=runtime)
+        _attn_dispatch_gemv(gated_dev, wo_dev, wo_out_dev, tokens, heads * value_head_dim,
+                            hidden_size, wo_qtype, runtime=runtime)
 
         # out = hidden + wo_out
         out_dev = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(out_dev)
@@ -684,7 +717,10 @@ def qwen35_gguf_mtp_moe_routing_f32(
     """
 
     x = np.ascontiguousarray(hidden, dtype=np.float32)
-    router = np.ascontiguousarray(router_weight, dtype=np.float32)
+    router = np.ascontiguousarray(router_weight)
+    # BF16 router weight: dequant to F32 on host (real model has BF16 router)
+    if router.dtype != np.float32:
+        router = router.astype(np.float32)
     if x.ndim != 2:
         raise ValueError("hidden must have shape [tokens, hidden]")
     tokens, hidden_size = x.shape
