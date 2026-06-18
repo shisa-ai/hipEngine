@@ -1259,10 +1259,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "top_p_min_p": "exact_full_vocab_top_k_0_and_bounded_top_k",
         "selected_logprobs": True,
         "top_logprobs": {
+            "full_vocab_top_k_0": True,
             "bounded_top_k": True,
-            "requires_top_k": True,
             "max": 64,
-            "constraint": "top_logprobs <= top_k <= 64",
+            "constraint": "top_k=0 or top_logprobs <= top_k <= 64",
         },
         "processors": [
             "logit_bias",

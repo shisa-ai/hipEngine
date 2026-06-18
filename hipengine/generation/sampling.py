@@ -31,7 +31,7 @@ _MAX_NATIVE_GPU_TOP_K = 64
 NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES: tuple[str, ...] = (
     "true_batched_c_gt_1",
     "gguf",
-    "full_vocab_top_logprobs",
+    "top_logprobs_exceed_native_limit",
     "top_logprobs_exceed_top_k",
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
@@ -591,9 +591,9 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     """Return whether current standalone GPU sampler kernels cover ``params``.
 
     The native route is intentionally narrower than the host sampler: selected
-    logprobs are available, bounded top-k top-logprobs are available when
-    ``top_logprobs <= top_k <= 64``, but full-vocab top-logprobs are not wired
-    yet.
+    logprobs are available, full-vocab top-logprobs are available for public
+    ``top_k=0`` requests, and bounded top-k top-logprobs are available when
+    ``top_logprobs <= top_k <= 64``.
     """
 
     validate_sampling_params(params)
@@ -613,7 +613,9 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     if top_k > _MAX_NATIVE_GPU_TOP_K:
         return False
     top_logprobs = int(getattr(params, "top_logprobs", 0))
-    if top_logprobs > 0 and (top_k <= 0 or top_logprobs > top_k):
+    if top_logprobs > _MAX_NATIVE_GPU_TOP_K:
+        return False
+    if top_logprobs > 0 and top_k > 0 and top_logprobs > top_k:
         return False
     return True
 

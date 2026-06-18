@@ -58,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.sampling import (
     apply_processors_f32_rows,
     build_sampler,
     sample_temperature_f32_rows_i32,
+    sample_temperature_top_logprobs_f32_rows_i32,
     sample_top_p_temperature_f32_rows_i32,
     sample_topk_temperature_f32_rows_i32,
 )
@@ -8820,18 +8821,19 @@ class Qwen35ParoResidentSession:
         top_p = float(getattr(params, "top_p", 1.0))
         min_p = float(getattr(params, "min_p", 0.0))
         requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
-        if requested_top_logprobs > 0 and (top_k <= 0 or requested_top_logprobs > top_k):
-            raise RuntimeError("native bounded top_logprobs require top_k > 0 and top_logprobs <= top_k")
+        if requested_top_logprobs > 0 and top_k > 0 and requested_top_logprobs > top_k:
+            raise RuntimeError("native bounded top_logprobs require top_logprobs <= top_k")
         out_top_indices = None
         out_top_logprobs = None
+        top_logprobs_width = top_k if top_k > 0 else requested_top_logprobs
         if requested_top_logprobs > 0:
             out_top_indices = self._native_sampler_buffer(
                 "_native_sampler_top_indices_i32",
-                top_k * DType.INT32.itemsize,
+                top_logprobs_width * DType.INT32.itemsize,
             )
             out_top_logprobs = self._native_sampler_buffer(
                 "_native_sampler_top_logprobs_f32",
-                top_k * DType.FP32.itemsize,
+                top_logprobs_width * DType.FP32.itemsize,
             )
         uses_probability_filter = top_p < 1.0 or min_p > 0.0
         if top_k > 0:
@@ -8872,6 +8874,9 @@ class Qwen35ParoResidentSession:
                 retained_counts.ptr,
                 1,
                 self.vocab_size,
+                out_top_indices_i32_ptr=None if out_top_indices is None else out_top_indices.ptr,
+                out_top_logprobs_f32_ptr=None if out_top_logprobs is None else out_top_logprobs.ptr,
+                top_logprobs=requested_top_logprobs,
                 out_indices_i64_ptr=self.lm_out_index.ptr,
                 out_values_f32_ptr=self.lm_out_value.ptr,
                 step_index=state.step_index,
@@ -8895,6 +8900,19 @@ class Qwen35ParoResidentSession:
                 library=library,
                 runtime=self.runtime,
             )
+            if requested_top_logprobs > 0:
+                sample_temperature_top_logprobs_f32_rows_i32(
+                    logits_ptr,
+                    temperature_buf.ptr,
+                    out_top_indices.ptr,
+                    out_top_logprobs.ptr,
+                    1,
+                    self.vocab_size,
+                    requested_top_logprobs,
+                    threads=128,
+                    library=library,
+                    runtime=self.runtime,
+                )
         self.runtime.device_synchronize()
         index_i32 = np.empty((1,), dtype=np.int32)
         logprob_host = np.empty((1,), dtype=np.float32)
@@ -8907,8 +8925,8 @@ class Qwen35ParoResidentSession:
         copy_device_to_host(host_array_ptr(value_host), self.lm_out_value, runtime=self.runtime)
         top_logprobs: tuple[tuple[int, float], ...] = ()
         if requested_top_logprobs > 0 and out_top_indices is not None and out_top_logprobs is not None:
-            top_indices_host = np.empty((top_k,), dtype=np.int32)
-            top_logprobs_host = np.empty((top_k,), dtype=np.float32)
+            top_indices_host = np.empty((top_logprobs_width,), dtype=np.int32)
+            top_logprobs_host = np.empty((top_logprobs_width,), dtype=np.float32)
             copy_device_to_host(host_array_ptr(top_indices_host), out_top_indices, runtime=self.runtime)
             copy_device_to_host(host_array_ptr(top_logprobs_host), out_top_logprobs, runtime=self.runtime)
             pairs: list[tuple[int, float]] = []

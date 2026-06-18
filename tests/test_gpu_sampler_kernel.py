@@ -12,6 +12,7 @@ from hipengine.kernels.hip_gfx1100.sampling import (
     plan_sampler_build,
     register_sampler_kernels,
     sample_temperature_f32_rows_i32,
+    sample_temperature_top_logprobs_f32_rows_i32,
     sample_top_p_temperature_f32_rows_i32,
     sample_topk_temperature_f32_rows_i32,
 )
@@ -62,6 +63,10 @@ def test_sampler_registers_for_gfx1151_alias() -> None:
         is sample_temperature_f32_rows_i32
     )
     assert (
+        resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="temperature_top_logprobs_rows_i32")
+        is sample_temperature_top_logprobs_f32_rows_i32
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="sampler", quant="f32", variant="top_p_temperature_rows_i32")
         is sample_top_p_temperature_f32_rows_i32
     )
@@ -86,6 +91,10 @@ def test_sampler_wrapper_validates_shapes_before_loading_hip() -> None:
         sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=16, threads=256)
     with pytest.raises(ValueError, match="step_index"):
         sample_temperature_f32_rows_i32(0, 0, 0, 0, None, rows=1, vocab_size=16, step_index=-1)
+    with pytest.raises(ValueError, match="top_logprobs"):
+        sample_temperature_top_logprobs_f32_rows_i32(0, 0, 0, 0, rows=1, vocab_size=16, top_logprobs=0)
+    with pytest.raises(ValueError, match="top_logprobs"):
+        sample_temperature_top_logprobs_f32_rows_i32(0, 0, 0, 0, rows=1, vocab_size=16, top_logprobs=65)
     with pytest.raises(ValueError, match="rows"):
         sample_top_p_temperature_f32_rows_i32(0, 0, 0, 0, 0, 0, None, None, rows=0, vocab_size=16)
     with pytest.raises(ValueError, match="vocab_size"):
@@ -573,6 +582,38 @@ def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state() 
         assert full_second.token_id == full_first.token_id
         assert full_state.step_index == step_index + 1
 
+        full_top_seed = 0x170
+        full_top_step = 3
+        full_top_params = _request_params(temperature=0.9, top_k=0, top_logprobs=3)
+        full_top_state = RowSamplingState(prompt_tokens=(0,), seed=full_top_seed, step_index=full_top_step)
+        full_top_expected = _cpu_full_vocab_reference(
+            logits,
+            np.array([0.9], dtype=np.float32),
+            np.array([full_top_seed], dtype=np.uint64),
+            step_index=full_top_step,
+        )
+        full_top_expected_top = _cpu_full_vocab_top_logprobs_reference(
+            logits,
+            np.array([0.9], dtype=np.float32),
+            3,
+        )
+        run_case(
+            full_top_params,
+            full_top_state,
+            int(full_top_expected[0][0]),
+            full_top_expected[1][0],
+            logits[0, int(full_top_expected[0][0])],
+            tuple(
+                (int(token_id), np.float32(logprob))
+                for token_id, logprob in zip(
+                    full_top_expected_top[0][0],
+                    full_top_expected_top[1][0],
+                    strict=True,
+                )
+            ),
+        )
+        assert full_top_state.step_index == full_top_step + 1
+
         top_logprobs_seed = 0x180
         top_logprobs_step = 2
         top_logprobs_params = _request_params(temperature=0.85, top_k=4, top_logprobs=3)
@@ -719,11 +760,14 @@ def _cpu_top_p_reference(
     seeds: np.ndarray,
     *,
     step_index: int,
+    top_logprobs: int = 0,
 ):
     rows, _vocab = logits.shape
     selected = np.full((rows,), -1, dtype=np.int32)
     selected_logprobs = np.full((rows,), _NEG_INF, dtype=np.float32)
     retained_counts = np.zeros((rows,), dtype=np.int32)
+    top_indices = np.full((rows, max(int(top_logprobs), 1)), -1, dtype=np.int32)
+    top_logprob_values = np.full((rows, max(int(top_logprobs), 1)), _NEG_INF, dtype=np.float32)
 
     for row in range(rows):
         finite_ids = np.flatnonzero(np.isfinite(logits[row])).astype(np.int64, copy=False)
@@ -736,6 +780,9 @@ def _cpu_top_p_reference(
             selected[row] = np.int32(sorted_ids[0])
             selected_logprobs[row] = np.float32(0.0)
             retained_counts[row] = np.int32(1)
+            if top_logprobs > 0:
+                top_indices[row, 0] = np.int32(sorted_ids[0])
+                top_logprob_values[row, 0] = np.float32(0.0)
             continue
         scaled = (logits[row, sorted_ids].astype(np.float32) / temp).astype(np.float32)
         max_scaled = np.float32(scaled[0])
@@ -761,6 +808,12 @@ def _cpu_top_p_reference(
                 weights = weights[:1]
         retained_counts[row] = np.int32(sorted_ids.size)
         retained_sum = np.float32(weights.sum(dtype=np.float32))
+        if top_logprobs > 0:
+            limit = min(int(top_logprobs), int(sorted_ids.size))
+            top_indices[row, :limit] = sorted_ids[:limit].astype(np.int32)
+            top_logprob_values[row, :limit] = np.log(
+                (weights[:limit] / retained_sum).astype(np.float32)
+            ).astype(np.float32)
         draw = np.float32(_uniform01(int(seeds[row]), step_index, row) * retained_sum)
         cumulative = np.cumsum(weights, dtype=np.float32)
         choice = int(np.searchsorted(cumulative, draw, side="right"))
@@ -769,7 +822,9 @@ def _cpu_top_p_reference(
         selected[row] = np.int32(sorted_ids[choice])
         selected_logprobs[row] = np.float32(np.log(np.float32(weights[choice] / retained_sum)))
 
-    return selected, selected_logprobs, retained_counts
+    if top_logprobs <= 0:
+        return selected, selected_logprobs, retained_counts
+    return selected, selected_logprobs, retained_counts, top_indices[:, :top_logprobs], top_logprob_values[:, :top_logprobs]
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
@@ -793,7 +848,16 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
     min_ps = np.array([0.0, 0.0, 0.5, 0.0], dtype=np.float32)
     seeds = np.array([0x101, 0x202, 0x303, 0x404], dtype=np.uint64)
     step_index = 13
-    expected = _cpu_top_p_reference(logits, temperatures, top_ps, min_ps, seeds, step_index=step_index)
+    top_logprobs = 3
+    expected = _cpu_top_p_reference(
+        logits,
+        temperatures,
+        top_ps,
+        min_ps,
+        seeds,
+        step_index=step_index,
+        top_logprobs=top_logprobs,
+    )
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
@@ -828,6 +892,8 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
         selected_d = alloc(rows * np.dtype(np.int32).itemsize)
         selected_logprobs_d = alloc(rows * np.dtype(np.float32).itemsize)
         retained_counts_d = alloc(rows * np.dtype(np.int32).itemsize)
+        top_indices_d = alloc(rows * top_logprobs * np.dtype(np.int32).itemsize)
+        top_logprobs_d = alloc(rows * top_logprobs * np.dtype(np.float32).itemsize)
 
         sample_top_p_temperature_f32_rows_i32(
             logits_d.ptr,
@@ -840,6 +906,9 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
             retained_counts_d.ptr,
             rows,
             vocab_size,
+            out_top_indices_i32_ptr=top_indices_d.ptr,
+            out_top_logprobs_f32_ptr=top_logprobs_d.ptr,
+            top_logprobs=top_logprobs,
             step_index=step_index,
             threads=128,
             library=lib,
@@ -848,6 +917,8 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
             download(selected_d, (rows,), np.int32),
             download(selected_logprobs_d, (rows,), np.float32),
             download(retained_counts_d, (rows,), np.int32),
+            download(top_indices_d, (rows, top_logprobs), np.int32),
+            download(top_logprobs_d, (rows, top_logprobs), np.float32),
         )
 
         sample_top_p_temperature_f32_rows_i32(
@@ -861,6 +932,9 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
             retained_counts_d.ptr,
             rows,
             vocab_size,
+            out_top_indices_i32_ptr=top_indices_d.ptr,
+            out_top_logprobs_f32_ptr=top_logprobs_d.ptr,
+            top_logprobs=top_logprobs,
             step_index=step_index,
             threads=128,
             library=lib,
@@ -869,14 +943,20 @@ def test_top_p_temperature_sampler_matches_cpu_reference_and_is_deterministic() 
             download(selected_d, (rows,), np.int32),
             download(selected_logprobs_d, (rows,), np.float32),
             download(retained_counts_d, (rows,), np.int32),
+            download(top_indices_d, (rows, top_logprobs), np.int32),
+            download(top_logprobs_d, (rows, top_logprobs), np.float32),
         )
 
         assert np.array_equal(first[0], expected[0])
         np.testing.assert_allclose(first[1], expected[1], rtol=0, atol=2e-5)
         assert np.array_equal(first[2], expected[2])
+        assert np.array_equal(first[3], expected[3])
+        np.testing.assert_allclose(first[4], expected[4], rtol=0, atol=2e-5)
         assert np.array_equal(first[0], second[0])
         np.testing.assert_allclose(first[1], second[1], rtol=0, atol=0)
         assert np.array_equal(first[2], second[2])
+        assert np.array_equal(first[3], second[3])
+        np.testing.assert_allclose(first[4], second[4], rtol=0, atol=0)
     finally:
         for buf in reversed(bufs):
             free(buf)
@@ -928,6 +1008,37 @@ def _cpu_full_vocab_reference(logits: np.ndarray, temperatures: np.ndarray, seed
     return selected, selected_logprobs
 
 
+def _cpu_full_vocab_top_logprobs_reference(logits: np.ndarray, temperatures: np.ndarray, top_logprobs: int):
+    rows, vocab = logits.shape
+    top_indices = np.full((rows, top_logprobs), -1, dtype=np.int32)
+    top_logprob_values = np.full((rows, top_logprobs), _NEG_INF, dtype=np.float32)
+
+    for row in range(rows):
+        row_logits = logits[row]
+        finite_ids = np.flatnonzero(np.isfinite(row_logits)).astype(np.int64, copy=False)
+        if finite_ids.size == 0:
+            continue
+        finite_values = row_logits[finite_ids]
+        order = np.lexsort((finite_ids, -finite_values))
+        sorted_ids = finite_ids[order]
+        limit = min(int(top_logprobs), int(sorted_ids.size))
+        top_indices[row, :limit] = sorted_ids[:limit].astype(np.int32)
+        temp = np.float32(temperatures[row])
+        if not np.isfinite(temp) or not (temp > np.float32(0.0)):
+            top_logprob_values[row, 0] = np.float32(0.0)
+            continue
+        scaled = (row_logits[finite_ids].astype(np.float32) / temp).astype(np.float32)
+        max_scaled = np.float32(np.max(scaled))
+        weights = np.exp((scaled - max_scaled).astype(np.float32)).astype(np.float32)
+        weight_sum = np.float32(weights.sum(dtype=np.float32))
+        log_denom = np.float32(np.log(weight_sum) + max_scaled)
+        top_logprob_values[row, :limit] = (
+            row_logits[sorted_ids[:limit]].astype(np.float32) / temp - log_denom
+        ).astype(np.float32)
+
+    return top_indices, top_logprob_values
+
+
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
 def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> None:
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
@@ -947,7 +1058,9 @@ def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> Non
     logits[2, 9] = np.float32(-np.inf)
     temperatures = np.array([0.65, 1.2, 2.0], dtype=np.float32)
     seeds = np.array([0xAAAA_1111, 0xBBBB_2222, 0xCCCC_3333_4444], dtype=np.uint64)
+    top_logprobs = 5
     expected = _cpu_full_vocab_reference(logits, temperatures, seeds, step_index=step_index)
+    expected_top = _cpu_full_vocab_top_logprobs_reference(logits, temperatures, top_logprobs)
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = pathlib.Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
@@ -979,6 +1092,8 @@ def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> Non
         seeds_d = upload(seeds)
         selected_d = alloc(rows * np.dtype(np.int32).itemsize)
         selected_logprobs_d = alloc(rows * np.dtype(np.float32).itemsize)
+        top_indices_d = alloc(rows * top_logprobs * np.dtype(np.int32).itemsize)
+        top_logprobs_d = alloc(rows * top_logprobs * np.dtype(np.float32).itemsize)
 
         sample_temperature_f32_rows_i32(
             logits_d.ptr,
@@ -989,12 +1104,25 @@ def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> Non
             rows,
             vocab_size,
             step_index=step_index,
+            threads=128,
+            library=lib,
+        )
+        sample_temperature_top_logprobs_f32_rows_i32(
+            logits_d.ptr,
+            temperatures_d.ptr,
+            top_indices_d.ptr,
+            top_logprobs_d.ptr,
+            rows,
+            vocab_size,
+            top_logprobs,
             threads=128,
             library=lib,
         )
         first = (
             download(selected_d, (rows,), np.int32),
             download(selected_logprobs_d, (rows,), np.float32),
+            download(top_indices_d, (rows, top_logprobs), np.int32),
+            download(top_logprobs_d, (rows, top_logprobs), np.float32),
         )
 
         sample_temperature_f32_rows_i32(
@@ -1009,15 +1137,32 @@ def test_temperature_sampler_matches_cpu_reference_and_is_deterministic() -> Non
             threads=128,
             library=lib,
         )
+        sample_temperature_top_logprobs_f32_rows_i32(
+            logits_d.ptr,
+            temperatures_d.ptr,
+            top_indices_d.ptr,
+            top_logprobs_d.ptr,
+            rows,
+            vocab_size,
+            top_logprobs,
+            threads=128,
+            library=lib,
+        )
         second = (
             download(selected_d, (rows,), np.int32),
             download(selected_logprobs_d, (rows,), np.float32),
+            download(top_indices_d, (rows, top_logprobs), np.int32),
+            download(top_logprobs_d, (rows, top_logprobs), np.float32),
         )
 
         assert np.array_equal(first[0], expected[0])
         np.testing.assert_allclose(first[1], expected[1], rtol=0, atol=2e-5)
+        assert np.array_equal(first[2], expected_top[0])
+        np.testing.assert_allclose(first[3], expected_top[1], rtol=0, atol=2e-5)
         assert np.array_equal(first[0], second[0])
         np.testing.assert_allclose(first[1], second[1], rtol=0, atol=0)
+        assert np.array_equal(first[2], second[2])
+        np.testing.assert_allclose(first[3], second[3], rtol=0, atol=0)
     finally:
         for buf in reversed(bufs):
             free(buf)

@@ -64,6 +64,35 @@ __device__ inline void write_sampler_commit(
   }
 }
 
+__device__ inline void write_sampler_top_logprob_empty(
+    int32_t* __restrict__ out_top_indices,
+    float* __restrict__ out_top_logprobs,
+    int64_t top_out_base,
+    int32_t top_logprobs) {
+  if (out_top_indices == nullptr || out_top_logprobs == nullptr) {
+    return;
+  }
+  for (int32_t pos = 0; pos < top_logprobs; ++pos) {
+    out_top_indices[top_out_base + pos] = -1;
+    out_top_logprobs[top_out_base + pos] = kNegInf;
+  }
+}
+
+__device__ inline void write_sampler_top_logprob_argmax(
+    int32_t* __restrict__ out_top_indices,
+    float* __restrict__ out_top_logprobs,
+    int64_t top_out_base,
+    int32_t top_logprobs,
+    int32_t index) {
+  if (out_top_indices == nullptr || out_top_logprobs == nullptr) {
+    return;
+  }
+  for (int32_t pos = 0; pos < top_logprobs; ++pos) {
+    out_top_indices[top_out_base + pos] = pos == 0 ? index : -1;
+    out_top_logprobs[top_out_base + pos] = pos == 0 ? 0.0f : kNegInf;
+  }
+}
+
 __global__ void sampler_topk_temperature_rows_i32_kernel(
     const float* __restrict__ logits,
     const float* __restrict__ temperatures,
@@ -401,6 +430,124 @@ __global__ void sampler_temperature_rows_i32_kernel(
   write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, selected_index, selected_logit);
 }
 
+__global__ void sampler_temperature_top_logprobs_rows_i32_kernel(
+    const float* __restrict__ logits,
+    const float* __restrict__ temperatures,
+    int32_t* __restrict__ out_top_indices,
+    float* __restrict__ out_top_logprobs,
+    int64_t rows,
+    int64_t vocab_size,
+    int32_t top_logprobs) {
+  extern __shared__ unsigned char shared_raw[];
+  const int top_count = min(top_logprobs, static_cast<int32_t>(vocab_size));
+  float* shared_values = reinterpret_cast<float*>(shared_raw);
+  int32_t* shared_indices =
+      reinterpret_cast<int32_t*>(shared_values + static_cast<int64_t>(blockDim.x) * top_count);
+  float* shared_sums =
+      reinterpret_cast<float*>(shared_indices + static_cast<int64_t>(blockDim.x) * top_count);
+
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t base = row * vocab_size;
+  const int64_t top_out_base = row * static_cast<int64_t>(top_logprobs);
+
+  float local_values[kMaxSamplerTopK];
+  int32_t local_indices[kMaxSamplerTopK];
+  for (int pos = 0; pos < kMaxSamplerTopK; ++pos) {
+    local_values[pos] = kNegInf;
+    local_indices[pos] = INT32_MAX;
+  }
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    const float value = logits[base + i];
+    if (isfinite(value)) {
+      insert_topk_pair(value, static_cast<int32_t>(i), local_values, local_indices, top_count);
+    }
+  }
+  for (int pos = 0; pos < top_count; ++pos) {
+    const int64_t off = static_cast<int64_t>(tid) * top_count + pos;
+    shared_values[off] = local_values[pos];
+    shared_indices[off] = local_indices[pos];
+  }
+  __syncthreads();
+
+  float final_values[kMaxSamplerTopK];
+  int32_t final_indices[kMaxSamplerTopK];
+  for (int pos = 0; pos < kMaxSamplerTopK; ++pos) {
+    final_values[pos] = kNegInf;
+    final_indices[pos] = INT32_MAX;
+  }
+  if (tid == 0) {
+    for (int thread = 0; thread < blockDim.x; ++thread) {
+      for (int pos = 0; pos < top_count; ++pos) {
+        const int64_t off = static_cast<int64_t>(thread) * top_count + pos;
+        if (shared_indices[off] != INT32_MAX) {
+          insert_topk_pair(shared_values[off], shared_indices[off], final_values, final_indices, top_count);
+        }
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    for (int pos = 0; pos < top_count; ++pos) {
+      shared_values[pos] = final_values[pos];
+      shared_indices[pos] = final_indices[pos];
+    }
+  }
+  __syncthreads();
+
+  if (shared_indices[0] == INT32_MAX) {
+    if (tid == 0) {
+      write_sampler_top_logprob_empty(out_top_indices, out_top_logprobs, top_out_base, top_logprobs);
+    }
+    return;
+  }
+
+  const float temperature = temperatures[row];
+  if (!(temperature > 0.0f) || !isfinite(temperature)) {
+    if (tid == 0) {
+      write_sampler_top_logprob_argmax(
+          out_top_indices, out_top_logprobs, top_out_base, top_logprobs, shared_indices[0]);
+    }
+    return;
+  }
+
+  const float max_scaled = shared_values[0] / temperature;
+  float local_sum = 0.0f;
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    const float value = logits[base + i];
+    if (isfinite(value)) {
+      local_sum += expf(value / temperature - max_scaled);
+    }
+  }
+  shared_sums[tid] = local_sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      shared_sums[tid] += shared_sums[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float weight_sum = shared_sums[0];
+  if (tid != 0) {
+    return;
+  }
+  if (!(weight_sum > 0.0f) || !isfinite(weight_sum)) {
+    write_sampler_top_logprob_argmax(
+        out_top_indices, out_top_logprobs, top_out_base, top_logprobs, shared_indices[0]);
+    return;
+  }
+  const float log_denom = logf(weight_sum) + max_scaled;
+  for (int pos = 0; pos < top_logprobs; ++pos) {
+    const bool valid = pos < top_count && shared_indices[pos] != INT32_MAX;
+    out_top_indices[top_out_base + pos] = valid ? shared_indices[pos] : -1;
+    out_top_logprobs[top_out_base + pos] = valid ? shared_values[pos] / temperature - log_denom : kNegInf;
+  }
+}
+
 __device__ inline bool sorted_after_previous(float value, int32_t index, bool has_previous, float prev_value, int32_t prev_index) {
   if (!has_previous) {
     return true;
@@ -445,10 +592,13 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     int32_t* __restrict__ out_indices,
     float* __restrict__ out_logprobs,
     int32_t* __restrict__ out_candidate_counts,
+    int32_t* __restrict__ out_top_indices,
+    float* __restrict__ out_top_logprobs,
     int64_t* __restrict__ out_indices_i64_commit,
     float* __restrict__ out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
+    int32_t top_logprobs,
     uint64_t step_index) {
   extern __shared__ unsigned char shared_raw[];
   float* shared_values = reinterpret_cast<float*>(shared_raw);
@@ -460,6 +610,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     return;
   }
   const int64_t base = row * vocab_size;
+  const int64_t top_out_base = row * static_cast<int64_t>(top_logprobs);
 
   float local_max = kNegInf;
   int32_t local_index = INT32_MAX;
@@ -492,6 +643,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
       if (out_candidate_counts != nullptr) {
         out_candidate_counts[row] = 0;
       }
+      write_sampler_top_logprob_empty(out_top_indices, out_top_logprobs, top_out_base, top_logprobs);
       write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, -1, kNegInf);
     }
     return;
@@ -507,6 +659,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
       if (out_candidate_counts != nullptr) {
         out_candidate_counts[row] = 1;
       }
+      write_sampler_top_logprob_argmax(out_top_indices, out_top_logprobs, top_out_base, top_logprobs, row_argmax);
       write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     }
     return;
@@ -540,6 +693,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     if (out_candidate_counts != nullptr) {
       out_candidate_counts[row] = 1;
     }
+    write_sampler_top_logprob_argmax(out_top_indices, out_top_logprobs, top_out_base, top_logprobs, row_argmax);
     write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     return;
   }
@@ -605,6 +759,7 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
     if (out_candidate_counts != nullptr) {
       out_candidate_counts[row] = 1;
     }
+    write_sampler_top_logprob_argmax(out_top_indices, out_top_logprobs, top_out_base, top_logprobs, row_argmax);
     write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, row_argmax, row_max);
     return;
   }
@@ -642,6 +797,25 @@ __global__ void sampler_top_p_temperature_rows_i32_kernel(
   }
   if (out_candidate_counts != nullptr) {
     out_candidate_counts[row] = retained_count;
+  }
+  if (out_top_indices != nullptr && out_top_logprobs != nullptr) {
+    const float log_denom = logf(retained_weight_sum) + max_scaled;
+    has_previous = false;
+    prev_value = 0.0f;
+    prev_index = -1;
+    for (int pos = 0; pos < top_logprobs; ++pos) {
+      float value = 0.0f;
+      int32_t index = -1;
+      const bool valid =
+          pos < retained_count && find_next_sorted_token(logits, base, vocab_size, has_previous, prev_value, prev_index, &value, &index);
+      out_top_indices[top_out_base + pos] = valid ? index : -1;
+      out_top_logprobs[top_out_base + pos] = valid ? value / temperature - log_denom : kNegInf;
+      if (valid) {
+        prev_value = value;
+        prev_index = index;
+        has_previous = true;
+      }
+    }
   }
   write_sampler_commit(out_indices_i64_commit, out_values_f32_commit, row, selected_index, selected_logit);
 }
@@ -751,10 +925,13 @@ extern "C" int hipengine_sampler_top_p_temperature_f32_rows_i32(
     int32_t* out_indices,
     float* out_logprobs,
     int32_t* out_candidate_counts,
+    int32_t* out_top_indices,
+    float* out_top_logprobs,
     int64_t* out_indices_i64_commit,
     float* out_values_f32_commit,
     int64_t rows,
     int64_t vocab_size,
+    int64_t top_logprobs,
     uint64_t step_index,
     int64_t threads,
     hipStream_t stream) {
@@ -762,7 +939,8 @@ extern "C" int hipengine_sampler_top_p_temperature_f32_rows_i32(
       row_seeds == nullptr || out_indices == nullptr) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || top_logprobs < 0 ||
+      top_logprobs > kMaxSamplerTopK || !valid_threads(threads)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const size_t smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int32_t));
@@ -780,10 +958,13 @@ extern "C" int hipengine_sampler_top_p_temperature_f32_rows_i32(
       out_indices,
       out_logprobs,
       out_candidate_counts,
+      out_top_indices,
+      out_top_logprobs,
       out_indices_i64_commit,
       out_values_f32_commit,
       rows,
       vocab_size,
+      static_cast<int32_t>(top_logprobs),
       step_index);
   return static_cast<int>(hipGetLastError());
 }
@@ -884,6 +1065,44 @@ extern "C" int hipengine_sampler_temperature_f32_rows_i32(
       rows,
       vocab_size,
       step_index);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_sampler_temperature_top_logprobs_f32_rows_i32(
+    const float* logits,
+    const float* temperatures,
+    int32_t* out_top_indices,
+    float* out_top_logprobs,
+    int64_t rows,
+    int64_t vocab_size,
+    int64_t top_logprobs,
+    int64_t threads,
+    hipStream_t stream) {
+  if (logits == nullptr || temperatures == nullptr || out_top_indices == nullptr || out_top_logprobs == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || top_logprobs <= 0 ||
+      top_logprobs > kMaxSamplerTopK || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const size_t top_count = static_cast<size_t>(top_logprobs);
+  const size_t smem =
+      static_cast<size_t>(threads) * top_count * (sizeof(float) + sizeof(int32_t)) +
+      static_cast<size_t>(threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      sampler_temperature_top_logprobs_rows_i32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(t),
+      smem,
+      stream,
+      logits,
+      temperatures,
+      out_top_indices,
+      out_top_logprobs,
+      rows,
+      vocab_size,
+      static_cast<int32_t>(top_logprobs));
   return static_cast<int>(hipGetLastError());
 }
 

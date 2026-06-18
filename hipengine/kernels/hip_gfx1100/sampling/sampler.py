@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("sampler.hip")
 _OUTPUT_NAME = "sampler.so"
 _SYMBOL_PROCESSORS = "hipengine_sampler_apply_processors_f32_rows"
 _SYMBOL_TEMPERATURE = "hipengine_sampler_temperature_f32_rows_i32"
+_SYMBOL_TEMPERATURE_TOP_LOGPROBS = "hipengine_sampler_temperature_top_logprobs_f32_rows_i32"
 _SYMBOL_TOPP_TEMPERATURE = "hipengine_sampler_top_p_temperature_f32_rows_i32"
 _SYMBOL_TOPK_TEMPERATURE = "hipengine_sampler_topk_temperature_f32_rows_i32"
 _ALLOWED_THREADS = {64, 128}
@@ -223,6 +224,9 @@ def sample_top_p_temperature_f32_rows_i32(
     rows: int,
     vocab_size: int,
     *,
+    out_top_indices_i32_ptr: int | None = None,
+    out_top_logprobs_f32_ptr: int | None = None,
+    top_logprobs: int = 0,
     out_indices_i64_ptr: int | None = None,
     out_values_f32_ptr: int | None = None,
     step_index: int = 0,
@@ -243,6 +247,9 @@ def sample_top_p_temperature_f32_rows_i32(
 
     _check_rows_vocab(rows, vocab_size)
     _check_threads(threads)
+    _check_top_logprobs(top_logprobs)
+    if (out_top_indices_i32_ptr is None) != (out_top_logprobs_f32_ptr is None):
+        raise ValueError("top-logprob output buffers must be provided together")
     if step_index < 0:
         raise ValueError("step_index must be non-negative")
     library = library or build_sampler(load=True)
@@ -257,10 +264,13 @@ def sample_top_p_temperature_f32_rows_i32(
         ctypes.c_void_p,  # out selected indices i32
         ctypes.c_void_p,  # out selected logprobs f32 (nullable)
         ctypes.c_void_p,  # out retained counts i32 (nullable)
+        ctypes.c_void_p,  # out top indices i32 (nullable)
+        ctypes.c_void_p,  # out top logprobs f32 (nullable)
         ctypes.c_void_p,  # out selected indices i64 commit (nullable)
         ctypes.c_void_p,  # out selected logits f32 commit (nullable)
         ctypes.c_int64,   # rows
         ctypes.c_int64,   # vocab size
+        ctypes.c_int64,   # top logprobs
         ctypes.c_uint64,  # step index
         ctypes.c_int64,   # threads
         ctypes.c_void_p,  # stream
@@ -275,11 +285,68 @@ def sample_top_p_temperature_f32_rows_i32(
         ctypes.c_void_p(out_indices_i32_ptr),
         ctypes.c_void_p(out_logprobs_f32_ptr) if out_logprobs_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_candidate_counts_i32_ptr) if out_candidate_counts_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_top_indices_i32_ptr) if out_top_indices_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_top_logprobs_f32_ptr) if out_top_logprobs_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_indices_i64_ptr) if out_indices_i64_ptr is not None else ctypes.c_void_p(),
         ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
+        ctypes.c_int64(top_logprobs),
         ctypes.c_uint64(step_index),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def sample_temperature_top_logprobs_f32_rows_i32(
+    logits_f32_ptr: int,
+    temperatures_f32_ptr: int,
+    out_top_indices_i32_ptr: int,
+    out_top_logprobs_f32_ptr: int,
+    rows: int,
+    vocab_size: int,
+    top_logprobs: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Emit full-vocabulary top-logprob candidates for temperature rows.
+
+    This metadata kernel preserves the selection semantics of
+    :func:`sample_temperature_f32_rows_i32`; it only computes the sorted
+    OpenAI-style top candidates over the full finite vocabulary distribution.
+    """
+
+    _check_rows_vocab(rows, vocab_size)
+    _check_top_logprobs(top_logprobs, allow_zero=False)
+    _check_threads(threads)
+    library = library or build_sampler(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TEMPERATURE_TOP_LOGPROBS)
+    fn.argtypes = [
+        ctypes.c_void_p,  # logits f32
+        ctypes.c_void_p,  # temperatures f32
+        ctypes.c_void_p,  # out top indices i32
+        ctypes.c_void_p,  # out top logprobs f32
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # vocab size
+        ctypes.c_int64,   # top logprobs
+        ctypes.c_int64,   # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(temperatures_f32_ptr),
+        ctypes.c_void_p(out_top_indices_i32_ptr),
+        ctypes.c_void_p(out_top_logprobs_f32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(top_logprobs),
         ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
@@ -388,6 +455,11 @@ def register_sampler_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "sampler", "f32", "temperature_top_logprobs_rows_i32"),
+        sample_temperature_top_logprobs_f32_rows_i32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "sampler", "f32", "top_p_temperature_rows_i32"),
         sample_top_p_temperature_f32_rows_i32,
         replace=replace,
@@ -411,6 +483,12 @@ def _check_rows_vocab(rows: int, vocab_size: int) -> None:
 def _check_topk(top_k: int) -> None:
     if top_k <= 0 or top_k > _MAX_TOPK:
         raise ValueError(f"top_k must be in [1, {_MAX_TOPK}]")
+
+
+def _check_top_logprobs(top_logprobs: int, *, allow_zero: bool = True) -> None:
+    minimum = 0 if allow_zero else 1
+    if top_logprobs < minimum or top_logprobs > _MAX_TOPK:
+        raise ValueError(f"top_logprobs must be in [{minimum}, {_MAX_TOPK}]")
 
 
 def _check_threads(threads: int) -> None:

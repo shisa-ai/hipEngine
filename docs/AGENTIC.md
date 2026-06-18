@@ -48,9 +48,10 @@ Already available or recently added:
   eligible. It supports logit bias/history-penalty processors, full-vocab
   temperature sampling, bounded `top_k <= 64`, full-vocab and bounded top-k
   `top_p`/`min_p`, suppress-token ids, min-token/EOS policy, selected-token
-  logprobs, bounded `top_logprobs <= top_k <= 64`, and post-accept token stops.
-  It does not cover true batched c>N sampling, GGUF, full-vocab `top_logprobs`,
-  or `top_logprobs > top_k`.
+  logprobs, full-vocab `top_logprobs` for `top_k=0`, bounded
+  `top_logprobs <= top_k <= 64`, and post-accept token stops. It does not cover
+  true batched c>N sampling, GGUF, or `top_logprobs > top_k` for bounded top-k
+  requests.
 - Sampling parameters are plumbed through public/server/runtime layers:
   temperature, top-p, top-k, min-p, penalties, logit bias, suppress token ids,
   min-token/EOS policy, stop token ids, stop token sequences, `seed`, and
@@ -413,8 +414,8 @@ Current code reality:
   default, and supported PARO c>N sampled batches can route each physical slot
   through the same native sampler state; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`
   disables the native route for rollback. True batched c>N sampling, GGUF,
-  full-vocab `top_logprobs`, `top_logprobs > top_k`, and dynamic processor
-  parity remain future work for the native route.
+  `top_logprobs > top_k`, and dynamic processor parity remain future work for
+  the native route.
 
 Required pre-selection processors, in order:
 
@@ -2280,7 +2281,7 @@ Current state:
   sampling check after each selected token. The manifest scope is
   `paro_c1_and_serial_per_slot_c_gt_1`, while true batched c>N remains
   explicitly unsupported;
-- true batched c>N/GGUF integration, full-vocab `top_logprobs`, and broader
+- true batched c>N/GGUF integration and broader
   retained profiler/shape coverage remain unimplemented.
 
 Exit gates:
@@ -2337,9 +2338,8 @@ completion/chat responses keep the OpenAI-compatible score as `null` and add
 stable reason vocabulary under `features.logprobs.omission_reasons`. PARO c>N
 host-sampled and serial native-sampled final outputs preserve per-token selected
 logprob metadata from scheduler step results; host-sampled rows also preserve
-top-logprob metadata. Remaining work is true prompt-token logprobs,
-`top_logprobs` on native GPU sampling, true batched native c>N/GGUF GPU-path
-coverage, and broader performance promotion.
+top-logprob metadata. Remaining work is true prompt-token logprobs, true
+batched native c>N/GGUF GPU-path coverage, and broader performance promotion.
 
 Implement:
 
@@ -3057,8 +3057,8 @@ above and in P3/P4 until the server advertises those capabilities.
    planner for scheduler rows, advertises native GPU sampler unsupported
    capability fields from the same source as `supports_native_gpu_sampling()`,
    reports `native_gpu_unsupported_request` or processed-logits fallback
-   metadata when requested native sampling cannot run, and keeps full-vocab
-   `top_logprobs` plus unsupported processor shapes off the native route.
+   metadata when requested native sampling cannot run, and keeps unsupported
+   processor shapes plus bounded `top_logprobs > top_k` off the native route.
 3. **Speculative/MTP processed-target verification.** Processed-target MTP
    should apply the same EOS, logit-bias, penalty, suppression, forced-token,
    thinking-budget, stop, and logprob policy as AR sampling. Until that exists,
@@ -3130,8 +3130,8 @@ Remaining P3 work:
 2. **Native sampler full polish.** The scoped PARO native sampler route is
    default-on for supported c=1 and serial per-slot c>N shapes, with
    `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` as rollback. True batched c>N/GGUF native
-   sampling, full-vocab native `top_logprobs`, and broader profiler/shape
-   coverage remain unimplemented while host fallback is explicit.
+   sampling and broader profiler/shape coverage remain unimplemented while host
+   fallback is explicit.
 3. **Multi-model routing, model-family fallback, and TP runtime.** Current
    routing metadata is single-model exact-match only. Multiple resident models,
    capability-aware fallback, model-family substitution, and tensor parallel
