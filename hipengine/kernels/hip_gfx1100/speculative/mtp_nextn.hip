@@ -635,3 +635,150 @@ extern "C" int hipengine_mtp_rope_f32(
       x, cos, sin, out, tokens, heads, head_dim, rotary_dim, cos_stride);
   return static_cast<int>(hipGetLastError());
 }
+
+// ---- MTP NextN paged KVLiveSpans attention (F32, correctness-first) ----
+// Paged causal GQA attention with KVLiveSpans.
+// query: [tokens, heads, qk_head_dim]
+// key_cache: [blocks, block_size, kv_heads, qk_head_dim] (4D)
+// value_cache: [blocks, block_size, kv_heads, value_head_dim] (4D)
+// block_tables: [tokens, max_blocks] int64 (logical->physical block mapping)
+// live_counts: [tokens] int64 (number of visible slots)
+// token_positions: [tokens] int64 (position within cache for each token)
+// out: [tokens, heads, value_head_dim]
+// One block per (token, q_head). Thread 0 serially scores visible slots.
+extern "C" __global__ void hipengine_mtp_paged_attn_f32_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key_cache,
+    const float* __restrict__ value_cache,
+    const int64_t* __restrict__ block_tables,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t kv_heads,
+    int64_t qk_head_dim,
+    int64_t value_head_dim,
+    int64_t block_size,
+    int64_t max_blocks,
+    float scale) {
+  const int64_t t = static_cast<int64_t>(blockIdx.x);
+  const int64_t qh = static_cast<int64_t>(blockIdx.y);
+  if (t >= tokens || qh >= heads) {
+    return;
+  }
+  const int64_t kv_group = heads / kv_heads;
+  const int64_t kh = qh / kv_group;
+  const int64_t live_count = live_counts[t];
+  const int64_t position = token_positions[t];
+  const int64_t* bt = block_tables + t * max_blocks;
+
+  // Determine visible slots (causal: slot <= position, no evict mask for now)
+  int64_t vcount = live_count;
+  if (position + 1 < vcount) {
+    vcount = position + 1;
+  }
+  if (vcount <= 0) {
+    vcount = 0;
+  }
+
+  extern __shared__ float shared[];
+  float* scores = shared;
+  float* out_acc = shared + block_size * max_blocks;
+
+  const float* qr = query + (t * heads + qh) * qk_head_dim;
+
+  if (threadIdx.x == 0) {
+    float max_score = -INFINITY;
+    for (int64_t s = 0; s < vcount; ++s) {
+      // Resolve physical block and offset
+      int64_t logical_block = s / block_size;
+      int64_t block_offset = s % block_size;
+      int64_t physical_block = (logical_block < max_blocks) ? bt[logical_block] : logical_block;
+      if (physical_block < 0) {
+        physical_block = logical_block;
+      }
+      const float* kr = key_cache +
+        ((physical_block * block_size + block_offset) * kv_heads + kh) * qk_head_dim;
+      float dot = 0.0f;
+      for (int64_t d = 0; d < qk_head_dim; ++d) {
+        dot += kr[d] * qr[d];
+      }
+      float sc = dot * scale;
+      scores[s] = sc;
+      if (sc > max_score) {
+        max_score = sc;
+      }
+    }
+    float exp_sum = 0.0f;
+    for (int64_t s = 0; s < vcount; ++s) {
+      float e = __expf(scores[s] - max_score);
+      scores[s] = e;
+      exp_sum += e;
+    }
+    float inv = (exp_sum > 0.0f) ? (1.0f / exp_sum) : 0.0f;
+    for (int64_t d = 0; d < value_head_dim; ++d) {
+      float acc = 0.0f;
+      for (int64_t s = 0; s < vcount; ++s) {
+        int64_t logical_block = s / block_size;
+        int64_t block_offset = s % block_size;
+        int64_t physical_block = (logical_block < max_blocks) ? bt[logical_block] : logical_block;
+        if (physical_block < 0) {
+          physical_block = logical_block;
+        }
+        const float* vr = value_cache +
+          ((physical_block * block_size + block_offset) * kv_heads + kh) * value_head_dim;
+        acc += scores[s] * inv * vr[d];
+      }
+      out_acc[d] = acc;
+    }
+  }
+  __syncthreads();
+  float* outr = out + (t * heads + qh) * value_head_dim;
+  for (int64_t d = static_cast<int64_t>(threadIdx.x); d < value_head_dim;
+       d += static_cast<int64_t>(blockDim.x)) {
+    outr[d] = out_acc[d];
+  }
+}
+
+extern "C" int hipengine_mtp_paged_attn_f32(
+    const float* query,
+    const float* key_cache,
+    const float* value_cache,
+    const int64_t* block_tables,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    float* out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t kv_heads,
+    int64_t qk_head_dim,
+    int64_t value_head_dim,
+    int64_t block_size,
+    int64_t max_blocks,
+    float scale,
+    hipStream_t stream) {
+  if (tokens <= 0 || heads <= 0 || kv_heads <= 0 || qk_head_dim <= 0 ||
+      value_head_dim <= 0 || block_size <= 0 || max_blocks <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t max_slots = block_size * max_blocks;
+  const int shbytes = static_cast<int>((max_slots + value_head_dim) * sizeof(float));
+  int block = 256;
+  if (value_head_dim < block) {
+    block = static_cast<int>(value_head_dim);
+  }
+  if (block < 1) {
+    block = 1;
+  }
+  dim3 grid(static_cast<unsigned int>(tokens), static_cast<unsigned int>(heads));
+  hipLaunchKernelGGL(
+      hipengine_mtp_paged_attn_f32_kernel,
+      grid,
+      dim3(static_cast<unsigned int>(block)),
+      shbytes,
+      stream,
+      query, key_cache, value_cache, block_tables, live_counts, token_positions, out,
+      tokens, heads, kv_heads, qk_head_dim, value_head_dim, block_size, max_blocks, scale);
+  return static_cast<int>(hipGetLastError());
+}

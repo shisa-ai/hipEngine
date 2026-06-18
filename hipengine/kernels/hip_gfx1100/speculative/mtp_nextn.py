@@ -340,6 +340,55 @@ def mtp_rope_f32(
     _check_launch(runtime, err)
 
 
+# ptr(query) + ptr(key_cache) + ptr(value_cache) + ptr(block_tables) + ptr(live_counts) +
+# ptr(token_positions) + ptr(out) + tokens + heads + kv_heads + qk_head_dim + value_head_dim +
+# block_size + max_blocks + scale(float) + stream
+_ARGTYPES_PAGED_ATTN_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+
+
+def mtp_paged_attn_f32(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    block_tables_ptr: int,
+    live_counts_ptr: int,
+    token_positions_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    heads: int,
+    kv_heads: int,
+    qk_head_dim: int,
+    value_head_dim: int,
+    block_size: int,
+    max_blocks: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch paged KVLiveSpans causal GQA attention (F32, correctness-first)."""
+
+    for name, value in (("tokens", tokens), ("heads", heads), ("kv_heads", kv_heads),
+                        ("qk_head_dim", qk_head_dim), ("value_head_dim", value_head_dim),
+                        ("block_size", block_size), ("max_blocks", max_blocks)):
+        _check_positive(name, value)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_mtp_paged_attn_f32", _ARGTYPES_PAGED_ATTN_F32, ctypes.c_int)
+    err = fn(query_ptr, key_cache_ptr, value_cache_ptr, block_tables_ptr, live_counts_ptr,
+             token_positions_ptr, out_ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim,
+             block_size, max_blocks, float(scale), stream)
+    _check_launch(runtime, err)
+
+
 # ptr(gate) + ptr(up) + ptr(out) + n + stream
 _ARGTYPES_SILU_MUL_F32 = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
@@ -566,6 +615,11 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
     context_counts: "np.ndarray | None" = None,
     key_cache: "np.ndarray | None" = None,
     value_cache: "np.ndarray | None" = None,
+    kv_base_offsets: "np.ndarray | None" = None,
+    kv_live_counts: "np.ndarray | None" = None,
+    kv_token_positions: "np.ndarray | None" = None,
+    kv_evict_mask: "np.ndarray | None" = None,
+    block_size: int | None = None,
     rope_cos: "np.ndarray | None" = None,
     rope_sin: "np.ndarray | None" = None,
     rotary_dim: int | None = None,
@@ -677,9 +731,27 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         elif sin_arr.shape[-1] != half:
             raise ValueError(f"rope_sin.shape[-1] must be {half} or {half*2}")
 
-    if key_cache is not None or value_cache is not None:
+    # Paged KVLiveSpans path: if kv_base_offsets provided, use paged attention
+    use_paged = kv_base_offsets is not None
+    if use_paged:
+        if key_cache is None or value_cache is None:
+            raise ValueError("paged KVLiveSpans attention requires key_cache and value_cache")
+        if kv_live_counts is None:
+            raise ValueError("kv_live_counts is required with kv_base_offsets")
+        # Normalize block_tables
+        bt = np.ascontiguousarray(kv_base_offsets, dtype=np.int64)
+        if bt.ndim == 1:
+            bt = bt[None, :]
+        max_blocks = bt.shape[1]
+        lc = np.ascontiguousarray(kv_live_counts, dtype=np.int64)
+        tp = np.ascontiguousarray(
+            positions if kv_token_positions is None else kv_token_positions, dtype=np.int64
+        )
+        blk = int(block_size) if block_size is not None else int(key_cache.shape[1])
+    elif key_cache is not None or value_cache is not None:
+        # Dense external cache (not paged) — still not supported for non-paged external cache
         raise NotImplementedError(
-            "external KV cache path is M6 work; F32 M3 fixture uses the current-token K/V"
+            "non-paged external KV cache is M6+ work; use kv_base_offsets for paged KVLiveSpans"
         )
 
     pos = (
@@ -768,11 +840,28 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         copy_host_to_device(ctx_dev, host_array_ptr(ctx), runtime=runtime)
         attn_dev = malloc(tokens * heads * value_head_dim * 4, runtime=runtime)
         buffers.append(attn_dev)
-        mtp_dense_attn_f32(
-            query_dev.ptr, key_cur_dev.ptr, value_cur_dev.ptr, pos_dev.ptr, ctx_dev.ptr,
-            attn_dev.ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim, tokens,
-            scale_value, runtime=runtime,
-        )
+        if use_paged:
+            kc_dev = malloc(key_cache.nbytes, runtime=runtime); buffers.append(kc_dev)
+            vc_dev = malloc(value_cache.nbytes, runtime=runtime); buffers.append(vc_dev)
+            bt_dev = malloc(bt.nbytes, runtime=runtime); buffers.append(bt_dev)
+            lc_dev = malloc(lc.nbytes, runtime=runtime); buffers.append(lc_dev)
+            tp_dev = malloc(tp.nbytes, runtime=runtime); buffers.append(tp_dev)
+            copy_host_to_device(kc_dev, host_array_ptr(key_cache), runtime=runtime)
+            copy_host_to_device(vc_dev, host_array_ptr(value_cache), runtime=runtime)
+            copy_host_to_device(bt_dev, host_array_ptr(bt), runtime=runtime)
+            copy_host_to_device(lc_dev, host_array_ptr(lc), runtime=runtime)
+            copy_host_to_device(tp_dev, host_array_ptr(tp), runtime=runtime)
+            mtp_paged_attn_f32(
+                query_dev.ptr, kc_dev.ptr, vc_dev.ptr, bt_dev.ptr, lc_dev.ptr, tp_dev.ptr,
+                attn_dev.ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim,
+                blk, max_blocks, scale_value, runtime=runtime,
+            )
+        else:
+            mtp_dense_attn_f32(
+                query_dev.ptr, key_cur_dev.ptr, value_cur_dev.ptr, pos_dev.ptr, ctx_dev.ptr,
+                attn_dev.ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim, tokens,
+                scale_value, runtime=runtime,
+            )
 
         # gated = attn * sigmoid(gate)
         gated_dev = malloc(tokens * heads * value_head_dim * 4, runtime=runtime)
@@ -1393,6 +1482,7 @@ __all__ = [
     "build_mtp_nextn",
     "mtp_add_f32",
     "mtp_dense_attn_f32",
+    "mtp_paged_attn_f32",
     "mtp_eh_proj_f32",
     "mtp_linear_f32",
     "mtp_mul_f32",
