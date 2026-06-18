@@ -131,9 +131,17 @@ run on GPU1 (`761.864` prefill / `11.141` decode tok/s, `23.400 GiB` tracked /
 `23.913 GiB` sampled, finite logits), but decode graph replay is disabled in
 that mode because generated token IDs are device-resident inside the graph. This
 artifact (`benchmarks/results/2026-06-18-gpu1-gguf-q4km-host-token-embedding-128k-diagnostic.json`)
-is a capacity proof, **not** a promoted path. Do not promote or claim 24 GiB-class
-`128K/128` Q4_K_M support until a passing exact artifact preserves graph-class
-decode, or the human lead explicitly accepts the host-embedding decode tradeoff,
+is a capacity proof, **not** a promoted path. A follow-up explicit
+`--kv-storage int8_per_token_head` diagnostic kept graph-class decode and fit
+`128K/128` on GPU1 (`760.724` prefill / `64.923` decode tok/s, `22.911 GiB`
+tracked / `23.472 GiB` sampled) via INT8 full-attention KV plus a temporary
+BF16 prefill-oracle cache, but it is also **not** promoted: primary short gates
+drifted IDs (`512/128` `318 -> 220`, `4K/128` `220 -> 34105`) and `512/128`
+decode regressed (`123.726 -> 112.313 tok/s`) versus the default BF16 rerun.
+Artifact: `benchmarks/results/2026-06-18-gpu1-gguf-q4km-int8kv-128k-diagnostic.json`.
+Do not promote or claim 24 GiB-class `128K/128` Q4_K_M support until a passing
+exact artifact preserves primary-gate IDs/logits and graph-class decode, or the
+human lead explicitly accepts the host-embedding/INT8-KV decode/accuracy tradeoff,
 a lower max-context, or a Q4_K_S fallback policy.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /

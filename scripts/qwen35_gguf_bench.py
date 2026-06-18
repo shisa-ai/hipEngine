@@ -34,6 +34,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 
@@ -144,6 +145,11 @@ def main() -> int:
         default=None,
         help="Override the GGUF rows=1 GEMV decode opt-in for the resident session; omit to use HIPENGINE_GGUF_GEMV_DECODE.",
     )
+    add_kv_policy_args(
+        parser,
+        legacy_storage_flags=("--kv-storage-dtype",),
+        help_prefix="GGUF resident full-attention KV",
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
@@ -188,6 +194,7 @@ def main() -> int:
         auto_tune_chunk_sizes=args.prefill_chunk_autotune,
         chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
     )
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
 
     if args.persistent_session:
         runs, persistent_session_load_seconds, persistent_session_memory = _run_persistent_session(
@@ -211,6 +218,7 @@ def main() -> int:
             use_gemv_decode=args.use_gemv_decode,
             prefill_chunk_size=args.prefill_chunk_size,
             prefill_config=prefill_config,
+            kv_policy=kv_policy,
             warmup_runs=args.warmup_runs,
             measured_runs=args.measured_runs,
         )
@@ -242,6 +250,7 @@ def main() -> int:
                 use_gemv_decode=args.use_gemv_decode,
                 prefill_chunk_size=args.prefill_chunk_size,
                 prefill_config=prefill_config,
+                kv_policy=kv_policy,
                 measured=measured,
                 run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
             )
@@ -306,6 +315,8 @@ def main() -> int:
         "use_gemv_decode": args.use_gemv_decode,
         "requested_use_wmma_prefill": args.use_wmma_prefill,
         "requested_use_gemv_decode": args.use_gemv_decode,
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "effective_use_wmma_prefill_all": [run.get("effective_use_wmma_prefill") for run in runs],
         "effective_use_gemv_decode_all": [run.get("effective_use_gemv_decode") for run in runs],
         "fastpath_safety": [run.get("fastpath_safety") for run in runs],
@@ -366,6 +377,7 @@ def _run_persistent_session(
     use_gemv_decode: bool | None,
     prefill_chunk_size: int,
     prefill_config: PrefillConfig,
+    kv_policy,
     warmup_runs: int,
     measured_runs: int,
 ) -> tuple[list[dict[str, Any]], float, dict[str, Any]]:
@@ -397,6 +409,9 @@ def _run_persistent_session(
         use_gemv_decode=use_gemv_decode,
         prefill_chunk_size=prefill_chunk_size,
         prefill_config=prefill_config,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
     persistent_memory["after_load"] = _memory_snapshot("after_load", runtime, session)
@@ -651,6 +666,7 @@ def _run_once(
     use_gemv_decode: bool | None,
     prefill_chunk_size: int,
     prefill_config: PrefillConfig,
+    kv_policy,
     measured: bool,
     run_index: int,
 ) -> dict[str, Any]:
@@ -672,6 +688,9 @@ def _run_once(
         use_gemv_decode=use_gemv_decode,
         prefill_chunk_size=prefill_chunk_size,
         prefill_config=prefill_config,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
     fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
@@ -967,6 +986,9 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     buffers = tuple(getattr(scratch, "buffers", ()))
     total = _sum_buffers(buffers)
     full_attn_kv = _sum_buffers(tuple(getattr(scratch, "full_key_caches", ())) + tuple(getattr(scratch, "full_value_caches", ())))
+    full_attn_kv_scales = _sum_buffers(
+        tuple(getattr(scratch, "full_k_scale_caches", ())) + tuple(getattr(scratch, "full_v_scale_caches", ()))
+    )
     linear_state = _sum_buffers(tuple(getattr(scratch, "layer_conv_states", ())) + tuple(getattr(scratch, "layer_recurrent_states", ())))
     metadata = _sum_named_buffers(
         scratch,
@@ -980,6 +1002,7 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     )
     named = {
         "full_attention_kv_cache": full_attn_kv,
+        "full_attention_kv_scales": full_attn_kv_scales,
         "linear_attention_state": linear_state,
         "metadata_tables": metadata,
     }
@@ -989,6 +1012,8 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
         "total_gib": _bytes_to_gib(total),
         "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
+        "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
+        "kv_scale_dtype": getattr(getattr(scratch, "kv_scale_dtype", None), "value", None),
         "by_component_bytes": named,
     }
 

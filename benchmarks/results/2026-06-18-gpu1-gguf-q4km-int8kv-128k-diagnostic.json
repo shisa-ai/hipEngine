@@ -1,0 +1,182 @@
+{
+  "baseline_default_after_change": {
+    "kv_storage_dtype": "bf16",
+    "load_seconds": 74.35062778089195,
+    "persistent_memory_summary": {
+      "hip_used_peak_sampled_bytes": 24738406400,
+      "hip_used_peak_sampled_gib": 23.03943634033203,
+      "notes": [
+        "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+        "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+        "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+      ],
+      "owned_session_peak_bytes": 24145294400,
+      "owned_session_peak_gib": 22.487057745456696,
+      "tracked_current_allocated_bytes_after_close": 0,
+      "tracked_current_allocated_bytes_before_close": 24145294400,
+      "tracked_current_allocated_gib_after_close": 0.0,
+      "tracked_current_allocated_gib_before_close": 22.487057745456696,
+      "tracked_peak_allocated_bytes": 24145294400,
+      "tracked_peak_allocated_gib": 22.487057745456696
+    },
+    "workloads": {
+      "4K/128": {
+        "decode_tok_s_median": 113.9915174255048,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2630.5402381230756,
+        "tracked_peak_allocated_gib_median": 22.487057745456696
+      },
+      "512/128": {
+        "decode_tok_s_median": 123.72633928602052,
+        "final_token_ids": [
+          318,
+          318,
+          318
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2275.168527577922,
+        "tracked_peak_allocated_gib_median": 22.487057745456696
+      }
+    }
+  },
+  "commands": {
+    "default_short_gate": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build",
+    "int8_128k_gate": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build",
+    "int8_short_gate": "same as default_short_gate plus --kv-storage int8_per_token_head",
+    "unit_guards": "python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_int8_kv_policy.py tests/test_kvcache_policy.py -q"
+  },
+  "comparison": {
+    "capacity_result": "INT8 full-attention KV fits GPU1 128K/128 with graph-class decode path enabled, unlike default BF16 KV allocation, but it changes IDs and slows short-gate decode.",
+    "default_short_gate_ids_expected": {
+      "4K/128": 220,
+      "512/128": 318
+    },
+    "int8_short_gate_id_drift": {
+      "4K/128": [
+        34105,
+        34105,
+        34105
+      ],
+      "512/128": [
+        220,
+        220,
+        220
+      ]
+    },
+    "short_gate_decode_delta_vs_default_tok_s": {
+      "4K/128": -1.0839820479663018,
+      "512/128": -11.413393071685064
+    }
+  },
+  "date": "2026-06-18",
+  "decision": {
+    "performance_claim": false,
+    "reason": "Opt-in INT8 full-attention KV passes the 24GB 128K/128 allocation/run gate, but short primary gates drift final IDs (318/220 -> 220/34105) and 512/128 decode regresses (~123.7 -> ~112.3 tok/s). Keep as explicit diagnostic only; default BF16 path remains unchanged.",
+    "retained_default": false,
+    "status": "diagnostic_no_hold"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIP_VISIBLE_DEVICES": "1",
+    "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe"
+  },
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100 / 24 GiB-class (HIP_VISIBLE_DEVICES=1)",
+  "int8_128k_gate": {
+    "kv_storage_dtype": "int8_per_token_head",
+    "load_seconds": 73.70425544911996,
+    "persistent_memory_summary": {
+      "hip_used_peak_sampled_bytes": 25202786304,
+      "hip_used_peak_sampled_gib": 23.471923828125,
+      "notes": [
+        "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+        "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+        "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+      ],
+      "owned_session_peak_bytes": 24600408064,
+      "owned_session_peak_gib": 22.91091537475586,
+      "tracked_current_allocated_bytes_after_close": 0,
+      "tracked_current_allocated_bytes_before_close": 24600408064,
+      "tracked_current_allocated_gib_after_close": 0.0,
+      "tracked_current_allocated_gib_before_close": 22.91091537475586,
+      "tracked_peak_allocated_bytes": 24600408064,
+      "tracked_peak_allocated_gib": 22.91091537475586
+    },
+    "workloads": {
+      "128K/128": {
+        "decode_tok_s_median": 64.92300346169148,
+        "final_token_ids": [
+          1510
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 760.7238758184197,
+        "tracked_peak_allocated_gib_median": 22.91091537475586
+      }
+    }
+  },
+  "int8_short_gate": {
+    "kv_storage_dtype": "int8_per_token_head",
+    "load_seconds": 74.40423923404887,
+    "persistent_memory_summary": {
+      "hip_used_peak_sampled_bytes": 24709046272,
+      "hip_used_peak_sampled_gib": 23.01209259033203,
+      "notes": [
+        "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+        "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+        "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+      ],
+      "owned_session_peak_bytes": 24109990976,
+      "owned_session_peak_gib": 22.454178869724274,
+      "tracked_current_allocated_bytes_after_close": 0,
+      "tracked_current_allocated_bytes_before_close": 24109990976,
+      "tracked_current_allocated_gib_after_close": 0.0,
+      "tracked_current_allocated_gib_before_close": 22.454178869724274,
+      "tracked_peak_allocated_bytes": 24109990976,
+      "tracked_peak_allocated_gib": 22.454178869724274
+    },
+    "workloads": {
+      "4K/128": {
+        "decode_tok_s_median": 112.9075353775385,
+        "final_token_ids": [
+          34105,
+          34105,
+          34105
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2632.9554043974795,
+        "tracked_peak_allocated_gib_median": 22.454178869724274
+      },
+      "512/128": {
+        "decode_tok_s_median": 112.31294621433545,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2285.7396937690023,
+        "tracked_peak_allocated_gib_median": 22.454178869724274
+      }
+    }
+  },
+  "label": "gpu1_gguf_q4km_int8_full_attention_kv_diagnostic",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "raw_json_paths": {
+    "default_short_gate": "/tmp/hipengine-gpu1-gguf-q4km-default-after-int8kv-512-4k-3run.json",
+    "int8_128k_gate": "/tmp/hipengine-gpu1-gguf-q4km-int8kv-128k-128.json",
+    "int8_short_gate": "/tmp/hipengine-gpu1-gguf-q4km-int8kv-short-512-4k-3run.json"
+  },
+  "schema": 1,
+  "unit_guards": {
+    "passed": true,
+    "pytest": "29 passed"
+  }
+}

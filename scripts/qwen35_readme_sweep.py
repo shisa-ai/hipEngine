@@ -86,7 +86,7 @@ def main() -> int:
     add_kv_policy_args(
         parser,
         legacy_storage_flags=("--kv-storage-dtype",),
-        help_prefix="PARO resident full-attention KV storage for prefill and decode",
+        help_prefix="Resident full-attention KV storage for prefill and decode",
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
@@ -365,6 +365,7 @@ def _run_gguf_sweep(
 
     use_bulk_prefill = True if args.force_bulk_prefill else False if args.no_bulk_prefill else None
     runtime = get_hip_runtime()
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     reset_memory_stats()
     persistent_memory: dict[str, Any] = {"before_load": _gguf_memory_snapshot("before_load", runtime)}
     load_start = time.perf_counter()
@@ -382,6 +383,9 @@ def _run_gguf_sweep(
         use_gemv_decode=args.use_gemv_decode,
         prefill_chunk_size=args.prefill_chunk_size,
         prefill_config=prefill_config,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
     host_token_embedding_enabled = bool(getattr(session, "host_token_embedding_enabled", False))
@@ -454,6 +458,8 @@ def _run_gguf_sweep(
             "effective_use_wmma_prefill": getattr(session, "use_wmma_prefill", None),
             "effective_use_gemv_decode": getattr(session, "use_gemv_decode", None),
             "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
+            "kv_storage_dtype": kv_policy.storage_dtype.value,
+            "kv_policy": kv_policy_json(kv_policy),
             "prefill_chunk_sizes_session": _gguf_prefill_chunk_sizes(session.prefill_config),
             "host_token_embedding_enabled": host_token_embedding_enabled,
             "host_token_embedding_reason": host_token_embedding_reason,
