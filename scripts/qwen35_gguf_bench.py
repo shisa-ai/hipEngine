@@ -488,6 +488,10 @@ def _run_existing_session_once(
     prefill_seconds = 0.0
     warmup_decode_seconds = 0.0
     decode_seconds = 0.0
+    host_token_embedding_graph_disabled = bool(
+        graph_replay_decode and getattr(session, "host_token_embedding_enabled", False)
+    )
+    effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
     try:
         prefill_start = time.perf_counter()
         first = session.prefill(
@@ -512,7 +516,7 @@ def _run_existing_session_once(
         retained_graph = graph_holder is not None
         decode_graph_reused = False
         decode_graph_recorded_tokens = False
-        if graph_replay_decode and decode_tokens:
+        if effective_graph_replay_decode and decode_tokens:
             graph = graph_holder.get("graph") if graph_holder is not None else None
             if graph is None:
                 capture_start = time.perf_counter()
@@ -593,6 +597,11 @@ def _run_existing_session_once(
         "fastpath_safety": fastpath_safety,
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
+        "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
+        "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "decode_graph_disabled_reason": (
+            "host_token_embedding" if host_token_embedding_graph_disabled else None
+        ),
         "timings": {
             "load_seconds": load_seconds,
             "load_seconds_is_shared_session": bool(persistent_session),
@@ -671,6 +680,10 @@ def _run_once(
     generated_token_ids: list[int] = []
     final = None
     graph_capture_seconds = 0.0
+    host_token_embedding_graph_disabled = bool(
+        graph_replay_decode and getattr(session, "host_token_embedding_enabled", False)
+    )
+    effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
     try:
         prefill_start = time.perf_counter()
         first = session.prefill(
@@ -692,7 +705,7 @@ def _run_once(
         warmup_decode_seconds = time.perf_counter() - warmup_start
         memory_snapshots["after_warmup_decode"] = _memory_snapshot("after_warmup_decode", runtime, session)
 
-        if graph_replay_decode and decode_tokens:
+        if effective_graph_replay_decode and decode_tokens:
             capture_start = time.perf_counter()
             graph = session.capture_decode_graph(
                 position=session.position,
@@ -745,6 +758,11 @@ def _run_once(
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
+        "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
+        "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "decode_graph_disabled_reason": (
+            "host_token_embedding" if host_token_embedding_graph_disabled else None
+        ),
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,

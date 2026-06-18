@@ -1,0 +1,77 @@
+{
+  "baseline_references": {
+    "mid_context_policy_max_context": "103K/128 pass, 104K/128 fail without host token embedding",
+    "pre_policy_max_context": "51K/128 pass, 52K/128 fail",
+    "previous_128k_blocker": "benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json",
+    "short_gate_baseline_artifact": "benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline-short.json"
+  },
+  "change": "Opt-in HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=1 offloads the raw Q8_0 token_embedding device buffer to host memmap and performs host Q8_0->BF16 embedding copies; HIP decode graph replay is disabled for this mode because generated token IDs are device-resident inside the graph.",
+  "date": "2026-06-18",
+  "decision": "Useful capacity proof but not promoted: it makes 128K/128 fit at 23.400 GiB tracked / 23.913 GiB sampled, but decode drops to 11.141 tok/s because graph replay cannot consume host-provided dynamic token embeddings. Next retained path should use INT8/full-attention KV or another device-side embedding strategy to keep graph decode.",
+  "default_short_gate_after_code": {
+    "4K/128": {
+      "decode_tok_s_median": 113.97157920982636,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2619.223607157179,
+      "tracked_peak_allocated_gib_median": 22.487057745456696
+    },
+    "512/128": {
+      "decode_tok_s_median": 124.16759764476423,
+      "final_token_ids": [
+        318,
+        318,
+        318
+      ],
+      "final_token_ids_stable": true,
+      "prefill_tok_s_median": 2316.7233814906867,
+      "tracked_peak_allocated_gib_median": 22.487057745456696
+    }
+  },
+  "engine": "hipEngine GGUF resident",
+  "git_commit": "35e1a8ae",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX, 24 GiB-class, gfx1100",
+  "host_embedding_128k_128": {
+    "decode_graph_disabled_reason": "host_token_embedding",
+    "decode_scratch_gib": 2.6378953270614147,
+    "decode_tok_s": 11.141052520529025,
+    "final_token_id": 17,
+    "finite_final_logits": true,
+    "hip_used_peak_sampled_gib": 23.913330078125,
+    "prefill_chunk_sizes": {
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 1025,
+      "full_attn_post": 768,
+      "full_attn_query": 768,
+      "full_attn_rope": 768,
+      "linear": 768,
+      "moe": 768
+    },
+    "prefill_tok_s": 761.8643611180208,
+    "session_buffers_gib": 0.25054528191685677,
+    "tracked_peak_allocated_gib": 23.39984893798828,
+    "weight_layout_gib": {
+      "dense_bf16": 0.046539306640625,
+      "dense_f32": 0.004320621490478516,
+      "gguf_q4_k_t16_v1": 11.5625,
+      "gguf_q5_k_t16_v1": 6.50390625,
+      "gguf_q6_k_t16_v1": 1.0037612915039062,
+      "gguf_q8_0_t16_v1": 1.390380859375
+    }
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "rocm_stack": "TheRock ROCm 7.13; HIPENGINE_HIP_ARCH=gfx1100; HIP_VISIBLE_DEVICES=1",
+  "schema": 1,
+  "source_jsons": {
+    "default_short_gate_3run": "/tmp/hipengine-default-after-host-embedding-512-4k-3run.json",
+    "host_embedding_128k": "/tmp/hipengine-host-embedding-128k-128.json"
+  },
+  "status": "diagnostic_retained_blocked"
+}

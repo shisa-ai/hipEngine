@@ -384,6 +384,8 @@ def _run_gguf_sweep(
         prefill_config=prefill_config,
     )
     load_seconds = time.perf_counter() - load_start
+    host_token_embedding_enabled = bool(getattr(session, "host_token_embedding_enabled", False))
+    host_token_embedding_reason = getattr(session, "host_token_embedding_reason", None)
     persistent_memory["after_load"] = _gguf_memory_snapshot("after_load", runtime, session)
     runs_by_workload: dict[str, list[dict[str, Any]]] = {}
     try:
@@ -453,6 +455,8 @@ def _run_gguf_sweep(
             "effective_use_gemv_decode": getattr(session, "use_gemv_decode", None),
             "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
             "prefill_chunk_sizes_session": _gguf_prefill_chunk_sizes(session.prefill_config),
+            "host_token_embedding_enabled": host_token_embedding_enabled,
+            "host_token_embedding_reason": host_token_embedding_reason,
         },
     )
 

@@ -121,12 +121,20 @@ prefill with zero free memory. The retained mid-context policy artifact
 lowers only the 24 GiB >=52K full-attention query chunk from 4096 to 1024 rows;
 short gates stay below the threshold and keep stable IDs/peak, while the largest
 observed pass moves to `103K/128` (`866.728` / `71.053 tok/s`, `23.484 GiB`) and
-`104K/128` is the first observed OOM. The `128K/128` final memory gate remains
-blocked by BF16 full-attention KV/weight residency:
+`104K/128` is the first observed OOM. The default `128K/128` final memory gate
+remains blocked by BF16 full-attention KV/weight residency:
 `benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json`.
-Do not promote or claim 24 GiB-class `128K/128` Q4_K_M support until this is
-superseded by a passing exact artifact, or the human lead explicitly accepts a
-lower max-context or Q4_K_S fallback policy.
+A 2026-06-18 opt-in diagnostic offloaded the sole `raw_gguf` resident weight
+(the Q8_0 token embedding, `0.503 GiB`) via
+`HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=1` and proved `128K/128` can allocate and
+run on GPU1 (`761.864` prefill / `11.141` decode tok/s, `23.400 GiB` tracked /
+`23.913 GiB` sampled, finite logits), but decode graph replay is disabled in
+that mode because generated token IDs are device-resident inside the graph. This
+artifact (`benchmarks/results/2026-06-18-gpu1-gguf-q4km-host-token-embedding-128k-diagnostic.json`)
+is a capacity proof, **not** a promoted path. Do not promote or claim 24 GiB-class
+`128K/128` Q4_K_M support until a passing exact artifact preserves graph-class
+decode, or the human lead explicitly accepts the host-embedding decode tradeoff,
+a lower max-context, or a Q4_K_S fallback policy.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 
@@ -140,6 +141,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_topk_split_shared_coop_out_bf16,
 )
 from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION, build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_expert_sidecar import (
     GGUFExpertPackedTensor,
@@ -2586,6 +2588,7 @@ _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
+_GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
 
 
 @dataclass(frozen=True)
@@ -2634,6 +2637,63 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _gguf_host_token_embedding_requested() -> bool:
+    return _env_flag(_GGUF_HOST_TOKEN_EMBEDDING_ENV, False)
+
+
+def _q8_0_embedding_rows_to_bf16(
+    raw_embedding: np.ndarray,
+    token_ids: np.ndarray,
+    *,
+    hidden_size: int,
+    cache: dict[int, np.ndarray] | None = None,
+) -> np.ndarray:
+    """Dequantize selected Q8_0 token-embedding rows to BF16 bits on host."""
+
+    raw = np.asarray(raw_embedding)
+    if raw.ndim != 2:
+        raise ValueError(f"Q8_0 token embedding raw bytes must be rank-2, got shape {raw.shape}")
+    hidden = int(hidden_size)
+    if hidden <= 0 or hidden % 32 != 0:
+        raise ValueError(f"hidden_size must be a positive multiple of 32, got {hidden_size}")
+    blocks_per_row = hidden // 32
+    expected_row_bytes = blocks_per_row * 34
+    if int(raw.shape[1]) != expected_row_bytes:
+        raise ValueError(
+            f"Q8_0 token embedding row bytes mismatch: expected {expected_row_bytes}, got {raw.shape[1]}"
+        )
+
+    tokens = np.asarray(token_ids, dtype=np.int64).reshape(-1)
+    if tokens.size == 0:
+        return np.empty((0, hidden), dtype=np.uint16)
+    min_token = int(tokens.min())
+    max_token = int(tokens.max())
+    if min_token < 0 or max_token >= int(raw.shape[0]):
+        raise ValueError(f"token_id outside [0, {raw.shape[0]}): min={min_token}, max={max_token}")
+
+    row_cache = cache if cache is not None else {}
+
+    def one_row(token: int) -> np.ndarray:
+        cached = row_cache.get(token)
+        if cached is not None:
+            return cached
+        blocks = np.asarray(raw[token], dtype=np.uint8).reshape(blocks_per_row, 34)
+        scales = blocks[:, :2].copy().view(np.float16).astype(np.float32).reshape(blocks_per_row, 1)
+        q = blocks[:, 2:].view(np.int8).astype(np.float32)
+        bf16 = float_array_to_bf16_bits((q * scales).reshape(hidden))
+        row_cache[token] = bf16
+        return bf16
+
+    out = np.empty((int(tokens.size), hidden), dtype=np.uint16)
+    unique, inverse = np.unique(tokens, return_inverse=True)
+    if unique.size == 1:
+        out[...] = one_row(int(unique[0]))
+        return out
+    for index, token in enumerate(unique.tolist()):
+        out[inverse == index] = one_row(int(token))
+    return out
 
 
 def _gguf_aotriton_prefill_mode(start: int, rows: int, key_rows: int) -> str:
@@ -2782,6 +2842,11 @@ class Qwen35GGUFResidentSession:
     _expert_sidecar_reader: GGUFReader | None = field(default=None, init=False)
     _expert_sidecar_model_map: object | None = field(default=None, init=False)
     _expert_sidecar_host_layers: dict[int, dict[str, GGUFExpertPackedTensor]] | None = field(default=None, init=False)
+    _host_token_embedding_reader: GGUFReader | None = field(default=None, init=False)
+    _host_token_embedding_raw: np.ndarray | None = field(default=None, init=False)
+    _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
+    host_token_embedding_enabled: bool = field(default=False, init=False)
+    host_token_embedding_reason: str | None = field(default=None, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
@@ -2810,6 +2875,8 @@ class Qwen35GGUFResidentSession:
             self.use_wmma_prefill = self.fastpath_safety.effective_wmma_prefill
             self.use_gemv_decode = self.fastpath_safety.effective_gemv_decode
         runtime = self.runtime or get_hip_runtime()
+        if _gguf_host_token_embedding_requested():
+            self._offload_token_embedding_to_host(runtime=runtime)
         build_kwargs = {
             "load": True,
             "compiler_version": self.compiler_version,
@@ -2897,6 +2964,97 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         self.scratch.zero_states(runtime)
         self._position = 0
+
+    def _offload_token_embedding_to_host(self, *, runtime: HipRuntime) -> None:
+        """Release the resident Q8_0 token embedding and serve lookups from host."""
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        weights = self.runner.weights
+        token_weight = weights.root("token_embedding")
+        if token_weight.spec.layout != "raw_gguf" or token_weight.spec.quant_key != "gguf_q8_0":
+            raise ValueError(
+                f"{_GGUF_HOST_TOKEN_EMBEDDING_ENV}=1 requires a raw Q8_0 token embedding; "
+                f"got layout={token_weight.spec.layout!r}, quant={token_weight.spec.quant_key!r}"
+            )
+        if "raw" not in token_weight.allocations:
+            raise ValueError("token embedding has no raw device allocation to offload")
+        aliased_slots = [
+            slot for slot, weight in weights.root_weights.items() if slot != "token_embedding" and weight is token_weight
+        ]
+        if aliased_slots:
+            aliases = ", ".join(sorted(aliased_slots))
+            raise ValueError(
+                f"{_GGUF_HOST_TOKEN_EMBEDDING_ENV}=1 cannot offload token_embedding because it is "
+                f"aliased by device-resident root slot(s): {aliases}"
+            )
+
+        reader = GGUFReader(self.model_path)
+        raw = reader.tensor_data(token_weight.spec.source.name)
+        for allocation in reversed(tuple(token_weight.allocations.values())):
+            allocation.free(runtime=runtime)
+        host_weight = Qwen35GGUFDeviceWeight(spec=token_weight.spec, allocations=MappingProxyType({}))
+        root_weights = dict(weights.root_weights)
+        root_weights["token_embedding"] = host_weight
+        self.runner.weights = Qwen35GGUFResidentWeights(
+            config=weights.config,
+            root_weights=MappingProxyType(root_weights),
+            layers=weights.layers,
+        )
+        self._host_token_embedding_reader = reader
+        self._host_token_embedding_raw = raw
+        self._host_token_embedding_cache = {}
+        self.host_token_embedding_enabled = True
+        self.host_token_embedding_reason = f"{_GGUF_HOST_TOKEN_EMBEDDING_ENV}=1"
+
+    def _copy_token_embeddings_to_device(
+        self,
+        token_ids: np.ndarray,
+        out_ptr: int,
+        *,
+        rows: int,
+        token_ids_device_ptr: int | None = None,
+        stream: int = 0,
+    ) -> None:
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        token_arr = np.asarray(token_ids, dtype=np.int64).reshape(-1)
+        if int(token_arr.size) != int(rows):
+            raise ValueError(f"token row count mismatch: got {token_arr.size}, expected {rows}")
+        if self.host_token_embedding_enabled:
+            if stream != 0:
+                raise RuntimeError("host token embedding is not compatible with non-default stream decode/graph capture")
+            if self._host_token_embedding_raw is None:
+                raise RuntimeError("host token embedding was enabled without host raw bytes")
+            hidden = _q8_0_embedding_rows_to_bf16(
+                self._host_token_embedding_raw,
+                token_arr,
+                hidden_size=self.runner.hidden_size,
+                cache=self._host_token_embedding_cache,
+            )
+            nbytes = int(hidden.nbytes)
+            copy_host_to_device(DeviceBuffer(int(out_ptr), nbytes), host_array_ptr(hidden), nbytes, runtime=runtime)
+            return
+
+        if token_ids_device_ptr is None:
+            raise ValueError("token_ids_device_ptr is required for device token embedding")
+        copy_host_to_device(
+            DeviceBuffer(int(token_ids_device_ptr), int(token_arr.nbytes)),
+            host_array_ptr(token_arr),
+            int(token_arr.nbytes),
+            runtime=runtime,
+        )
+        launch_gguf_embedding(
+            self.runner.weights.root("token_embedding"),
+            int(token_ids_device_ptr),
+            int(out_ptr),
+            rows=int(rows),
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            stream=stream,
+            runtime=runtime,
+        )
 
     @staticmethod
     def _smallest_positive_or_total(total: int, *sizes: int) -> int:
@@ -3036,16 +3194,12 @@ class Qwen35GGUFResidentSession:
                 chunk_rows = chunk_end - chunk_start
                 last_chunk_rows = chunk_rows
                 chunk_tokens = tokens[chunk_start:chunk_end]
-                copy_host_to_device(self._prefill_token_buf, host_array_ptr(chunk_tokens), chunk_tokens.nbytes, runtime=runtime)
-                launch_gguf_embedding(
-                    self.runner.weights.root("token_embedding"),
-                    self._prefill_token_buf.ptr,
+                self._copy_token_embeddings_to_device(
+                    chunk_tokens,
                     self._prefill_hidden_a.ptr,
                     rows=chunk_rows,
-                    hidden_size=self.runner.hidden_size,
-                    vocab_size=self.runner.vocab_size,
+                    token_ids_device_ptr=self._prefill_token_buf.ptr,
                     stream=stream,
-                    runtime=runtime,
                 )
                 src = self._prefill_hidden_a
                 dst = self._prefill_hidden_b
@@ -3077,16 +3231,12 @@ class Qwen35GGUFResidentSession:
             )
             last_src_ptr = src.ptr + (last_chunk_rows - 1) * self.runner.hidden_size * 2
         else:
-            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
-            launch_gguf_embedding(
-                self.runner.weights.root("token_embedding"),
-                self._prefill_token_buf.ptr,
+            self._copy_token_embeddings_to_device(
+                tokens,
                 self._prefill_hidden_a.ptr,
                 rows=rows,
-                hidden_size=self.runner.hidden_size,
-                vocab_size=self.runner.vocab_size,
+                token_ids_device_ptr=self._prefill_token_buf.ptr,
                 stream=stream,
-                runtime=runtime,
             )
             src = self._prefill_hidden_a
             dst = self._prefill_hidden_b
@@ -3297,12 +3447,23 @@ class Qwen35GGUFResidentSession:
             library=self._runtime_state_library,
             runtime=self.runtime or get_hip_runtime(),
         )
-        self._set_token_embedding_from_ptr(self._token_buf.ptr, stream=stream)
+        if self.host_token_embedding_enabled:
+            self._copy_token_embeddings_to_device(
+                np.asarray([int(token_id)], dtype=np.int64),
+                self._hidden_a.ptr,
+                rows=1,
+                token_ids_device_ptr=self._token_buf.ptr,
+                stream=stream,
+            )
+        else:
+            self._set_token_embedding_from_ptr(self._token_buf.ptr, stream=stream)
 
     def _set_token_embedding_from_ptr(self, token_id_ptr: int, *, stream: int = 0) -> None:
         if self.runner is None or self._hidden_a is None:
             raise RuntimeError("GGUF resident session is closed")
         assert self.runner.weights is not None
+        if self.host_token_embedding_enabled:
+            raise RuntimeError("host token embedding cannot embed from a device token pointer")
         launch_gguf_embedding(
             self.runner.weights.root("token_embedding"),
             token_id_ptr,
@@ -3418,6 +3579,8 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
+        if self.host_token_embedding_enabled:
+            raise RuntimeError("host token embedding is not compatible with GGUF HIP decode graph replay")
         if steps_per_replay <= 0:
             raise ValueError("steps_per_replay must be positive")
         if max_replay_steps is not None and max_replay_steps <= 0:
@@ -3575,6 +3738,11 @@ class Qwen35GGUFResidentSession:
         self._expert_sidecar_host_layers = None
         self._expert_sidecar_reader = None
         self._expert_sidecar_model_map = None
+        self._host_token_embedding_reader = None
+        self._host_token_embedding_raw = None
+        self._host_token_embedding_cache = {}
+        self.host_token_embedding_enabled = False
+        self.host_token_embedding_reason = None
 
     def __enter__(self) -> "Qwen35GGUFResidentSession":
         return self

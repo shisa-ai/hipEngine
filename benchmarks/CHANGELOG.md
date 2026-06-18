@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-18
 
+- [diagnostic blocked] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 128K/128 host token embedding: opt-in `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=1` removed the `0.503 GiB` raw Q8_0 token embedding from device residency and made `128K/128` fit (`23.400 GiB` tracked / `23.913 GiB` sampled, `761.864` prefill tok/s, finite logits), but decode graph replay is disabled so decode is only `11.141 tok/s`; not promoted, next retained path should keep device-side graph-class decode via KV/embedding residency work; `benchmarks/results/2026-06-18-gpu1-gguf-q4km-host-token-embedding-128k-diagnostic.json`.
 - [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 24GB max-context memory policy: lowering the 24 GiB >=52K full-attention query chunk `4096 -> 1024` rows moved the observed max-context pass `51K/128 -> 103K/128` (+102% prompt tokens) with one-run `103K/128` `866.728/71.053 tok/s`, stable ID `[13]`, `23.484 GiB` tracked peak; `104K/128` still OOM and `128K/128` still requires KV/weight residency reduction; short 512/128 and 4K/128 policy paths remain unchanged with stable IDs/peak; `benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline.json`, `benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-policy-midcontext.json`.
 
 ## 2026-06-17
