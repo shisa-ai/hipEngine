@@ -561,3 +561,77 @@ extern "C" int hipengine_mtp_row_scale_f32(
       scale, x, out, tokens, hidden);
   return static_cast<int>(hipGetLastError());
 }
+
+// ---- MTP NextN RoPE kernel (F32, split-half rotary embedding) ----
+// Apply split-half RoPE to x[..., :rotary_dim], pass-through x[..., rotary_dim:].
+// [x1, x2] -> [x1*cos - x2*sin, x1*sin + x2*cos]
+// cos/sin have shape [tokens, half] where half = rotary_dim/2.
+// One block per (token, head) row, threads stride over half-dim pairs.
+extern "C" __global__ void hipengine_mtp_rope_f32_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ cos,
+    const float* __restrict__ sin,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t cos_stride) {  // cos_stride = half (elements per token in cos table)
+  const int64_t t = static_cast<int64_t>(blockIdx.x);
+  const int64_t h = static_cast<int64_t>(blockIdx.y);
+  if (t >= tokens || h >= heads) {
+    return;
+  }
+  const int64_t row_base = (t * heads + h) * head_dim;
+  const int64_t half = rotary_dim / 2;
+  const int64_t cos_base = t * cos_stride;
+
+  // Rotate the rotary_dim portion
+  for (int64_t i = static_cast<int64_t>(threadIdx.x); i < half;
+       i += static_cast<int64_t>(blockDim.x)) {
+    const float x1 = x[row_base + i];
+    const float x2 = x[row_base + half + i];
+    const float c = cos[cos_base + i];
+    const float s = sin[cos_base + i];
+    out[row_base + i] = x1 * c - x2 * s;
+    out[row_base + half + i] = x1 * s + x2 * c;
+  }
+  // Pass-through the non-rotary portion
+  for (int64_t i = static_cast<int64_t>(half) * 2 + static_cast<int64_t>(threadIdx.x);
+       i < head_dim;
+       i += static_cast<int64_t>(blockDim.x)) {
+    out[row_base + i] = x[row_base + i];
+  }
+}
+
+extern "C" int hipengine_mtp_rope_f32(
+    const float* x,
+    const float* cos,
+    const float* sin,
+    float* out,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t cos_stride,
+    hipStream_t stream) {
+  if (tokens <= 0 || heads <= 0 || head_dim <= 0 || rotary_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  int block = 256;
+  if (rotary_dim / 2 < block) {
+    block = static_cast<int>(rotary_dim / 2);
+  }
+  if (block < 1) {
+    block = 1;
+  }
+  dim3 grid(static_cast<unsigned int>(tokens), static_cast<unsigned int>(heads));
+  hipLaunchKernelGGL(
+      hipengine_mtp_rope_f32_kernel,
+      grid,
+      dim3(static_cast<unsigned int>(block)),
+      0,
+      stream,
+      x, cos, sin, out, tokens, heads, head_dim, rotary_dim, cos_stride);
+  return static_cast<int>(hipGetLastError());
+}

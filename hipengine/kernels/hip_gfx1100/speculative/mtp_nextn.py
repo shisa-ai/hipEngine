@@ -304,6 +304,42 @@ def mtp_dense_attn_f32(
     _check_launch(runtime, err)
 
 
+# ptr(x) + ptr(cos) + ptr(sin) + ptr(out) + tokens + heads + head_dim + rotary_dim + cos_stride + stream
+_ARGTYPES_ROPE_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def mtp_rope_f32(
+    x_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    cos_stride: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch split-half RoPE: [x1,x2] -> [x1*cos-x2*sin, x1*sin+x2*cos]."""
+
+    for name, value in (("tokens", tokens), ("heads", heads), ("head_dim", head_dim),
+                        ("rotary_dim", rotary_dim)):
+        _check_positive(name, value)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_mtp_rope_f32", _ARGTYPES_ROPE_F32, ctypes.c_int)
+    err = fn(x_ptr, cos_ptr, sin_ptr, out_ptr, tokens, heads, head_dim, rotary_dim,
+             cos_stride, stream)
+    _check_launch(runtime, err)
+
+
 # ptr(gate) + ptr(up) + ptr(out) + n + stream
 _ARGTYPES_SILU_MUL_F32 = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
@@ -621,8 +657,26 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         else:
             raise NotImplementedError(f"qtype={qtype.name} not supported for attention")
 
-    if rope_cos is not None or rope_sin is not None:
-        raise NotImplementedError("RoPE path is M6 work; F32 M3 fixture does not exercise it")
+    # RoPE: apply if cos/sin provided
+    apply_rope = rope_cos is not None and rope_sin is not None
+    if (rope_cos is None) != (rope_sin is None):
+        raise ValueError("rope_cos and rope_sin must be provided together")
+    rot_dim = qk_head_dim if rotary_dim is None else int(rotary_dim)
+    if apply_rope:
+        if rot_dim % 2 != 0:
+            raise ValueError("rotary_dim must be even")
+        half = rot_dim // 2
+        cos_arr = np.ascontiguousarray(rope_cos, dtype=np.float32)
+        sin_arr = np.ascontiguousarray(rope_sin, dtype=np.float32)
+        if cos_arr.shape[-1] == half * 2:
+            cos_arr = np.ascontiguousarray(cos_arr[..., :half])
+        elif cos_arr.shape[-1] != half:
+            raise ValueError(f"rope_cos.shape[-1] must be {half} or {half*2}")
+        if sin_arr.shape[-1] == half * 2:
+            sin_arr = np.ascontiguousarray(sin_arr[..., :half])
+        elif sin_arr.shape[-1] != half:
+            raise ValueError(f"rope_sin.shape[-1] must be {half} or {half*2}")
+
     if key_cache is not None or value_cache is not None:
         raise NotImplementedError(
             "external KV cache path is M6 work; F32 M3 fixture uses the current-token K/V"
@@ -687,6 +741,17 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
                             kv_heads * qk_head_dim, wk_qtype, runtime=runtime)
         mtp_rmsnorm_f32(key_cur_dev.ptr, k_norm_dev.ptr, key_cur_dev.ptr, tokens * kv_heads,
                         qk_head_dim, eps=eps, runtime=runtime)
+
+        # Apply RoPE to query and key_cur if cos/sin provided
+        if apply_rope:
+            cos_dev = malloc(cos_arr.nbytes, runtime=runtime); buffers.append(cos_dev)
+            sin_dev = malloc(sin_arr.nbytes, runtime=runtime); buffers.append(sin_dev)
+            copy_host_to_device(cos_dev, host_array_ptr(cos_arr), runtime=runtime)
+            copy_host_to_device(sin_dev, host_array_ptr(sin_arr), runtime=runtime)
+            mtp_rope_f32(query_dev.ptr, cos_dev.ptr, sin_dev.ptr, query_dev.ptr,
+                         tokens, heads, qk_head_dim, rot_dim, half, runtime=runtime)
+            mtp_rope_f32(key_cur_dev.ptr, cos_dev.ptr, sin_dev.ptr, key_cur_dev.ptr,
+                         tokens, kv_heads, qk_head_dim, rot_dim, half, runtime=runtime)
 
         # value_cur = normed @ wv.T  -> [tokens, kv_heads, value_head_dim]
         value_cur_dev = malloc(tokens * kv_heads * value_head_dim * 4, runtime=runtime)
@@ -1331,6 +1396,7 @@ __all__ = [
     "mtp_eh_proj_f32",
     "mtp_linear_f32",
     "mtp_mul_f32",
+    "mtp_rope_f32",
     "mtp_rmsnorm_f32",
     "mtp_row_scale_f32",
     "mtp_scale_f32",
