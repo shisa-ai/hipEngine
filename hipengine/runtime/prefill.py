@@ -13,6 +13,8 @@ _PREFILL_FULL_ATTN_POST_CHUNK = 1024
 _PREFILL_FULL_ATTN_ROPE_CHUNK = 1024
 _PREFILL_LOW_MEMORY_CHUNK = 768
 _PREFILL_LOW_MEMORY_FULL_ATTN_QUERY_CHUNK = 768
+_LOW_MEMORY_MID_CONTEXT_FULL_ATTN_QUERY_CHUNK = 1024
+_LOW_MEMORY_MID_CONTEXT_MIN_TOKENS = 52 * 1024
 _LOW_MEMORY_FULL_CONTEXT_MIN_TOKENS = 131_072
 _LOW_MEMORY_TOTAL_BYTES = 26 * _GIB
 _DEFAULT_BUDGET_FRACTION = 0.55
@@ -27,10 +29,10 @@ class PrefillConfig:
     Chunk sizes of ``0`` mean "no manual override", matching the parent
     environment-knob convention; with ``auto_tune_chunk_sizes`` enabled,
     prompts above 1K resolve those zeros to the retained 1024/4096 chunk
-    policy, except 128K-class prompts on 24GB-class cards use conservative
-    768-token chunks to preserve
-    transient scratch headroom while keeping AOTriton on for long-context full
-    attention.  AOTriton is
+    policy, except 52K-class prompts on 24GB-class cards reduce the
+    full-attention query chunk to 1024 rows and 128K-class prompts use
+    conservative 768-token chunks to preserve transient scratch headroom while
+    keeping AOTriton on for long-context full attention.  AOTriton is
     a baseline vendored runtime dependency for the gfx1100
     Qwen3.5/PARO path; the measured crossover policy uses AOTriton attention
     once prompts reach 512 tokens.
@@ -96,10 +98,10 @@ def resolve_prefill_config_for_sequence(
     Explicit non-zero chunk sizes are treated as manual overrides.  With the
     default auto policy, prompts up to 1K stay unchunked while prompts above 1K
     use the retained 1024/4096 policy across linear attention, MoE, full-attn
-    query, post, and RoPE stages.  On 24GB-class cards, 128K-class and longer
-    prompts use 768-token chunks to keep the AOTriton path active and transient
-    prefill scratch under the
-    device limit.
+    query, post, and RoPE stages.  On 24GB-class cards, 52K-class prompts drop
+    the full-attn query chunk to 1024 rows to avoid the 4096-row bulk-scratch
+    cliff; 128K-class and longer prompts use 768-token chunks to keep the
+    AOTriton path active and transient prefill scratch under the device limit.
     """
 
     max_sequence = int(max_sequence_length)
@@ -123,10 +125,9 @@ def resolve_prefill_config_for_sequence(
         return config, tuning
 
     budget_gib = _chunk_memory_budget_gib(config, total_memory_bytes=total_memory_bytes)
-    low_memory_full_context = (
-        0 < int(total_memory_bytes) <= _LOW_MEMORY_TOTAL_BYTES
-        and max_sequence >= _LOW_MEMORY_FULL_CONTEXT_MIN_TOKENS
-    )
+    low_memory_card = 0 < int(total_memory_bytes) <= _LOW_MEMORY_TOTAL_BYTES
+    low_memory_full_context = low_memory_card and max_sequence >= _LOW_MEMORY_FULL_CONTEXT_MIN_TOKENS
+    low_memory_mid_context = low_memory_card and max_sequence >= _LOW_MEMORY_MID_CONTEXT_MIN_TOKENS
     if low_memory_full_context:
         estimated_peak_gib = 23.4
         reason = "low_memory_full_context_24gb"
@@ -137,6 +138,17 @@ def resolve_prefill_config_for_sequence(
             full_attn_query_chunk_size=_PREFILL_LOW_MEMORY_FULL_ATTN_QUERY_CHUNK,
             full_attn_post_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
             full_attn_rope_chunk_size=_PREFILL_LOW_MEMORY_CHUNK,
+        )
+    elif low_memory_mid_context:
+        estimated_peak_gib = 23.0
+        reason = "low_memory_mid_context_24gb"
+        tuned = replace(
+            config,
+            linear_chunk_size=_PREFILL_LINEAR_CHUNK,
+            moe_chunk_size=_PREFILL_MOE_CHUNK,
+            full_attn_query_chunk_size=_LOW_MEMORY_MID_CONTEXT_FULL_ATTN_QUERY_CHUNK,
+            full_attn_post_chunk_size=_PREFILL_FULL_ATTN_POST_CHUNK,
+            full_attn_rope_chunk_size=_PREFILL_FULL_ATTN_ROPE_CHUNK,
         )
     else:
         estimated_peak_gib = 20.0

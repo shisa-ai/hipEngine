@@ -1,0 +1,318 @@
+{
+  "schema": 1,
+  "date": "2026-06-18",
+  "git_commit": "aaaab3f48b942e5d3e7a312710fd574ce2381cc9",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX / gfx1100 / 24 GiB-class",
+  "rocm_stack": "TheRock ROCm 7.13; compiler version file /tmp/hipengine-hipcc-version-713.txt",
+  "engine": "hipengine",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "change": "On <=26GiB devices, auto prefill policy switches full-attention query chunks from 4096 to 1024 rows at 52K-class contexts. 512/128 and 4K/128 remain below the threshold and use the previous chunk policy.",
+  "baseline_artifact": "benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline.json",
+  "raw_run_dir": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859",
+  "commands": {
+    "short_gate": "same isolated GPU1 env as baseline; qwen35_readme_sweep.py --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --require-cached-build",
+    "fit_search": "same isolated GPU1 env; qwen35_readme_sweep.py --workloads <WL> --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --require-cached-build"
+  },
+  "baseline_short_gates": {
+    "512/128": {
+      "prefill_tok_s_median": 2292.038593865349,
+      "decode_tok_s_median": 125.21826534552325,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        318,
+        318,
+        318
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2602.4044399430713,
+      "decode_tok_s_median": 114.12855255173201,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "post_short_gate_runs": [
+    {
+      "source_json": "benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-policy-short.json",
+      "max_sequence_length": 4226,
+      "workloads": {
+        "512/128": {
+          "prefill_tok_s_median": 2319.3736769565994,
+          "decode_tok_s_median": 123.57085884943716,
+          "tracked_peak_allocated_gib_median": 22.487057745456696,
+          "final_token_ids": [
+            318,
+            318,
+            318
+          ],
+          "final_token_ids_stable": true,
+          "prefill_delta_pct_vs_baseline": 1.192610070546496,
+          "decode_delta_pct_vs_baseline": -1.315627948957998
+        },
+        "4K/128": {
+          "prefill_tok_s_median": 2594.9036569214068,
+          "decode_tok_s_median": 112.83272785807614,
+          "tracked_peak_allocated_gib_median": 22.487057745456696,
+          "final_token_ids": [
+            220,
+            220,
+            220
+          ],
+          "final_token_ids_stable": true,
+          "prefill_delta_pct_vs_baseline": -0.28822510853957484,
+          "decode_delta_pct_vs_baseline": -1.1354079804600237
+        }
+      }
+    },
+    {
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/short-512-4k-rerun.json",
+      "max_sequence_length": 4226,
+      "workloads": {
+        "512/128": {
+          "prefill_tok_s_median": 2276.390200863897,
+          "decode_tok_s_median": 124.6537060613762,
+          "tracked_peak_allocated_gib_median": 22.487057745456696,
+          "final_token_ids": [
+            318,
+            318,
+            318
+          ],
+          "final_token_ids_stable": true,
+          "prefill_delta_pct_vs_baseline": -0.682728163624069,
+          "decode_delta_pct_vs_baseline": -0.45086017011114476
+        },
+        "4K/128": {
+          "prefill_tok_s_median": 2594.8247620888237,
+          "decode_tok_s_median": 113.7998550529963,
+          "tracked_peak_allocated_gib_median": 22.487057745456696,
+          "final_token_ids": [
+            220,
+            220,
+            220
+          ],
+          "final_token_ids_stable": true,
+          "prefill_delta_pct_vs_baseline": -0.29125672158833993,
+          "decode_delta_pct_vs_baseline": -0.2880063677200506
+        }
+      }
+    }
+  ],
+  "fit_search": [
+    {
+      "workload": "52K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 53378,
+      "prefill_tok_s": 1303.0614502377434,
+      "decode_tok_s": 89.72830893859138,
+      "tracked_peak_allocated_gib": 22.458963215351105,
+      "final_token_ids": [
+        38118
+      ],
+      "final_token_ids_stable": true,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 1024,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning_reason": "low_memory_mid_context_24gb",
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-52K_128.json"
+    },
+    {
+      "workload": "64K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 65666,
+      "prefill_tok_s": 1170.0425963993946,
+      "decode_tok_s": 81.92305796326649,
+      "tracked_peak_allocated_gib": 22.700119018554688,
+      "final_token_ids": [
+        97799
+      ],
+      "final_token_ids_stable": true,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 1024,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning_reason": "low_memory_mid_context_24gb",
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-64K_128.json"
+    },
+    {
+      "workload": "96K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 98434,
+      "prefill_tok_s": 912.7177294022746,
+      "decode_tok_s": 75.72306256473539,
+      "tracked_peak_allocated_gib": 23.343201160430908,
+      "final_token_ids": [
+        95
+      ],
+      "final_token_ids_stable": true,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 1024,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning_reason": "low_memory_mid_context_24gb",
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-96K_128.json"
+    },
+    {
+      "workload": "100K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 102530,
+      "prefill_tok_s": 882.9193806712502,
+      "decode_tok_s": 73.78574674300823,
+      "tracked_peak_allocated_gib": 23.423586428165436,
+      "final_token_ids": [
+        203785
+      ],
+      "final_token_ids_stable": true,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 1024,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning_reason": "low_memory_mid_context_24gb",
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-100K_128.json"
+    },
+    {
+      "workload": "102K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 104578,
+      "prefill_tok_s": 873.301801812112,
+      "decode_tok_s": 71.37716163081178,
+      "tracked_peak_allocated_gib": 23.4637790620327,
+      "final_token_ids": [
+        98732
+      ],
+      "final_token_ids_stable": true,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 1024,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning_reason": "low_memory_mid_context_24gb",
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-102K_128.json"
+    },
+    {
+      "workload": "103K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 105602,
+      "prefill_tok_s": 866.7279743325297,
+      "decode_tok_s": 71.0525361141769,
+      "tracked_peak_allocated_gib": 23.48387537896633,
+      "final_token_ids": [
+        13
+      ],
+      "final_token_ids_stable": true,
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 1024,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 1025
+      },
+      "prefill_chunk_tuning_reason": "low_memory_mid_context_24gb",
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-103K_128.json"
+    },
+    {
+      "workload": "104K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-104K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    },
+    {
+      "workload": "108K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-108K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    },
+    {
+      "workload": "112K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-policy-20260618-103859/default-112K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    }
+  ],
+  "max_context_window_before": {
+    "largest_observed_pass_workload": "51K/128",
+    "largest_observed_pass_prompt_tokens": 52224,
+    "largest_observed_pass_decode_tokens": 128,
+    "largest_observed_pass_peak_gib": 23.433736130595207,
+    "smallest_observed_fail_workload_above_pass": "52K/128",
+    "smallest_observed_fail_reason": "prefill_launch_resource_failure_free_mem_0mb",
+    "interpretation": "Current Q4_K_M policy passes 51K/128 and fails 52K/128 on GPU1. Treat 51K prompt + 128 decode as the measured max-context lower-bound baseline and 52K as the first observed failure; future memory-policy work must improve this without regressing 512/128 or 4K/128 prefill/decode/IDs."
+  },
+  "max_context_window_after": {
+    "largest_observed_pass_workload": "103K/128",
+    "largest_observed_pass_prompt_tokens": 105472,
+    "largest_observed_pass_decode_tokens": 128,
+    "largest_observed_pass_peak_gib": 23.48387537896633,
+    "smallest_observed_fail_workload_above_pass": "104K/128",
+    "smallest_observed_fail_reason": "oom"
+  },
+  "summary": {
+    "max_context_prompt_tokens_before": 52224,
+    "max_context_prompt_tokens_after": 105472,
+    "max_context_improvement_pct": 101.96078431372548,
+    "short_gate_correctness_stable": true,
+    "short_gate_policy_path_unchanged": true,
+    "short_gate_note": "Post-change short gates are below the 52K threshold and kept stable IDs/peak. Two 3-run samples varied by roughly -1.3%..+1.2% versus the immediately-before baseline; this is recorded as measurement variance rather than a changed policy path.",
+    "remaining_blocker": "104K/128 and above still OOM with BF16 full-attention KV; 128K requires KV/weight residency reduction, not just prefill chunk scratch reduction."
+  }
+}

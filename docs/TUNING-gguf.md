@@ -112,8 +112,17 @@ was invalid because it changed IDs (`318/220 -> 38118/1076`). The primary
 multiloop scalar metric remains the minimum gate decode rate, now `114.195 tok/s`, but acceptance is the full gate vector; do not keep any
 prefill/decode/memory tradeoff without user approval.
 
-The GPU1 Q4_K_M `128K/128` final memory gate is currently blocked/OOM before
-resident session construction:
+The GPU1 Q4_K_M 24 GiB memory baseline is now recorded in
+`benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline.json`: before the
+mid-context policy, `51K/128` was the largest observed pass (`1597.225` prefill
+/ `86.356` decode tok/s, `23.434 GiB` tracked peak) and `52K/128` failed during
+prefill with zero free memory. The retained mid-context policy artifact
+`benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-policy-midcontext.json`
+lowers only the 24 GiB >=52K full-attention query chunk from 4096 to 1024 rows;
+short gates stay below the threshold and keep stable IDs/peak, while the largest
+observed pass moves to `103K/128` (`866.728` / `71.053 tok/s`, `23.484 GiB`) and
+`104K/128` is the first observed OOM. The `128K/128` final memory gate remains
+blocked by BF16 full-attention KV/weight residency:
 `benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json`.
 Do not promote or claim 24 GiB-class `128K/128` Q4_K_M support until this is
 superseded by a passing exact artifact, or the human lead explicitly accepts a
@@ -1334,7 +1343,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-P1 | Follow up the retained selected-MoE half-seq WMMA rewrite only if a 16-column/codegen variant can reduce the remaining 256-VGPR cap. | Half-seq moved the 4K/16 target bucket `800.455 -> 454.370 ms`; remaining upside is smaller and must not trade back decode stability. | Target bucket moves materially beyond half-seq without >24 GiB duplicate storage or decode noise. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
-| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_M, with Q4_K_S as secondary memory context only. | Current Q4_K_M GPU1 short gates fit at `22.487 GiB`, but final `128K/128` fails resident allocation on the 24 GiB-class GPU1. | Q4_K_M `128K/128` is blocked/OOM in `benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json`; do not claim 24GB-class 128K Q4_K_M support until a new memory policy passes. Historical Q4_K_S `128K/128` fit with low-memory chunks at `730.191 / 67.733 tok/s`, stable ID `[220]`, `23.310 GiB` peak. |
+| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_M, with Q4_K_S as secondary memory context only. | Current Q4_K_M GPU1 short gates fit at `22.487 GiB`; baseline max-context was only `51K/128` before the 4096-row full-attn scratch cliff. | 24 GiB >=52K contexts now use 1024-row full-attn query chunks: max observed pass moved `51K/128 -> 103K/128` (`+102%` prompt tokens) with stable one-run IDs and `23.484 GiB` tracked peak; `104K/128` still OOM and `128K/128` still needs KV/weight residency reduction. Historical Q4_K_S `128K/128` fit with low-memory chunks at `730.191 / 67.733 tok/s`, stable ID `[220]`, `23.310 GiB` peak. |
 
 ### H lane — Host/runtime and graph replay
 

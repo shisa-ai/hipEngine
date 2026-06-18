@@ -1,0 +1,224 @@
+{
+  "schema": 1,
+  "date": "2026-06-18",
+  "git_commit": "aaaab3f48b942e5d3e7a312710fd574ce2381cc9",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX / gfx1100 / 24 GiB-class",
+  "rocm_stack": "TheRock ROCm 7.13; compiler version file /tmp/hipengine-hipcc-version-713.txt",
+  "engine": "hipengine",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "baseline_policy": "current BF16 full-attention KV + decode-repack + WMMA prefill + GEMV decode; no GGUF KV memory reduction",
+  "short_gate_command": "env -i ... HIP_VISIBLE_DEVICES=1 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline-short.json",
+  "fit_search_command_template": "same isolated env; scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads <WL> --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/.../fit-<WL>.json",
+  "raw_run_dir": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229",
+  "short_gate_source_json": "benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline-short.json",
+  "short_gates": {
+    "512/128": {
+      "prefill_tok_s_median": 2292.038593865349,
+      "decode_tok_s_median": 125.21826534552325,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        318,
+        318,
+        318
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2602.4044399430713,
+      "decode_tok_s_median": 114.12855255173201,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    }
+  },
+  "fit_search": [
+    {
+      "workload": "32K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 32898,
+      "prefill_tok_s": 2038.8146836558096,
+      "decode_tok_s": 96.25724127829014,
+      "tracked_peak_allocated_gib": 23.05103635787964,
+      "final_token_ids": [
+        332
+      ],
+      "final_token_ids_stable": true,
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-32K_128.json"
+    },
+    {
+      "workload": "48K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 49282,
+      "prefill_tok_s": 1771.8268100788923,
+      "decode_tok_s": 89.75003436075767,
+      "tracked_peak_allocated_gib": 23.37330985069275,
+      "final_token_ids": [
+        220
+      ],
+      "final_token_ids_stable": true,
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-48K_128.json"
+    },
+    {
+      "workload": "49K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 50306,
+      "prefill_tok_s": 1741.7208473786727,
+      "decode_tok_s": 87.07622724074209,
+      "tracked_peak_allocated_gib": 23.39345194399357,
+      "final_token_ids": [
+        27
+      ],
+      "final_token_ids_stable": true,
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-49K_128.json"
+    },
+    {
+      "workload": "50K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 51330,
+      "prefill_tok_s": 1598.628988811403,
+      "decode_tok_s": 87.58757625237985,
+      "tracked_peak_allocated_gib": 23.413594037294388,
+      "final_token_ids": [
+        318
+      ],
+      "final_token_ids_stable": true,
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-50K_128.json"
+    },
+    {
+      "workload": "51K/128",
+      "exit_code": 0,
+      "status": "pass",
+      "max_sequence_length": 52354,
+      "prefill_tok_s": 1597.2249055453156,
+      "decode_tok_s": 86.35632375031858,
+      "tracked_peak_allocated_gib": 23.433736130595207,
+      "final_token_ids": [
+        1993
+      ],
+      "final_token_ids_stable": true,
+      "source_json": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-51K_128.json"
+    },
+    {
+      "workload": "52K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "prefill_launch_resource_failure_free_mem_0mb",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-52K_128.log",
+      "evidence_tail": [
+        ":0:rocdevice.cpp            :3962: 2085433059167 us:  Callback: Queue 0x7fdece200000 Aborting with error : HSA_STATUS_ERROR_OUT_OF_RESOURCES: The runtime failed to allocate the necessary resources. This error may also occur when the core runtime library needs to spawn threads or create internal OS-specific events. Code: 0x1008 Available Free mem : 0 MB",
+        "Kernel Name: attn_fwd",
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 701: too many resources requested for launch",
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 701: too many resources requested for launch"
+      ]
+    },
+    {
+      "workload": "54K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-54K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    },
+    {
+      "workload": "56K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-56K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    },
+    {
+      "workload": "64K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-64K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    },
+    {
+      "workload": "72K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-72K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    },
+    {
+      "workload": "80K/128",
+      "exit_code": 1,
+      "status": "fail",
+      "failure": "oom",
+      "log": "/tmp/hipengine-gpu1-q4km-memory-baseline-20260618-100229/fit-80K_128.log",
+      "evidence_tail": [
+        "    raise HipError(int(code), self.error_string(int(code)))",
+        "hipengine.core.hip.HipError: HIP error 2: out of memory"
+      ]
+    }
+  ],
+  "max_context_window": {
+    "largest_observed_pass_workload": "51K/128",
+    "largest_observed_pass_prompt_tokens": 52224,
+    "largest_observed_pass_decode_tokens": 128,
+    "largest_observed_pass_peak_gib": 23.433736130595207,
+    "smallest_observed_fail_workload_above_pass": "52K/128",
+    "smallest_observed_fail_reason": "prefill_launch_resource_failure_free_mem_0mb",
+    "interpretation": "Current Q4_K_M policy passes 51K/128 and fails 52K/128 on GPU1. Treat 51K prompt + 128 decode as the measured max-context lower-bound baseline and 52K as the first observed failure; future memory-policy work must improve this without regressing 512/128 or 4K/128 prefill/decode/IDs."
+  },
+  "non_regression_floor_for_memory_policy": {
+    "512/128": {
+      "prefill_tok_s_median": 2292.038593865349,
+      "decode_tok_s_median": 125.21826534552325,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        318,
+        318,
+        318
+      ],
+      "final_token_ids_stable": true
+    },
+    "4K/128": {
+      "prefill_tok_s_median": 2602.4044399430713,
+      "decode_tok_s_median": 114.12855255173201,
+      "tracked_peak_allocated_gib_median": 22.487057745456696,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "final_token_ids_stable": true
+    },
+    "max_context_baseline": {
+      "workload": "51K/128",
+      "prefill_tok_s": 1597.2249055453156,
+      "decode_tok_s": 86.35632375031858,
+      "tracked_peak_allocated_gib": 23.433736130595207,
+      "final_token_ids": [
+        1993
+      ],
+      "final_token_ids_stable": true
+    }
+  }
+}

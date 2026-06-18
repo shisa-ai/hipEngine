@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-18
+
+- [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 24GB max-context memory policy: lowering the 24 GiB >=52K full-attention query chunk `4096 -> 1024` rows moved the observed max-context pass `51K/128 -> 103K/128` (+102% prompt tokens) with one-run `103K/128` `866.728/71.053 tok/s`, stable ID `[13]`, `23.484 GiB` tracked peak; `104K/128` still OOM and `128K/128` still requires KV/weight residency reduction; short 512/128 and 4K/128 policy paths remain unchanged with stable IDs/peak; `benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-baseline.json`, `benchmarks/results/2026-06-18-gpu1-gguf-q4km-memory-policy-midcontext.json`.
+
 ## 2026-06-17
 
 - [diagnostic profile] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 rocprof 512/16+4K/16: active Q4_K_M prefill top buckets are 512 dense Q8_0 WMMA `59.884 ms` (27.4%), GDN `49.541 ms` (22.7%), selected Q4 WMMA `42.095 ms` (19.3%), and 4K GDN `374.015 ms` (25.7%), dense Q8_0 WMMA `327.706 ms` (22.5%), selected Q4 WMMA `260.100 ms` (17.9%); decode remains dense Q8_0 T16 GEMV-led at `46.532/46.101 ms` for 512/4K; `benchmarks/results/2026-06-17-gpu1-gguf-q4km-512-rocprof-summary.json`, `benchmarks/results/2026-06-17-gpu1-gguf-q4km-4k-rocprof-summary.json`.

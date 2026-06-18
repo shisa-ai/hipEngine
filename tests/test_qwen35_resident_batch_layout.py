@@ -717,13 +717,27 @@ def test_prefill_config_autotunes_gt1k_chunks_from_budget() -> None:
     ) == (768, 768, 768, 768, 768)
     assert low_memory_128k_tuning["reason"] == "low_memory_full_context_24gb"
 
+    low_memory_below_mid_context, low_memory_below_mid_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=52 * 1024 - 1,
+        total_memory_bytes=24 * 1024**3,
+    )
+    assert low_memory_below_mid_context.full_attn_query_chunk_size == 4096
+    assert low_memory_below_mid_tuning["reason"] == "manual_long_equiv_gt1k"
+
     low_memory_mid_context, low_memory_mid_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(),
         max_sequence_length=128000,
         total_memory_bytes=24 * 1024**3,
     )
-    assert low_memory_mid_context.full_attn_query_chunk_size == 4096
-    assert low_memory_mid_tuning["reason"] == "manual_long_equiv_gt1k"
+    assert (
+        low_memory_mid_context.linear_chunk_size,
+        low_memory_mid_context.moe_chunk_size,
+        low_memory_mid_context.full_attn_query_chunk_size,
+        low_memory_mid_context.full_attn_post_chunk_size,
+        low_memory_mid_context.full_attn_rope_chunk_size,
+    ) == (1024, 1024, 1024, 1024, 1024)
+    assert low_memory_mid_tuning["reason"] == "low_memory_mid_context_24gb"
 
     budget_limited, budget_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(chunk_tune_memory_budget_gib=24.0),
