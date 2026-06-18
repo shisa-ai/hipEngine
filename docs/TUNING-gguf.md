@@ -112,30 +112,37 @@ was invalid because it changed IDs (`318/220 -> 38118/1076`). The primary
 multiloop scalar metric remains the minimum gate decode rate, now `114.195 tok/s`, but acceptance is the full gate vector; do not keep any
 prefill/decode/memory tradeoff without user approval.
 
+The GPU1 Q4_K_M `128K/128` final memory gate is currently blocked/OOM before
+resident session construction:
+`benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json`.
+Do not promote or claim 24 GiB-class `128K/128` Q4_K_M support until this is
+superseded by a passing exact artifact, or the human lead explicitly accepts a
+lower max-context or Q4_K_S fallback policy.
+
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
 not the active 1:1 llama.cpp comparison.
 
 ## Active GPU1 profile findings
 
-G-M2 paired `rocprofv3` captures were taken initially on 2026-06-15 with
-`decode_tokens=16`, refreshed for the retained-default 4K path on 2026-06-16,
-and refreshed again after the G-P1 selected-WMMA half-sequential rewrite.
-Prefill-only traces are used to strip the prefill prefix from decode traces. Raw
-CSV/summary files live under `/tmp/hipengine-gguf-tuning/20260615-gpu1-q4ks-*`,
-`/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-retained-4k-d16-nowarmup`, and
-`/tmp/hipengine-gguf-tuning/20260616-gpu1-q4ks-halfseq-safe-4k-d16`; the compact
-retained half-seq artifact is
-`benchmarks/results/2026-06-16-gpu1-gguf-q4ks-selected-wmma-halfseq-gate.json`.
-The `512/16` rows below remain the initial profile; the `4K/16` rows reflect the
-current half-seq default.
+G-M2 paired `rocprofv3` captures for the active Q4_K_M target were refreshed on
+2026-06-17 with `decode_tokens=16`; prefill-only traces strip the prefill prefix
+from decode traces. Raw CSV/logs live under
+`/tmp/hipengine-gguf-q4km-profile-20260618-093656`; compact summaries are
+`benchmarks/results/2026-06-17-gpu1-gguf-q4km-512-rocprof-summary.json` and
+`benchmarks/results/2026-06-17-gpu1-gguf-q4km-4k-rocprof-summary.json`.
 
 | Shape | Phase | Total kernel time | Top buckets |
 | --- | --- | ---: | --- |
-| 512/16 | prefill | `289.487 ms` | selected dual Q4_K WMMA `111.306 ms` (`38.45%`); dense Q8_0 WMMA `54.196 ms` (`18.72%`); GDN prefill recurrent `41.706 ms` (`14.41%`) |
-| 512/16 | decode | `131.242 ms` (`8.203 ms/token`) | dense Q8_0 T16 GEMV `50.137 ms` (`38.20%`); selected dual Q4_K T16 GEMV `17.468 ms` (`13.31%`); lm-head Q6 T16 `10.158 ms` (`7.74%`) |
-| 4K/16 | prefill | `1761.552 ms` | selected dual Q4_K WMMA `454.370 ms` (`25.79%`); GDN prefill recurrent `349.534 ms` (`19.84%`); dense Q8_0 WMMA `331.169 ms` (`18.80%`); full-attn prefill `87.787 ms` (`4.98%`) |
-| 4K/16 | decode | `143.418 ms` (`8.964 ms/token`) | dense Q8_0 T16 GEMV `50.638 ms` (`35.31%`); selected dual Q4_K T16 GEMV `18.503 ms` (`12.90%`); full-attn decode `13.989 ms` (`9.75%`); lm-head Q6 T16 `10.055 ms` (`7.01%`) |
+| 512/16 Q4_K_M | prefill | `218.615 ms` (`0.427 ms/token`) | dense Q8_0 WMMA `59.884 ms` (`27.39%`); GDN prefill recurrent `49.541 ms` (`22.66%`); selected dual Q4_K WMMA `42.095 ms` (`19.26%`); selected Q5_K WMMA `24.372 ms` (`11.15%`) |
+| 512/16 Q4_K_M | decode | `122.273 ms` (`7.642 ms/token`) | dense Q8_0 T16 GEMV `46.532 ms` (`38.06%`); selected dual Q4_K T16 GEMV `16.375 ms` (`13.39%`); selected Q5_K T16 GEMV `12.988 ms` (`10.62%`); RMSNorm `8.786 ms` (`7.19%`); lm-head Q6 T16 `8.348 ms` (`6.83%`) |
+| 4K/16 Q4_K_M | prefill | `1455.701 ms` (`0.355 ms/token`) | GDN prefill recurrent `374.015 ms` (`25.69%`); dense Q8_0 WMMA `327.706 ms` (`22.51%`); selected dual Q4_K WMMA `260.100 ms` (`17.87%`); selected Q5_K WMMA `161.865 ms` (`11.12%`); router `102.376 ms` (`7.03%`) |
+| 4K/16 Q4_K_M | decode | `130.999 ms` (`8.187 ms/token`) | dense Q8_0 T16 GEMV `46.101 ms` (`35.19%`); full-attn decode `16.843 ms` (`12.86%`); selected dual Q4_K T16 GEMV `15.115 ms` (`11.54%`); selected Q5_K T16 GEMV `11.978 ms` (`9.14%`); lm-head Q6 T16 `8.434 ms` (`6.44%`) |
+
+Historical Q4_K_S paired captures were taken initially on 2026-06-15, refreshed
+for the retained-default 4K path on 2026-06-16, and refreshed again after the
+G-P1 selected-WMMA half-sequential rewrite. They remain useful for lineage but
+are no longer the active 1:1 llama.cpp comparison.
 
 G-M3 resource census on the refreshed 4K/16 trace is recorded in
 `benchmarks/results/2026-06-16-gpu1-gguf-q4ks-resource-census-diagnostic.json`;
@@ -1327,7 +1334,7 @@ Use stable IDs in commits, artifacts, and `WORKLOG.md`.
 | G-P1 | Follow up the retained selected-MoE half-seq WMMA rewrite only if a 16-column/codegen variant can reduce the remaining 256-VGPR cap. | Half-seq moved the 4K/16 target bucket `800.455 -> 454.370 ms`; remaining upside is smaller and must not trade back decode stability. | Target bucket moves materially beyond half-seq without >24 GiB duplicate storage or decode noise. |
 | G-P2 | Shape-specific Q8_0 shared/dense WMMA schedule. | Q8_0 bucket is still large; P9.C1 showed shape-specific tile rules mattered. | 512/0 and 4K/0 prefill both non-regressive; code path remains registered by quant/layout key. |
 | G-P3 | Full-attention prefill glue parity with PARO/AOTriton path. | Long-context prefill is chunk/attention sensitive. | 32K/128 and 128K/128 prefill improve without decode/memory regression. |
-| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_S/Q4_K_M. | Current GPU1 gates fit at `21.335 GiB`, but final `128K/128` may need chunk/KV/scratch policy to stay inside 24 GiB. | GPU1 `128K/128` now fits and runs with all 768-token low-memory chunks, chunk-staged prefill hidden, `730.191 / 67.733 tok/s`, stable ID `[220]`, `23.310 GiB` peak. Next work is speed, not capacity. |
+| G-P4 | Chunk auto-tune and memory budget policy for Q4_K_M, with Q4_K_S as secondary memory context only. | Current Q4_K_M GPU1 short gates fit at `22.487 GiB`, but final `128K/128` fails resident allocation on the 24 GiB-class GPU1. | Q4_K_M `128K/128` is blocked/OOM in `benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json`; do not claim 24GB-class 128K Q4_K_M support until a new memory policy passes. Historical Q4_K_S `128K/128` fit with low-memory chunks at `730.191 / 67.733 tok/s`, stable ID `[220]`, `23.310 GiB` peak. |
 
 ### H lane — Host/runtime and graph replay
 

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-17
 
+- [diagnostic profile] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 rocprof 512/16+4K/16: active Q4_K_M prefill top buckets are 512 dense Q8_0 WMMA `59.884 ms` (27.4%), GDN `49.541 ms` (22.7%), selected Q4 WMMA `42.095 ms` (19.3%), and 4K GDN `374.015 ms` (25.7%), dense Q8_0 WMMA `327.706 ms` (22.5%), selected Q4 WMMA `260.100 ms` (17.9%); decode remains dense Q8_0 T16 GEMV-led at `46.532/46.101 ms` for 512/4K; `benchmarks/results/2026-06-17-gpu1-gguf-q4km-512-rocprof-summary.json`, `benchmarks/results/2026-06-17-gpu1-gguf-q4km-4k-rocprof-summary.json`.
+- [blocked memory gate] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 128K/128: resident session allocation fails with `HIP error 2: out of memory` before measurement under the restored BF16-KV/decode-repack path; do not promote 24GB-class 128K Q4_K_M support without a new passing memory policy or explicit human approval of a lower max-context/Q4_K_S fallback; `benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate-blocked.json`.
 - [diagnostic refresh] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 GPU0 README sweep: prefill `2142.4/2364.0/2367.6/1793.7/1392.7/960.8 -> 2198.4/2436.7/2453.3/1833.7/1412.5/973.8 tok/s` (+2.6/+3.1/+3.6/+2.2/+1.4/+1.4%) after the Q4_K_M correctness-restored rerun; decode stayed within `-0.5%..+0.0%`, stable IDs `318/220/220/332/22/63`, tracked peak flat `24.985 GiB` (`-1.279 GiB` vs the 2026-06-16 high-memory row); `benchmarks/results/2026-06-17-w7900-gpu0-gguf-q4km-correctness-restored-readme-sweep.json`.
 
 ## 2026-06-16

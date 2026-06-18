@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "status": "blocked_oom",
+  "performance_claim": false,
+  "date": "2026-06-17",
+  "hardware": "GPU1 AMD Radeon RX 7900 XTX / gfx1100 24 GiB-class",
+  "engine": "hipengine",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workloads": [
+    "128K/128"
+  ],
+  "rocm_stack": "TheRock ROCm 7.13, compiler version file /tmp/hipengine-hipcc-version-713.txt",
+  "command": "env -i ... HIP_VISIBLE_DEVICES=1 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json benchmarks/results/2026-06-17-gpu1-gguf-q4km-128k-final-gate.json",
+  "failure": {
+    "phase": "resident_session_allocation",
+    "exception": "hipengine.core.hip.HipError: HIP error 2: out of memory",
+    "log_path": "/tmp/hipengine-gpu1-q4km-128k-final-20260618-093422.log",
+    "tail": "    session = Qwen35GGUFResidentSession(\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<string>\", line 18, in __init__\n  File \"/home/lhl/hipEngine/hipengine/runtime/qwen35_gguf_runner.py\", line 2830, in __post_init__\n    self.scratch = _FullStackScratch.allocate(\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipEngine/hipengine/runtime/qwen35_gguf_runner.py\", line 4137, in allocate\n    value_cache = buf(cache_nbytes)\n                  ^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipEngine/hipengine/runtime/qwen35_gguf_runner.py\", line 4086, in buf\n    return malloc(nbytes, runtime=runtime)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipEngine/hipengine/core/memory.py\", line 30, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipEngine/hipengine/core/hip.py\", line 50, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/hipEngine/hipengine/core/hip.py\", line 161, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory"
+  },
+  "interpretation": "Q4_K_M does not pass the 24 GiB-class GPU1 128K/128 final memory gate with the current resident BF16-KV/decode-repack configuration. Do not promote changes that rely on Q4_K_M fitting 128K on 24 GiB without further memory work or explicit human approval of a lower max-context/Q4_K_S fallback policy."
+}
