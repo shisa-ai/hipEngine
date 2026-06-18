@@ -427,11 +427,14 @@ def qwen35_gguf_mtp_eh_proj_f32(
     eh_proj_weight: "np.ndarray",
     hnorm_weight: "np.ndarray",
     enorm_weight: "np.ndarray",
+    *,
+    eh_proj_qtype: "GGMLQuantizationType | None" = None,
     eps: float = 1e-6,
 ) -> np.ndarray:
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_eh_proj``.
 
-    enorm(embed) + hnorm(hidden) -> eh_proj F32 GEMV.  Returns ``[rows, hidden]`` F32.
+    M6: supports Q8_0 for eh_proj weight. When qtype is None/F32, uses fused F32
+    GEMV; when Q8_0, splits to concat + q8_0_gemv.
     """
 
     hidden_arr = np.ascontiguousarray(hidden_seed, dtype=np.float32)
@@ -475,8 +478,27 @@ def qwen35_gguf_mtp_eh_proj_f32(
                         runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, hnorm_dev.ptr, h_norm_dev.ptr, rows, hidden, eps=eps,
                         runtime=runtime)
-        mtp_eh_proj_f32(e_norm_dev.ptr, h_norm_dev.ptr, weight_dev.ptr, out_dev.ptr,
-                        rows, hidden, runtime=runtime)
+        from hipengine.quant.gguf import GGMLQuantizationType
+        if eh_proj_qtype is None or eh_proj_qtype == GGMLQuantizationType.F32:
+            mtp_eh_proj_f32(e_norm_dev.ptr, h_norm_dev.ptr, weight_dev.ptr, out_dev.ptr,
+                            rows, hidden, runtime=runtime)
+        else:
+            e_norm_host = np.empty((rows, hidden), dtype=np.float32)
+            h_norm_host = np.empty((rows, hidden), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(e_norm_host), e_norm_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(h_norm_host), h_norm_dev, runtime=runtime)
+            concat = np.ascontiguousarray(np.concatenate([e_norm_host, h_norm_host], axis=1),
+                                          dtype=np.float32)
+            concat_dev = malloc(concat.nbytes, runtime=runtime); buffers.append(concat_dev)
+            copy_host_to_device(concat_dev, host_array_ptr(concat), runtime=runtime)
+            if eh_proj_qtype == GGMLQuantizationType.Q8_0:
+                from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                    gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
+                )
+                _hip_q8_0(concat_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, hidden * 2,
+                          hidden, runtime=runtime)
+            else:
+                raise NotImplementedError(f"eh_proj_qtype={eh_proj_qtype.name} not supported")
         runtime.device_synchronize()
         out = np.empty((rows, hidden), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
@@ -1051,6 +1073,11 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     num_heads: int,
     num_kv_heads: int,
     experts_used: int,
+    eh_proj_qtype: "GGMLQuantizationType | None" = None,
+    wq_qtype: "GGMLQuantizationType | None" = None,
+    wk_qtype: "GGMLQuantizationType | None" = None,
+    wv_qtype: "GGMLQuantizationType | None" = None,
+    wo_qtype: "GGMLQuantizationType | None" = None,
     positions: "np.ndarray | None" = None,
     context_counts: "np.ndarray | None" = None,
     key_cache: "np.ndarray | None" = None,
@@ -1081,12 +1108,14 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     """
 
     projected = qwen35_gguf_mtp_eh_proj_f32(
-        hidden_seed, token_embedding, eh_proj_weight, hnorm_weight, enorm_weight, eps=eps,
+        hidden_seed, token_embedding, eh_proj_weight, hnorm_weight, enorm_weight,
+        eh_proj_qtype=eh_proj_qtype, eps=eps,
     )
     attended = qwen35_gguf_mtp_attention_sublayer_f32(
         projected, attn_norm_weight, wq_weight, wk_weight, wv_weight, wo_weight,
         q_norm_weight, k_norm_weight,
         num_heads=num_heads, num_kv_heads=num_kv_heads,
+        wq_qtype=wq_qtype, wk_qtype=wk_qtype, wv_qtype=wv_qtype, wo_qtype=wo_qtype,
         positions=positions, context_counts=context_counts,
         key_cache=key_cache, value_cache=value_cache,
         rope_cos=rope_cos, rope_sin=rope_sin, rotary_dim=rotary_dim, scale=scale, eps=eps,
