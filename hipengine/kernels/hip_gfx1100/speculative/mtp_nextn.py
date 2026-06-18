@@ -928,7 +928,13 @@ def qwen35_gguf_mtp_moe_routing_f32(
     router = np.ascontiguousarray(router_weight)
     # BF16 router weight: dequant to F32 on host (real model has BF16 router)
     if router.dtype != np.float32:
-        router = router.astype(np.float32)
+        if router.dtype == np.uint16 or router.dtype == np.int16:
+            # BF16 → F32: place uint16 bits in upper half of float32
+            router_f32 = np.zeros(router.shape, dtype=np.float32)
+            router_f32.view(np.uint32)[:] = router.astype(np.uint32) << 16
+            router = router_f32
+        else:
+            router = router.astype(np.float32)
     if x.ndim != 2:
         raise ValueError("hidden must have shape [tokens, hidden]")
     tokens, hidden_size = x.shape
@@ -1070,7 +1076,15 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
     shared_gate_q = np.ascontiguousarray(shared_gate_qweight)
     shared_up_q = np.ascontiguousarray(shared_up_qweight)
     shared_down_q = np.ascontiguousarray(shared_down_qweight)
-    gate_vec = np.ascontiguousarray(shared_gate_logit_weight, dtype=np.float32)
+    gate_vec = np.ascontiguousarray(shared_gate_logit_weight)
+    # BF16 shared_gate_logit: dequant to F32 (real model has BF16)
+    if gate_vec.dtype != np.float32:
+        if gate_vec.dtype == np.uint16 or gate_vec.dtype == np.int16:
+            gv_f32 = np.zeros(gate_vec.shape, dtype=np.float32)
+            gv_f32.view(np.uint32)[:] = gate_vec.astype(np.uint32) << 16
+            gate_vec = gv_f32
+        else:
+            gate_vec = gate_vec.astype(np.float32)
 
     runtime = get_hip_runtime()
     buffers: list = []
@@ -1240,17 +1254,17 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         mtp_rmsnorm_f32(hidden_dev.ptr, norm_dev.ptr, normed_dev.ptr, rows, hidden_size, eps=eps,
                         runtime=runtime)
         if shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q6_K:
-            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
-                gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_head,
-            )
-            normed_f32 = np.empty((rows, hidden_size), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(normed_f32), normed_dev, normed_f32.nbytes,
-                                runtime=runtime)
-            normed_fp16 = normed_f32.astype(np.float16)
-            normed_fp16_dev = malloc(normed_fp16.nbytes, runtime=runtime); buffers.append(normed_fp16_dev)
-            copy_host_to_device(normed_fp16_dev, host_array_ptr(normed_fp16), runtime=runtime)
-            _hip_q6_k_head(normed_fp16_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
-                           vocab, runtime=runtime)
+            # Q6_K pack8 gemv uses fp16 input which loses too much precision
+            # for the 248320-vocab shared_head. Use host-side dequant + F32 gemv.
+            from hipengine.quant.gguf import dequantize_gguf_data
+            head_f32 = dequantize_gguf_data(
+                np.ascontiguousarray(shared_head_weight),
+                GGMLQuantizationType.Q6_K,
+            ).astype(np.float32)
+            head_dev = malloc(head_f32.nbytes, runtime=runtime); buffers.append(head_dev)
+            copy_host_to_device(head_dev, host_array_ptr(head_f32), runtime=runtime)
+            mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
+                           runtime=runtime)
         elif shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0_head,

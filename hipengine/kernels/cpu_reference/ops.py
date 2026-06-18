@@ -435,7 +435,14 @@ def qwen35_gguf_mtp_moe_routing(
     """
 
     x = np.asarray(hidden, dtype=np.float32)
-    router = np.asarray(router_weight, dtype=np.float32)
+    router = np.ascontiguousarray(router_weight)
+    if router.dtype != np.float32:
+        if router.dtype == np.uint16 or router.dtype == np.int16:
+            router_f32 = np.zeros(router.shape, dtype=np.float32)
+            router_f32.view(np.uint32)[:] = router.astype(np.uint32) << 16
+            router = router_f32
+        else:
+            router = router.astype(np.float32)
     if x.ndim != 2:
         raise ValueError("hidden must have shape [tokens, hidden]")
     if router.ndim != 2 or router.shape[1] != x.shape[1]:
@@ -562,7 +569,14 @@ def gguf_moe_ffn_block(
     shared_up = gguf_quant_gemv(x_arr, np.asarray(shared_up_qweight), shared_qtype)
     shared_inter = (_silu(shared_gate) * shared_up).astype(np.float32)
     shared_out = gguf_quant_gemv(shared_inter, np.asarray(shared_down_qweight), shared_qtype)
-    gate_vec = np.asarray(shared_gate_logit_weight, dtype=np.float32)
+    gate_vec = np.ascontiguousarray(shared_gate_logit_weight)
+    if gate_vec.dtype != np.float32:
+        if gate_vec.dtype == np.uint16 or gate_vec.dtype == np.int16:
+            gv_f32 = np.zeros(gate_vec.shape, dtype=np.float32)
+            gv_f32.view(np.uint32)[:] = gate_vec.astype(np.uint32) << 16
+            gate_vec = gv_f32
+        else:
+            gate_vec = gate_vec.astype(np.float32)
     if gate_vec.ndim != 1 or gate_vec.shape[0] != x_arr.shape[1]:
         raise ValueError("shared_gate_logit_weight must have shape [hidden]")
     shared_gate_logit = x_arr @ gate_vec
