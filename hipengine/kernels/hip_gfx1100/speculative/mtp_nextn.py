@@ -773,9 +773,15 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             )
             _hip_q5_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
                       out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q8_0:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
+            )
+            _hip_q8_0(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
         else:
             raise NotImplementedError(
-                f"qtype={qtype.name} not supported (F32/Q4_K/Q5_K only); Q8_0 is M6+"
+                f"qtype={qtype.name} not supported (F32/Q4_K/Q5_K/Q8_0 only)"
             )
 
     for qt, name in (
@@ -783,9 +789,9 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         (shared_qtype, "shared_qtype"),
     ):
         if qt not in (GGMLQuantizationType.F32, GGMLQuantizationType.Q4_K,
-                      GGMLQuantizationType.Q5_K):
+                      GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q8_0):
             raise NotImplementedError(
-                f"{name}={qt.name} not supported (F32/Q4_K/Q5_K only); Q8_0 is M6+"
+                f"{name}={qt.name} not supported (F32/Q4_K/Q5_K/Q8_0 only)"
             )
 
     x = np.ascontiguousarray(hidden, dtype=np.float32)
@@ -1062,6 +1068,45 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
 
 
 
+
+def qwen35_gguf_mtp_q8_0_gemv_f32(
+    x: "np.ndarray",
+    qweight: "np.ndarray",
+) -> np.ndarray:
+    """Numpy-in/out adapter for the existing hip GPU Q8_0 gemv kernel."""
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
+    )
+
+    x_arr = np.ascontiguousarray(x, dtype=np.float32)
+    qw_arr = np.ascontiguousarray(qweight)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [rows, in_features]")
+    rows, in_features = x_arr.shape
+    if qw_arr.ndim != 2:
+        raise ValueError("qweight must be rank-2 [out_features, block_bytes_per_row]")
+    out_features = qw_arr.shape[0]
+
+    runtime = get_hip_runtime()
+    buffers: list = []
+    try:
+        x_dev = malloc(x_arr.nbytes, runtime=runtime); buffers.append(x_dev)
+        qw_dev = malloc(qw_arr.nbytes, runtime=runtime); buffers.append(qw_dev)
+        out_dev = malloc(rows * out_features * 4, runtime=runtime); buffers.append(out_dev)
+        copy_host_to_device(x_dev, host_array_ptr(x_arr), runtime=runtime)
+        copy_host_to_device(qw_dev, host_array_ptr(qw_arr), runtime=runtime)
+        _hip_q8_0(x_dev.ptr, qw_dev.ptr, out_dev.ptr, rows=rows,
+                  in_features=in_features, out_features=out_features)
+        runtime.device_synchronize()
+        out = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+        return out
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+
 def qwen35_gguf_mtp_q4_k_gemv_f32(
     x: "np.ndarray",
     qweight: "np.ndarray",
@@ -1185,6 +1230,11 @@ def register_mtp_nextn_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey(backend, "mtp_q8_0_gemv", "gguf_f32", "qwen35"),
+            qwen35_gguf_mtp_q8_0_gemv_f32,
+            replace=replace,
+        )
+        register(
             KernelKey(backend, "mtp_q4_k_gemv", "gguf_f32", "qwen35"),
             qwen35_gguf_mtp_q4_k_gemv_f32,
             replace=replace,
@@ -1217,6 +1267,7 @@ __all__ = [
     "qwen35_gguf_mtp_ffn_sublayer_f32",
     "qwen35_gguf_mtp_moe_routing_f32",
     "qwen35_gguf_mtp_nextn_layer_logits_f32",
+    "qwen35_gguf_mtp_q8_0_gemv_f32",
     "qwen35_gguf_mtp_q4_k_gemv_f32",
     "qwen35_gguf_mtp_q5_k_gemv_f32",
     "qwen35_gguf_mtp_shared_head_logits_f32",
