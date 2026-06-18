@@ -524,7 +524,7 @@ def qwen35_gguf_mtp_eh_proj_f32(
 
     hidden_arr = np.ascontiguousarray(hidden_seed, dtype=np.float32)
     embed_arr = np.ascontiguousarray(token_embedding, dtype=np.float32)
-    weight = np.ascontiguousarray(eh_proj_weight, dtype=np.float32)
+    weight = np.ascontiguousarray(eh_proj_weight)  # keep raw bytes for K-quant
     hnorm = np.ascontiguousarray(hnorm_weight, dtype=np.float32)
     enorm = np.ascontiguousarray(enorm_weight, dtype=np.float32)
     if hidden_arr.ndim != 2:
