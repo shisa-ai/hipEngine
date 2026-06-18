@@ -1,6 +1,6 @@
 # Agentic Inference Roadmap
 
-Last updated: 2026-06-16
+Last updated: 2026-06-18
 
 `AGENTIC.md` is the implementation handoff for making hipEngine useful as a
 local **agent runtime**. The scope is not broad project management; it is the
@@ -118,7 +118,11 @@ Known baseline limitations:
   inner tool JSON is recovered in compatibility parsing. Tool-enabled requests
   now fail closed on unparseable `<tool_call>` markup, including malformed or
   unclosed JSON blocks, by returning a normal chat response with
-  `finish_details.reason="invalid_tool_call"` and no assistant content.
+  `finish_details.reason="invalid_tool_call"` and no assistant content. The
+  parser selects valid tool-call spans by successful JSON tool-call parsing, so
+  literal marker text before a later valid call is preserved as assistant
+  content and marker-looking text inside JSON arguments does not prematurely
+  terminate the tool-call block.
 - Thinking control is still not constrained decoding. Tokenized thinking caps
   are enforced only on host-sampled PARO/GGUF rows: the soft window applies a
   sparse close-token bias ramp, EOS is suppressed until answer phase when an
@@ -3014,8 +3018,9 @@ edge-case hardening:
 4. **Tool and structured fail-safe behavior.** Keep prompt-and-parse tool calls
    and post-generation structured-output validation fail-closed: no raw
    `<tool_call>` or `<think>` leakage, no successful `tool_calls` on invalid
-   outputs, no successful visible content on suppressed schema violations, and
-   streaming/non-streaming envelope parity.
+   outputs, no successful visible content on suppressed schema violations,
+   literal marker text must not steal parser state from a later valid tool
+   call, and streaming/non-streaming envelope parity.
 5. **Sampler/MTP guard completeness.** Raw-argmax speculative/MTP verification
    remains limited to greedy-fast rows. Every field that changes token
    selection or post-accept finish behavior (`logit_bias`, penalties,
