@@ -100666,3 +100666,40 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py
 # 1 passed
 ```
+
+## 2026-06-19 — GGUF MTP benchmark rejects unimplemented B2-B4 labels
+
+### Change
+- `scripts/gguf_mtp_bench.py` now validates `--draft-n-max` and refuses values
+  other than `1`. The current native GGUF path is B1-only: it emits one NextN
+  draft token and verifies it against one AR target token. B2-B4 target-attached
+  GGUF MTP context is not wired yet.
+- `tests/test_gguf_mtp_bench_metrics.py` now covers the validator so future
+  artifacts cannot silently label B1 measurements as B2-B4.
+
+### Verification
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py
+# 2 passed
+
+python3 scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 1 --output /tmp/should-not-run.json
+# exits 2 with: currently implements only B1 (draft_n_max=1)
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+```
+
+### Interpretation
+- Iteration 226 confirms the next true M5/M6 milestone is implementing B2-B4
+  target-attached multi-draft context; simply sweeping `--draft-n-max=2..4` was
+  not valid because the script still executed B1. This guard preserves evidence
+  hygiene while keeping the B1 warm-positive artifact as the current native GGUF
+  result.

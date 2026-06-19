@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from scripts.gguf_mtp_bench import compute_speculative_metrics
+import pytest
+
+from scripts.gguf_mtp_bench import compute_speculative_metrics, validate_draft_n_max
 
 
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
@@ -33,3 +35,9 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
         "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
         "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
     }
+
+
+def test_validate_draft_n_max_rejects_unimplemented_b2_b4() -> None:
+    assert validate_draft_n_max(1) == 1
+    with pytest.raises(ValueError, match="only B1"):
+        validate_draft_n_max(2)

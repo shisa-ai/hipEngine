@@ -50,6 +50,22 @@ def _get_hw_info() -> dict:
     return {"gpu": "unknown", "arch": "gfx1151"}
 
 
+def validate_draft_n_max(draft_n_max: int) -> int:
+    """Validate the benchmark's currently implemented draft depth.
+
+    The native GGUF path in this script is B1-only today: it produces one
+    NextN draft token, then verifies it against one AR target token. Refuse
+    B2-B4-looking invocations until target-attached multi-draft context is
+    implemented, so artifacts cannot silently mislabel B1 economics.
+    """
+    if draft_n_max != 1:
+        raise ValueError(
+            "scripts/gguf_mtp_bench.py currently implements only B1 "
+            "(draft_n_max=1); B2-B4 target-attached GGUF MTP is not wired yet"
+        )
+    return draft_n_max
+
+
 def compute_speculative_metrics(cycles: list[dict]) -> dict:
     """Compute MTP metrics with explicit llama.cpp-compatible denominators.
 
@@ -115,6 +131,10 @@ def main():
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument("--output", default=None, help="Output JSON path (default: benchmarks/results/mtp-bench-<timestamp>.json)")
     args = parser.parse_args()
+    try:
+        args.draft_n_max = validate_draft_n_max(args.draft_n_max)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
