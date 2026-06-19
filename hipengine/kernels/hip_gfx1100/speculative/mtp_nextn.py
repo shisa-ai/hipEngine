@@ -577,6 +577,8 @@ def qwen35_gguf_mtp_eh_proj_f32(
 
     runtime = get_hip_runtime()
     _mtp_lib = build_mtp_nextn(load=True)
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv as _build_k_gemv_ep
+    _eh_k_gemv_lib = _build_k_gemv_ep(load=True)
     e_norm_dev = malloc(embed_arr.nbytes, runtime=runtime)
     h_norm_dev = malloc(hidden_arr.nbytes, runtime=runtime)
     out_dev = malloc(hidden_arr.nbytes, runtime=runtime)
@@ -611,7 +613,7 @@ def qwen35_gguf_mtp_eh_proj_f32(
                     gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
                 )
                 _hip_q8_0(concat_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, hidden * 2,
-                          hidden, runtime=runtime)
+                          hidden, library=_eh_k_gemv_lib, runtime=runtime)
             elif eh_proj_qtype == GGMLQuantizationType.Q6_K:
                 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
                     gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_eh,
@@ -745,7 +747,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
                 gguf_q5_k_gemv_f32_f32_out as _hip_q5_k,
             )
             _hip_q5_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_k_gemv_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q6_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
                 gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_attn,
@@ -1057,25 +1059,25 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                        qtype, *, runtime):
         if qtype == GGMLQuantizationType.F32:
             mtp_linear_f32(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                           out_features, runtime=runtime)
+                           out_features, library=_mtp_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q4_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
                 gguf_q4_k_gemv_f32_f32_out as _hip_q4_k,
             )
             _hip_q4_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_q4_k_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q5_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q5_k_gemv_f32_f32_out as _hip_q5_k,
             )
             _hip_q5_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_k_gemv_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
             )
             _hip_q8_0(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_k_gemv_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q6_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
                 gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k,
@@ -1087,7 +1089,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
             copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
             _hip_q6_k(x_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_q4_k_lib, runtime=runtime)
             free(x_fp16_dev, runtime=runtime)
         else:
             raise NotImplementedError(
