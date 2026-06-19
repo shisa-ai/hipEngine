@@ -980,8 +980,9 @@ def qwen35_gguf_mtp_moe_routing_f32(
         router_dev = _cached_upload("ffn_router", router, runtime=runtime)
         logits_dev = malloc(tokens * experts * 4, runtime=runtime); buffers.append(logits_dev)
         copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+        _route_lib = build_mtp_nextn(load=True)
         mtp_linear_f32(x_dev.ptr, router_dev.ptr, logits_dev.ptr, tokens, hidden_size, experts,
-                       library=build_mtp_nextn(load=True), runtime=runtime)
+                       library=_route_lib, runtime=runtime)
         logits = np.empty((tokens, experts), dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
     finally:

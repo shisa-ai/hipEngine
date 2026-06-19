@@ -210,6 +210,9 @@ def compiler_version_text(compiler: str) -> str:
     return result.stdout.strip()
 
 
+_COMPILER_VERSION_CACHE: dict[str, str] = {}
+
+
 def _resolve_compiler_version(
     *,
     compiler: str,
@@ -223,7 +226,12 @@ def _resolve_compiler_version(
         return env_version
     if dry_run:
         return f"{compiler}:unprobed"
-    return compiler_version_text(compiler)
+    # Cache the compiler version to avoid 60ms subprocess call per build_hip()
+    if compiler in _COMPILER_VERSION_CACHE:
+        return _COMPILER_VERSION_CACHE[compiler]
+    version = compiler_version_text(compiler)
+    _COMPILER_VERSION_CACHE[compiler] = version
+    return version
 
 
 def _compiler_version_from_environment(compiler: str) -> str | None:
