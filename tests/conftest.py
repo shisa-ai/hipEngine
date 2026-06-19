@@ -9,6 +9,22 @@ import pytest
 _BASELINE_KERNELS: dict[Any, Any] | None = None
 
 
+@pytest.fixture(autouse=True)
+def _clear_mtp_weight_cache():
+    """Clear the MTP weight cache before each test to avoid cross-test contamination."""
+    try:
+        from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import clear_weight_cache
+        clear_weight_cache()
+    except ImportError:
+        pass
+    yield
+    try:
+        from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import clear_weight_cache
+        clear_weight_cache()
+    except ImportError:
+        pass
+
+
 def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cover - pytest hook
     """Snapshot import-time kernel registrations after test collection.
 
