@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-19
 
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 3-prompt sweep cycles=5 each: mean warm speedup `1.019x`, mean cold speedup `0.775x`, 2/3 prompts warm-positive, 1/3 with depth-2 accept, accepted drafts `3/30`; aggregate artifact `benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 count prompt cycles=5: new `--prompt` path shows warm `19.20 tok/s` vs AR `15.49 tok/s` (`1.240x`) and cold-inclusive `14.67 tok/s` (`0.909x`), accept_per_draft `0.200` with one full depth-2 accept; artifact `benchmarks/results/mtp-bench-1781844300-b2-count-prompt-visible-output.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed-prompt cycles=5: new minimal B2 driver reports warm `16.41 tok/s` vs AR `15.92 tok/s` (`1.030x`) but cold-inclusive `13.06 tok/s` (`0.785x`), accept_per_draft `0.100` with no depth-2 accepts; artifact `benchmarks/results/mtp-bench-1781843600-b2-minimal-visible-output.json`.

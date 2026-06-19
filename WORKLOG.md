@@ -101013,3 +101013,53 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
   and a warm 1.24x visible-output speedup, unlike the France prompt (no depth-2
   accepts). This validates adding a native prompt-sweep path before optimizing B2
   kernels further. Cold-inclusive remains slower due to cache/warmup.
+
+## 2026-06-19 — Native B2 3-prompt acceptance sweep
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt <prompt> \
+  --output benchmarks/results/mtp-bench-1781845000-b2-sweep-<slug>.json
+```
+Prompts:
+- `What is the capital of France?` -> `mtp-bench-1781845000-b2-sweep-capital.json`
+- `Count from one to five.` -> `mtp-bench-1781845000-b2-sweep-count.json`
+- `Write a short greeting.` -> `mtp-bench-1781845000-b2-sweep-greeting.json`
+- Aggregate: `benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json`
+
+### Results
+- Capital: accept_per_draft=0.100, warm speedup=1.0357x, cold speedup=0.7957x, no depth-2 accepts.
+- Count: accept_per_draft=0.200, warm speedup=1.2347x, cold speedup=0.9196x, one depth-2 accept (cycle 2).
+- Greeting: accept_per_draft=0.000, warm speedup=0.7869x, cold speedup=0.6098x, no accepts.
+- Aggregate: 2/3 prompts warm-positive, 1/3 prompts with a depth-2 accept,
+  mean warm speedup=1.0191x, mean cold speedup=0.7750x, accepted drafts=3/30.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 6 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+### Interpretation
+- B2 benefit is strongly prompt-dependent. The average warm result is barely
+  positive (1.019x), while cold-inclusive remains clearly slower.
+- The count prompt proves the B2 mechanism can accept depth 2, but the greeting
+  prompt shows acceptance can collapse to zero. Next leverage is acceptance/parity
+  investigation against llama.cpp traces or a broader prompt suite, not kernel
+  speed alone.
