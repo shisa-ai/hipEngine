@@ -1498,7 +1498,8 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     expert_weights_scale: float = 1.0,
     shared_head_qtype: "GGMLQuantizationType | None" = None,
     eps: float = 1e-6,
-) -> np.ndarray:
+    return_hidden_seed: bool = False,
+) -> "np.ndarray | tuple[np.ndarray, np.ndarray]":
     """Native GPU Qwen35 GGUF MTP NextN draft layer (M3, correctness-first).
 
     Composes the four GPU sub-kernels in the llama.cpp draft-only order:
@@ -1532,10 +1533,13 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
         shared_qtype, experts_used=experts_used, expert_weights_scale=expert_weights_scale,
         eps=eps,
     )
-    return qwen35_gguf_mtp_shared_head_logits_f32(
+    logits = qwen35_gguf_mtp_shared_head_logits_f32(
         ffn_out, shared_head_norm_weight, shared_head_weight, eps=eps,
         shared_head_qtype=shared_head_qtype,
     )
+    if return_hidden_seed:
+        return logits, np.ascontiguousarray(ffn_out, dtype=np.float32)
+    return logits
 
 
 

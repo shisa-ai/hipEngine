@@ -100819,3 +100819,47 @@ python3 -m pytest -q \
 ### Verification
 - This was inspection-only. Follow-up checks in this iteration re-ran the exact
   mtp-gguf guard and prompt verifier before logging.
+
+## 2026-06-19 — NextN hidden seed output API for B2 chaining
+
+### Change
+- Added an optional `return_hidden_seed` keyword to
+  `qwen35_gguf_mtp_nextn_layer_logits_f32()`.
+- Default behavior is unchanged: callers receive logits only.
+- When `return_hidden_seed=True`, the function returns `(logits, hidden_seed)`,
+  where `hidden_seed` is the contiguous fp32 `ffn_out` row immediately before
+  `shared_head_norm + shared_head`.
+- Added `tests/test_mtp_nextn_hidden_seed_contract.py` to pin the contract without
+  requiring HIP: monkeypatched sublayers prove the returned seed is the post-FFN
+  hidden row consumed by shared_head, and default callers still get an ndarray.
+
+### B2 relevance
+- This implements the lighter B2 primitive identified in the prior inspection:
+  expose the MTP-layer post-NextN hidden row for depth+1 chaining without using
+  `Qwen35GGUFResidentSession.step()` and mutating target state.
+- The full B2 runtime is still not GREEN: `--draft-n-max=2` remains guarded until
+  the benchmark/driver actually chains this seed row and verifies/account both
+  draft depths.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_mtp_nextn_hidden_seed_contract.py
+# 2 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py -rx
+# 2 passed, 1 xfailed (B2 runtime still intentionally blocked)
+```
