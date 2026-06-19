@@ -101529,3 +101529,67 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   17-token reasoning-off prompt before spending more time on MTP cycle-cost
   optimization. Native accepted/output cannot match llama.cpp while the target
   verifier itself produces a different token stream.
+
+## 2026-06-19 — GGUF MTP prompt suffix fixed; acceptance still target/MTP-context blocked
+
+### Change
+- Corrected `scripts/gguf_mtp_bench.py` reasoning-off Qwen prompt rendering to
+  match llama-server's logged chat prompt exactly: the empty thinking suffix ends
+  with two newlines after `</think>`, not three. The matched greeting prompt is
+  now the 17-token sequence `[248045, 846, 198, 7734, 264, 2716, 40719, 13,
+  248046, 198, 248045, 74455, 198, 248068, 271, 248069, 271]`.
+- Added a skipped-if-missing real-GGUF prompt-token test so future prompt
+  edits compare against the llama-server logged reasoning-off greeting prompt.
+- Added `llama_cpp_mtp_catchup_rows(...)` and a default-off
+  `scripts/gguf_mtp_bench.py --mtp-context-replay` diagnostic path that replays
+  llama.cpp-style prompt catch-up rows through the native MTP block. This is
+  intentionally correctness-first/slow and only diagnostic while target AR
+  parity is still blocked.
+- Added `docs/REFACTOR.md` debt for removing or moving the replay diagnostic
+  once a real MTP KV/RoPE path or all-row bulk hidden tap supersedes it.
+
+### Evidence
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_mtp_bench_prompt.py
+# 13 passed
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_mtp_bench_prompt.py tests/test_llamacpp_mtp_capture_trace.py \
+  tests/test_llamacpp_mtp_greeting_trace_plan.py tests/test_llamacpp_mtp_draft_trace.py
+# 19 passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q \
+  tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+Diagnostic smoke runs on gfx1151/Radeon 8060S:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt 'Write a short greeting.' \
+  --output benchmarks/results/mtp-bench-1781882500-b2-greeting-two-newline-default.json
+# default single_seed_row: total_accepted=1/10, accept_per_draft=0.1000,
+# accepted_per_output=0.1667, tokens_per_sec=12.42, warm speedup=0.820x
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 3 --draft-n-max 2 --prompt 'Write a short greeting.' \
+  --mtp-context-replay \
+  --output benchmarks/results/mtp-bench-1781883200-b2-greeting-context-replay-smoke.json
+# prompt-catchup replay: total_accepted=0/6, accept_per_draft=0.0000,
+# accepted_per_output=0.0000, tokens_per_sec=4.42, warm speedup=0.284x
+```
+
+### Result
+- The prompt-token mismatch is fixed, but accepted/output still does **not**
+  match llama.cpp on the greeting trace (`llama.cpp` accepted `3/4`, native is
+  `1/10` default and `0/6` replay).
+- The remaining blocker is task #4 target AR parity: native target logits on the
+  exact 17-token prompt still diverge from llama.cpp, so task #2 cannot be
+  marked complete yet.

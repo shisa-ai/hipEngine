@@ -6,6 +6,7 @@ import pytest
 from scripts.gguf_mtp_bench import (
     compute_speculative_metrics,
     llama_cpp_acceptance_from_target_samples,
+    llama_cpp_mtp_catchup_rows,
     select_topk_tokens,
     validate_draft_n_max,
 )
@@ -57,6 +58,26 @@ def test_validate_draft_n_max_accepts_b1_and_b2_only() -> None:
     assert validate_draft_n_max(2) == 2
     with pytest.raises(ValueError, match="B3-B4"):
         validate_draft_n_max(3)
+
+
+def test_llama_cpp_mtp_catchup_rows_shift_target_hidden_right() -> None:
+    tokens, hidden = llama_cpp_mtp_catchup_rows(
+        [101, 102, 103],
+        np.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
+    )
+
+    assert tokens == [101, 102, 103]
+    np.testing.assert_allclose(
+        hidden,
+        np.asarray([[0.0, 0.0], [1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+    )
+
+
+def test_llama_cpp_mtp_catchup_rows_validates_prompt_shape() -> None:
+    with pytest.raises(ValueError, match="same length"):
+        llama_cpp_mtp_catchup_rows([101, 102], np.zeros((1, 2), dtype=np.float32))
+    with pytest.raises(ValueError, match="non-empty"):
+        llama_cpp_mtp_catchup_rows([], np.zeros((0, 2), dtype=np.float32))
 
 
 def test_llama_cpp_acceptance_counts_corrective_target_after_reject() -> None:

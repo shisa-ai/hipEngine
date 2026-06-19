@@ -36,8 +36,9 @@ def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT, *, reasoning
     """Build the llama.cpp-compatible Qwen chat prompt for GGUF MTP.
 
     llama.cpp ``--reasoning off`` still renders an empty thinking block for this
-    GGUF chat template.  Include that suffix by default so native accepted/output
-    diagnostics compare against the same token stream as llama-server.
+    GGUF chat template, ending with exactly two newlines after ``</think>``.
+    Include that suffix by default so native accepted/output diagnostics compare
+    against the same token stream as llama-server.
     """
     if reasoning not in {"off", "none"}:
         raise ValueError("build_chat_prompt currently supports only reasoning='off'/'none'")
@@ -50,7 +51,7 @@ def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT, *, reasoning
         + tokenizer.encode("assistant\n")
     )
     if reasoning == "off":
-        prompt += [THINK_START_TOKEN] + tokenizer.encode("\n\n") + [THINK_END_TOKEN] + tokenizer.encode("\n\n\n")
+        prompt += [THINK_START_TOKEN] + tokenizer.encode("\n\n") + [THINK_END_TOKEN] + tokenizer.encode("\n\n")
     return prompt
 
 
@@ -164,6 +165,29 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     }
 
 
+def llama_cpp_mtp_catchup_rows(
+    prompt_tokens: list[int] | tuple[int, ...],
+    prompt_hidden_seeds: "np.ndarray",
+) -> tuple[list[int], "np.ndarray"]:
+    """Build llama.cpp-style initial MTP catch-up rows for a prompt.
+
+    The MTP context mirrors target prompt tokens with the hidden row shifted one
+    position to the right: row 0 uses an all-zero pending hidden row, and row i
+    uses the target post-output_norm hidden from prompt token i-1.
+    """
+    tokens = [int(token) for token in prompt_tokens]
+    hidden = np.ascontiguousarray(prompt_hidden_seeds, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("prompt_hidden_seeds must have shape [prompt_tokens, hidden_size]")
+    if len(tokens) != int(hidden.shape[0]):
+        raise ValueError("prompt_tokens and prompt_hidden_seeds must have the same length")
+    if not tokens:
+        raise ValueError("prompt_tokens must be non-empty")
+    zero = np.zeros((1, hidden.shape[1]), dtype=np.float32)
+    shifted = zero if hidden.shape[0] == 1 else np.concatenate([zero, hidden[:-1]], axis=0)
+    return tokens, np.ascontiguousarray(shifted, dtype=np.float32)
+
+
 def llama_cpp_acceptance_from_target_samples(
     draft_tokens: list[int],
     target_samples: list[int],
@@ -213,6 +237,14 @@ def main():
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument("--output", default=None, help="Output JSON path (default: benchmarks/results/mtp-bench-<timestamp>.json)")
+    parser.add_argument(
+        "--mtp-context-replay",
+        action="store_true",
+        help=(
+            "Diagnostic only: replay llama.cpp-style prompt catch-up rows through the MTP block. "
+            "Slow and currently not the default because the bulk target path does not expose all hidden rows."
+        ),
+    )
     args = parser.parse_args()
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
@@ -302,9 +334,6 @@ def main():
     # Run benchmark
     session = Qwen35GGUFResidentSession(model_path=args.model)
     try:
-        prefill_result = session.prefill(prompt, return_logits=False,
-                                         capture_hidden_seed_fp32=True)
-        prev_token = int(prefill_result.token_id)
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
 
@@ -318,11 +347,52 @@ def main():
             )
             return hidden_seed
 
-        # llama.cpp carries the post-output_norm hidden row from the position
-        # before ``prev_token`` and pairs it with ``prev_token`` in draft().
-        # Prefill with capture_hidden_seed_fp32=True populated that row for the
-        # final prompt token.
-        pending_hidden_seed = copy_pending_hidden_seed()
+        def serial_prefill_with_hidden_trace() -> tuple[object, np.ndarray]:
+            """Consume the prompt serially and capture every target hidden row.
+
+            llama.cpp's MTP context catch-up needs the post-output_norm hidden
+            row for every target prompt token, shifted right by one row.  The
+            resident bulk prefill only exposes the final row today, so the
+            acceptance-parity diagnostic uses the serial target path until the
+            bulk path has an all-row hidden tap.
+            """
+            session.reset()
+            hidden_rows: list[np.ndarray] = []
+            hidden_ptr: int | None = None
+            for token_id in prompt:
+                hidden_ptr = session._run_token_to_final_hidden(  # noqa: SLF001 - diagnostic parity hook
+                    int(token_id),
+                    position=session.position,
+                    capture_hidden_seed_fp32=True,
+                )
+                session._position += 1  # noqa: SLF001 - mirrors Qwen35GGUFResidentSession.prefill serial path
+                hidden_rows.append(copy_pending_hidden_seed()[0].copy())
+            if hidden_ptr is None:
+                raise RuntimeError("prompt produced no hidden row")
+            return session._sample_from_hidden(hidden_ptr, return_logits=False), np.ascontiguousarray(
+                np.stack(hidden_rows, axis=0), dtype=np.float32
+            )
+
+        if args.mtp_context_replay:
+            prefill_result, prompt_hidden_seeds = serial_prefill_with_hidden_trace()
+            prev_token = int(prefill_result.token_id)
+
+            # llama.cpp catch-up decodes prompt tokens into the MTP context with
+            # the target hidden rows shifted right: row0 gets an all-zero
+            # pending_h, row i gets target_h[i-1].  Current-cycle draft()
+            # appends ``prev_token`` with the carried pending target hidden row.
+            mtp_context_tokens, mtp_context_hidden_rows = llama_cpp_mtp_catchup_rows(prompt, prompt_hidden_seeds)
+            pending_hidden_seed = np.ascontiguousarray(prompt_hidden_seeds[-1:], dtype=np.float32)
+            target_prefill_mode = "serial_hidden_trace"
+            mtp_context_mode = "llamacpp_prompt_catchup_replay"
+        else:
+            prefill_result = session.prefill(prompt, return_logits=False, capture_hidden_seed_fp32=True)
+            prev_token = int(prefill_result.token_id)
+            pending_hidden_seed = copy_pending_hidden_seed()
+            mtp_context_tokens = []
+            mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
+            target_prefill_mode = "resident_default"
+            mtp_context_mode = "single_seed_row"
 
         total_drafts = 0
         total_accepted = 0
@@ -331,30 +401,59 @@ def main():
         decode_times = []
 
         for cycle in range(args.cycles):
-            # MTP draft(s). The seed row is the pending target hidden row from
-            # the previous accepted/corrective boundary, not the hidden row we
-            # are about to verify. B2 chains the MTP post-FFN hidden row returned
-            # by depth 1 and uses the depth-1 draft token embedding as the
-            # depth-2 token row.
+            cycle_prev_token = int(prev_token)
+            cycle_pending_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
+
             t2 = time.perf_counter()
             draft_tokens = []
             draft_top10_tokens = []
-            current_hidden_seed = pending_hidden_seed
-            current_token = prev_token
-            for draft_depth in range(args.draft_n_max):
-                token_embed = token_embd_f32[current_token:current_token+1].copy()
-                need_next_seed = draft_depth + 1 < args.draft_n_max
-                if need_next_seed:
-                    draft_logits, current_hidden_seed = run_draft(
-                        current_hidden_seed, token_embed, return_hidden_seed=True
+            replay_tokens = [cycle_prev_token]
+            if args.mtp_context_replay:
+                # MTP draft(s). Reconstruct the llama.cpp draft context by
+                # replaying all committed MTP rows plus the current ``prev_token``
+                # seed row.  This is intentionally correctness/acceptance-first
+                # and slow: it avoids optimizing speed before accepted/output
+                # parity is understood.
+                replay_tokens = list(mtp_context_tokens) + [cycle_prev_token]
+                replay_hidden_rows = np.concatenate([mtp_context_hidden_rows, cycle_pending_hidden_seed], axis=0)
+                for draft_depth in range(args.draft_n_max):
+                    token_embed = np.ascontiguousarray(
+                        token_embd_f32[np.asarray(replay_tokens, dtype=np.int64)], dtype=np.float32
                     )
-                else:
-                    draft_logits = run_draft(current_hidden_seed, token_embed)
-                # Top-k=10 greedy selection (llama.cpp contract)
-                draft_token, top10_tokens = select_topk_tokens(draft_logits[0], k=10)
-                draft_tokens.append(draft_token)
-                draft_top10_tokens.append(top10_tokens)
-                current_token = draft_token
+                    draft_logits, replay_next_hidden = run_draft(
+                        replay_hidden_rows,
+                        token_embed,
+                        return_hidden_seed=True,
+                    )
+                    # Top-k=10 greedy selection (llama.cpp contract).  The last
+                    # row is the row just decoded by the current draft depth.
+                    draft_token, top10_tokens = select_topk_tokens(draft_logits[-1], k=10)
+                    draft_tokens.append(draft_token)
+                    draft_top10_tokens.append(top10_tokens)
+                    if draft_depth + 1 < args.draft_n_max:
+                        replay_tokens.append(draft_token)
+                        replay_hidden_rows = np.concatenate(
+                            [replay_hidden_rows, np.ascontiguousarray(replay_next_hidden[-1:], dtype=np.float32)],
+                            axis=0,
+                        )
+            else:
+                current_hidden_seed = cycle_pending_hidden_seed
+                current_token = cycle_prev_token
+                for draft_depth in range(args.draft_n_max):
+                    token_embed = token_embd_f32[current_token:current_token + 1].copy()
+                    need_next_seed = draft_depth + 1 < args.draft_n_max
+                    if need_next_seed:
+                        draft_logits, current_hidden_seed = run_draft(
+                            current_hidden_seed,
+                            token_embed,
+                            return_hidden_seed=True,
+                        )
+                    else:
+                        draft_logits = run_draft(current_hidden_seed, token_embed)
+                    draft_token, top10_tokens = select_topk_tokens(draft_logits[0], k=10)
+                    draft_tokens.append(draft_token)
+                    draft_top10_tokens.append(top10_tokens)
+                    current_token = draft_token
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
 
@@ -365,7 +464,8 @@ def main():
             # the hidden row at the accepted-prefix boundary.
             ar_decode_ms = 0.0
             target_tokens = []
-            verify_input_token = prev_token
+            target_hidden_seeds = []
+            verify_input_token = cycle_prev_token
             while True:
                 t0 = time.perf_counter()
                 target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
@@ -373,7 +473,8 @@ def main():
                 ar_decode_ms += (t1 - t0) * 1000
                 target_token = int(target_result.token_id)
                 target_tokens.append(target_token)
-                pending_hidden_seed = copy_pending_hidden_seed()
+                target_hidden_seed = copy_pending_hidden_seed()
+                target_hidden_seeds.append(target_hidden_seed)
 
                 depth = len(target_tokens) - 1
                 if depth < len(draft_tokens) and target_token == draft_tokens[depth]:
@@ -385,6 +486,24 @@ def main():
             accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
             output_tokens = list(acceptance["output_tokens"])
             comparison_target_tokens = list(acceptance["comparison_target_tokens"])
+            pending_hidden_seed = np.ascontiguousarray(
+                target_hidden_seeds[int(acceptance["pending_hidden_row_index"])],
+                dtype=np.float32,
+            )
+
+            if args.mtp_context_replay:
+                # Persist the MTP rows that are now committed in the target
+                # history: the cycle-start sampled token plus any accepted
+                # drafts.  The final corrective target token becomes
+                # ``prev_token`` and is appended as a seed row by the next
+                # draft() call.
+                context_append_tokens = [cycle_prev_token] + [int(token) for token in output_tokens[:-1]]
+                context_append_hidden_rows = [cycle_pending_hidden_seed] + target_hidden_seeds[:accepted_draft_tokens]
+                mtp_context_tokens.extend(context_append_tokens)
+                mtp_context_hidden_rows = np.concatenate(
+                    [mtp_context_hidden_rows, np.concatenate(context_append_hidden_rows, axis=0)],
+                    axis=0,
+                )
             prev_token = int(output_tokens[-1])
 
             total_drafts += len(draft_tokens)
@@ -420,6 +539,9 @@ def main():
                 "accepted_draft_tokens": accepted_draft_tokens,
                 "visible_output_tokens": visible_output_tokens,
                 "pending_hidden_row_index": acceptance["pending_hidden_row_index"],
+                "mtp_context_rows_before_draft": len(replay_tokens),
+                "mtp_context_mode": mtp_context_mode,
+                "target_prefill_mode": target_prefill_mode,
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
             })
@@ -484,6 +606,8 @@ def main():
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,
             "engine": "hipEngine GGUF MTP",
+            "target_prefill_mode": target_prefill_mode,
+            "mtp_context_mode": mtp_context_mode,
         },
         "metrics": {
             "accept_per_draft": round(float(metrics["accept_per_draft"]), 4),

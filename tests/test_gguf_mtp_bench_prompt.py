@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 
 import pytest
 
@@ -31,7 +32,7 @@ def test_build_chat_prompt_uses_supplied_user_prompt() -> None:
     decoded_text_parts = FakeTokenizer().decode(
         [t for t in tokens if t not in (IM_START_TOKEN, IM_END_TOKEN, THINK_START_TOKEN, THINK_END_TOKEN)]
     )
-    assert decoded_text_parts == "user\nSay hi\nassistant\n\n\n\n\n\n"
+    assert decoded_text_parts == "user\nSay hi\nassistant\n\n\n\n\n"
 
 
 def test_build_chat_prompt_can_omit_reasoning_suffix_for_legacy_diagnostics() -> None:
@@ -53,3 +54,34 @@ def test_build_chat_prompt_default_matches_france_prompt() -> None:
     decoded = FakeTokenizer().decode(tokens)
 
     assert "What is the capital of France?" in decoded
+
+
+def test_build_chat_prompt_matches_logged_llamacpp_reasoning_off_greeting_tokens() -> None:
+    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(GGUFReader(model).info)
+
+    assert build_chat_prompt(tokenizer, "Write a short greeting.") == [
+        248045,
+        846,
+        198,
+        7734,
+        264,
+        2716,
+        40719,
+        13,
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        271,
+        248069,
+        271,
+    ]
