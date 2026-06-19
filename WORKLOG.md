@@ -100922,3 +100922,43 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
 - Warm B2 is only marginally positive (1.03x) because one cycle accepted depth 1;
   no cycle accepted depth 2. Next work should focus on prompt-suite acceptance
   quality / B2 parity against llama.cpp before deeper performance claims.
+
+## 2026-06-19 — B2 prompt-suite path inspection
+
+### Finding
+- `scripts/gguf_mtp_b1_prompt_suite.py` supports `--draft-max {1,2,3,4}` and can
+  emit B1-B4 budget-matched preflight artifacts/matrices, but its CLI help still
+  describes it as a correctness-first preflight child while native GGUF MTP
+  execution is under construction.
+- Therefore it is not yet a native B2 acceptance executor for the new minimal
+  `gguf_mtp_bench.py --draft-n-max 2` runtime path. It validates prompt-token,
+  sampling, oracle/trace, KVLiveSpans, metrics-contract, and readiness inputs,
+  but does not run per-prompt native B2 seed-chained speculation.
+- The prompt-suite files are currently dirty in the shared worktree and were left
+  untouched/uncommitted by this iteration.
+
+### Verification
+```bash
+python3 scripts/gguf_mtp_b1_prompt_suite.py --help
+# confirms --draft-max {1,2,3,4} and preflight-only execution description
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 4 passed
+```
+
+### Next action
+- To measure B2 acceptance across prompts, either add a prompt argument / prompt
+  fixture loop to the native `gguf_mtp_bench.py` path or add a new bridge in the
+  prompt-suite harness that calls the native B2 runtime per prompt and records
+  schema-4 accepted-token metrics.
