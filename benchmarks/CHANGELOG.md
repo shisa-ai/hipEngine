@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-19
+
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP UD-Q4_K_M / gfx1151 fixed-prompt B1 cycles=20: no prior visible-output native GGUF row -> warm `19.20 tok/s` vs AR `18.80 tok/s` (`1.021x`) and cold-inclusive `17.46 tok/s` (`0.937x`) after schema-4 accepted-token accounting and Q6_K pack8 shared-head path; `benchmarks/results/mtp-bench-1781842600-b1-cycles20-visible-output.json`.
+
 ## 2026-06-15
 
 - [diagnostic retained] gfx1151 MTP diagnostics / Qwen3.6-35B-A3B / PARO-packed MTP-BF16 + UD-Q4_K_M MTP GGUF / D32 9 prompts: hipEngine B1 `decode_batched` exact fallback `59.72 tok/s` / `0.916x` / aggregate accepted-output `0.344`; B3 exact `47.64 tok/s` / `0.730x` / `0.455` accepted-output; B1 `c1_loop` exact `57.59 tok/s` / `0.883x`; B2 blocked by `exact_ar_mismatch` on `explain_concept`; llama.cpp HIP/Vulkan B4 `92.57/108.45 tok/s` with accepted-output `0.743/0.747`; `benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json`.

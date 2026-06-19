@@ -100624,3 +100624,45 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
 - This confirms the 370ms→~7ms draft optimization makes B1 warm economics positive
   on this fixed prompt once accepted draft tokens are credited as visible outputs,
   while cold-cache total remains slower.
+
+## 2026-06-19 — MTP B1 cycles=20 visible-token stability check
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 20 --draft-n-max 1 \
+  --output benchmarks/results/mtp-bench-1781842600-b1-cycles20-visible-output.json
+```
+- Artifact: `benchmarks/results/mtp-bench-1781842600-b1-cycles20-visible-output.json`
+- Schema 4 visible-output denominators.
+- accept_per_draft=0.150, accepted_per_output=0.1304, visible_tokens_per_cycle=1.15
+- cold-inclusive: avg_cycle_ms=65.85, avg_ms_per_visible_token=57.26,
+  tokens_per_sec=17.46, speedup_vs_ar_visible=0.9372x
+- warm excluding cycle0: avg_ar_decode_ms=53.20, avg_mtp_draft_ms=7.12,
+  avg_ms_per_visible_token=52.09, tokens_per_sec=19.20,
+  speedup_vs_ar_visible=1.0213x
+- Accepted cycles: 4, 14, 15 (3/20 total; 3/19 warm).
+
+### Interpretation
+- The longer B1 fixed-prompt run confirms the ~7ms draft path keeps warm economics
+  slightly positive vs AR when accepted tokens are credited as visible output.
+- The gain is marginal at this prompt's 15-16% acceptance and cold-inclusive runs
+  remain slower; next useful work is B2-B4 / prompt-suite acceptance quality and
+ /or reducing remaining FFN/router overhead.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py
+# 1 passed
+```
