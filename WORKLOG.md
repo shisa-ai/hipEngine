@@ -100863,3 +100863,62 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py -rx
 # 2 passed, 1 xfailed (B2 runtime still intentionally blocked)
 ```
+
+## 2026-06-19 — Minimal GGUF MTP B2 benchmark driver
+
+### Change
+- `scripts/gguf_mtp_bench.py` now accepts `--draft-n-max 2` and executes a
+  minimal target-attached B2 path:
+  1. run depth 1 with `return_hidden_seed=True`;
+  2. use the returned post-FFN hidden row plus draft-1 token embedding for depth 2;
+  3. verify depth 1 against the target step;
+  4. verify depth 2 only if depth 1 was accepted, advancing the target along the
+     accepted prefix;
+  5. account generated/accepted draft tokens and visible outputs using schema-4
+     denominators.
+- `--draft-n-max 3/4` remain rejected until deeper target-attached chaining is
+  wired.
+- Console output now prints partial acceptance (`accepted=N/M`) and target/draft
+  lists, so B2 partial accepts are not shown as misleading cycle-level pass/fail.
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 \
+  --output benchmarks/results/mtp-bench-1781843600-b2-minimal-visible-output.json
+```
+- Artifact: `benchmarks/results/mtp-bench-1781843600-b2-minimal-visible-output.json`
+- accept_per_draft=0.100 (1 accepted / 10 generated drafts)
+- accepted_per_output=0.1667, visible_tokens_per_cycle=1.2
+- cold-inclusive: tokens_per_sec=13.06, speedup_vs_ar_visible=0.7847x
+- warm excluding cycle0: tokens_per_sec=16.41, speedup_vs_ar_visible=1.0299x
+- Cycle 4 accepted depth 1 only: drafts `[15, 15]`, targets `[15, 92]`,
+  accepted_draft_tokens=1.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 4 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+### Interpretation
+- True B2 seed chaining is now functional in the benchmark driver, but this fixed
+  prompt does not benefit from depth 2: acceptance fell to 10% per draft and B2
+  is slower than B1 on the cold-inclusive run.
+- Warm B2 is only marginally positive (1.03x) because one cycle accepted depth 1;
+  no cycle accepted depth 2. Next work should focus on prompt-suite acceptance
+  quality / B2 parity against llama.cpp before deeper performance claims.

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-19
 
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed-prompt cycles=5: new minimal B2 driver reports warm `16.41 tok/s` vs AR `15.92 tok/s` (`1.030x`) but cold-inclusive `13.06 tok/s` (`0.785x`), accept_per_draft `0.100` with no depth-2 accepts; artifact `benchmarks/results/mtp-bench-1781843600-b2-minimal-visible-output.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP UD-Q4_K_M / gfx1151 fixed-prompt B1 cycles=20: no prior visible-output native GGUF row -> warm `19.20 tok/s` vs AR `18.80 tok/s` (`1.021x`) and cold-inclusive `17.46 tok/s` (`0.937x`) after schema-4 accepted-token accounting and Q6_K pack8 shared-head path; `benchmarks/results/mtp-bench-1781842600-b1-cycles20-visible-output.json`.
 
 ## 2026-06-15

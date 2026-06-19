@@ -53,15 +53,15 @@ def _get_hw_info() -> dict:
 def validate_draft_n_max(draft_n_max: int) -> int:
     """Validate the benchmark's currently implemented draft depth.
 
-    The native GGUF path in this script is B1-only today: it produces one
-    NextN draft token, then verifies it against one AR target token. Refuse
-    B2-B4-looking invocations until target-attached multi-draft context is
-    implemented, so artifacts cannot silently mislabel B1 economics.
+    The native GGUF path in this script currently implements B1 and the first
+    target-attached B2 driver. Refuse B3/B4-looking invocations until deeper
+    target-attached multi-draft context is implemented, so artifacts cannot
+    silently mislabel B2 measurements as B3/B4.
     """
-    if draft_n_max != 1:
+    if draft_n_max not in (1, 2):
         raise ValueError(
-            "scripts/gguf_mtp_bench.py currently implements only B1 "
-            "(draft_n_max=1); B2-B4 target-attached GGUF MTP is not wired yet"
+            "scripts/gguf_mtp_bench.py currently implements only B1/B2 "
+            "(draft_n_max=1 or 2); B3-B4 target-attached GGUF MTP is not wired yet"
         )
     return draft_n_max
 
@@ -184,7 +184,7 @@ def main():
     print(f"Raw shared_head ({sh_qtype.name}): {sh_raw.nbytes/1e6:.0f}MB")
 
     # Build GPU kernel args
-    def run_draft(hidden_seed, token_embed):
+    def run_draft(hidden_seed, token_embed, *, return_hidden_seed: bool = False):
         gpu_args = [
             hidden_seed, token_embed,
             get("blk.40.nextn.eh_proj.weight"), get("blk.40.nextn.hnorm.weight"),
@@ -208,8 +208,16 @@ def main():
             wv_qtype=qt("blk.40.attn_v.weight"), wo_qtype=qt("blk.40.attn_output.weight"),
             eps=1e-6,
             shared_head_qtype=sh_qtype,
+            return_hidden_seed=return_hidden_seed,
         )
-        return np.asarray(gpu_kernel(*gpu_args, **gpu_kwargs), dtype=np.float32)
+        result = gpu_kernel(*gpu_args, **gpu_kwargs)
+        if return_hidden_seed:
+            logits, next_hidden_seed = result
+            return (
+                np.asarray(logits, dtype=np.float32),
+                np.ascontiguousarray(next_hidden_seed, dtype=np.float32),
+            )
+        return np.asarray(result, dtype=np.float32)
 
     # Run benchmark
     session = Qwen35GGUFResidentSession(model_path=args.model)
@@ -239,40 +247,72 @@ def main():
             runtime.memcpy(hidden_seed.ctypes.data, session.fp32_hidden_seed_ptr(),
                           hidden_size * 4, HipMemcpyKind.DEVICE_TO_HOST)
 
-            # MTP draft
+            # MTP draft(s). B2 chains the post-FFN hidden row returned by depth 1
+            # and uses the depth-1 draft token embedding as the depth-2 token row.
             t2 = time.perf_counter()
-            token_embed = token_embd_f32[prev_token:prev_token+1].copy()
-            draft_logits = run_draft(hidden_seed, token_embed)
-            # Top-k=10 greedy selection (llama.cpp contract)
-            top10_idx = np.argpartition(draft_logits[0], -10)[-10:]
-            draft_token = int(top10_idx[np.argmax(draft_logits[0, top10_idx])])
+            draft_tokens = []
+            current_hidden_seed = hidden_seed
+            current_token = prev_token
+            for draft_depth in range(args.draft_n_max):
+                token_embed = token_embd_f32[current_token:current_token+1].copy()
+                need_next_seed = draft_depth + 1 < args.draft_n_max
+                if need_next_seed:
+                    draft_logits, current_hidden_seed = run_draft(
+                        current_hidden_seed, token_embed, return_hidden_seed=True
+                    )
+                else:
+                    draft_logits = run_draft(current_hidden_seed, token_embed)
+                # Top-k=10 greedy selection (llama.cpp contract)
+                top10_idx = np.argpartition(draft_logits[0], -10)[-10:]
+                draft_token = int(top10_idx[np.argmax(draft_logits[0, top10_idx])])
+                draft_tokens.append(draft_token)
+                current_token = draft_token
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
 
-            # Verify/account. A verify cycle emits one target token; an accepted
-            # draft token is an additional visible output token.
-            total_drafts += 1
-            accepted = (draft_token == target_token)
-            accepted_draft_tokens = int(accepted)
+            # Verify/account. A verify cycle emits one target token; accepted
+            # draft tokens are additional visible outputs. B2 verifies the
+            # second draft only if the first draft matched, preserving target
+            # state by advancing sequentially along the accepted prefix.
+            target_tokens = [target_token]
+            accepted_draft_tokens = 0
+            if draft_tokens[0] == target_token:
+                accepted_draft_tokens = 1
+                if args.draft_n_max > 1:
+                    t_verify2 = time.perf_counter()
+                    target2_result = session.step(target_token, capture_hidden_seed_fp32=False)
+                    t_verify2_end = time.perf_counter()
+                    ar_decode_ms += (t_verify2_end - t_verify2) * 1000
+                    target2_token = int(target2_result.token_id)
+                    target_tokens.append(target2_token)
+                    if draft_tokens[1] == target2_token:
+                        accepted_draft_tokens = 2
+                    prev_token = target2_token
+                else:
+                    prev_token = target_token
+            else:
+                prev_token = target_token
+
+            total_drafts += len(draft_tokens)
             visible_output_tokens = 1 + accepted_draft_tokens
             total_output_tokens += visible_output_tokens
-            if accepted:
-                total_accepted += 1
+            total_accepted += accepted_draft_tokens
+            accepted = accepted_draft_tokens == len(draft_tokens)
 
             cycle_details.append({
                 "cycle": cycle,
                 "target_token": target_token,
-                "draft_token": draft_token,
+                "target_tokens": target_tokens,
+                "draft_token": draft_tokens[0],
+                "draft_tokens": draft_tokens,
                 "accepted": accepted,
-                "generated_draft_tokens": 1,
+                "generated_draft_tokens": len(draft_tokens),
                 "accepted_draft_tokens": accepted_draft_tokens,
                 "visible_output_tokens": visible_output_tokens,
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
             })
             decode_times.append(ar_decode_ms + draft_ms)
-
-            prev_token = target_token
 
     finally:
         session.close()
@@ -311,9 +351,9 @@ def main():
         )
     print(f"total_accepted: {total_accepted}/{total_drafts}")
     for d in cycle_details:
-        acc = "✓" if d["accepted"] else "✗"
-        print(f"  Cycle {d['cycle']}: {acc} target={d['target_token']} draft={d['draft_token']} "
-              f"ar={d['ar_decode_ms']:.1f}ms draft={d['mtp_draft_ms']:.1f}ms")
+        acc = f"{d['accepted_draft_tokens']}/{d['generated_draft_tokens']}"
+        print(f"  Cycle {d['cycle']}: accepted={acc} targets={d['target_tokens']} drafts={d['draft_tokens']} "
+              f"visible={d['visible_output_tokens']} ar={d['ar_decode_ms']:.1f}ms draft={d['mtp_draft_ms']:.1f}ms")
 
     # Save benchmark artifact
     hw = _get_hw_info()
