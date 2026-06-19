@@ -53,6 +53,35 @@ _ARGTYPES_EH_PROJ_F32 = (
     ctypes.c_void_p,
 )
 
+# ─── M6 weight cache: avoid re-uploading weights per step ───
+_WEIGHT_CACHE: dict[str, "DeviceBuffer"] = {}
+
+def _cached_upload(name: str, data: "np.ndarray", *, runtime=None) -> "DeviceBuffer":
+    """Upload weight to device, caching the buffer for reuse.
+
+    First call: allocates + uploads. Subsequent calls: reuses cached buffer.
+    The cache is keyed by the weight name (e.g. 'blk.40.attn_q.weight').
+    """
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import malloc, copy_host_to_device, host_array_ptr
+    runtime = runtime or get_hip_runtime()
+    if name in _WEIGHT_CACHE:
+        return _WEIGHT_CACHE[name]
+    buf = malloc(data.nbytes, runtime=runtime)
+    copy_host_to_device(buf, host_array_ptr(np.ascontiguousarray(data)), runtime=runtime)
+    _WEIGHT_CACHE[name] = buf
+    return buf
+
+def clear_weight_cache():
+    """Free all cached weight buffers."""
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import free as hip_free
+    runtime = get_hip_runtime()
+    for buf in _WEIGHT_CACHE.values():
+        hip_free(buf, runtime=runtime)
+    _WEIGHT_CACHE.clear()
+
+
 
 def plan_mtp_nextn_build(
     *,
