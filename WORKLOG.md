@@ -101314,3 +101314,64 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
 - This still does not claim parity. It makes the final oracle-capture step a
   single reproducible command that can be run with the large llama.cpp model load
   when appropriate (preferably under `bg_task` if run interactively).
+
+## 2026-06-19 — Captured llama.cpp greeting B2 trace; prompt/template mismatch found
+
+### Capture
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+  python3 scripts/llamacpp_mtp_capture_trace.py \
+  benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json
+```
+- Produced compact trace: `benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json`
+- Produced response: `benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.response.json`
+- Produced metadata: `benchmarks/results/llamacpp-mtp-greeting-b2-metadata.json`
+- Raw server log: `benchmarks/results/llamacpp-mtp-greeting-b2-server.log` (not staged/committed; raw logs stay local)
+- Produced comparison artifact:
+  `benchmarks/results/mtp-bench-1781845600-b2-greeting-native-vs-llamacpp-topk-comparison.json`
+
+### Result
+- llama.cpp trace summary: draft_n=3 accepted / generated, draft_acceptance=1.0
+  (server timing reports `draft_n=3`, `draft_n_accepted=3`).
+- llama.cpp response used reasoning content: `Thinking Process:\n\n1.`
+- llama.cpp draft candidate calls included tokens/pieces such as:
+  - call 1 pos 0: token 8340, piece ` Process`
+  - call 1 pos 1: token 25, piece `:`
+  - call 2 pos 0: token 16, piece `1`
+- Native greeting diagnostic target/draft stream for the same user text was very
+  different:
+  - cycle 0 target `[20]`, draft `[24, 26]`, target rank 2 in native top-10
+  - cycles 1-4 target `[220]`, absent from native top-10.
+
+### Interpretation
+- This is not yet evidence that native MTP logits are wrong. The llama.cpp server
+  request appears to use a different chat-template/reasoning path than native
+  `gguf_mtp_bench.py`, so the token streams diverge before the MTP top-k parity
+  comparison is meaningful.
+- Next parity step: align native and llama.cpp prompt formatting / reasoning mode
+  (for example by sending an explicit prompt equivalent to native tokenization or
+  disabling/enabling thinking consistently), then recapture the LOG_DBG draft-MTP
+  top-k trace.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_llamacpp_mtp_capture_trace.py \
+  tests/test_llamacpp_mtp_greeting_trace_plan.py tests/test_llamacpp_mtp_draft_trace.py \
+  tests/test_gguf_mtp_bench_prompt.py tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_nextn_hidden_seed_contract.py
+# 13 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```

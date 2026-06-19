@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "kind": "native_vs_llamacpp_greeting_b2_topk_comparison",
+  "native_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
+  "llamacpp_trace": "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json",
+  "llamacpp_response": "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.response.json",
+  "native_prompt": "Write a short greeting.",
+  "llamacpp_prompt": "Write a short greeting.",
+  "native_depth1": [
+    {
+      "cycle": 0,
+      "target_tokens": [
+        20
+      ],
+      "draft_tokens": [
+        24,
+        26
+      ],
+      "draft_top10_depth1": [
+        24,
+        20,
+        16,
+        19,
+        22,
+        15,
+        21,
+        17,
+        18,
+        23
+      ],
+      "target_rank_depth1": 2
+    },
+    {
+      "cycle": 1,
+      "target_tokens": [
+        220
+      ],
+      "draft_tokens": [
+        24,
+        17
+      ],
+      "draft_top10_depth1": [
+        24,
+        15,
+        21,
+        26,
+        17,
+        22,
+        20,
+        19,
+        23,
+        18
+      ],
+      "target_rank_depth1": null
+    },
+    {
+      "cycle": 2,
+      "target_tokens": [
+        220
+      ],
+      "draft_tokens": [
+        16,
+        15
+      ],
+      "draft_top10_depth1": [
+        16,
+        17,
+        18,
+        20,
+        19,
+        15,
+        21,
+        23,
+        24,
+        22
+      ],
+      "target_rank_depth1": null
+    },
+    {
+      "cycle": 3,
+      "target_tokens": [
+        220
+      ],
+      "draft_tokens": [
+        20,
+        15
+      ],
+      "draft_top10_depth1": [
+        20,
+        16,
+        21,
+        19,
+        24,
+        23,
+        17,
+        22,
+        18,
+        15
+      ],
+      "target_rank_depth1": null
+    },
+    {
+      "cycle": 4,
+      "target_tokens": [
+        220
+      ],
+      "draft_tokens": [
+        16,
+        15
+      ],
+      "draft_top10_depth1": [
+        16,
+        20,
+        17,
+        18,
+        23,
+        24,
+        21,
+        19,
+        22,
+        15
+      ],
+      "target_rank_depth1": null
+    }
+  ],
+  "llamacpp_summary": {
+    "candidate_count": 12,
+    "draft_acceptance": 1.0,
+    "draft_call_count": 2,
+    "draft_n": 3,
+    "draft_n_accepted": 3,
+    "observed_top_k": 3
+  },
+  "llamacpp_response_content": "",
+  "llamacpp_response_reasoning_content": "Thinking Process:\n\n1.",
+  "llamacpp_calls": [
+    {
+      "call_count": 1,
+      "accepted": 2,
+      "generated": 2,
+      "top_by_pos": {
+        "0": [
+          {
+            "rank": 0,
+            "token_id": 8340,
+            "piece": " Process",
+            "prob": 1.0
+          },
+          {
+            "rank": 1,
+            "token_id": 1817,
+            "piece": " process",
+            "prob": 0.0
+          },
+          {
+            "rank": 2,
+            "token_id": 7188,
+            "piece": "Process",
+            "prob": 0.0
+          }
+        ],
+        "1": [
+          {
+            "rank": 0,
+            "token_id": 25,
+            "piece": ":",
+            "prob": 1.0
+          },
+          {
+            "rank": 1,
+            "token_id": 271,
+            "piece": "\n\n",
+            "prob": 0.0
+          },
+          {
+            "rank": 2,
+            "token_id": 1076,
+            "piece": "...",
+            "prob": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "call_count": 2,
+      "accepted": 1,
+      "generated": 1,
+      "top_by_pos": {
+        "0": [
+          {
+            "rank": 0,
+            "token_id": 16,
+            "piece": "1",
+            "prob": 1.0
+          },
+          {
+            "rank": 1,
+            "token_id": 248069,
+            "piece": "</think>",
+            "prob": 0.0
+          },
+          {
+            "rank": 2,
+            "token_id": 332,
+            "piece": "**",
+            "prob": 0.0
+          }
+        ],
+        "1": [
+          {
+            "rank": 0,
+            "token_id": 13,
+            "piece": ".",
+            "prob": 1.0
+          },
+          {
+            "rank": 1,
+            "token_id": 25,
+            "piece": ":",
+            "prob": 0.0
+          },
+          {
+            "rank": 2,
+            "token_id": 11,
+            "piece": ",",
+            "prob": 0.0
+          }
+        ]
+      }
+    }
+  ],
+  "finding": "llama.cpp trace is not directly comparable to native diagnostic yet: llama-server chat template/reasoning path emits reasoning_content tokens (e.g. Process/:/1) and reports 3/3 accepted drafts, while native target/draft token stream for the same user text uses different target ids (20 then 220) with 0 accepts. Next parity step is to align chat template/reasoning mode/prompt formatting before judging native MTP logits."
+}

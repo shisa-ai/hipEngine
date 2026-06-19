@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-19
 
+- [diagnostic retained] Qwen3.6-35B-A3B / llama.cpp MTP B2 greeting trace / gfx1151: captured LOG_DBG draft-MTP trace accepted `3/3` drafts but response used reasoning tokens (` Process`, `:`, `1`) unlike native greeting target stream `[20]`, `[220]`; parity blocked by prompt-template/reasoning mismatch; comparison artifact `benchmarks/results/mtp-bench-1781845600-b2-greeting-native-vs-llamacpp-topk-comparison.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 top-k / gfx1151 greeting prompt: added per-depth MTP top-10 artifact showing target 220 absent from depth-1 top-10 in cycles 1-4 (accept_per_draft `0.000`), indicating candidate-set/parity issue rather than greedy tie-breaking; artifact `benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 3-prompt sweep cycles=5 each: mean warm speedup `1.019x`, mean cold speedup `0.775x`, 2/3 prompts warm-positive, 1/3 with depth-2 accept, accepted drafts `3/30`; aggregate artifact `benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json`.

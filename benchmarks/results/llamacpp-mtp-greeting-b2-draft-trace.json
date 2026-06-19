@@ -1,0 +1,162 @@
+{
+  "calls": [
+    {
+      "accept_generated": 2,
+      "accepted": 2,
+      "call_count": 1,
+      "candidates": [
+        {
+          "line": 3725,
+          "piece": " Process",
+          "pos": 0,
+          "prob": 1.0,
+          "rank": 0,
+          "seq_id": 3,
+          "token_id": 8340
+        },
+        {
+          "line": 3726,
+          "piece": " process",
+          "pos": 0,
+          "prob": 0.0,
+          "rank": 1,
+          "seq_id": 3,
+          "token_id": 1817
+        },
+        {
+          "line": 3727,
+          "piece": "Process",
+          "pos": 0,
+          "prob": 0.0,
+          "rank": 2,
+          "seq_id": 3,
+          "token_id": 7188
+        },
+        {
+          "line": 3730,
+          "piece": ":",
+          "pos": 1,
+          "prob": 1.0,
+          "rank": 0,
+          "seq_id": 3,
+          "token_id": 25
+        },
+        {
+          "line": 3731,
+          "piece": "\n\n",
+          "pos": 1,
+          "prob": 0.0,
+          "rank": 1,
+          "seq_id": 3,
+          "token_id": 271
+        },
+        {
+          "line": 3734,
+          "piece": "...",
+          "pos": 1,
+          "prob": 0.0,
+          "rank": 2,
+          "seq_id": 3,
+          "token_id": 1076
+        }
+      ],
+      "generated": 2,
+      "hist_size": 15,
+      "line": 3735
+    },
+    {
+      "accept_generated": 1,
+      "accepted": 1,
+      "call_count": 2,
+      "candidates": [
+        {
+          "line": 3757,
+          "piece": "1",
+          "pos": 0,
+          "prob": 1.0,
+          "rank": 0,
+          "seq_id": 3,
+          "token_id": 16
+        },
+        {
+          "line": 3758,
+          "piece": "</think>",
+          "pos": 0,
+          "prob": 0.0,
+          "rank": 1,
+          "seq_id": 3,
+          "token_id": 248069
+        },
+        {
+          "line": 3759,
+          "piece": "**",
+          "pos": 0,
+          "prob": 0.0,
+          "rank": 2,
+          "seq_id": 3,
+          "token_id": 332
+        },
+        {
+          "line": 3762,
+          "piece": ".",
+          "pos": 1,
+          "prob": 1.0,
+          "rank": 0,
+          "seq_id": 3,
+          "token_id": 13
+        },
+        {
+          "line": 3763,
+          "piece": ":",
+          "pos": 1,
+          "prob": 0.0,
+          "rank": 1,
+          "seq_id": 3,
+          "token_id": 25
+        },
+        {
+          "line": 3764,
+          "piece": ",",
+          "pos": 1,
+          "prob": 0.0,
+          "rank": 2,
+          "seq_id": 3,
+          "token_id": 11
+        }
+      ],
+      "generated": 1,
+      "hist_size": 18,
+      "line": 3766
+    }
+  ],
+  "kind": "llamacpp_mtp_draft_candidate_trace",
+  "llamacpp_timing_summary": {
+    "draft_acceptance": 1.0,
+    "draft_n": 3,
+    "draft_n_accepted": 3
+  },
+  "metadata": {
+    "native_reference_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
+    "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent.",
+    "request": {
+      "draft_n_max": 2,
+      "max_tokens": 6,
+      "prompt": "Write a short greeting.",
+      "prompt_name": "greeting",
+      "seed": 12345,
+      "temperature": 0.0,
+      "top_k_candidates": 10
+    }
+  },
+  "prompt_tokens": 15,
+  "schema": 1,
+  "source_log": "benchmarks/results/llamacpp-mtp-greeting-b2-server.log",
+  "summary": {
+    "candidate_count": 12,
+    "draft_acceptance": 1.0,
+    "draft_call_count": 2,
+    "draft_n": 3,
+    "draft_n_accepted": 3,
+    "observed_top_k": 3
+  }
+}
