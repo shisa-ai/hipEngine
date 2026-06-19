@@ -355,6 +355,27 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
     raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
 
 
+def _gguf_ssm_a_to_kernel_a_log(raw: object):
+    """Convert GGUF Qwen3.5 ``ssm_a`` coefficients to the GDN kernel ABI.
+
+    llama.cpp treats GGUF ``blk.*.ssm_a`` as the direct negative decay
+    coefficient used in ``exp(ssm_a * softplus(alpha + dt_bias))``.  The shared
+    hipEngine GDN kernels are also used by PARO, where the ABI is ``A_log`` and
+    the kernel computes ``exp(-exp(A_log) * softplus(...))``.  Materialize GGUF
+    ``ssm_a`` as ``log(-ssm_a)`` so the existing kernel math is exactly the same
+    as llama.cpp without changing the PARO ABI.
+    """
+
+    import numpy as np
+
+    coeff = np.asarray(raw, dtype=np.float32)
+    if not np.all(np.isfinite(coeff)):
+        raise ValueError("GGUF qwen35 ssm_a contains non-finite values")
+    if np.any(coeff >= 0.0):
+        raise ValueError("GGUF qwen35 ssm_a must contain negative decay coefficients")
+    return np.ascontiguousarray(np.log(-coeff), dtype=np.float32)
+
+
 def _is_selected_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
     return len(tensor.shape) == 3 and slot_path.endswith((".ffn_gate_exps", ".ffn_up_exps", ".ffn_down_exps"))
 
@@ -397,6 +418,8 @@ def _materialize_spec(
     import numpy as np
 
     raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+    if spec.slot_path.endswith(".ssm_a"):
+        raw = _gguf_ssm_a_to_kernel_a_log(raw)
     allocations: dict[str, DeviceTensorAllocation]
     if spec.layout == LAYOUT_Q4_K_PACK8:
         packed = repack_gguf_q4_k_pack8(raw)
@@ -508,6 +531,7 @@ __all__ = [
     "Qwen35GGUFResidentLayerWeights",
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
+    "_gguf_ssm_a_to_kernel_a_log",
     "gguf_decode_repack_enabled",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",

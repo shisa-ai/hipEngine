@@ -272,10 +272,10 @@ def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
-    expected_query = _apply_rope(_rmsnorm_offset(query, q_weight), cos[2], sin[2], 4)
-    expected_key = _apply_rope(_rmsnorm_offset(key, k_weight), cos[2], sin[2], 4)
+    expected_query = _apply_rope(_rmsnorm(query, q_weight), cos[2], sin[2], 4)
+    expected_key = _apply_rope(_rmsnorm(key, k_weight), cos[2], sin[2], 4)
     expected_key_bf16_input = _apply_rope(
-        _rmsnorm_offset(bf16_to_float32(key_bf16), k_weight), cos[2], sin[2], 4
+        _rmsnorm(bf16_to_float32(key_bf16), k_weight), cos[2], sin[2], 4
     )
     np.testing.assert_allclose(query_out, expected_query, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(key_out, expected_key, rtol=1e-6, atol=1e-6)
@@ -303,10 +303,6 @@ def _rmsnorm(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
 def _sigmoid(value: float) -> float:
     return float(1.0 / (1.0 + np.exp(-value)))
 
-
-def _rmsnorm_offset(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
-    inv_rms = 1.0 / np.sqrt(np.mean(x.astype(np.float32) ** 2, axis=-1, keepdims=True) + 1.0e-6)
-    return x.astype(np.float32) * inv_rms * (1.0 + weight.astype(np.float32))
 
 
 def _apply_rope(x: np.ndarray, cos: np.ndarray, sin: np.ndarray, rotary_dim: int) -> np.ndarray:

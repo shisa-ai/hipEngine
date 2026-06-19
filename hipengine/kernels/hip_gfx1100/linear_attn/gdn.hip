@@ -183,8 +183,8 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
     __syncthreads();
   }
 
-  const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-  const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+  const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
   const float beta = sigmoid_f32(scalar_to_float_qwen35(b[v_head]));
   const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[v_head]) + dt_bias[v_head]));
 
@@ -394,8 +394,8 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
       __syncthreads();
     }
 
-    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
@@ -771,8 +771,8 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
     __syncthreads();
   }
 
-  const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-  const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+  const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
   const int64_t head_base = (token * num_v_heads + v_head) * head_k_dim;
   for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
     query[head_base + idx] = conv_out[q_base + idx] * q_scale;
@@ -1047,8 +1047,8 @@ __global__ void qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     const float k_sum = partial[0];
     __syncthreads();
 
-    const float q_scale = rsqrtf(q_sum + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_sum + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_sum), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_sum), 1.0e-6f);
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
@@ -1189,8 +1189,8 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     const float q_sum = block_all_reduce_sum(q_sum_local, lds, tid, BLOCK);
     const float k_sum = block_all_reduce_sum(k_sum_local, lds, tid, BLOCK);
 
-    const float q_scale = rsqrtf(q_sum + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_sum + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_sum), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_sum), 1.0e-6f);
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
@@ -1373,8 +1373,8 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
       __syncthreads();
     }
 
-    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
     const int64_t scalar_idx = token * num_v_heads + v_head;
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
     const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));
@@ -1589,8 +1589,8 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
       __syncthreads();
     }
 
-    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
     const int64_t scalar_idx = token * num_v_heads + v_head;
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
     const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));

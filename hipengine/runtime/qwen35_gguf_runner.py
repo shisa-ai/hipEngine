@@ -829,6 +829,33 @@ class Qwen35GGUFFullStackRunner:
         """
 
         plan = self._gdn_prefill_plan()
+        if plan.has_fused:
+            # Correctness-first fallback: the split prepare+k2+rmsnorm chain is
+            # still registered for tests and future perf work, but real GGUF
+            # prompt parity currently matches the token-serial path only through
+            # the legacy decode-order fused kernel.  Keep bulk prefill on that
+            # path until the chain is re-certified against the same target AR
+            # trace.
+            plan.fused_decode_order(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            return
         if plan.has_chain:
             plan.prepare(
                 scratch.conv_out.ptr,
@@ -899,27 +926,6 @@ class Qwen35GGUFFullStackRunner:
                 cfg.rms_norm_eps,
                 rows,
                 cfg.ssm_time_step_rank,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-            return
-        if plan.has_fused:
-            plan.fused_decode_order(
-                scratch.conv_out.ptr,
-                scratch.linear_z.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
                 self.ssm_value_dim,
                 stream=stream,
                 runtime=runtime,
@@ -2155,7 +2161,15 @@ class Qwen35GGUFFullStackRunner:
 
         # Router weights are GGUF F32 tensors converted to BF16 at materialization time.
         # Decode fuses expert logits, shared-gate logit, and top-k selection into one
-        # cooperative launch while preserving the existing logits scratch ABI.
+        # cooperative launch while preserving the existing logits scratch ABI.  The
+        # cooperative kernel uses the first int32 in the selected-expert buffer as
+        # its block-completion counter before overwriting it with top-k results.
+        # Reset that counter for every MoE layer/token; otherwise later layers see
+        # the previous layer's expert id as the counter and may skip top-k selection.
+        if stream:
+            runtime.memset_async(scratch.moe_selected_experts.ptr, 0, DType.INT64.itemsize, stream)
+        else:
+            runtime.memset(scratch.moe_selected_experts.ptr, 0, DType.INT64.itemsize)
         qwen35_router_topk_split_shared_coop_out_bf16(
             scratch.post_norm.ptr,
             layer.weight("ffn_gate_inp").allocation().tensor.ptr,

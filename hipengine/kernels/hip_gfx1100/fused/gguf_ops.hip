@@ -193,11 +193,11 @@ __device__ __forceinline__ void gguf_head_rmsnorm_partial_rotary_f32_weight_row(
   const float inv_rms = rsqrtf(partial[0] / static_cast<float>(head_dim) + eps);
   const int64_t half_rotary = rotary_dim / 2;
   for (int64_t dim = tid; dim < head_dim; dim += blockDim.x) {
-    const float value = src[dim] * inv_rms * (1.0f + weight[dim]);
+    const float value = src[dim] * inv_rms * weight[dim];
     float out_value = value;
     if (dim < rotary_dim) {
       const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
-      const float paired = src[pair_dim] * inv_rms * (1.0f + weight[pair_dim]);
+      const float paired = src[pair_dim] * inv_rms * weight[pair_dim];
       const float rotated = dim < half_rotary ? -paired : paired;
       out_value = value * cos[dim] + rotated * sin[dim];
     }
@@ -233,12 +233,12 @@ __device__ __forceinline__ void gguf_head_rmsnorm_partial_rotary_bf16_input_f32_
   const int64_t half_rotary = rotary_dim / 2;
   for (int64_t dim = tid; dim < head_dim; dim += blockDim.x) {
     const float src_value = bf16_bits_to_float(src[dim]);
-    const float value = src_value * inv_rms * (1.0f + weight[dim]);
+    const float value = src_value * inv_rms * weight[dim];
     float out_value = value;
     if (dim < rotary_dim) {
       const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
       const float paired_src = bf16_bits_to_float(src[pair_dim]);
-      const float paired = paired_src * inv_rms * (1.0f + weight[pair_dim]);
+      const float paired = paired_src * inv_rms * weight[pair_dim];
       const float rotated = dim < half_rotary ? -paired : paired;
       out_value = value * cos[dim] + rotated * sin[dim];
     }

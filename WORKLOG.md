@@ -101593,3 +101593,191 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
 - The remaining blocker is task #4 target AR parity: native target logits on the
   exact 17-token prompt still diverge from llama.cpp, so task #2 cannot be
   marked complete yet.
+
+## 2026-06-19 — GGUF target GDN query scale aligned with llama.cpp fused op; parity still blocked
+
+### Change
+- Adjusted GGUF/PARO GDN kernels to keep llama.cpp's two-step query scaling contract:
+  `ggml_l2_norm(q)` followed by the fused `ggml_gated_delta_net` internal
+  `1/sqrt(S_v)` query scale.  The prior in-progress l2-norm edit removed the
+  second factor from the fused/native GDN path.
+- Kept key scaling as llama.cpp `ggml_l2_norm` semantics (`1 / max(sqrt(sum), eps)`).
+
+### Evidence
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 - <<'PY'
+from scripts.gguf_mtp_bench import build_chat_prompt
+from hipengine.loading.gguf import GGUFReader
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+model='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(model); tok=Qwen35GGUFTokenizer.from_gguf_info(r.info)
+p=build_chat_prompt(tok,'Write a short greeting.')
+for name, kwargs in [('bulk_default',{}),('bulk_native',{'bulk_attention_mode':'native'}),('serial',{'use_bulk':False})]:
+    with Qwen35GGUFResidentSession(model_path=model) as s:
+        res=s.prefill(p, return_logits=False, capture_hidden_seed_fp32=True, **kwargs)
+        res2=s.step(res.token_id, return_logits=False, capture_hidden_seed_fp32=True)
+        print(name, res.token_id, repr(tok.decode([res.token_id])), res2.token_id, repr(tok.decode([res2.token_id])))
+PY
+# bulk_default 9 '*' step1 32 'A'
+# bulk_native 271 '\n\n' step1 1919 'This'
+# serial      271 '\n\n' step1 1919 'This'
+```
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt 'Write a short greeting.' \
+  --output /tmp/hipengine-gguf-mtp-qscale-restore.json
+# total_accepted=0/10, accept_per_draft=0.000, accepted_per_output=0.000,
+# warm speedup_vs_ar_visible=0.794x. Target tokens: [32], [13], [72179], [4749], [348].
+```
+
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_linear_attn_gdn_plan.py tests/test_gguf_ops.py -q
+# 9 passed
+```
+
+### Result
+- This fixes a concrete fused-GDN scale mismatch but does **not** reach native
+  target AR parity with llama.cpp. The matched 17-token reasoning-off greeting
+  prompt still does not start with llama.cpp's `Hello`, and B2 acceptance remains
+  `0/10` in the fresh smoke. Continue target AR parity debugging before MTP
+  acceptance/perf tuning.
+
+## 2026-06-19 — GGUF GDN prefill chain bypassed for bulk/serial target parity
+
+### Change
+- Kept the registered split GGUF GDN prefill chain (`prepare + k2 recurrent + rmsnorm_gate`) as a fallback, but changed `_run_gdn_prefill()` to prefer the legacy fused `decode_order_bf16` kernel when it is available.
+- Rationale: the real 17-token llama.cpp greeting trace showed fully-bulk target prefill diverging from token-serial/native-attention prefill (`*`/`A` vs `\n\n`/`This`); monkeypatching the runner to use the fused decode-order GDN prefill restored bulk prefill to the serial/native token stream.
+- Added routing tests for the new correctness-first default plus chain fallback coverage, and recorded the temporary split-chain bypass in `docs/REFACTOR.md`.
+
+### Evidence
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 - <<'PY'
+from scripts.gguf_mtp_bench import build_chat_prompt
+from hipengine.loading.gguf import GGUFReader
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+model='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(model); tok=Qwen35GGUFTokenizer.from_gguf_info(r.info); p=build_chat_prompt(tok,'Write a short greeting.')
+for bulk in [False, True]:
+    with Qwen35GGUFResidentSession(model_path=model) as sess:
+        res=sess.prefill(p,use_bulk=bulk,return_logits=False,capture_hidden_seed_fp32=True)
+        res2=sess.step(res.token_id, return_logits=False, capture_hidden_seed_fp32=True)
+        print('bulk',bulk,'prefill',res.token_id,repr(tok.decode([res.token_id])),'step1',res2.token_id,repr(tok.decode([res2.token_id])))
+PY
+# bulk False prefill 271 '\n\n' step1 1919 'This'
+# bulk True  prefill 271 '\n\n' step1 1919 'This'
+```
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt 'Write a short greeting.' \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output /tmp/mtp_iter245_b2_gdn_fused_fallback.json
+# total_accepted=0/10, accept_per_draft=0.000, accepted_per_output=0.000,
+# warm speedup_vs_ar_visible=0.791x. Target tokens: [1919], [12846], [264], [318], [17].
+```
+
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_gdn_prefill_routing.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py \
+  tests/test_qwen35_gguf_materialize_helpers.py tests/test_gguf_ops.py
+# 18 passed
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+```
+
+### Result
+- Improved the native target prefill consistency: default bulk now matches token-serial/native-attention for the greeting prompt.
+- Native target AR still does **not** match llama.cpp (`Hello`); B2 acceptance remains `0/10`, so task #4 remains open.
+
+## 2026-06-19 — GGUF target math audit kept guard green; AR parity still blocked
+
+### Change
+- Continued the native GGUF target-AR parity audit after the GDN prefill fallback.
+- Added/kept contract fixes for GGUF target math surfaces that were exposed while comparing against llama.cpp semantics:
+  - GGUF `ssm_a` coefficients are materialized as the GDN kernel ABI's `log(-ssm_a)` so the existing `exp(-exp(a_log) * softplus(...))` kernel matches llama.cpp's direct negative decay coefficient.
+  - GGUF head RMSNorm+RoPE fused helpers now use RMSNorm weights directly instead of `1 + weight`.
+  - The c=1 cooperative MoE router resets its selected-expert completion counter before each layer/token.
+  - The B1-B4 prompt-suite matrix now keeps per-budget draft tensor plans/call specs visible and no longer reports the now-registered native `mtp_nextn_layer` key as missing; paged-KV write/attention runtime keys remain blockers.
+
+### Evidence
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# pass (22 passed, 5 skipped)
+
+HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_gdn_prefill_routing.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py \
+  tests/test_qwen35_gguf_materialize_helpers.py tests/test_gguf_ops.py \
+  tests/test_gguf_mtp_b1_prompt_suite.py tests/test_mtp_nextn_real_gguf.py \
+  -rs --tb=short
+# 64 passed
+```
+
+Target AR probe on the 17-token llama.cpp greeting prompt:
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+from scripts.gguf_mtp_bench import build_chat_prompt
+from hipengine.loading.gguf import GGUFReader
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+model='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(model); tok=Qwen35GGUFTokenizer.from_gguf_info(r.info); p=build_chat_prompt(tok,'Write a short greeting.')
+for name, kwargs in [('bulk', {}), ('serial', {'use_bulk': False}), ('bulk_native', {'bulk_attention_mode': 'native'})]:
+    with Qwen35GGUFResidentSession(model_path=model) as sess:
+        tokens=[]; res=sess.prefill(p, return_logits=False, capture_hidden_seed_fp32=True, **kwargs); tokens.append(res.token_id)
+        for _ in range(4):
+            res=sess.step(tokens[-1], return_logits=False, capture_hidden_seed_fp32=True); tokens.append(res.token_id)
+        print(name, tokens, repr(tok.decode(tokens)))
+PY
+# bulk        [271, 1919, 12846, 264, 318] '\n\nThis suggests a ('
+# serial      [271, 1919, 12846, 264, 318] '\n\nThis suggests a ('
+# bulk_native [271, 1919, 12846, 264, 318] '\n\nThis suggests a ('
+```
+
+B2 smoke:
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_mtp_bench.py --cycles 5 --draft-n-max 2 \
+  --prompt 'Write a short greeting.' \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output /tmp/mtp_iter247_current_math.json
+# total_accepted=0/10, accept_per_draft=0.000, accepted_per_output=0.000,
+# warm speedup_vs_ar_visible=0.796x. Target tokens: [1919], [12846], [264], [318], [17].
+```
+
+### Result
+- Guard/focused tests remain green, and the default/bulk/native-attention prefill+decode paths still agree with each other.
+- Target AR still does **not** match llama.cpp's `Hello` greeting trace, so MTP accepted/output parity remains blocked by task #4.

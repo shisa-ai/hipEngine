@@ -786,6 +786,12 @@ def build_b1_b4_prompt_suite_matrix(
         "passed_budgets": hipengine_metrics_contract_valid_budgets,
         "failed_budgets": hipengine_metrics_contract_invalid_budgets,
     }
+    mtp_draft_tensor_plans_by_budget = {
+        item["budget"]: item["mtp_draft_tensor_plans"] for item in artifacts
+    }
+    mtp_draft_call_specs_by_budget = {
+        item["budget"]: item["mtp_draft_call_specs"] for item in artifacts
+    }
     parity_precheck_by_budget = {
         item["budget"]: item["parity_precheck"] for item in artifacts
     }
@@ -879,6 +885,8 @@ def build_b1_b4_prompt_suite_matrix(
         "draft_max_values": [item["draft_max"] for item in artifacts],
         "artifact_count": len(artifacts),
         "artifacts_included": bool(include_artifacts),
+        "mtp_draft_tensor_plans_by_budget": mtp_draft_tensor_plans_by_budget,
+        "mtp_draft_call_specs_by_budget": mtp_draft_call_specs_by_budget,
         "all_parity_prechecks_pass": all(item["parity_precheck"]["all_pass"] for item in artifacts),
         "parity_precheck_by_budget": parity_precheck_by_budget,
         "all_budget_prechecks_pass": all(item["draft_budget_precheck"]["passed"] for item in artifacts),

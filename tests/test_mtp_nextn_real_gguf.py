@@ -229,6 +229,10 @@ def test_real_gguf_nextn_layer_matches_cpu_reference(backend, real_inputs):
         real_inputs["shared_head_norm_weight"], real_inputs["shared_head_weight"],
     ]
 
+    # Clear weight cache to avoid cross-test contamination
+    from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import clear_weight_cache
+    clear_weight_cache()
+
     # Run cpu_reference (the oracle) with dequanted F32 weights
     expected = cpu_oracle(*cpu_args, **cpu_kwargs)
 

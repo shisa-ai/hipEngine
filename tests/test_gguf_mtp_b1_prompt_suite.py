@@ -402,7 +402,6 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
     assert artifact["runtime_kernel_precheck"]["optimization_kernels_ready"] is True
     assert artifact["runtime_kernel_precheck"]["missing_exactness_oracle_keys"] == []
     assert artifact["runtime_kernel_precheck"]["missing_native_runtime_keys"] == [
-        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
         ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
         ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
     ]
@@ -471,7 +470,6 @@ def test_b1_prompt_suite_preflight_blocks_only_on_missing_runtime_when_precondit
                 "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
             ),
             "missing_native_runtime_keys": [
-                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
                 ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
                 ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
             ],
@@ -503,7 +501,6 @@ def test_b1_prompt_suite_preflight_can_request_b4_when_sampling_matches(
                 "stops after metadata/token/sampling/runtime-kernel preflight instead of reporting metrics."
             ),
             "missing_native_runtime_keys": [
-                ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
                 ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
                 ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
             ],
@@ -641,6 +638,11 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
     assert matrix["artifact_count"] == 4
     assert matrix["artifacts_included"] is True
     assert len(matrix["artifacts"]) == 4
+    assert matrix["mtp_draft_tensor_plans_by_budget"]["B1"] == matrix["artifacts"][0]["mtp_draft_tensor_plans"]
+    assert matrix["mtp_draft_tensor_plans_by_budget"]["B4"] == matrix["artifacts"][3]["mtp_draft_tensor_plans"]
+    assert matrix["mtp_draft_call_specs_by_budget"]["B1"] == matrix["artifacts"][0]["mtp_draft_call_specs"]
+    assert matrix["mtp_draft_call_specs_by_budget"]["B4"] == matrix["artifacts"][3]["mtp_draft_call_specs"]
+    assert matrix["mtp_draft_call_specs_by_budget"]["B4"][0]["draft_topk"]["top_k"] == 10
     assert matrix["all_parity_prechecks_pass"] is True
     assert matrix["parity_precheck_by_budget"]["B1"] == matrix["artifacts"][0]["parity_precheck"]
     assert matrix["parity_precheck_by_budget"]["B4"] == matrix["artifacts"][3]["parity_precheck"]
@@ -786,7 +788,6 @@ def test_b1_prompt_suite_matrix_builds_budget_matched_artifacts(
         "native_runtime_kernels_ready": False,
         "optimization_kernels_ready": True,
         "missing_native_runtime_keys": [
-            ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
             ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
             ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
         ],
@@ -875,6 +876,13 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert "artifacts" not in matrix
     assert matrix["target_context_contract"] == Qwen35GGUFMTPContext.contract()
     assert matrix["target_context_contract"]["validator"] == "Qwen35GGUFMTPContext.validate_payload"
+    assert matrix["mtp_draft_tensor_plans_by_budget"]["B1"][0]["layer_id"] == 40
+    assert matrix["mtp_draft_tensor_plans_by_budget"]["B4"][0]["draft_topk"] == (
+        matrix["mtp_draft_call_specs_by_budget"]["B4"][0]["draft_topk"]
+    )
+    assert matrix["mtp_draft_call_specs_by_budget"]["B1"][0]["draft_topk"]["top_k"] == 10
+    assert "artifacts" not in matrix["mtp_draft_tensor_plans_by_budget"]["B1"][0]
+    assert "artifacts" not in matrix["mtp_draft_call_specs_by_budget"]["B1"][0]
     assert matrix["parity_precheck_by_budget"]["B1"]["all_pass"] is True
     assert matrix["parity_precheck_by_budget"]["B4"]["token_ids"]["all_match"] is True
     assert "artifacts" not in matrix["parity_precheck_by_budget"]["B1"]
@@ -949,7 +957,6 @@ def test_b1_prompt_suite_matrix_can_omit_child_artifacts(
     assert matrix["runtime_kernel_precheck_by_budget"]["B1"]["backend"] == "hip_gfx1100"
     assert matrix["runtime_kernel_precheck_by_budget"]["B4"]["native_runtime_kernels_ready"] is False
     assert matrix["runtime_kernel_precheck_by_budget"]["B4"]["missing_native_runtime_keys"] == [
-        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
         ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
         ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
     ]
