@@ -600,14 +600,12 @@ def qwen35_gguf_mtp_eh_proj_f32(
             mtp_eh_proj_f32(e_norm_dev.ptr, h_norm_dev.ptr, weight_dev.ptr, out_dev.ptr,
                             rows, hidden, runtime=runtime)
         else:
-            e_norm_host = np.empty((rows, hidden), dtype=np.float32)
-            h_norm_host = np.empty((rows, hidden), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(e_norm_host), e_norm_dev, runtime=runtime)
-            copy_device_to_host(host_array_ptr(h_norm_host), h_norm_dev, runtime=runtime)
-            concat = np.ascontiguousarray(np.concatenate([e_norm_host, h_norm_host], axis=1),
-                                          dtype=np.float32)
-            concat_dev = malloc(concat.nbytes, runtime=runtime); buffers.append(concat_dev)
-            copy_host_to_device(concat_dev, host_array_ptr(concat), runtime=runtime)
+            # M6: Device-side concat — avoid host download/upload round-trip.
+            concat_dev = malloc(rows * hidden * 2 * 4, runtime=runtime); buffers.append(concat_dev)
+            # Copy e_norm_dev to first half, h_norm_dev to second half
+            import ctypes as _ct
+            runtime.memcpy(concat_dev.ptr, e_norm_dev.ptr, rows * hidden * 4, 0)  # D2D
+            runtime.memcpy(concat_dev.ptr + rows * hidden * 4, h_norm_dev.ptr, rows * hidden * 4, 0)  # D2D
             if eh_proj_qtype == GGMLQuantizationType.Q8_0:
                 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                     gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
