@@ -1261,34 +1261,38 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
     buffers: list = []
     try:
         hidden_dev = malloc(hidden.nbytes, runtime=runtime); buffers.append(hidden_dev)
-        norm_dev = malloc(norm_weight.nbytes, runtime=runtime); buffers.append(norm_dev)
+        norm_dev = _cached_upload("shared_head_norm", norm_weight, runtime=runtime)
         normed_dev = malloc(hidden.nbytes, runtime=runtime); buffers.append(normed_dev)
-        head_dev = malloc(head_weight.nbytes, runtime=runtime); buffers.append(head_dev)
         out_dev = malloc(rows * vocab * 4, runtime=runtime); buffers.append(out_dev)
         copy_host_to_device(hidden_dev, host_array_ptr(hidden), runtime=runtime)
-        copy_host_to_device(norm_dev, host_array_ptr(norm_weight), runtime=runtime)
-        copy_host_to_device(head_dev, host_array_ptr(head_weight), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, norm_dev.ptr, normed_dev.ptr, rows, hidden_size, eps=eps,
                         runtime=runtime)
+        head_dev = None  # set per-quant-type below
         if shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q6_K:
             # Q6_K pack8 gemv uses fp16 input which loses too much precision
             # for the 248320-vocab shared_head. Use host-side dequant + F32 gemv.
-            from hipengine.quant.gguf import dequantize_gguf_data
-            head_f32 = dequantize_gguf_data(
-                np.ascontiguousarray(shared_head_weight),
-                GGMLQuantizationType.Q6_K,
-            ).astype(np.float32)
-            head_dev = malloc(head_f32.nbytes, runtime=runtime); buffers.append(head_dev)
-            copy_host_to_device(head_dev, host_array_ptr(head_f32), runtime=runtime)
+            # Cache the dequanted F32 weight to skip 1.2s dequant + 1.94GB upload
+            # on repeat calls.
+            cache_key = "shared_head_q6k_f32"
+            head_dev = _WEIGHT_CACHE.get(cache_key)
+            if head_dev is None:
+                from hipengine.quant.gguf import dequantize_gguf_data
+                head_f32 = dequantize_gguf_data(
+                    np.ascontiguousarray(shared_head_weight),
+                    GGMLQuantizationType.Q6_K,
+                ).astype(np.float32)
+                head_dev = _cached_upload(cache_key, head_f32, runtime=runtime)
             mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
                            runtime=runtime)
         elif shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0_head,
             )
+            head_dev = _cached_upload("shared_head_q8_0", head_weight, runtime=runtime)
             _hip_q8_0_head(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
                            vocab, runtime=runtime)
         else:
+            head_dev = _cached_upload("shared_head_f32", head_weight, runtime=runtime)
             mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
                            runtime=runtime)
         runtime.device_synchronize()
