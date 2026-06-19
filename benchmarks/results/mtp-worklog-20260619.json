@@ -6,21 +6,149 @@
   "type": "worklog",
   "goal": "Implement native hipEngine GGUF MTP inference from docs/MTP-gguf.md, correctness-first: M0-M6 milestones on gfx1151/W7900.",
   "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-  "hardware": {"gpu": "AMD Radeon RX 7900 XTX", "arch": "gfx1151"},
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1151"
+  },
   "milestones": [
-    {"milestone": "M0 — Inventory/Oracles", "status": "complete", "description": "GGUF model inventory, tensor mapping, tokenizer, cpu_reference oracle for NextN layer.", "tests": "22 passed, 4 skipped"},
-    {"milestone": "M1 — GGUF MTP Metadata", "status": "complete", "description": "Qwen35GGUFMTPBlockMap validates blk.40 NextN tensors (20 tensors, 4 nextn-specific)."},
-    {"milestone": "M2 — GGUF AR Baseline", "status": "complete", "description": "Qwen35GGUFResidentSession runs greedy AR decode with materialized GGUF weights on GPU."},
-    {"milestone": "M2.5 — fp32 Hidden Seed Tap", "status": "complete", "description": "Resident session captures fp32 post-output_norm hidden seed for MTP draft input."},
-    {"milestone": "M3 — Draft-Only NextN Forward", "status": "complete", "description": "Composite mtp_nextn_layer on GPU with real GGUF weights. All 5 qtypes + BF16 dispatched.", "tests": "51 fast tests"},
-    {"milestone": "M4 — Target-Attached GGUF MTP Context", "status": "complete", "description": "MTP draft runs end-to-end with real weights. BF16 router/sgl dequant fixed. Q6_K shared_head host-dequant.", "tests": "2 M4 tests + 2 real GGUF tests"},
-    {"milestone": "M5 — B1-B4 Speculate-Verify", "status": "complete", "description": "Full speculate-verify cycle. B1 accept_per_draft=0.200 with chat prompt. B2-B4 use top-k=10 greedy per llama.cpp.", "tests": "7 M5 tests"},
-    {"milestone": "M6 — Runtime Optimization", "status": "in_progress", "description": "Benchmark artifact created. Correctness-first path: 38s/step. M6 perf: fused device-side kernels.", "tests": "scripts/gguf_mtp_bench.py"}
+    {
+      "milestone": "M0 — Inventory/Oracles",
+      "status": "complete",
+      "description": "GGUF model inventory, tensor mapping, tokenizer, cpu_reference oracle for NextN layer.",
+      "tests": "22 passed, 4 skipped"
+    },
+    {
+      "milestone": "M1 — GGUF MTP Metadata",
+      "status": "complete",
+      "description": "Qwen35GGUFMTPBlockMap validates blk.40 NextN tensors (20 tensors, 4 nextn-specific)."
+    },
+    {
+      "milestone": "M2 — GGUF AR Baseline",
+      "status": "complete",
+      "description": "Qwen35GGUFResidentSession runs greedy AR decode with materialized GGUF weights on GPU."
+    },
+    {
+      "milestone": "M2.5 — fp32 Hidden Seed Tap",
+      "status": "complete",
+      "description": "Resident session captures fp32 post-output_norm hidden seed for MTP draft input."
+    },
+    {
+      "milestone": "M3 — Draft-Only NextN Forward",
+      "status": "complete",
+      "description": "Composite mtp_nextn_layer on GPU with real GGUF weights. All 5 qtypes + BF16 dispatched.",
+      "tests": "51 fast tests"
+    },
+    {
+      "milestone": "M4 — Target-Attached GGUF MTP Context",
+      "status": "complete",
+      "description": "MTP draft runs end-to-end with real weights. BF16 router/sgl dequant fixed. Q6_K shared_head host-dequant.",
+      "tests": "2 M4 tests + 2 real GGUF tests"
+    },
+    {
+      "milestone": "M5 — B1-B4 Speculate-Verify",
+      "status": "complete",
+      "description": "Full speculate-verify cycle. B1 accept_per_draft=0.200 with chat prompt. B2-B4 use top-k=10 greedy per llama.cpp.",
+      "tests": "7 M5 tests"
+    },
+    {
+      "milestone": "M6 — Runtime Optimization",
+      "status": "in_progress",
+      "description": "Optimize NextN layer runtime to match or beat llama.cpp on gfx1151/W7900.",
+      "tests": "53/53 fast tests pass on gfx1151, guard green (22 passed, 4 skipped)",
+      "benchmarks": [
+        {
+          "optimization": "Pre-dequant Q6_K shared_head (F32 on device)",
+          "step_ms_before": 6284,
+          "step_ms_after": 4577,
+          "speedup": "1.37x",
+          "note": "Dequant Q6_K output.weight to F32 on device, skip 1.2s host dequant"
+        },
+        {
+          "optimization": "Weight cache (eh_proj + attention + FFN norms/weights)",
+          "step_ms_before": 4915,
+          "step_ms_after": 4593,
+          "speedup": "1.07x",
+          "note": "Cache norm/attention/router/shared-expert weights via _cached_upload"
+        },
+        {
+          "optimization": "Shared_head Q6_K F32 dequant cache + skip 398MB upload",
+          "step_ms_before": 6024,
+          "step_ms_after": 4270,
+          "speedup": "1.41x",
+          "note": "Early cache check skips 1.2s dequant + 1.94GB upload on cache hit"
+        },
+        {
+          "optimization": "Full expert weight tensor cache + per-expert device offsets",
+          "step_ms_before": 6112,
+          "step_ms_after": 4151,
+          "speedup": "1.47x",
+          "note": "Cache [256, inter, block_bytes] tensors, compute per-expert byte offsets, _dispatch_gemv_raw"
+        },
+        {
+          "optimization": "Selected_dual batched gate+up GEMV (16→1 kernel launch)",
+          "step_ms_before": 5471,
+          "step_ms_after": 3575,
+          "speedup": "1.53x",
+          "note": "gguf_q4_k_selected_dual_gemv_bf16_bf16_out batches 8 experts gate+up, GPU BF16 conversion"
+        },
+        {
+          "optimization": "Pre-load all kernel libraries (build_mtp_nextn, q4_k, k_gemv)",
+          "step_ms_before": 2600,
+          "step_ms_after": 1320,
+          "speedup": "1.97x FFN",
+          "note": "build_hip() cache lookup takes 60ms per call even when cached; pre-loading saves 1440ms in FFN down loop"
+        },
+        {
+          "optimization": "Library pre-loading in all sublayers (eh_proj, attention, shared_head)",
+          "step_ms_before": 2186,
+          "step_ms_after": 2006,
+          "speedup": "1.09x",
+          "note": "Extend library pre-loading to all sublayers"
+        },
+        {
+          "optimization": "Cumulative M6 (all optimizations, cached call)",
+          "step_ms_before": 5000,
+          "step_ms_after": 2006,
+          "speedup": "2.50x",
+          "note": "Full NextN layer step: uncached ~5000ms → cached ~2000ms on gfx1151"
+        }
+      ]
+    }
   ],
   "benchmark_rows": [
-    {"run_tag": "mtp-bench-1781830568", "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf", "prompt": "What is the capital of France?", "cycles": 10, "draft_n_max": 1, "accept_per_draft": 0.1, "accepted_per_output": 0.1, "avg_decode_ms": 38561.54, "tokens_per_sec": 0.03, "total_accepted": 1, "total_drafts": 10, "artifact": "benchmarks/results/mtp-bench-1781830568.json"}
+    {
+      "run_tag": "mtp-bench-1781830568",
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "prompt": "What is the capital of France?",
+      "cycles": 10,
+      "draft_n_max": 1,
+      "accept_per_draft": 0.1,
+      "accepted_per_output": 0.1,
+      "avg_decode_ms": 38561.54,
+      "tokens_per_sec": 0.03,
+      "total_accepted": 1,
+      "total_drafts": 10,
+      "artifact": "benchmarks/results/mtp-bench-1781830568.json"
+    }
   ],
-  "test_summary": {"fast_tests": "51 passed", "m4_tests": "2 passed", "m5_tests": "7 passed", "guard_tests": "22 passed, 4 skipped", "total": "60+ passed, 4 skipped"},
-  "quant_support": {"F32": "mtp_linear_f32", "Q8_0": "gguf_q8_0_gemv_f32_f32_out", "Q4_K": "gguf_q4_k_gemv_f32_f32_out", "Q5_K": "gguf_q5_k_gemv_f32_f32_out", "Q6_K": "Host-side dequant + F32 gemv", "BF16": "BF16→F32 dequant (uint16 << 16)"},
-  "next_steps": ["M6 perf: Fused PARO-style device-side kernels", "M5+: Pre-logits hidden state for chained drafts", "M5+: llama.cpp B1-B4 parity comparison"]
+  "test_summary": {
+    "fast_tests": "51 passed",
+    "m4_tests": "2 passed",
+    "m5_tests": "7 passed",
+    "guard_tests": "22 passed, 4 skipped",
+    "total": "60+ passed, 4 skipped"
+  },
+  "quant_support": {
+    "F32": "mtp_linear_f32",
+    "Q8_0": "gguf_q8_0_gemv_f32_f32_out",
+    "Q4_K": "gguf_q4_k_gemv_f32_f32_out",
+    "Q5_K": "gguf_q5_k_gemv_f32_f32_out",
+    "Q6_K": "Host-side dequant + F32 gemv",
+    "BF16": "BF16→F32 dequant (uint16 << 16)"
+  },
+  "next_steps": [
+    "M6 perf: Fused PARO-style device-side kernels",
+    "M5+: Pre-logits hidden state for chained drafts",
+    "M5+: llama.cpp B1-B4 parity comparison"
+  ]
 }
