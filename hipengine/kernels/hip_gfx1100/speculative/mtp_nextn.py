@@ -1099,13 +1099,13 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                 gguf_q4_k_gemv_f32_f32_out as _hip_q4_k,
             )
             _hip_q4_k(x_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_q4_k_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q5_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q5_k_gemv_f32_f32_out as _hip_q5_k,
             )
             _hip_q5_k(x_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_k_gemv_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
@@ -1199,6 +1199,13 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         normed_host = np.empty((tokens, hidden_size), dtype=np.float32)
         copy_device_to_host(host_array_ptr(normed_host), normed_dev, runtime=runtime)
 
+        # M6: Pre-load GEMV libraries to avoid 61ms rebuild check per call.
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
+        _q4_k_lib = build_gguf_q4_k_gemv(load=True)
+        _k_gemv_lib = build_gguf_k_gemv(load=True)
+        _mtp_lib = build_mtp_nextn(load=True)
+
         # M6: Cache full expert weight tensors and compute per-expert device offsets.
         # Each expert's slice is contiguous within the [num_experts, inter, block_bytes]
         # tensor, so we pass (cached_ptr + expert * per_expert_bytes) to the GEMV kernel.
@@ -1242,7 +1249,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                     gate_full_dev.ptr, up_full_dev.ptr,
                     gate_bf16_out.ptr, up_bf16_out.ptr,
                     1, top_k, num_experts, hidden_size, inter_dim,
-                    runtime=runtime,
+                    library=_q4_k_lib, runtime=runtime,
                 )
 
                 # Convert BF16 outputs to F32 and do silu_mul per expert
@@ -1267,9 +1274,9 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                         DeviceBuffer(ptr=inter_out.ptr + k * inter_dim * 4, nbytes=inter_dim * 4),
                         d_ptr, down_out, 1, inter_dim, hidden_size,
                         down_qtype, runtime=runtime)
-                    mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, runtime=runtime)
+                    mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, library=_mtp_lib, runtime=runtime)
                     mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr, row_dev.ptr,
-                                hidden_size, runtime=runtime)
+                                hidden_size, library=_mtp_lib, runtime=runtime)
                     import ctypes as _ct
                     runtime.memcpy(selected_out_dev.ptr + t * hidden_size * 4, row_dev.ptr,
                                    hidden_size * 4, 0)
@@ -1291,12 +1298,12 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                     _dispatch_gemv_raw(xt_dev, u_ptr, up_out, 1, hidden_size, inter_dim,
                                    up_qtype, runtime=runtime)
                     mtp_silu_mul_f32(gate_out.ptr, up_out.ptr, inter_out.ptr, inter_dim,
-                                     runtime=runtime)
+                                     library=_mtp_lib, runtime=runtime)
                     _dispatch_gemv_raw(inter_out, d_ptr, down_out, 1, inter_dim, hidden_size,
                                    down_qtype, runtime=runtime)
-                    mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, runtime=runtime)
+                    mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, library=_mtp_lib, runtime=runtime)
                     mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr, row_dev.ptr,
-                                hidden_size, runtime=runtime)
+                                hidden_size, library=_mtp_lib, runtime=runtime)
                     import ctypes as _ct
                     runtime.memcpy(selected_out_dev.ptr + t * hidden_size * 4, row_dev.ptr,
                                    hidden_size * 4, 0)
@@ -1313,7 +1320,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                        shared_qtype, runtime=runtime)
         _dispatch_gemv(normed_dev, su_dev, s_up, tokens, hidden_size, inter_dim,
                        shared_qtype, runtime=runtime)
-        mtp_silu_mul_f32(s_gate.ptr, s_up.ptr, s_inter.ptr, tokens * inter_dim, runtime=runtime)
+        mtp_silu_mul_f32(s_gate.ptr, s_up.ptr, s_inter.ptr, tokens * inter_dim, library=_mtp_lib, runtime=runtime)
         _dispatch_gemv(s_inter, sd_dev, s_out, tokens, inter_dim, hidden_size,
                        shared_qtype, runtime=runtime)
 
@@ -1337,9 +1344,9 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         tmp = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(tmp)
         out_dev = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(out_dev)
         mtp_add_f32(x_dev.ptr, selected_out_dev.ptr, tmp.ptr, tokens * hidden_size,
-                    runtime=runtime)
+                    library=_mtp_lib, runtime=runtime)
         mtp_add_f32(tmp.ptr, gated_shared.ptr, out_dev.ptr, tokens * hidden_size,
-                    runtime=runtime)
+                    library=_mtp_lib, runtime=runtime)
         runtime.device_synchronize()
         out = np.empty((tokens, hidden_size), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
