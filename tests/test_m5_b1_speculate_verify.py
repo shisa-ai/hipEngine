@@ -73,8 +73,12 @@ def mtp_weights():
     token_embd_f32 = dequantize_gguf_data(
         np.asarray(token_embd_raw, dtype=np.uint8), token_embd_qtype
     ).astype(np.float32)  # [vocab, hidden]
+    # Also load GGUFReader for tokenizer
+    reader_obj = GGUFReader(GGUF_PATH)
+    tok_obj = Qwen35GGUFTokenizer.from_gguf_info(reader_obj.info)
 
     return {
+        "tokenizer": tok_obj,
         "token_embd_f32": token_embd_f32,
         "eh_proj_weight": get("blk.40.nextn.eh_proj.weight"),
         "hnorm_weight": get("blk.40.nextn.hnorm.weight"),
@@ -166,10 +170,12 @@ def test_m5_b1_speculate_verify_cycle(mtp_weights):
 
     session = Qwen35GGUFResidentSession(model_path=GGUF_PATH)
     try:
-        # Prefill with a meaningful English prompt
-        reader = GGUFReader(GGUF_PATH)
-        tok = Qwen35GGUFTokenizer.from_gguf_info(reader.info)
-        prompt = tok.encode("The capital of France is")
+        # Prefill with a chat-formatted prompt
+        tok = mtp_weights["tokenizer"]
+        IM_START = 248045  # <|im_start|>
+        IM_END = 248046    # <|im_end|>
+        prompt = ([IM_START] + tok.encode("user\nWhat is the capital of France?") +
+                  [IM_END] + [IM_START] + tok.encode("assistant\n"))
         prefill_result = session.prefill(prompt, return_logits=False,
                                          capture_hidden_seed_fp32=True)
         prev_token = int(prefill_result.token_id)
@@ -237,18 +243,24 @@ def test_m5_b1_speculate_verify_cycle(mtp_weights):
         print(f"  accept_per_draft={accept_per_draft:.3f}, "
               f"accepted_per_output={accepted_per_output:.3f}")
 
-        # With a meaningful English prompt and real token embeddings, the MTP
-        # draft should produce coherent predictions. The correctness gate is
-        # structural: cycle runs, produces valid metrics, draft tokens are
-        # diverse. Acceptance > 0 is expected but depends on model quality.
+        # With a chat-formatted prompt and real token embeddings, the MTP draft
+        # should produce coherent predictions. The correctness gate is:
+        # - Cycle runs, produces valid metrics
+        # - Draft tokens are diverse (non-degenerate)
+        # - At least 1 draft token matches the target (accept_per_draft > 0)
         assert len(cycle_results) == 5
         draft_tokens = [r["draft_token"] for r in cycle_results]
         unique_drafts = len(set(draft_tokens))
         assert unique_drafts >= 1, f"Draft tokens all the same: {draft_tokens}"
-        # Check that at least one draft token is a valid vocabulary token
         for r in cycle_results:
             assert 0 <= r["draft_token"] < 248320, f"Invalid draft token: {r['draft_token']}"
             assert 0 <= r["target_token"] < 248320, f"Invalid target token: {r['target_token']}"
+        # Check at least 1 acceptance (accept_per_draft > 0)
+        assert total_accepted >= 1, (
+            f"Expected at least 1 acceptance in 5 cycles with chat-formatted prompt, "
+            f"got 0. accept_per_draft={accept_per_draft}, "
+            f"results={cycle_results}"
+        )
 
     finally:
         session.close()
