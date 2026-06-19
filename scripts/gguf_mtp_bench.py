@@ -50,6 +50,64 @@ def _get_hw_info() -> dict:
     return {"gpu": "unknown", "arch": "gfx1151"}
 
 
+def compute_speculative_metrics(cycles: list[dict]) -> dict:
+    """Compute MTP metrics with explicit llama.cpp-compatible denominators.
+
+    A verify cycle always emits one target token. Accepted draft tokens are also
+    visible output tokens, so ``accepted_per_output`` uses
+    ``accepted_draft_tokens / visible_output_token_count`` rather than dividing
+    by verify-cycle count. This follows docs/MTP-gguf.md's denominator contract.
+    """
+    verify_cycle_count = len(cycles)
+    total_drafts = sum(int(c.get("generated_draft_tokens", 1)) for c in cycles)
+    total_accepted = sum(int(c.get("accepted_draft_tokens", int(bool(c.get("accepted"))))) for c in cycles)
+    visible_output_tokens = sum(
+        int(c.get("visible_output_tokens", 1 + int(c.get("accepted_draft_tokens", int(bool(c.get("accepted")))))))
+        for c in cycles
+    )
+    total_cycle_ms = sum(float(c.get("ar_decode_ms", 0.0)) + float(c.get("mtp_draft_ms", 0.0)) for c in cycles)
+    total_ar_ms = sum(float(c.get("ar_decode_ms", 0.0)) for c in cycles)
+    total_draft_ms = sum(float(c.get("mtp_draft_ms", 0.0)) for c in cycles)
+
+    accept_per_draft = total_accepted / total_drafts if total_drafts > 0 else 0.0
+    accepted_per_output = total_accepted / visible_output_tokens if visible_output_tokens > 0 else 0.0
+    visible_tokens_per_cycle = visible_output_tokens / verify_cycle_count if verify_cycle_count > 0 else 0.0
+    avg_cycle_ms = total_cycle_ms / verify_cycle_count if verify_cycle_count > 0 else 0.0
+    avg_ar_decode_ms = total_ar_ms / verify_cycle_count if verify_cycle_count > 0 else 0.0
+    avg_mtp_draft_ms = total_draft_ms / verify_cycle_count if verify_cycle_count > 0 else 0.0
+    avg_ms_per_visible_token = total_cycle_ms / visible_output_tokens if visible_output_tokens > 0 else 0.0
+    tokens_per_sec = 1000.0 / avg_ms_per_visible_token if avg_ms_per_visible_token > 0 else 0.0
+    ar_baseline_tokens_per_sec = 1000.0 / avg_ar_decode_ms if avg_ar_decode_ms > 0 else 0.0
+    speedup_vs_ar_visible = (
+        tokens_per_sec / ar_baseline_tokens_per_sec if ar_baseline_tokens_per_sec > 0 else 0.0
+    )
+
+    return {
+        "accept_per_draft": accept_per_draft,
+        "accepted_per_output": accepted_per_output,
+        "avg_cycle_ms": avg_cycle_ms,
+        "avg_decode_ms": avg_cycle_ms,  # backward-compatible alias for older artifacts
+        "avg_ar_decode_ms": avg_ar_decode_ms,
+        "avg_mtp_draft_ms": avg_mtp_draft_ms,
+        "avg_ms_per_visible_token": avg_ms_per_visible_token,
+        "tokens_per_sec": tokens_per_sec,
+        "ar_baseline_tokens_per_sec": ar_baseline_tokens_per_sec,
+        "speedup_vs_ar_visible": speedup_vs_ar_visible,
+        "visible_tokens_per_cycle": visible_tokens_per_cycle,
+        "total_accepted": total_accepted,
+        "total_drafts": total_drafts,
+        "total_output_tokens": visible_output_tokens,
+        "verify_cycle_count": verify_cycle_count,
+        "total_cycle_ms": total_cycle_ms,
+        "denominators": {
+            "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+            "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+            "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+            "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
+        },
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="MTP speculative decoding benchmark")
     parser.add_argument("--model", default=GGUF_PATH, help="GGUF model path")
@@ -171,10 +229,13 @@ def main():
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
 
-            # Verify
+            # Verify/account. A verify cycle emits one target token; an accepted
+            # draft token is an additional visible output token.
             total_drafts += 1
-            total_output_tokens += 1
             accepted = (draft_token == target_token)
+            accepted_draft_tokens = int(accepted)
+            visible_output_tokens = 1 + accepted_draft_tokens
+            total_output_tokens += visible_output_tokens
             if accepted:
                 total_accepted += 1
 
@@ -183,6 +244,9 @@ def main():
                 "target_token": target_token,
                 "draft_token": draft_token,
                 "accepted": accepted,
+                "generated_draft_tokens": 1,
+                "accepted_draft_tokens": accepted_draft_tokens,
+                "visible_output_tokens": visible_output_tokens,
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
             })
@@ -194,10 +258,15 @@ def main():
         session.close()
 
     # Compute metrics
-    accept_per_draft = total_accepted / total_drafts if total_drafts > 0 else 0.0
-    accepted_per_output = total_accepted / total_output_tokens if total_output_tokens > 0 else 0.0
-    avg_decode_ms = np.mean(decode_times) if decode_times else 0.0
-    tokens_per_sec = 1000.0 / avg_decode_ms if avg_decode_ms > 0 else 0.0
+    metrics = compute_speculative_metrics(cycle_details)
+    warm_metrics = compute_speculative_metrics(cycle_details[1:]) if len(cycle_details) > 1 else None
+    accept_per_draft = metrics["accept_per_draft"]
+    accepted_per_output = metrics["accepted_per_output"]
+    avg_decode_ms = metrics["avg_decode_ms"]
+    avg_ms_per_visible_token = metrics["avg_ms_per_visible_token"]
+    tokens_per_sec = metrics["tokens_per_sec"]
+    speedup_vs_ar_visible = metrics["speedup_vs_ar_visible"]
+    visible_tokens_per_cycle = metrics["visible_tokens_per_cycle"]
 
     # Print summary
     print(f"\n{'='*60}")
@@ -208,8 +277,18 @@ def main():
     print(f"Draft n_max: {args.draft_n_max}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
-    print(f"avg_decode_ms: {avg_decode_ms:.2f}")
+    print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
+    print(f"avg_cycle_ms: {avg_decode_ms:.2f}")
+    print(f"avg_ms_per_visible_token: {avg_ms_per_visible_token:.2f}")
     print(f"tokens_per_sec: {tokens_per_sec:.2f}")
+    print(f"speedup_vs_ar_visible: {speedup_vs_ar_visible:.3f}x")
+    if warm_metrics is not None:
+        print(
+            "warm_excluding_cycle0: "
+            f"avg_ms_per_visible_token={warm_metrics['avg_ms_per_visible_token']:.2f} "
+            f"tokens_per_sec={warm_metrics['tokens_per_sec']:.2f} "
+            f"speedup_vs_ar_visible={warm_metrics['speedup_vs_ar_visible']:.3f}x"
+        )
     print(f"total_accepted: {total_accepted}/{total_drafts}")
     for d in cycle_details:
         acc = "✓" if d["accepted"] else "✗"
@@ -220,7 +299,7 @@ def main():
     hw = _get_hw_info()
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     result = {
-        "schema": 3,
+        "schema": 4,
         "status": "ok",
         "timestamp": timestamp,
         "run_tag": f"mtp-bench-{int(time.time())}",
@@ -236,13 +315,40 @@ def main():
             "engine": "hipEngine GGUF MTP",
         },
         "metrics": {
-            "accept_per_draft": round(accept_per_draft, 4),
-            "accepted_per_output": round(accepted_per_output, 4),
-            "avg_decode_ms": round(float(avg_decode_ms), 2),
-            "tokens_per_sec": round(float(tokens_per_sec), 2),
-            "total_accepted": total_accepted,
-            "total_drafts": total_drafts,
-            "total_output_tokens": total_output_tokens,
+            "accept_per_draft": round(float(metrics["accept_per_draft"]), 4),
+            "accepted_per_output": round(float(metrics["accepted_per_output"]), 4),
+            "visible_tokens_per_cycle": round(float(metrics["visible_tokens_per_cycle"]), 4),
+            "avg_cycle_ms": round(float(metrics["avg_cycle_ms"]), 2),
+            "avg_decode_ms": round(float(metrics["avg_decode_ms"]), 2),
+            "avg_ar_decode_ms": round(float(metrics["avg_ar_decode_ms"]), 2),
+            "avg_mtp_draft_ms": round(float(metrics["avg_mtp_draft_ms"]), 2),
+            "avg_ms_per_visible_token": round(float(metrics["avg_ms_per_visible_token"]), 2),
+            "tokens_per_sec": round(float(metrics["tokens_per_sec"]), 2),
+            "ar_baseline_tokens_per_sec": round(float(metrics["ar_baseline_tokens_per_sec"]), 2),
+            "speedup_vs_ar_visible": round(float(metrics["speedup_vs_ar_visible"]), 4),
+            "total_accepted": metrics["total_accepted"],
+            "total_drafts": metrics["total_drafts"],
+            "total_output_tokens": metrics["total_output_tokens"],
+            "verify_cycle_count": metrics["verify_cycle_count"],
+            "denominators": metrics["denominators"],
+            "warm_excluding_cycle0": (
+                {
+                    "accept_per_draft": round(float(warm_metrics["accept_per_draft"]), 4),
+                    "accepted_per_output": round(float(warm_metrics["accepted_per_output"]), 4),
+                    "visible_tokens_per_cycle": round(float(warm_metrics["visible_tokens_per_cycle"]), 4),
+                    "avg_cycle_ms": round(float(warm_metrics["avg_cycle_ms"]), 2),
+                    "avg_ar_decode_ms": round(float(warm_metrics["avg_ar_decode_ms"]), 2),
+                    "avg_mtp_draft_ms": round(float(warm_metrics["avg_mtp_draft_ms"]), 2),
+                    "avg_ms_per_visible_token": round(float(warm_metrics["avg_ms_per_visible_token"]), 2),
+                    "tokens_per_sec": round(float(warm_metrics["tokens_per_sec"]), 2),
+                    "speedup_vs_ar_visible": round(float(warm_metrics["speedup_vs_ar_visible"]), 4),
+                    "total_accepted": warm_metrics["total_accepted"],
+                    "total_drafts": warm_metrics["total_drafts"],
+                    "total_output_tokens": warm_metrics["total_output_tokens"],
+                    "verify_cycle_count": warm_metrics["verify_cycle_count"],
+                }
+                if warm_metrics is not None else None
+            ),
         },
         "cycles": cycle_details,
     }

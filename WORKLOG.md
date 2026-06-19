@@ -100579,3 +100579,48 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --cycles 5 --draft-
 - accept_per_draft=0.200, accepted_per_output=0.200 (unchanged)
 - avg_decode_ms=74.86, tokens_per_sec=13.36
 - warm MTP draft cycles: 7.01ms, 6.70ms, 7.33ms, 7.09ms (cycle 0 cold cache 96.50ms)
+
+## 2026-06-19 — MTP benchmark visible-token accounting
+
+### Change
+- `scripts/gguf_mtp_bench.py` now computes speculative-decoding metrics with explicit
+  visible-output denominators from `docs/MTP-gguf.md`:
+  - `accept_per_draft = accepted_draft_tokens / generated_draft_tokens`
+  - `accepted_per_output = accepted_draft_tokens / visible_output_token_count`
+  - `visible_tokens_per_cycle = visible_output_token_count / verify_cycle_count`
+  - `tokens_per_sec = visible_output_token_count / total_cycle_wall_time`
+- Accepted draft tokens are now counted as additional visible output tokens in the
+  benchmark artifact, and a `warm_excluding_cycle0` summary is retained so cold
+  cache and steady-state economics are not conflated.
+- Added `tests/test_gguf_mtp_bench_metrics.py` for the denominator contract.
+
+### Verification
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py
+# 1 passed
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+```
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 1 \
+  --output benchmarks/results/mtp-bench-1781842000-visible-output.json
+```
+- Artifact schema 4: `benchmarks/results/mtp-bench-1781842000-visible-output.json`
+- accept_per_draft=0.200, accepted_per_output=0.1667, visible_tokens_per_cycle=1.2
+- cold-inclusive tokens_per_sec=14.80, speedup_vs_ar_visible=0.8151x
+- warm excluding cycle0: tokens_per_sec=19.82, speedup_vs_ar_visible=1.1019x
+- This confirms the 370ms→~7ms draft optimization makes B1 warm economics positive
+  on this fixed prompt once accepted draft tokens are credited as visible outputs,
+  while cold-cache total remains slower.
